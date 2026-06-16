@@ -1,0 +1,710 @@
+/* ============================================================
+   MetaM AI QA Dashboard — Design Tokens
+   Source of truth: MetaM AI QA Dashboard Design System
+   ( colors_and_type.css + README.md )
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  /* ---------- BRAND / PRIMARY ---------- */
+  --primary:        #055AAF;                  /* MetaM signature blue — buttons, active nav, key counters */
+  --primary-light:  #1E70E0;                  /* Hover state for primary buttons */
+  --primary-dark:   #003078;                  /* Used sparingly — deep accents */
+  --primary-bg:     rgba(5, 90, 175, 0.05);   /* Subtle wash on table rows + selection */
+  --primary-tint:   #E3F0FF;                  /* Light blue badge fill, score chips */
+  --primary-accent: #3E90FF;                  /* Bright sky — sidebar wordmark accent, team avg line */
+  --primary-mid:    #2B66B3;                  /* 2nd-tier table header band */
+
+  /* ---------- NEUTRAL / SURFACE ---------- */
+  --black:        #000000;
+  --white:        #FFFFFF;
+  --secondary:    #101828;                    /* Headlines, near-black text */
+  --bg-main:      #eff6ff;                    /* Page background — 01-AI-Tutor-dev globals.css --background 동일 */
+  --bg-card:      #FFFFFF;                    /* Cards, tables */
+  --bg-sidebar:   #0B0E14;                    /* Sidebar (very dark slate, not pure black) */
+  --bg-subtle:    #F2F4F7;                    /* Disabled chips, empty cells */
+
+  /* ---------- TEXT ---------- */
+  --text-main:     #111827;                   /* Body text */
+  --text-strong:   #344054;                   /* Strong body, table cells */
+  --text-body:     #475467;                   /* Secondary copy */
+  --text-muted:    #667085;                   /* Labels, captions */
+  --text-dim:      #98A2B3;                   /* Placeholders, empty states */
+  --text-on-dark:  #F9FAFB;                   /* Text on sidebar */
+
+  /* ---------- BORDER ---------- */
+  --border:        #E4E7EC;                   /* Default card / table border */
+  --border-soft:   #EEF2F7;                   /* Inner table-cell dividers */
+  --border-strong: #D0D5DD;                   /* Form inputs */
+  --border-focus:  var(--primary);
+
+  /* ---------- SEMANTIC ---------- */
+  --success:        #12B76A;
+  --success-bg:     #ECFDF3;
+  --warning:        #B54708;                  /* amber-800 — caution badges */
+  --warning-bg:     #FFFAEB;
+  --danger:         #D92D20;                  /* Login errors, destructive */
+  --danger-bg:      #FEF3F2;
+  --info:           var(--primary);
+
+  /* Score tier colors (Dashboard categoryCell) */
+  --score-good-bg:  var(--primary-tint);      /* ratio >= 0.75 */
+  --score-good-fg:  var(--primary);
+  --score-mid-bg:   #FFFAEB;                  /* 0.5 <= ratio < 0.75 */
+  --score-mid-fg:   #92400E;                  /* amber-800 */
+  --score-low-bg:   var(--bg-subtle);         /* < 0.5 or N/A */
+  --score-low-fg:   var(--text-dim);
+
+  /* ---------- SHADOW ---------- */
+  --shadow-sm:      0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md:      0 4px 6px -1px rgba(16, 24, 40, 0.1), 0 2px 4px -1px rgba(16, 24, 40, 0.06);
+  --shadow-lg:      0 10px 15px -3px rgba(16, 24, 40, 0.1), 0 4px 6px -2px rgba(16, 24, 40, 0.05);
+  --shadow-premium: 0 20px 25px -5px rgba(16, 24, 40, 0.1), 0 10px 10px -5px rgba(16, 24, 40, 0.04);
+  --shadow-primary: 0 4px 12px rgba(5, 90, 175, 0.25);   /* Primary button lift on hover */
+  --shadow-radar:   0 20px 50px rgba(0, 0, 0, 0.15);     /* Hover-over tooltip pop */
+
+  /* ---------- RADIUS ---------- */
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-2xl:  20px;
+  --radius-pill: 9999px;
+
+  /* ---------- SPACING ---------- (Tailwind's default 4px scale) */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ---------- MOTION ---------- */
+  --transition:      all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ============================================================
+     TYPOGRAPHY — Outfit (display) + Inter (Latin body fallback)
+     Korean glyphs fall through to system Korean fonts
+     (Apple SD Gothic Neo / Noto Sans KR / Malgun Gothic).
+     ============================================================ */
+  --font-display: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+                  'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  --font-body:    'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+                  'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  --font-mono:    ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Type scale — actually in use in the dashboard */
+  --fs-9:   9px;    /* Hint text inside utterance cells */
+  --fs-10:  10px;   /* Score chip text */
+  --fs-11:  11px;   /* Table micro labels, chip labels, sidebar nav */
+  --fs-12:  12px;   /* Captions, table sub-header */
+  --fs-14:  14px;   /* Default body, table cells, buttons */
+  --fs-16:  16px;   /* Subtitles, headings on cards */
+  --fs-18:  18px;   /* Login product label */
+  --fs-24:  24px;   /* H1 — page title (text-2xl) */
+
+  --fw-normal:    400;
+  --fw-medium:    500;
+  --fw-semibold:  600;
+  --fw-bold:      700;
+  --fw-extrabold: 800;
+  --fw-black:     900;
+
+  --lh-tight:   1.2;
+  --lh-snug:    1.35;
+  --lh-normal:  1.5;
+  --lh-relaxed: 1.625;
+  --ls-wide:    0.05em;     /* uppercase micro-labels */
+  --ls-tight:  -0.01em;     /* H1 page title */
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: var(--font-body);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* Glassmorphism (used sparingly — radar hover panel layering) */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+
+.app-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* App layout — 60px Nav 상단 + (Sidebar + Main) 하단. 원본 01-AI-Tutor-dev 동일 구조 */
+.app-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-main);
+  color: var(--text-main);
+}
+
+.app-shell-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.app-shell-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-8);
+}
+
+/* Top Nav — 60px 높이, 흰 배경 (원본 nav.tsx 동일) */
+.app-nav {
+  flex-shrink: 0;
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-nav-inner {
+  display: flex;
+  height: 60px;
+  width: 100%;
+  align-items: stretch;
+}
+
+.app-nav-brand {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 14px;
+  padding: 0 24px 0 22px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  font: inherit;
+}
+
+.app-nav-logo {
+  height: 22px;
+  width: auto;
+  object-fit: contain;
+}
+
+.app-nav-wordmark {
+  font-family: 'Moneygraphy Rounded', var(--font-display);
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--text-strong);
+  opacity: 0.85;
+  letter-spacing: -0.005em;
+  line-height: 1;
+  margin-top: 1px;
+  white-space: nowrap;
+}
+
+.app-nav-dev-badge {
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: white;
+  background: #dc2626;
+}
+
+.app-nav-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  padding: 0 18px;
+}
+
+.app-nav-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-nav-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: white;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-nav-logout {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: white;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.app-nav-logout:hover {
+  background: var(--bg-subtle);
+}
+
+.app-nav-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px 0 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: white;
+}
+
+.app-nav-user-button {
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.app-nav-user-button:hover {
+  background: var(--bg-subtle);
+}
+
+.app-nav-user-avatar-image {
+  background: transparent;
+  object-fit: cover;
+}
+
+.app-nav-user-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.app-nav-user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-nav-user-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.app-nav-user-role-super {
+  background: rgba(5, 90, 175, 0.08);
+  color: var(--primary);
+}
+
+.app-nav-user-role-admin {
+  background: var(--bg-subtle);
+  color: var(--text-strong);
+}
+
+.app-nav-user-role-agent {
+  background: rgba(16, 124, 65, 0.08);
+  color: #107c41;
+}
+
+/* Sidebar — light theme, 260px wide (원본 01-AI-Tutor-dev 와 동일). 상단 Nav 가 별도라서 sticky/100vh 불필요 */
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--white);
+  color: var(--text-strong);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 16px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  overflow-x: visible;
+}
+
+.sidebar-brand-selector {
+  margin-top: 0;
+}
+
+.sidebar-nav {
+  flex: 1;
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sidebar-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-nav-section {
+  margin: 0 0 4px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sidebar-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-nav-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: left;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--bg-subtle);
+  color: var(--text-main);
+}
+
+.sidebar-nav-item.is-active {
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  margin-top: 12px;
+  padding: 12px 8px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.sidebar-product-name {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.main-layout {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.content-area {
+  padding: var(--space-8);
+  max-width: 1440px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ============================================================
+   COMPONENTS — base (Tailwind handles the rest inline)
+   ============================================================ */
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-14);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition);
+  gap: 0.5rem;
+  border: 1px solid transparent;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--white);
+}
+
+.btn-primary:hover {
+  background: var(--primary-light);
+  box-shadow: var(--shadow-primary);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-outline {
+  border-color: var(--border);
+  background: var(--white);
+  color: var(--text-main);
+}
+
+.btn-outline:hover {
+  background: var(--bg-main);
+  border-color: var(--text-dim);
+}
+
+/* ============================================================
+   TABLE UTILITIES
+   ============================================================ */
+
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+th {
+  background: var(--bg-main);
+  padding: 0.75rem 1rem;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-wide);
+  border-bottom: 1px solid var(--border);
+}
+
+td {
+  padding: 1rem;
+  font-size: var(--fs-14);
+  color: var(--text-main);
+  border-bottom: 1px solid var(--border);
+}
+
+tr:hover td {
+  background: var(--primary-bg);
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+/* ============================================================
+   TYPE HELPERS — opt-in via class (mocks / non-Tailwind surfaces)
+   ============================================================ */
+
+.ds-h1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-24);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-tight);
+  color: var(--secondary);
+  line-height: var(--lh-tight);
+}
+.ds-h2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-18);
+  font-weight: var(--fw-extrabold);
+  color: var(--secondary);
+  line-height: var(--lh-snug);
+}
+.ds-h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-bold);
+  color: var(--secondary);
+}
+.ds-subtitle {
+  font-size: var(--fs-14);
+  color: var(--text-muted);
+  line-height: var(--lh-relaxed);
+}
+.ds-eyebrow {
+  font-size: var(--fs-12);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-wide);
+  color: var(--primary);
+}
+.ds-label {
+  font-size: var(--fs-12);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-wide);
+  color: var(--text-muted);
+}
+.ds-body {
+  font-size: var(--fs-14);
+  color: var(--text-main);
+  line-height: var(--lh-normal);
+}
+.ds-caption {
+  font-size: var(--fs-12);
+  color: var(--text-muted);
+}
+.ds-mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+.ds-micro {
+  font-size: var(--fs-11);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-wide);
+}
+
+/* 평가항목관리 모달 입력 — Users.jsx 모달 톤앤매너 동일. */
+.form-input-pretty {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: var(--fs-13);
+  color: var(--secondary);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.form-input-pretty:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(5, 90, 175, 0.10);
+}
+.form-input-pretty[disabled] {
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+}
+.form-textarea-pretty {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: var(--fs-13);
+  color: var(--secondary);
+  line-height: 1.55;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.form-textarea-pretty:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(5, 90, 175, 0.10);
+}

@@ -1,0 +1,13 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+# host 에 node/npm 가 없을 수 있어 package-lock.json 이 stale 일 수 있음 → npm install 사용 (lock 자동 갱신).
+RUN npm install --omit=dev
+
+COPY server ./server
+
+EXPOSE 3007
+
+CMD ["node", "server/index.js"]

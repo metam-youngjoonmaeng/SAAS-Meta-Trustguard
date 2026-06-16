@@ -1,0 +1,173 @@
+# QA Dashboard (고객사 PoC) — PostgreSQL + API + 대시보드 프론트
+#
+# 사전 준비: `.env` 작성 (POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB, 권한 600)
+# 개발 배포: docker compose up -d --build
+#
+# API는 DATABASE_URL 로 Postgres에 연결합니다.
+# 최초 기동 시 postgres 이미지가 docker/init/postgres/*.sql 을 자동 적용합니다.
+# qa_calls baseline 은 일회성 시더가 qa_calls 비어 있을 때만 적재.
+#
+# 호스트 포트: PG 5434, API 3027, Dashboard 3026
+# (01번 5432/3007/3006, 02번 한화 5433/3017/3016 와 충돌 회피)
+
+name: meta-trustguard
+
+services:
+  qa-ai-postgres:
+    image: postgres:16-alpine
+    container_name: 09-meta-trustguard-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER 미ㅁ설정}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 미설정}
+      POSTGRES_DB: ${POSTGRES_DB:-qa_dashboard}
+    volumes:
+      - qa_ai_pgdata:/var/lib/postgresql/data
+      - ./docker/init/postgres:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - meta-trustguard-net
+
+  # 마이그레이터 + 일회성 시더
+  # - 매 기동: docker/init/postgres/02_*.sql 이후 마이그레이션을 idempotent 적용
+  #   (postgres init 스크립트는 빈 볼륨 첫 부팅에만 실행되므로 신규 컬럼 누락 방지)
+  # - qa_calls 가 비어 있을 때만 baseline CSV 를 적재 (운영 데이터 보존)
+  # 강제 재시드: docker compose run --rm qa-ai-seeder --reset
+  qa-ai-seeder:
+    build:
+      context: .
+      dockerfile: Dockerfile.seed
+    container_name: 09-meta-trustguard-seeder
+    environment:
+      PGHOST: qa-ai-postgres
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:?POSTGRES_USER 미설정}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 미설정}
+      PGDATABASE: ${POSTGRES_DB:-qa_dashboard}
+    volumes:
+      # baseline CSV 호스트 마운트 → 파일 수정 후 이미지 재빌드 불필요
+      - ./data/seed:/seed/data/seed:ro
+      # 마이그레이션 SQL 호스트 마운트 → seeder 가 02_*.sql 이후를 idempotent 적용
+      - ./docker/init/postgres:/seed/migrations:ro
+    depends_on:
+      qa-ai-postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - meta-trustguard-net
+
+  qa-ai-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: 09-meta-trustguard-api
+    environment:
+      API_PORT: 3007
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@qa-ai-postgres:5432/${POSTGRES_DB:-qa_dashboard}
+      # 신규 사용자 발급 시 자동 부여되는 초기 비밀번호. 운영 환경에서는 반드시 .env 로 강력한 값 주입.
+      # 미설정 시 코드가 '1234' 폴백 + warn 로그를 남기지만 PoC 외에는 사용하지 말 것.
+      INITIAL_USER_PASSWORD: ${INITIAL_USER_PASSWORD:-}
+      # ICS SSO (운영 mtm30 읽기전용). 빈 ICS_DB_HOST 면 SSO 비활성.
+      ICS_DB_HOST: ${ICS_DB_HOST:-}
+      ICS_DB_PORT: ${ICS_DB_PORT:-3306}
+      ICS_DB_USER: ${ICS_DB_USER:-}
+      ICS_DB_PW: ${ICS_DB_PW:-}
+      ICS_DB_NAME: ${ICS_DB_NAME:-}
+      ICS_SSO_DEFAULT_ORG_ID: ${ICS_SSO_DEFAULT_ORG_ID:-}
+      # 평가항목 공유(튜터 딥평가 0단계-A) — /api/svc/eval-items 서비스 토큰. 빈값이면 공유 비활성.
+      EVAL_SHARE_TOKEN: ${EVAL_SHARE_TOKEN:-}
+      # ICS(mtm30) → 09 QA 폴러 — 접속은 위 ICS_DB_* 재사용. 08과 동일: ICS 연결되면 폴링(스위치 없음).
+      # 대상 PROJ_CD METAM → organizations.proj_cd 로 org 매핑(DB). 아래는 전부 선택적 튜닝값.
+      ICS_QA_POLL_INTERVAL_MS: ${ICS_QA_POLL_INTERVAL_MS:-30000}
+      ICS_QA_PROJ_CD: ${ICS_QA_PROJ_CD:-METAM}
+      # org 매핑은 organizations.proj_cd(DB)에서 해석(08과 동일). 아래는 선택적 오버라이드 — 보통 비움.
+      ICS_QA_ORG_ID: ${ICS_QA_ORG_ID:-}
+      ICS_QA_POLL_LIMIT: ${ICS_QA_POLL_LIMIT:-50}
+      # AICC MQTT 실시간 STT 스트림(/asr-result) — finish 시 그 콜 즉시 QA 적재(폴러 안전망 병행).
+      # MQTT_HOST 비면 전부 no-op. METAM 운영 브로커 = 211.47.160.95:1883(익명/평문). 적재는 위 ICS_DB_* 재사용.
+      MQTT_HOST: ${MQTT_HOST:-}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_ASR_TOPIC: ${MQTT_ASR_TOPIC:-/asr-result/#}
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-trustguard-qa-asr-stream}
+      MQTT_PROJ_FILTER: ${MQTT_PROJ_FILTER:-METAM}
+      MQTT_INGEST_SETTLE_SEC: ${MQTT_INGEST_SETTLE_SEC:-3}
+      MQTT_INGEST_RETRIES: ${MQTT_INGEST_RETRIES:-5}
+      MQTT_INGEST_RETRY_INTERVAL_SEC: ${MQTT_INGEST_RETRY_INTERVAL_SEC:-3}
+      MQTT_TRANSCRIPT_MAX: ${MQTT_TRANSCRIPT_MAX:-50}
+      MQTT_ACTIVE_TTL_SEC: ${MQTT_ACTIVE_TTL_SEC:-120}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_TLS: ${MQTT_TLS:-}
+      # IPCC 포기호/응답률(call) — xhub.call_logs, autossh 사이드카 'xhub-tunnel' 경유. IPCC_DB_HOST 비면 no-op.
+      # 전용 RO계정 xhub_ro(SELECT 전용 — 쓰기는 DB 권한 단계에서 ERROR 1142 거부).
+      IPCC_DB_HOST: ${IPCC_DB_HOST:-}
+      IPCC_DB_PORT: ${IPCC_DB_PORT:-13306}
+      IPCC_DB_USER: ${IPCC_DB_USER:-}
+      IPCC_DB_PASSWORD: ${IPCC_DB_PASSWORD:-}
+      IPCC_DB_NAME: ${IPCC_DB_NAME:-xhub}
+      IPCC_PROJ_CD: ${ICS_QA_PROJ_CD:-METAM}
+    volumes:
+      # 호스트의 server/ 를 사용 → 코드 수정 후 restart 만으로 반영
+      - ./server:/app/server:ro
+      # 일자별 application 로그 — 호스트 ./logs 로 직접 노출 (AI-Tutor backend/logs 와 동일 패턴)
+      - ./logs:/app/logs
+      # 프로필 이미지 업로드 — DB 백업과 분리해 보관, 컨테이너 재기동에도 보존
+      - ./data/uploads:/app/data/uploads
+    ports:
+      - "3027:3007"
+    restart: unless-stopped
+    depends_on:
+      qa-ai-postgres:
+        condition: service_healthy
+      qa-ai-seeder:
+        condition: service_completed_successfully
+    networks:
+      - meta-trustguard-net
+
+  qa-ai-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: 09-meta-trustguard-dashboard
+    depends_on:
+      - qa-ai-api
+    ports:
+      - "3026:3006"
+    restart: unless-stopped
+    networks:
+      - meta-trustguard-net
+
+  # IPCC xhub(MariaDB) 상시 SSH 터널. xhub 가 박스 127.0.0.1:3306 전용이라 필수.
+  # qa-ai-api 는 IPCC_DB_HOST=xhub-tunnel, PORT=13306 으로 접속. IPCC_SSH_HOST 미설정 시 대기(무해).
+  xhub-tunnel:
+    build:
+      context: ./docker/xhub-tunnel
+    container_name: 09-meta-trustguard-xhub-tunnel
+    environment:
+      IPCC_SSH_HOST: ${IPCC_SSH_HOST:-}
+      IPCC_SSH_PORT: ${IPCC_SSH_PORT:-21168}
+      IPCC_SSH_USER: ${IPCC_SSH_USER:-}
+      IPCC_SSH_PASS: ${IPCC_SSH_PASS:-}
+      LOCAL_PORT: "13306"
+      REMOTE_PORT: "3306"
+    restart: unless-stopped
+    networks:
+      - meta-trustguard-net
+
+networks:
+  meta-trustguard-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.17.30.0/24
+          gateway: 10.17.30.1
+
+volumes:
+  qa_ai_pgdata:

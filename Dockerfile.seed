@@ -1,0 +1,16 @@
+# QA Dashboard — 시드 사이드카 컨테이너 (고객사 PoC)
+#
+# postgres:16-alpine 이미지에는 psql 클라이언트가 포함되어 있어 별도 설치 불필요.
+# baseline CSV + load.sql 을 복사한 뒤 entrypoint 가 qa_calls 비어있을 때만 적재.
+
+FROM postgres:16-alpine
+
+WORKDIR /seed
+
+# 적재 게이트 스크립트만 이미지에 담는다.
+# baseline CSV (data/seed/) 는 docker-compose 가 호스트 볼륨으로 마운트 →
+# CSV 수정 후 시더 이미지 재빌드 불필요 (호스트 파일 즉시 반영).
+COPY scripts/seed-if-empty.sh /usr/local/bin/seed-if-empty.sh
+RUN chmod +x /usr/local/bin/seed-if-empty.sh
+
+ENTRYPOINT ["seed-if-empty.sh"]

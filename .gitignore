@@ -1,0 +1,60 @@
+# Node
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Application 로그 — winston-daily-rotate-file 로 호스트 ./logs 에 적재 (3일 보존)
+logs/
+
+# Python (data/seed 도구 _generate_seed.py)
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+credentials*.json
+secrets*.json
+*.secret
+
+# Backup
+*.bak
+
+# 비공개 데이터 — baseline 시드 CSV 는 깃허브 비공개
+# (시더 사이드카가 호스트 볼륨 마운트로 적재하므로 운영기에는 별도 채널로 전달)
+data/seed/*.csv
+
+# 옛 시드 자산 (실 상담 transcript 흔적, 현 시더 패턴과 무관)
+data/script/
+
+# 사용자 업로드 — 프로필 사진 등. 호스트 볼륨 마운트 (./data/uploads)
+data/uploads/
+
+# 폐쇄망 배포용 사전 빌드 이미지 tar (GitHub 미포함, 폐쇄망 zip 에만 동봉)
+images/
+
+# 디자인 스크래치 — 초기 프로토타입 jsx (빌드와 무관, 로컬 참고용)
+.claude_design/
+
+# Editor / OS / AI 도구 로컬 설정
+.cursor/
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*.local
