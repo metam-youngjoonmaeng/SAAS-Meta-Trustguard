@@ -12,7 +12,7 @@ import BrandSelector from './BrandSelector';
 const AGENT_NAV_GROUPS = [
     {
         section: '워크스페이스',
-        items: [{ label: '홈', tab: 'dashboard', Icon: Home }],
+        items: [{ label: '평가 리스트', tab: 'dashboard', Icon: Home }],
     },
 ];
 
@@ -20,7 +20,7 @@ const ADMIN_NAV_GROUPS = [
     {
         section: '워크스페이스',
         items: [
-            { label: '홈', tab: 'dashboard', Icon: Home },
+            { label: '평가 리스트', tab: 'dashboard', Icon: Home },
             { label: '전체 통계', tab: 'stats', Icon: BarChart3 },
         ],
     },
@@ -41,7 +41,7 @@ const SUPER_ADMIN_NAV_GROUPS = [
     {
         section: '워크스페이스',
         items: [
-            { label: '홈', tab: 'dashboard', Icon: Home },
+            { label: '평가 리스트', tab: 'dashboard', Icon: Home },
             { label: '전체 통계', tab: 'stats', Icon: BarChart3 },
         ],
     },
