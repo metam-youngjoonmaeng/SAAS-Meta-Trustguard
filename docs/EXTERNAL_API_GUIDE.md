@@ -47,7 +47,7 @@ Content-Type: application/json
 | 환경 | URL |
 |---|---|
 | 로컬 (docker-compose) | `http://<host>:3027/api/ingest/collection-call` |
-| nginx 프록시 경유    | `http://<host>:3026/api/ingest/collection-call` |
+| 대시보드 프록시 경유 | `http://<host>:3026/api/ingest/collection-call` (Next rewrites → API) |
 
 - 성공 (`200 OK`): `{ ok: true, qa_id, ai_score, total_score, role, department, turns }`
 - 검증 실패 (`400`): `{ ok: false, message }`

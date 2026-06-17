@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import Dashboard from './pages/Dashboard';
-import Detail from './pages/Detail';
-import Brands from './pages/Brands';
-import Users from './pages/Users';
-import Logs from './pages/Logs';
-import Notifications from './pages/Notifications';
-import EvalItems from './pages/EvalItems';
-import Stats from './pages/Stats';
+import Dashboard from './views/Dashboard';
+import Detail from './views/Detail';
+import Brands from './views/Brands';
+import Users from './views/Users';
+import Logs from './views/Logs';
+import Notifications from './views/Notifications';
+import EvalItems from './views/EvalItems';
+import Stats from './views/Stats';
+import EvalMgmt from './views/EvalMgmt';
 import Sidebar from './components/Sidebar';
 import Nav from './components/Nav';
 import ProfileModal from './components/ProfileModal';
@@ -32,6 +33,7 @@ const LOGS_HASH = '#/admin/logs';
 const NOTIFICATIONS_HASH = '#/admin/notifications';
 const EVAL_ITEMS_HASH = '#/admin/eval-items';
 const STATS_HASH = '#/admin/stats';
+const EVAL_MGMT_HASH = '#/eval-mgmt';
 
 function parseRouteFromHash() {
     if (typeof window === 'undefined') {
@@ -62,6 +64,9 @@ function parseRouteFromHash() {
     }
     if (raw === '#/admin/stats') {
         return { tab: 'stats', qaId: null };
+    }
+    if (raw === '#/eval-mgmt') {
+        return { tab: 'eval-mgmt', qaId: null };
     }
     return { tab: 'dashboard', qaId: null };
 }
@@ -475,6 +480,7 @@ function App() {
         else if (tab === 'notifications') navigateHash(NOTIFICATIONS_HASH);
         else if (tab === 'eval-items') navigateHash(EVAL_ITEMS_HASH);
         else if (tab === 'stats') navigateHash(STATS_HASH);
+        else if (tab === 'eval-mgmt') navigateHash(EVAL_MGMT_HASH);
     };
 
     const handleBrandChange = useCallback(
@@ -511,7 +517,7 @@ function App() {
                 onLogout={currentUser?.auth_source === 'ics' ? undefined : handleLogout}
                 onProfileClick={() => setProfileModalOpen(true)}
                 remainingMs={remainingMs}
-                isDev={Boolean(import.meta.env.DEV) || Boolean(import.meta.env.VITE_DEV_BADGE)}
+                isDev={process.env.NODE_ENV !== 'production' || Boolean(process.env.NEXT_PUBLIC_DEV_BADGE)}
                 user={currentUser}
             />
             <div className="app-shell-body">
@@ -543,6 +549,7 @@ function App() {
                         role={currentUser?.role}
                     />
                 )}
+                {activeTab === 'eval-mgmt' && <EvalMgmt role={currentUser?.role} />}
                 {activeTab === 'brands' && currentUser?.role === 'super_admin' && <Brands />}
                 {activeTab === 'brands' && currentUser?.role !== 'super_admin' && (
                     <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">

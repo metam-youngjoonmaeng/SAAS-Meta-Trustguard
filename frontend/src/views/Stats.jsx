@@ -231,7 +231,7 @@ export default function Stats({ activeBrandId, role }) {
                             </div>
                         }>
                         {items.length === 0 ? <Empty /> : (
-                            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(158px, 1fr))' }}>
+                            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
                                 {items.map((d, i) => <GaugeCard key={`${d.order_no}-${d.item}`} dim={d} index={i} />)}
                             </div>
                         )}

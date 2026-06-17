@@ -33,9 +33,20 @@ CREATE TABLE IF NOT EXISTS public.organizations (
 CREATE INDEX IF NOT EXISTS idx_organizations_domain ON public.organizations (domain_id);
 CREATE INDEX IF NOT EXISTS idx_organizations_active ON public.organizations (active);
 
--- ── seed: 금융 / 신한카드 ────────────────────────────────────
+-- ── seed: 표준 업종 카탈로그 (02-AI-Tutor 기준 통일 — 3개 프로젝트 동일 id↔name↔key) ──
 INSERT INTO public.domains (id, name, key, sort_order)
-VALUES (1, '금융', 'finance', 1)
+VALUES
+    (1,  '금융',          'finance',       1),
+    (2,  '보험',          'insurance',     2),
+    (3,  '유통/이커머스', 'ecommerce',     3),
+    (4,  '제조',          'manufacturing', 4),
+    (5,  '통신',          'telecom',       5),
+    (6,  '유통',          'retail',        6),
+    (7,  '헬스케어/제약', 'healthcare',    7),
+    (8,  '공공/비영리',   'public',        8),
+    (9,  '서비스/아웃소싱','outsourcing',  9),
+    (10, '금융세일즈',    'finance_sales', 10),
+    (11, 'IT/개발',       'it',            11)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.organizations (id, name, short, color, domain_id)

@@ -135,11 +135,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Next rewrites 목적지는 빌드 시점 고정 → 같은 compose 네트워크의 API 서비스명 주입.
+        API_PROXY_TARGET: http://qa-ai-api:3007
+        # 개발계 DEV 배지(선택). .env 에 NEXT_PUBLIC_DEV_BADGE=1 주면 표시.
+        NEXT_PUBLIC_DEV_BADGE: ${NEXT_PUBLIC_DEV_BADGE:-}
     container_name: 09-meta-trustguard-dashboard
     depends_on:
       - qa-ai-api
+    # Next standalone 서버(컨테이너 3000) ← 기존 nginx 3006 대체
     ports:
-      - "3026:3006"
+      - "3026:3000"
     restart: unless-stopped
     networks:
       - meta-trustguard-net

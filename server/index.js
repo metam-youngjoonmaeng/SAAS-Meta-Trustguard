@@ -319,6 +319,8 @@ function toCallRow(row) {
     return {
         qa_id: row.qa_id,
         id: row.qa_id,
+        uid: row.uid ?? null,          // 상담번호(ICS UID) — 평가목록 표시용
+        agent_code: row.agent_code ?? null,
         call_no: row.call_no,
         call_datetime: row.call_datetime,
         duration_sec: row.duration_sec,
@@ -331,6 +333,9 @@ function toCallRow(row) {
         manual_score: hasOverride ? row.total_score : null,
         checklist_complete: checklistComplete,
         review_status: normalizeReviewStatus(row.review_status),
+        // 채널구분 — ICS tb_stt_master.IO_DIVI. io_divi 원값 + FE 편의용 channel(inbound/outbound) 동시 제공.
+        io_divi: row.io_divi ?? null,
+        channel: row.io_divi === 'I' ? 'inbound' : row.io_divi === 'O' ? 'outbound' : null,
         department: row.department || '컬렉션관리부',
         role: row.role || 'PDS1',
         ai_analysis_target: row.ai_analysis_target ?? null,
@@ -800,12 +805,14 @@ app.get('/api/calls', async (req, res) => {
             `SELECT
                 c."ID" AS qa_id,
                 c."ID" AS id,
+                c."UID" AS uid,
                 c."CALL_SEQ" AS call_no,
                 c."CDATE" AS call_datetime,
                 NULL::integer AS duration_sec,
                 ''::text AS team_name,
+                c.agent_code AS agent_code,
                 ''::text AS agent_id,
-                ''::text AS agent_name,
+                COALESCE(au.display_name, '')::text AS agent_name,
                 ''::text AS consultation_type,
                 c."AI_SCORE" AS ai_score,
                 c."TOTAL_SCORE" AS total_score,
@@ -821,6 +828,7 @@ app.get('/api/calls', async (req, res) => {
                 c.promotion_code AS promotion_code,
                 c.org_id AS org_id,
                 c.review_status AS review_status,
+                c.io_divi AS io_divi,
                 cv.consumer_violations,
                 cv.consumer_total,
                 EXISTS(
@@ -834,6 +842,7 @@ app.get('/api/calls', async (req, res) => {
                 COALESCE(ev.opted_count, 0) AS opted_count
              FROM qa_calls c
              LEFT JOIN public.organizations o ON o.id = c.org_id
+             LEFT JOIN public.admin_users au ON au.user_id = c.agent_user_id
              LEFT JOIN (
                  SELECT "ID",
                         COUNT(*) FILTER (WHERE yn = 'N') AS consumer_violations,

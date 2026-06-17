@@ -15,11 +15,11 @@
 
 | 레이어 | 기술 |
 |---|---|
-| Frontend | React 19, Vite 6, Tailwind (CDN local mirror) |
-| UI libs | framer-motion, lucide-react, flatpickr, clsx, tailwind-merge |
+| Frontend | Next.js 15 (App Router, standalone), React 19, Tailwind CSS v4 |
+| UI libs | framer-motion, lucide-react |
 | Backend API | Node.js 20 (Express 5), `pg` / `mysql2` / `mqtt` |
 | Database | PostgreSQL 16-alpine |
-| Web server / Reverse proxy | nginx 1.27-alpine (정적 서빙 + `/api` 리버스 프록시) |
+| Frontend 서버 / 프록시 | Next.js standalone (Node 20) — 정적·SSR 서빙 + `/api/*` → API 리버스 프록시(rewrites) |
 | Infra | Docker Compose, baseline CSV 시더 |
 
 ## 시작하기
@@ -35,9 +35,8 @@
 git clone https://github.com/metam-aicc-platform/SAAS-Meta-Trustguard.git
 cd SAAS-Meta-Trustguard
 
-# 2. 환경 변수 설정
-cp .env.example .env
-vi .env && chmod 600 .env   # POSTGRES_PASSWORD 등 필수 값 입력
+# 2. 환경 변수 설정 — .env 신규 작성 (필수 키는 아래 "환경변수" 표 참조)
+vi .env && chmod 600 .env   # POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB 등
 
 # 3. 빌드 + 기동
 ./deploy.sh
@@ -55,7 +54,7 @@ vi .env && chmod 600 .env   # POSTGRES_PASSWORD 등 필수 값 입력
 
 ### 환경변수
 
-전체 키와 설명은 [`.env.example`](.env.example) 참조. 핵심만 요약하면:
+전체 키는 [`docker-compose.yml`](docker-compose.yml) 의 `environment` 블록 참조. 핵심만 요약하면:
 
 | Key | 설명 |
 |---|---|
@@ -111,14 +110,15 @@ vi .env && chmod 600 .env   # POSTGRES_PASSWORD 등 필수 값 입력
 
 ```
 .
-├── docker/             # Compose 초기화 스크립트 (postgres DDL), nginx, xhub 터널
+├── docker/             # Compose 초기화 스크립트 (postgres DDL), xhub 터널
 ├── docs/               # 평가·스키마·API 설계 SSOT (도메인 상세)
 ├── data/seed/          # baseline CSV (시더가 조건부 적재) + 생성/적재 스크립트
-├── public/             # 정적 자산 (로고, 로컬 폰트)
 ├── scripts/            # seed-if-empty 등 컨테이너 진입 스크립트
-├── server/             # Express API
-└── src/                # React 프론트엔드
+├── server/             # Express API (백엔드, 루트 package.json)
+└── frontend/           # Next.js 15 프론트엔드 (app/ + src/ + public/)
 ```
+
+> 프론트엔드 로컬 개발: `cd frontend && npm install && npm run dev` (포트 3000, `/api` 는 `localhost:3007` 백엔드로 프록시).
 
 ## 문서
 

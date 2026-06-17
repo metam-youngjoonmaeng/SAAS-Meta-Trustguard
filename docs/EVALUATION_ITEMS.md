@@ -422,7 +422,7 @@ axis_score = round1( 100 × Σ(earned_i) / Σ(max_pts_i) )    (i ∈ axis 매핑
 #### 원칙 4. 채점방식은 부서 속성, 항목 단위 토글 불가
 
 - 컬렉션관리부 = 점수제, 소비자보호부 = Y/N 으로 DB 가 강제 (`qa_consumer_eval_rows.yn CHECK IN ('Y','N')`).
-- [`src/pages/EvalItems.jsx`](../src/pages/EvalItems.jsx) 의 채점방식 라디오는 부서 컨텍스트에 따라 자동 고정·disabled 처리.
+- [`frontend/src/views/EvalItems.jsx`](../frontend/src/views/EvalItems.jsx) 의 채점방식 라디오는 부서 컨텍스트에 따라 자동 고정·disabled 처리.
 - 부서 단위 채점방식 전환은 PoC 범위 외 (필요 시 별도 마이그레이션 화면).
 
 ### 발행 방식 — A안 (자동 발행)
@@ -454,7 +454,7 @@ v1 · ~ 2026-03-01
 
 ### 홈 화면 "평가체계" 필터
 
-[`src/pages/Dashboard.jsx`](../src/pages/Dashboard.jsx) 의 기존 "평가" 슬롯을 재활용하고, 라벨을 `평가체계` 로 변경.
+[`frontend/src/views/Dashboard.jsx`](../frontend/src/views/Dashboard.jsx) 의 기존 "평가" 슬롯을 재활용하고, 라벨을 `평가체계` 로 변경.
 
 #### 기본 동작: "전체"
 

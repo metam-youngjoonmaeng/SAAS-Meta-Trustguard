@@ -788,6 +788,9 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
     // 담당 상담사 해석: agent_code(ICS user_m.USER_CD) → admin_users(login_id='{code}@{proj}' 소문자, icsSso 규칙).
     // 매칭 계정이 아직 없으면 agent_user_id=NULL(미지정) — agent_code 는 보관해 추후 SSO 로그인 시 연결/추적.
     const agentCode = safeStr(call?.agent_code).trim() || null;
+    // 채널구분 'I'(인바운드)/'O'(아웃바운드) — ICS tb_stt_master.IO_DIVI. 그 외 값/없음은 NULL.
+    const ioDiviRaw = safeStr(call?.io_divi).trim().toUpperCase();
+    const ioDivi = ioDiviRaw === 'I' || ioDiviRaw === 'O' ? ioDiviRaw : null;
     let agentUserId = null;
     if (agentCode && projCd) {
         try {
@@ -826,9 +829,9 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         await client.query(
             `INSERT INTO qa_calls
                  ("ID","CALL_SEQ","CDATE","UID","AI_SCORE","TOTAL_SCORE",
-                  department, role, org_id, proj_cd, agent_code, agent_user_id,
+                  department, role, org_id, proj_cd, agent_code, agent_user_id, io_divi,
                   ai_analysis_target, ai_analysis_reason, voc_code, promotion_code, is_sandbox)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NULL,NULL,NULL,NULL,false)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NULL,NULL,NULL,NULL,false)
              ON CONFLICT ("ID") DO UPDATE SET
                "CALL_SEQ" = EXCLUDED."CALL_SEQ",
                "CDATE" = EXCLUDED."CDATE",
@@ -841,12 +844,13 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
                proj_cd = EXCLUDED.proj_cd,
                agent_code = EXCLUDED.agent_code,
                agent_user_id = EXCLUDED.agent_user_id,
+               io_divi = COALESCE(EXCLUDED.io_divi, qa_calls.io_divi),
                ai_analysis_target = NULL,
                ai_analysis_reason = NULL,
                voc_code = NULL,
                promotion_code = NULL,
                is_sandbox = false`,
-            [id, callSeq, cdate, uid, score, score, department, role, orgId, projCd, agentCode, agentUserId]
+            [id, callSeq, cdate, uid, score, score, department, role, orgId, projCd, agentCode, agentUserId, ioDivi]
         );
         for (const t of conversation) {
             await client.query(

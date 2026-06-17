@@ -3,31 +3,17 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "description": "Meta-Trustguard 백엔드 API (express). 프론트엔드는 frontend/ (Next.js)로 분리됨.",
   "scripts": {
-    "dev": "node ./node_modules/vite/bin/vite.js",
-    "dev:api": "node server/index.js",
-    "build": "node ./node_modules/vite/bin/vite.js build",
-    "preview": "node ./node_modules/vite/bin/vite.js preview",
-    "lint": "eslint ."
+    "dev:api": "node server/index.js"
   },
   "dependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "framer-motion": "^12.4.7",
-    "lucide-react": "^0.477.0",
-    "flatpickr": "^4.6.13",
     "express": "^5.1.0",
     "multer": "^2.0.1",
     "mysql2": "^3.11.5",
     "mqtt": "^5.10.1",
     "pg": "^8.14.1",
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^3.0.2",
     "winston": "^3.13.0",
     "winston-daily-rotate-file": "^5.0.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.2.0"
   }
 }

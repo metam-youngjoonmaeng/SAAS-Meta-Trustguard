@@ -74,7 +74,8 @@ export async function listCompletedCalls(projCd, afterEndDate, afterUid, limit =
                m.CALL_END_DATE   AS end_dt,
                m.PROJ_CD         AS proj_cd,
                m.USER_ID         AS user_id,
-               u.USER_CD         AS agent_code
+               u.USER_CD         AS agent_code,
+               m.IO_DIVI         AS io_divi
           FROM tb_stt_master m
           LEFT JOIN user_m u ON u.USER_ID = m.USER_ID AND u.PROJ_CD = m.PROJ_CD
          WHERE m.END_YN = 'Y'
@@ -120,7 +121,8 @@ export async function getCallMaster(uid, projCd) {
                m.CALL_END_DATE   AS end_dt,
                m.END_YN          AS end_yn,
                m.USER_ID         AS agent_ext_id,
-               u.USER_CD         AS agent_code
+               u.USER_CD         AS agent_code,
+               m.IO_DIVI         AS io_divi
           FROM tb_stt_master m
           LEFT JOIN user_m u ON u.USER_ID = m.USER_ID AND u.PROJ_CD = m.PROJ_CD
          WHERE m.UID = ? AND (? IS NULL OR m.PROJ_CD = ?)
@@ -150,6 +152,30 @@ export async function fetchAgentsByUids(uids, projCd) {
     const [rows] = await getPool().query(sql, [...list, proj, proj]);
     for (const r of rows) {
         out.set(String(r.uid), { agent_ext_id: r.agent_ext_id ?? null, agent_code: r.agent_code ?? null });
+    }
+    return out;
+}
+
+/**
+ * 여러 UID 의 채널구분(IO_DIVI) 을 한 번에 조회(백필용). UID → 'I'|'O'|null.
+ * tb_stt_master.IO_DIVI: 'I'=인바운드(수신), 'O'=아웃바운드(발신).
+ * @param {string[]} uids
+ * @param {string|null} projCd
+ * @returns {Promise<Map<string,string|null>>}
+ */
+export async function fetchIoDiviByUids(uids, projCd) {
+    const out = new Map();
+    const list = (uids || []).filter(Boolean);
+    if (!list.length) return out;
+    const placeholders = list.map(() => '?').join(',');
+    const proj = projCd || null;
+    const sql = `
+        SELECT UID AS uid, IO_DIVI AS io_divi
+          FROM tb_stt_master
+         WHERE UID IN (${placeholders}) AND (? IS NULL OR PROJ_CD = ?)`;
+    const [rows] = await getPool().query(sql, [...list, proj, proj]);
+    for (const r of rows) {
+        out.set(String(r.uid), r.io_divi ?? null);
     }
     return out;
 }

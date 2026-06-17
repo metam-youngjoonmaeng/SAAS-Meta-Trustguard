@@ -74,6 +74,7 @@ export async function ingestCallByUid(pool, cfg, uid, ingestStandardCallFromQaPi
         org_id: orgId,
         proj_cd: projCd,
         agent_code: master.agent_code ?? null, // 담당 상담사 업무키(user_m.USER_CD)
+        io_divi: master.io_divi ?? null,        // 채널구분 'I'(인바운드)/'O'(아웃바운드)
         pipeline_target: 'ec2',
         transcript,
     };
@@ -165,6 +166,7 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
                 org_id: orgId,
                 proj_cd: projCd,
                 agent_code: c.agent_code ?? null, // 담당 상담사 업무키(user_m.USER_CD) — 적재 시 agent_user_id 해석
+                io_divi: c.io_divi ?? null,        // 채널구분 'I'(인바운드)/'O'(아웃바운드)
                 pipeline_target: 'ec2', // 운영 평가 백엔드 = EC2(54.235.200.151:8081), UI(SampleUpload)와 동일
                 transcript,
             };
