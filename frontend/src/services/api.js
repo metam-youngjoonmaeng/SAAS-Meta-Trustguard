@@ -104,6 +104,18 @@ export async function fetchEvaluations(qaId) {
     return request(`/api/evaluations/${encodeURIComponent(qaId)}`);
 }
 
+// 내게 배정된 코칭 — 05 coaching_assignments(본인이 members 에 포함된 것).
+export async function fetchMyCoaching() {
+    return request('/api/coaching/mine');
+}
+
+// 내 TA 지표(부정발화·회복률·금칙어) — 03(Meta_Summary) tb_ta_rslt 를 본인 콜(uid) 기준 집계.
+// 응답: { enabled, total, negative_count/rate, banned_count/rate, recovery_denom/count/rate }.
+// enabled=false 면 TA DB 미연동(프론트는 mock 폴백).
+export async function fetchMyTaMetrics() {
+    return request('/api/me/ta-metrics');
+}
+
 export async function saveAdminComments(qaId, adminComments) {
     if (!qaId) throw new Error('qaId is required');
     return request(`/api/evaluations/${encodeURIComponent(qaId)}/admin-comments`, {

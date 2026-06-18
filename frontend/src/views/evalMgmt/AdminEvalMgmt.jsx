@@ -1,7 +1,7 @@
 // 관리자/슈퍼관리자 — 평가 관리 (디자인 프로토타입 etc/pages-admin.jsx 의 AdminEvalMgmt 외 포팅)
 // 평가 목록·필터·승인(AdminResults) + 코칭 배정(CoachingPanel/Carousel/MiniCard/DetailModal/CreateModal)
 import React, { useState, useEffect } from 'react';
-import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, defaultPeriod } from './ui';
+import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod } from './ui';
 import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, COACHING_HISTORY, scenById, catMeta } from './mockData';
 import { fetchCalls, fetchAgents } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
@@ -179,6 +179,12 @@ function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, 
                     </div>
                 )}
             </div>
+
+            {historyOpen && (
+                <Modal title="상담사별 코칭 이력" width={920} onClose={() => setHistoryOpen(false)}>
+                    <CoachingHistory rows={COACHING_HISTORY} />
+                </Modal>
+            )}
 
             {historyOpen && (
                 <Modal title="상담사별 코칭 이력" width={920} onClose={() => setHistoryOpen(false)}>
@@ -786,6 +792,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
     const [selected, setSelected] = useState(new Set());
     const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
     const [drawerId, setDrawerId] = useState(null);
+    const [colFilters, setColFilters] = useState({});  // 헤더 엑셀식 필터: 컬럼키 → 제외 Set
 
     // 실데이터 로드 후 최종승인 상태(review_status='completed') 시드.
     useEffect(() => {
@@ -804,7 +811,43 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         [results]
     );
 
+    // 헤더 엑셀식 컬럼 필터 — 현재 결과에 존재하는 값만 목록에. (상단 필터바와 AND 결합)
+    const admColVal = {
+        channel: (r) => r.channel || '',
+        team: (r) => r.team || '-',
+        category: (r) => r.category || '-',
+        score: (r) => String(r.score),
+        approval: (r) => (approvedIds.has(r.id) ? 'approved' : 'pending'),
+    };
+    const admColLabel = {
+        channel: (v) => (v === 'inbound' ? '인바운드' : v === 'outbound' ? '아웃바운드' : '-'),
+        team: (v) => v || '-',
+        category: (v) => v || '-',
+        score: (v) => v,
+        approval: (v) => (v === 'approved' ? '승인 완료' : '미승인'),
+    };
+    const ADM_FILTER_COLS = ['channel', 'team', 'category', 'score', 'approval'];
+    const admColOpts = React.useMemo(() => {
+        const out = {};
+        for (const c of ADM_FILTER_COLS) {
+            const seen = new Set();
+            for (const r of results) seen.add(admColVal[c](r));
+            const arr = [...seen];
+            if (c === 'score') arr.sort((a, b) => Number(b) - Number(a));
+            else arr.sort((a, b) => String(admColLabel[c](a)).localeCompare(String(admColLabel[c](b)), 'ko'));
+            out[c] = arr.map((v) => ({ value: v, label: admColLabel[c](v) }));
+        }
+        return out;
+    }, [results, approvedIds]);  // eslint-disable-line react-hooks/exhaustive-deps
+    const setAdmCol = (c, ex) => setColFilters((f) => ({ ...f, [c]: ex }));
+    const passCol = (c, v) => { const ex = colFilters[c]; return !ex || ex.size === 0 || !ex.has(v); };
+
     const filtered = results.filter((r) => {
+        if (!passCol('channel', admColVal.channel(r))) return false;
+        if (!passCol('team', admColVal.team(r))) return false;
+        if (!passCol('category', admColVal.category(r))) return false;
+        if (!passCol('score', admColVal.score(r))) return false;
+        if (!passCol('approval', admColVal.approval(r))) return false;
         if (channel !== 'all' && r.channel !== channel) return false;
         if (team !== 'all' && r.team !== team) return false;
         if (approval === 'approved' && !approvedIds.has(r.id)) return false;
@@ -1033,7 +1076,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                     <div className="sub" style={{ marginLeft: 12 }}>{filtered.length}건 표시 중</div>
                 </div>
                 <div>
-                    <div className="tbl-head tc" style={{ gridTemplateColumns: COLS, borderTop: 0 }}>
+                    <div className="tbl-head tc" style={{ gridTemplateColumns: COLS, borderTop: 0, overflow: 'visible' }}>
                         <div style={{ display: 'grid', placeItems: 'center' }}>
                             <input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={toggleAll} style={{ cursor: 'pointer' }} />
                         </div>
@@ -1044,14 +1087,15 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                         <div style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => sortBy('name')}>
                             상담사 <SortIcon k="name" />
                         </div>
-                        <div>채널</div>
-                        <div>부서</div>
-                        <div>카테고리</div>
-                        <div style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => sortBy('score')}>
-                            점수 <SortIcon k="score" />
+                        <div><ColumnFilter title="채널" options={admColOpts.channel} excluded={colFilters.channel} onChange={(ex) => setAdmCol('channel', ex)} /></div>
+                        <div><ColumnFilter title="부서" options={admColOpts.team} excluded={colFilters.team} onChange={(ex) => setAdmCol('team', ex)} /></div>
+                        <div><ColumnFilter title="카테고리" options={admColOpts.category} excluded={colFilters.category} onChange={(ex) => setAdmCol('category', ex)} /></div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <ColumnFilter title="점수" options={admColOpts.score} excluded={colFilters.score} onChange={(ex) => setAdmCol('score', ex)} />
+                            <span style={{ cursor: 'pointer', display: 'inline-flex' }} onClick={() => sortBy('score')}><SortIcon k="score" /></span>
                         </div>
                         <div>수기검토</div>
-                        <div>최종승인</div>
+                        <div><ColumnFilter title="최종승인" options={admColOpts.approval} excluded={colFilters.approval} onChange={(ex) => setAdmCol('approval', ex)} align="right" /></div>
                         <div></div>
                     </div>
                     <div style={{ maxHeight: 430, overflowY: 'auto' }}>
