@@ -525,14 +525,15 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     }, [checklistRows, manualJudgments]);
 
     // 검수상태 자동 전이 — 검수 시작 버튼 없이 판단 입력만으로 상태가 흐른다.
-    // 판단 1개 이상 입력 → '검수중', 전 항목 입력 → '완료'. 저장 중이면 다음
-    // 사이클(isReviewStatusSaving 해제 시 재실행)에서 따라잡는다.
+    // 판단 1개 이상 입력 → '검수중', 전 항목 입력 → '검토요청'(관리자 최종승인 대기).
+    // 최종승인된 콜은 자동 전이 금지(되돌림 방지). 저장 중이면 다음 사이클에서 따라잡는다.
     useEffect(() => {
         if (!reviewTouchedRef.current || isConsumer) return;
         if (!reviewProgress.total) return;
+        if (currentReviewStatus === REVIEW_STATUS.APPROVED) return;
         const desired =
             reviewProgress.done >= reviewProgress.total
-                ? REVIEW_STATUS.COMPLETED
+                ? REVIEW_STATUS.REVIEW_DONE
                 : REVIEW_STATUS.IN_REVIEW;
         if (desired === currentReviewStatus || isReviewStatusSaving) return;
         if (reviewSyncFailedRef.current === desired) return;
