@@ -109,6 +109,22 @@ export async function fetchMyCoaching() {
     return request('/api/coaching/mine');
 }
 
+// 관리자 — 조직 전체 코칭 배정 목록(coaching_assignments, org 스코프). 관리자끼리 공유됨.
+export async function fetchCoaching() {
+    return request('/api/coaching');
+}
+
+// 관리자 — 코칭 배정 생성. body: { title, targetType, channel, members, items, scenarios }.
+export async function createCoaching(payload) {
+    return request('/api/coaching', { method: 'POST', body: JSON.stringify(payload || {}) });
+}
+
+// 관리자 — 코칭 배정 삭제.
+export async function deleteCoaching(id) {
+    if (id == null) throw new Error('id is required');
+    return request(`/api/coaching/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 // 내 TA 지표(부정발화·회복률·금칙어) — 03(Meta_Summary) tb_ta_rslt 를 본인 콜(uid) 기준 집계.
 // 응답: { enabled, total, negative_count/rate, banned_count/rate, recovery_denom/count/rate }.
 // enabled=false 면 TA DB 미연동(프론트는 mock 폴백).

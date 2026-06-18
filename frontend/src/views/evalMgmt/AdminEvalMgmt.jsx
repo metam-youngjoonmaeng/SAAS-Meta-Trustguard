@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod } from './ui';
 import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, COACHING_HISTORY, scenById, catMeta } from './mockData';
-import { fetchCalls, fetchAgents } from '../../services/api';
+import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
 
 // /api/calls(실데이터) 한 행 → 평가목록 행 모양으로 변환.
@@ -63,11 +63,21 @@ const COACH_PRESETS = {
 // 평가 관리 — 평가 결과 + 코칭 배정을 한 화면에서
 // ─────────────────────────────────────────────────────
 export default function AdminEvalMgmt() {
-    // 코칭 배정은 (현 범위) 화면 세션 상태 — 저장 백엔드 없음. 실데이터 연동 대상은 "대상 상담사/부서".
+    // 코칭 배정 — coaching_assignments(DB, org 스코프) 실연동. 관리자끼리 공유되며 상담사 본인화면(/api/coaching/mine)과 연결.
     const [coaching, setCoaching] = useState([]);
     const [modalOpen, setModalOpen] = useState(false);
     const [results, setResults] = useState(null); // null=로딩, []=없음
     const [agents, setAgents] = useState([]);     // 실제 상담사(코칭 대상/멤버 소스)
+
+    const reloadCoaching = async () => {
+        try {
+            const data = await fetchCoaching();
+            return Array.isArray(data) ? data : [];
+        } catch (e) {
+            console.error('코칭 목록 로딩 실패:', e);
+            return [];
+        }
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -90,15 +100,36 @@ export default function AdminEvalMgmt() {
                 if (!cancelled) setAgents([]);
             }
         })();
+        (async () => {
+            const list = await reloadCoaching(); // 조직 전체 코칭(관리자 공유)
+            if (!cancelled) setCoaching(list);
+        })();
         return () => { cancelled = true; };
     }, []);
 
-    const assign = (key) =>
-        setCoaching((list) => list.map((g) => (g.key === key ? { ...g, assigned: true, assignedBy: '관리자', assignedAt: formatDateTime(new Date()).slice(0, 10), status: '배정됨' } : g)));
-    const unassign = (key) =>
-        setCoaching((list) => list.map((g) => (g.key === key ? { ...g, assigned: false, assignedBy: null, assignedAt: null, status: null } : g)));
-    const removeItem = (key) => setCoaching((list) => list.filter((g) => g.key !== key));
-    const addCoaching = (entry) => setCoaching((list) => [{ ...entry }, ...list]);
+    // DB 코칭은 모두 '배정됨'(assigned) 상태 — 별도 배정/해제 토글은 의미 없음(생성=배정).
+    const assign = () => {};
+    const unassign = () => {};
+    const removeItem = async (key) => {
+        const row = coaching.find((g) => g.key === key);
+        const id = row?.id ?? key;
+        setCoaching((list) => list.filter((g) => g.key !== key)); // 낙관적 제거
+        try {
+            await deleteCoaching(id);
+        } catch (e) {
+            console.error('코칭 삭제 실패:', e);
+            setCoaching(await reloadCoaching()); // 실패 시 서버 상태로 복구
+        }
+    };
+    const addCoaching = async (entry) => {
+        try {
+            await createCoaching(entry); // DB 저장(POST /api/coaching)
+        } catch (e) {
+            console.error('코칭 생성 실패:', e);
+            alert('코칭 배정 저장에 실패했습니다.');
+        }
+        setCoaching(await reloadCoaching()); // 서버 기준으로 갱신(관리자 공유 일관성)
+    };
 
     return (
         <div>

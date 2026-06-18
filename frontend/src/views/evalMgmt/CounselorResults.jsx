@@ -13,11 +13,21 @@ const RECOVERY_PRAISE_MIN = 30;
 
 // 배정 코칭 "학습 시작" → 튜터 학습 앱(별도 앱). NEXT_PUBLIC_ 이라 빌드 시점 인라인됨.
 const TUTOR_APP_URL = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_TUTOR_APP_URL) || '';
+// 튜터(8444)는 05 와 동일한 ICS 신뢰 임베드 모델: ?userId=userCd@projCd 만 있으면 /auth/ics-sso 로 자동 로그인.
+// (02 app-shell.tsx: "신뢰 모드 — userId 만 있으면 SSO 시도"). 그래서 본인 login_id 를 userId 로 넘겨야 로그인창 없이 열림.
 function openTutorApp(g) {
     if (!TUTOR_APP_URL) return;
-    let url = TUTOR_APP_URL;
+    const params = new URLSearchParams();
+    try {
+        const raw = typeof window !== 'undefined' ? window.localStorage.getItem(QA_ACTOR_STORAGE_KEY) : null;
+        const u = raw ? JSON.parse(raw) : null;
+        const loginId = u && u.login_id ? String(u.login_id) : '';
+        if (loginId.includes('@')) params.set('userId', loginId);  // ICS 계정(userCd@projCd)만 SSO 전달
+    } catch { /* 저장 actor 없음 → userId 없이 열림(튜터가 로그인 폼) */ }
     const codes = Array.isArray(g?.scenarios) ? g.scenarios : [];
-    if (codes.length) url += (url.includes('?') ? '&' : '?') + 'scenarios=' + encodeURIComponent(codes.join(','));
+    if (codes.length) params.set('scenarios', codes.join(','));
+    const qs = params.toString();
+    const url = TUTOR_APP_URL + (qs ? (TUTOR_APP_URL.includes('?') ? '&' : '?') + qs : '');
     window.open(url, '_blank', 'noopener');
 }
 
