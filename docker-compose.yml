@@ -71,6 +71,10 @@ services:
     environment:
       API_PORT: 3007
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@qa-ai-postgres:5432/${POSTGRES_DB:-qa_dashboard}
+      # 로컬 qa-pipeline(호스트 8081) 도달 — 컨테이너 내부 localhost 는 컨테이너 자신이라
+      # 코드 기본값 localhost:8081 로는 호스트 파이프라인에 못 닿는다. host.docker.internal 로 호스트를 가리킨다.
+      # (EC2 평가는 call.pipeline_target='ec2' 가 별도 해석하므로 무영향.)
+      QA_PIPELINE_BASE_URL: ${QA_PIPELINE_BASE_URL:-http://host.docker.internal:8081}
       # 신규 사용자 발급 시 자동 부여되는 초기 비밀번호. 운영 환경에서는 반드시 .env 로 강력한 값 주입.
       # 미설정 시 코드가 '1234' 폴백 + warn 로그를 남기지만 PoC 외에는 사용하지 말 것.
       INITIAL_USER_PASSWORD: ${INITIAL_USER_PASSWORD:-}
@@ -113,6 +117,17 @@ services:
       IPCC_DB_PASSWORD: ${IPCC_DB_PASSWORD:-}
       IPCC_DB_NAME: ${IPCC_DB_NAME:-xhub}
       IPCC_PROJ_CD: ${ICS_QA_PROJ_CD:-METAM}
+      # 튜터 학습 앱 API (코칭 "학습 시작" 연동). 컨테이너→호스트는 host.docker.internal 로 도달.
+      TUTOR_API_BASE_URL: ${TUTOR_API_BASE_URL:-http://host.docker.internal:8092}
+      # TA(상담 분석) DB — 조인 키 (proj_cd, uid). 비면 taEnabled()=false → 프론트 mock 폴백. TA_DB_URL 우선, 없으면 TA_DB_* 사용.
+      TA_DB_URL: ${TA_DB_URL:-}
+      TA_DB_HOST: ${TA_DB_HOST:-}
+      TA_DB_PORT: ${TA_DB_PORT:-5432}
+      TA_DB_NAME: ${TA_DB_NAME:-TA_dev}
+      TA_DB_USER: ${TA_DB_USER:-}
+      TA_DB_PW: ${TA_DB_PW:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # 호스트의 server/ 를 사용 → 코드 수정 후 restart 만으로 반영
       - ./server:/app/server:ro
@@ -140,6 +155,8 @@ services:
         API_PROXY_TARGET: http://qa-ai-api:3007
         # 개발계 DEV 배지(선택). .env 에 NEXT_PUBLIC_DEV_BADGE=1 주면 표시.
         NEXT_PUBLIC_DEV_BADGE: ${NEXT_PUBLIC_DEV_BADGE:-}
+        # 배정 코칭 "학습 시작" → 튜터 학습 앱 URL. .env 에 NEXT_PUBLIC_TUTOR_APP_URL 주입.
+        NEXT_PUBLIC_TUTOR_APP_URL: ${NEXT_PUBLIC_TUTOR_APP_URL:-}
     container_name: 09-meta-trustguard-dashboard
     depends_on:
       - qa-ai-api

@@ -22,6 +22,19 @@ import ReviewStatusBadge, {
 
 const RUBRIC_TOTAL_MAX = 100;
 
+/** 검수상태 배지 호버 툴팁 — '완료'로 표시될 때 검수자/완료일시 노출.
+ *  자동 승격(체크리스트 100%·수기보정) 행은 검수자/일시 기록이 없으므로 그 사실을 명시. */
+function reviewTooltip(row) {
+    if (deriveReviewStatus(row) !== REVIEW_STATUS.COMPLETED) return undefined;
+    const who = row?.reviewed_by ? String(row.reviewed_by).trim() : '';
+    const when = row?.reviewed_at ? formatDateTime(row.reviewed_at) : '';
+    const parts = [];
+    if (who) parts.push(`검수자: ${who}`);
+    if (when) parts.push(`완료: ${when}`);
+    if (!parts.length) return '검수자·완료일시 기록 없음 (자동 완료)';
+    return parts.join('\n');
+}
+
 /** 합계 열: DB 루브릭 %를 0~100 정수 득점만 표시 */
 function labelEarnedOverMax(scoreLike) {
     if (scoreLike === null || scoreLike === undefined || scoreLike === '') return '-';
@@ -504,7 +517,10 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                                                 );
                                             })}
                                             <td className="px-3 py-3 text-center">
-                                                <ReviewStatusBadge status={deriveReviewStatus(row)} />
+                                                <ReviewStatusBadge
+                                                    status={deriveReviewStatus(row)}
+                                                    title={reviewTooltip(row)}
+                                                />
                                             </td>
                                         </tr>
                                     );

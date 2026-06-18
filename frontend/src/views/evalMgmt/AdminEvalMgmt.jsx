@@ -1,9 +1,10 @@
 // 관리자/슈퍼관리자 — 평가 관리 (디자인 프로토타입 etc/pages-admin.jsx 의 AdminEvalMgmt 외 포팅)
 // 평가 목록·필터·승인(AdminResults) + 코칭 배정(CoachingPanel/Carousel/MiniCard/DetailModal/CreateModal)
 import React, { useState, useEffect } from 'react';
-import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, defaultPeriod } from './ui';
-import { DIMENSIONS, COUNSELORS, COACHING_GROUPS, scoreClass, fmtNum } from './mockData';
-import { fetchCalls } from '../../services/api';
+import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod } from './ui';
+import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, COACHING_HISTORY, scenById, catMeta } from './mockData';
+import { fetchCalls, fetchAgents } from '../../services/api';
+import { formatDateTime } from '../../utils/formatters';
 
 // /api/calls(실데이터) 한 행 → 평가목록 행 모양으로 변환.
 //   평가 ID 개념이 없으므로 상담번호(UID)를 사용. 채널은 io_divi(I/O) → inbound/outbound.
@@ -25,6 +26,7 @@ function adaptCall(c) {
         counselor: c.agent_code || '',
         name: c.agent_name || c.agent_code || '미지정',
         avId: hashAv(c.agent_code || c.qa_id),
+        callDatetime: c.call_datetime || null,       // 원본 상담일시(평가리스트와 동일 포맷 표시용)
         date: dt.slice(0, 10),
         time: dt.slice(11, 16),
         duration: c.duration_sec ? `${Math.floor(c.duration_sec / 60)}:${String(c.duration_sec % 60).padStart(2, '0')}` : '-',
@@ -50,20 +52,22 @@ const COACH_PRIORITY = {
 };
 
 const COACH_PRESETS = {
-    emotion: { title: '감정 컨트롤 · 회복 응대', priority: 'high', icon: 'heart-pulse', tutor: '클레임 응대 시뮬레이션', items: ['강한 클레임 상황 시뮬레이션 3회 진행', '공감·인정 표현 스크립트 10종 숙지', '감정 라벨링 후 재진술 연습'] },
-    followup: { title: '후속 안내 · 클로징 강화', priority: 'mid', icon: 'phone-forwarded', tutor: '클로징 커뮤니케이션 코스', items: ['클로징 체크리스트 적용 (추가문의·재안내·인사)', '모범 마무리 통화 5건 청취'] },
-    lead: { title: '두괄식 결론 전달', priority: 'mid', icon: 'list-ordered', tutor: '두괄식 커뮤니케이션 코스', items: ['결론–근거–안내 3단 구조 템플릿 학습', '모범 통화 5건 청취 후 셀프 리뷰'] },
-    needs: { title: '니즈 파악 · 복창', priority: 'high', icon: 'list-checks', tutor: '니즈 파악 집중 코스', items: ['핵심 복창 체크포인트 셀프 점검 루틴', '니즈 정리 질문 5종 숙지'] },
-    polite: { title: '정중한 표현 · 어법', priority: 'mid', icon: 'message-circle', tutor: '응대 화법 코스', items: ['단정적 거절 대신 대안 제시 화법 연습', '정중 표현 스크립트 숙지'] },
+    emotion: { title: '감정 컨트롤 · 회복 응대', priority: 'high', icon: 'heart-pulse', scenarios: ['S18', 'S20'], items: ['강한 클레임 상황 시뮬레이션 3회 진행', '공감·인정 표현 스크립트 10종 숙지', '감정 라벨링 후 재진술 연습'] },
+    followup: { title: '후속 안내 · 클로징 강화', priority: 'mid', icon: 'phone-forwarded', scenarios: ['S2', 'S8'], items: ['클로징 체크리스트 적용 (추가문의·재안내·인사)', '모범 마무리 통화 5건 청취'] },
+    lead: { title: '두괄식 결론 전달', priority: 'mid', icon: 'list-ordered', scenarios: ['S1', 'S3'], items: ['결론–근거–안내 3단 구조 템플릿 학습', '모범 통화 5건 청취 후 셀프 리뷰'] },
+    needs: { title: '니즈 파악 · 복창', priority: 'high', icon: 'list-checks', scenarios: ['S24', 'S27'], items: ['핵심 복창 체크포인트 셀프 점검 루틴', '니즈 정리 질문 5종 숙지'] },
+    polite: { title: '정중한 표현 · 어법', priority: 'mid', icon: 'message-circle', scenarios: ['S15', 'S19'], items: ['단정적 거절 대신 대안 제시 화법 연습', '정중 표현 스크립트 숙지'] },
 };
 
 // ─────────────────────────────────────────────────────
 // 평가 관리 — 평가 결과 + 코칭 배정을 한 화면에서
 // ─────────────────────────────────────────────────────
 export default function AdminEvalMgmt() {
-    const [coaching, setCoaching] = useState(() => COACHING_GROUPS.map((g) => ({ ...g })));
+    // 코칭 배정은 (현 범위) 화면 세션 상태 — 저장 백엔드 없음. 실데이터 연동 대상은 "대상 상담사/부서".
+    const [coaching, setCoaching] = useState([]);
     const [modalOpen, setModalOpen] = useState(false);
     const [results, setResults] = useState(null); // null=로딩, []=없음
+    const [agents, setAgents] = useState([]);     // 실제 상담사(코칭 대상/멤버 소스)
 
     useEffect(() => {
         let cancelled = false;
@@ -76,11 +80,21 @@ export default function AdminEvalMgmt() {
                 if (!cancelled) setResults([]);
             }
         })();
+        (async () => {
+            try {
+                const data = await fetchAgents(); // 실제 상담사(admin_users + qa_calls)
+                // Avatar 색상용 av 부여(실DB엔 없음) — id 기반 해시.
+                if (!cancelled) setAgents((Array.isArray(data) ? data : []).map((a) => ({ ...a, av: hashAv(a.id || a.user_id) })));
+            } catch (e) {
+                console.error('상담사 목록 로딩 실패:', e);
+                if (!cancelled) setAgents([]);
+            }
+        })();
         return () => { cancelled = true; };
     }, []);
 
     const assign = (key) =>
-        setCoaching((list) => list.map((g) => (g.key === key ? { ...g, assigned: true, assignedBy: '이수정', assignedAt: '2026-05-26', status: '배정됨' } : g)));
+        setCoaching((list) => list.map((g) => (g.key === key ? { ...g, assigned: true, assignedBy: '관리자', assignedAt: formatDateTime(new Date()).slice(0, 10), status: '배정됨' } : g)));
     const unassign = (key) =>
         setCoaching((list) => list.map((g) => (g.key === key ? { ...g, assigned: false, assignedBy: null, assignedAt: null, status: null } : g)));
     const removeItem = (key) => setCoaching((list) => list.filter((g) => g.key !== key));
@@ -98,11 +112,12 @@ export default function AdminEvalMgmt() {
                 embedded
                 results={results || []}
                 loading={results === null}
-                beforeList={<CoachingPanel coaching={coaching} onAssign={assign} onUnassign={unassign} onRemove={removeItem} onNew={() => setModalOpen(true)} />}
+                beforeList={<CoachingPanel coaching={coaching} agents={agents} onAssign={assign} onUnassign={unassign} onRemove={removeItem} onNew={() => setModalOpen(true)} />}
             />
 
             {modalOpen && (
                 <CoachingCreateModal
+                    agents={agents}
                     onClose={() => setModalOpen(false)}
                     onCreate={(entry) => {
                         addCoaching(entry);
@@ -115,15 +130,16 @@ export default function AdminEvalMgmt() {
 }
 
 // 코칭 배정 섹션 — 요약 카드 리스트 (클릭 시 상세 모달)
-function CoachingPanel({ coaching, onAssign, onUnassign, onRemove, onNew }) {
+function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, onNew }) {
     const [openKey, setOpenKey] = useState(null);
-    const memberObjs = (ids) => ids.map((id) => COUNSELORS.find((c) => c.id === id)).filter(Boolean);
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const memberObjs = (ids) => ids.map((id) => agents.find((c) => c.id === id)).filter(Boolean);
     const active = coaching.filter((g) => g.assigned);
     const pending = coaching.filter((g) => !g.assigned);
     const openItem = coaching.find((g) => g.key === openKey) || null;
 
     return (
-        <div className="panel" style={{ marginTop: 22 }}>
+        <div className="panel" style={{ marginTop: 22, marginBottom: 24 }}>
             <div className="panel-head">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ width: 24, height: 24, borderRadius: 6, background: 'var(--primary-soft)', color: 'var(--primary)', display: 'grid', placeItems: 'center' }}>
@@ -132,11 +148,16 @@ function CoachingPanel({ coaching, onAssign, onUnassign, onRemove, onNew }) {
                     <h3>코칭 배정</h3>
                     <span className="muted-text" style={{ fontSize: 12 }}>· 진행 {active.length} · 배정 대기 {pending.length}</span>
                 </div>
-                <button className="btn-mini primary" style={{ marginLeft: 'auto' }} onClick={onNew}>
-                    <Icon name="plus" size={11} />새 코칭 배정
+                <button className="btn-mini" style={{ marginLeft: 'auto' }} onClick={() => setHistoryOpen(true)}>
+                    <Icon name="history" size={11} />코칭 이력
                 </button>
             </div>
             <div className="panel-body" style={{ display: 'grid', gap: 18 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: -6 }}>
+                    <button className="btn-mini primary" onClick={onNew}>
+                        <Icon name="plus" size={11} />새 코칭 배정
+                    </button>
+                </div>
                 {active.length > 0 && (
                     <CoachingCarousel label={<>진행 중인 코칭 · {active.length}</>} items={active} memberObjs={memberObjs} onOpen={setOpenKey} />
                 )}
@@ -159,6 +180,18 @@ function CoachingPanel({ coaching, onAssign, onUnassign, onRemove, onNew }) {
                 )}
             </div>
 
+            {historyOpen && (
+                <Modal title="상담사별 코칭 이력" width={920} onClose={() => setHistoryOpen(false)}>
+                    <CoachingHistory rows={COACHING_HISTORY} />
+                </Modal>
+            )}
+
+            {historyOpen && (
+                <Modal title="상담사별 코칭 이력" width={920} onClose={() => setHistoryOpen(false)}>
+                    <CoachingHistory rows={COACHING_HISTORY} />
+                </Modal>
+            )}
+
             {openItem && (
                 <CoachingDetailModal
                     g={openItem}
@@ -172,6 +205,109 @@ function CoachingPanel({ coaching, onAssign, onUnassign, onRemove, onNew }) {
                     }}
                 />
             )}
+        </div>
+    );
+}
+
+// 코칭 이력 — 상담사별 누적 코칭 기록, 완료율, 점수 개선폭 (펼침형)
+function CoachingHistory({ rows }) {
+    const [openId, setOpenId] = useState(null);
+    if (!rows.length) return null;
+    const cObj = (id) => COUNSELORS.find((c) => c.id === id) || { name: id, team: '-', av: 'av-1' };
+
+    const groups = {};
+    rows.forEach((r) => { (groups[r.counselorId] = groups[r.counselorId] || []).push(r); });
+    const list = Object.entries(groups).map(([cid, hs]) => {
+        const sorted = [...hs].sort((a, b) => b.date.localeCompare(a.date));
+        const areaCount = hs.reduce((m, h) => { m[h.area] = (m[h.area] || 0) + 1; return m; }, {});
+        const mainArea = Object.entries(areaCount).sort((a, b) => b[1] - a[1])[0];
+        const firstScore = [...hs].sort((a, b) => a.date.localeCompare(b.date))[0].scoreBefore;
+        const lastScore = sorted[0].scoreAfter;
+        const ongoing = hs.some((h) => h.status !== '완료');
+        return { cid, hs: sorted, count: hs.length, mainArea: mainArea[0], mainAreaN: mainArea[1], firstScore, lastScore, gain: lastScore - firstScore, ongoing };
+    }).sort((a, b) => b.count - a.count);
+
+    return (
+        <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <span className="muted-text" style={{ fontSize: 11 }}>상담사를 누르면 받은 코칭 내역이 펼쳐집니다</span>
+            </div>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+                {list.map((g) => {
+                    const c = cObj(g.cid);
+                    const open = openId === g.cid;
+                    return (
+                        <div key={g.cid} style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'white', overflow: 'hidden' }}>
+                            <button
+                                onClick={() => setOpenId(open ? null : g.cid)}
+                                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', background: open ? 'var(--background-soft)' : 'white', border: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+                            >
+                                <Avatar id={c.av} name={c.name} />
+                                <div style={{ minWidth: 0, width: 150 }}>
+                                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-900)' }}>{c.name}</div>
+                                    <div className="muted-text" style={{ fontSize: 11, marginTop: 1 }}>{c.team} · 코칭 {g.count}회</div>
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div className="muted-text" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 3 }}>주 문제 영역</div>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-900)' }}>{g.mainArea}</span>
+                                        {g.mainAreaN > 1 && (
+                                            <span className="pill" style={{ background: '#fff3e0', color: '#b27a14', fontSize: 9.5, fontWeight: 700 }}>
+                                                <Icon name="repeat" size={9} />×{g.mainAreaN}
+                                            </span>
+                                        )}
+                                    </span>
+                                </div>
+                                <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                                    <div className="muted-text" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 3 }}>점수 변화</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                                        <span className="mono" style={{ fontSize: 11.5, color: 'var(--ink-400)' }}>{g.firstScore}</span>
+                                        <Icon name="arrow-right" size={11} style={{ color: 'var(--ink-300)' }} />
+                                        <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)' }}>{g.lastScore}</span>
+                                        <span className="pill" style={{ background: g.gain > 0 ? '#e8f6ed' : 'var(--muted)', color: g.gain > 0 ? '#2f9759' : 'var(--ink-500)', fontSize: 10, fontWeight: 700 }}>
+                                            <Icon name={g.gain > 0 ? 'trending-up' : 'minus'} size={9} />{g.gain > 0 ? `+${g.gain}` : '0'}
+                                        </span>
+                                    </div>
+                                </div>
+                                {g.ongoing && (
+                                    <span className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>진행 중</span>
+                                )}
+                                <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} style={{ color: 'var(--ink-400)', flexShrink: 0 }} />
+                            </button>
+
+                            {open && (
+                                <div style={{ borderTop: '1px solid var(--border)', padding: '6px 16px 12px' }}>
+                                    {g.hs.map((h, i) => {
+                                        const gain = h.scoreAfter - h.scoreBefore;
+                                        const isDone = h.status === '완료';
+                                        return (
+                                            <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: i < g.hs.length - 1 ? '1px dashed var(--border)' : 'none' }}>
+                                                <div style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--background)', display: 'grid', placeItems: 'center', color: 'var(--primary)', flexShrink: 0 }}>
+                                                    <Icon name={h.icon} size={15} />
+                                                </div>
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-900)' }}>{h.area}</div>
+                                                    <div className="muted-text" style={{ fontSize: 10.5, marginTop: 1 }}>{h.date} · {h.by} 코치</div>
+                                                </div>
+                                                <span className="pill" style={{ background: isDone ? '#e8f6ed' : 'var(--primary-soft)', color: isDone ? '#2f9759' : 'var(--primary)', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                                                    <Icon name={isDone ? 'check' : 'loader'} size={9} />{h.done}/{h.scenarios} {isDone ? '완료' : '진행'}
+                                                </span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, width: 96, justifyContent: 'flex-end' }}>
+                                                    <span className="mono" style={{ fontSize: 11, color: 'var(--ink-400)' }}>{h.scoreBefore}</span>
+                                                    <Icon name="arrow-right" size={10} style={{ color: 'var(--ink-300)' }} />
+                                                    <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-900)' }}>{h.scoreAfter}</span>
+                                                    {gain > 0 && <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: '#2f9759' }}>+{gain}</span>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 }
@@ -329,7 +465,7 @@ function CoachingDetailModal({ g, members, onClose, onAssign, onUnassign, onRemo
                                     <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-900)' }}>{m.name}</div>
                                     <div className="muted-text" style={{ fontSize: 10.5 }}>{m.team}</div>
                                 </div>
-                                <span className={`score-chip ${scoreClass(m.score)}`} style={{ fontSize: 10.5 }}>{m.score.toFixed(1)}</span>
+                                <span className={`score-chip ${scoreClass(m.score)}`} style={{ fontSize: 10.5 }}>{m.score != null ? m.score.toFixed(1) : '-'}</span>
                             </div>
                         ))}
                     </div>
@@ -350,10 +486,24 @@ function CoachingDetailModal({ g, members, onClose, onAssign, onUnassign, onRemo
                 </div>
 
                 <div className="field">
-                    <span className="field-label">Tutor 코스</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 13px', border: `1px solid ${p.flat}`, background: p.soft, borderRadius: 10 }}>
-                        <Icon name="sparkles" size={15} style={{ color: p.accent }} />
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-900)' }}>{g.tutor}</span>
+                    <span className="field-label">Tutor 시나리오 · {(g.scenarios || []).length}개</span>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                        {(g.scenarios || []).map((code) => {
+                            const s = scenById(code);
+                            if (!s) return null;
+                            const cm = catMeta(s.cat);
+                            return (
+                                <div key={code} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: `1px solid ${p.flat}`, background: p.soft, borderRadius: 10 }}>
+                                    <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: p.accent, width: 28, flexShrink: 0 }}>{s.code}</span>
+                                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--ink-900)' }}>{s.title}</span>
+                                    <span className="pill" style={{ background: 'white', color: cm.color, fontSize: 10, fontWeight: 700, border: `1px solid ${cm.color}33` }}>{cm.label}</span>
+                                    <span className="muted-text" style={{ fontSize: 10.5, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                        <Icon name="message-square" size={10} />{s.faq}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                        {(g.scenarios || []).length === 0 && <span className="muted-text" style={{ fontSize: 12 }}>연결된 시나리오가 없습니다.</span>}
                     </div>
                 </div>
             </div>
@@ -362,21 +512,41 @@ function CoachingDetailModal({ g, members, onClose, onAssign, onUnassign, onRemo
 }
 
 // 코칭 만들기 모달
-function CoachingCreateModal({ onClose, onCreate }) {
+function CoachingCreateModal({ agents = [], onClose, onCreate }) {
     const [targetType, setTargetType] = useState('group');
     const [selected, setSelected] = useState([]);
     const [focus, setFocus] = useState('');
     const [items, setItems] = useState([]);
-    const [tutor, setTutor] = useState('');
+    const [scenarios, setScenarios] = useState([]);
+    const [scenCat, setScenCat] = useState('order');
+
+    // 집중 영역은 편집 가능 — 프리셋에서 시드 후 추가/이름수정/삭제.
+    const [areas, setAreas] = useState(() => Object.entries(COACH_PRESETS).map(([k, p]) => ({ key: k, ...p })));
+    const [editingAreas, setEditingAreas] = useState(false);
 
     const pickFocus = (key) => {
         setFocus(key);
-        const p = COACH_PRESETS[key];
+        const p = areas.find((a) => a.key === key);
         if (p) {
             setItems([...p.items]);
-            setTutor(p.tutor);
+            setScenarios([...(p.scenarios || [])]);
         }
     };
+    const setAreaTitle = (key, title) => setAreas((arr) => arr.map((a) => (a.key === key ? { ...a, title } : a)));
+    const addArea = () => {
+        const key = 'fa-' + Date.now();
+        setAreas((arr) => [...arr, { key, title: '', priority: 'mid', icon: 'target', scenarios: [], items: [] }]);
+    };
+    const removeArea = (key) => {
+        setAreas((arr) => arr.filter((a) => a.key !== key));
+        if (focus === key) {
+            setFocus('');
+            setItems([]);
+            setScenarios([]);
+        }
+    };
+    const toggleScenario = (code) => setScenarios((arr) => (arr.includes(code) ? arr.filter((c) => c !== code) : [...arr, code]));
+
     const toggleMember = (id) => {
         setSelected((s) => {
             if (targetType === 'individual') return s.includes(id) ? [] : [id];
@@ -390,7 +560,7 @@ function CoachingCreateModal({ onClose, onCreate }) {
     const canSave = selected.length > 0 && focus && items.filter((x) => x.trim()).length > 0;
     const submit = () => {
         if (!canSave) return;
-        const p = COACH_PRESETS[focus];
+        const p = areas.find((a) => a.key === focus);
         onCreate({
             key: 'c-' + Date.now(),
             title: p.title,
@@ -399,12 +569,12 @@ function CoachingCreateModal({ onClose, onCreate }) {
             reason: '관리자가 직접 배정한 코칭입니다.',
             criteria: '직접 선택',
             items: items.filter((x) => x.trim()),
-            tutor: tutor.trim() || p.tutor,
+            scenarios: scenarios.length ? scenarios : (p.scenarios || []),
             members: selected,
             targetType,
             assigned: true,
-            assignedBy: '이수정',
-            assignedAt: '2026-05-26',
+            assignedBy: '관리자',
+            assignedAt: formatDateTime(new Date()).slice(0, 10),
             status: '배정됨',
         });
     };
@@ -413,6 +583,7 @@ function CoachingCreateModal({ onClose, onCreate }) {
         <Modal
             title="코칭 배정"
             onClose={onClose}
+            width={680}
             foot={
                 <>
                     <button className="btn-mini" onClick={onClose}>취소</button>
@@ -422,8 +593,9 @@ function CoachingCreateModal({ onClose, onCreate }) {
                 </>
             }
         >
-            <div style={{ display: 'grid', gap: 20 }}>
-                <div className="field">
+            <div style={{ display: 'grid', gap: 20, minWidth: 0 }}>
+                {/* 대상 유형 */}
+                <div className="field" style={{ minWidth: 0 }}>
                     <span className="field-label">대상 유형</span>
                     <div className="seg" style={{ alignSelf: 'flex-start' }}>
                         <button className={`seg-btn ${targetType === 'group' ? 'active' : ''}`} onClick={() => setTargetType('group')}>그룹</button>
@@ -440,49 +612,80 @@ function CoachingCreateModal({ onClose, onCreate }) {
                     <span className="field-hint">{targetType === 'group' ? '여러 상담사를 한 코칭으로 묶어 배정합니다.' : '한 명에게 개별 배정합니다.'}</span>
                 </div>
 
+                {/* 대상 상담사 (실DB) */}
                 <div className="field">
                     <span className="field-label">대상 상담사 {selected.length > 0 && <span style={{ color: 'var(--primary)' }}>· {selected.length}명</span>}</span>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        {COUNSELORS.map((c) => {
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, minWidth: 0 }}>
+                        {agents.length === 0 && (
+                            <div className="muted-text" style={{ fontSize: 12, gridColumn: '1 / -1', padding: '10px 2px' }}>연동된 상담사가 없습니다.</div>
+                        )}
+                        {agents.map((c) => {
                             const on = selected.includes(c.id);
                             return (
                                 <button
                                     key={c.id}
                                     onClick={() => toggleMember(c.id)}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', border: on ? '1px solid var(--primary)' : '1px solid var(--border)', borderRadius: 10, background: on ? 'var(--primary-soft)' : 'white', transition: 'all var(--t-base)' }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', minWidth: 0, border: on ? '1px solid var(--primary)' : '1px solid var(--border)', borderRadius: 10, background: on ? 'var(--primary-soft)' : 'white', transition: 'all var(--t-base)' }}
                                 >
                                     <Avatar id={c.av} name={c.name} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-900)' }}>{c.name}</div>
-                                        <div className="muted-text" style={{ fontSize: 10.5 }}>{c.team}</div>
+                                        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                                        <div className="muted-text" style={{ fontSize: 10.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.team}</div>
                                     </div>
-                                    <span className={`score-chip ${scoreClass(c.score)}`} style={{ fontSize: 10.5 }}>{c.score.toFixed(1)}</span>
-                                    {on && <Icon name="check-circle" size={15} style={{ color: 'var(--primary)' }} />}
+                                    <span className={`score-chip ${scoreClass(c.score)}`} style={{ fontSize: 10.5, flexShrink: 0 }}>{c.score != null ? c.score.toFixed(1) : '-'}</span>
+                                    {on && <Icon name="check-circle" size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />}
                                 </button>
                             );
                         })}
                     </div>
                 </div>
 
+                {/* 집중 영역 (편집 가능) */}
                 <div className="field">
-                    <span className="field-label">집중 영역</span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                        {Object.entries(COACH_PRESETS).map(([k, p]) => {
-                            const on = focus === k;
-                            return (
-                                <button
-                                    key={k}
-                                    onClick={() => pickFocus(k)}
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', border: on ? '1px solid var(--primary)' : '1px solid var(--border)', borderRadius: 9, background: on ? 'var(--primary-soft)' : 'white', color: on ? 'var(--primary)' : 'var(--ink-700)', fontSize: 12.5, fontWeight: 600, transition: 'all var(--t-base)' }}
-                                >
-                                    <Icon name={p.icon} size={13} />{p.title}
-                                </button>
-                            );
-                        })}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="field-label" style={{ marginBottom: 0 }}>집중 영역</span>
+                        <button
+                            className="icon-btn"
+                            onClick={() => setEditingAreas((v) => !v)}
+                            title={editingAreas ? '편집 완료' : '집중 영역 편집'}
+                            style={{ width: 26, height: 26, color: editingAreas ? 'var(--primary)' : 'var(--ink-400)' }}
+                        >
+                            <Icon name={editingAreas ? 'check' : 'pencil'} size={13} />
+                        </button>
+                        {editingAreas && <span className="muted-text" style={{ fontSize: 11 }}>이름 수정 · 삭제 · 추가</span>}
                     </div>
-                    <span className="field-hint">영역을 선택하면 액션 아이템과 Tutor 코스가 자동으로 채워집니다. 자유롭게 수정하세요.</span>
+
+                    {editingAreas ? (
+                        <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+                            {areas.map((a) => (
+                                <div key={a.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <Icon name={a.icon} size={14} style={{ color: 'var(--ink-400)', flexShrink: 0 }} />
+                                    <input className="text-input" value={a.title} onChange={(e) => setAreaTitle(a.key, e.target.value)} style={{ flex: 1 }} placeholder="집중 영역 이름" />
+                                    <button className="icon-btn" onClick={() => removeArea(a.key)} title="삭제"><Icon name="trash-2" size={13} /></button>
+                                </div>
+                            ))}
+                            <button className="btn-mini" style={{ alignSelf: 'flex-start' }} onClick={addArea}><Icon name="plus" size={11} />영역 추가</button>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                            {areas.filter((a) => a.title.trim()).map((a) => {
+                                const on = focus === a.key;
+                                return (
+                                    <button
+                                        key={a.key}
+                                        onClick={() => pickFocus(a.key)}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', border: on ? '1px solid var(--primary)' : '1px solid var(--border)', borderRadius: 9, background: on ? 'var(--primary-soft)' : 'white', color: on ? 'var(--primary)' : 'var(--ink-700)', fontSize: 12.5, fontWeight: 600, transition: 'all var(--t-base)' }}
+                                    >
+                                        <Icon name={a.icon} size={13} />{a.title}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                    {!editingAreas && <span className="field-hint">영역을 선택하면 액션 아이템과 Tutor 시나리오가 자동으로 채워집니다. 자유롭게 수정하세요.</span>}
                 </div>
 
+                {/* 개선 액션 아이템 */}
                 {focus && (
                     <div className="field">
                         <span className="field-label">개선 액션 아이템</span>
@@ -503,12 +706,70 @@ function CoachingCreateModal({ onClose, onCreate }) {
                     </div>
                 )}
 
+                {/* Tutor 시나리오 (FAQ) */}
                 {focus && (
                     <div className="field">
-                        <span className="field-label">Tutor 코스</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Icon name="sparkles" size={14} style={{ color: 'var(--primary)' }} />
-                            <input className="text-input" value={tutor} onChange={(e) => setTutor(e.target.value)} style={{ flex: 1 }} placeholder="연결할 Tutor 코스" />
+                        <span className="field-label">
+                            Tutor 시나리오 {scenarios.length > 0 && <span style={{ color: 'var(--primary)' }}>· {scenarios.length}개 선택</span>}
+                        </span>
+                        <span className="field-hint" style={{ marginBottom: 8 }}>연결할 문의 유형 시나리오(FAQ)를 선택하세요. Tutor는 코스가 아닌 시나리오 단위로 학습됩니다.</span>
+
+                        {/* 선택된 시나리오 칩 */}
+                        {scenarios.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                                {scenarios.map((code) => {
+                                    const s = scenById(code);
+                                    if (!s) return null;
+                                    return (
+                                        <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 6px 4px 10px', background: 'var(--primary-soft)', border: '1px solid var(--primary-soft-flat)', borderRadius: 9999 }}>
+                                            <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)' }}>{s.code}</span>
+                                            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-900)' }}>{s.title}</span>
+                                            <button className="icon-btn" onClick={() => toggleScenario(code)} title="제외" style={{ width: 18, height: 18 }}><Icon name="x" size={11} /></button>
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {/* 카테고리 탭 + 시나리오 목록 */}
+                        <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: 8, background: 'var(--background-soft)', borderBottom: '1px solid var(--border)' }}>
+                                {TUTOR_CATEGORIES.map((c) => {
+                                    const on = scenCat === c.key;
+                                    const n = TUTOR_SCENARIOS.filter((s) => s.cat === c.key).length;
+                                    return (
+                                        <button
+                                            key={c.key}
+                                            onClick={() => setScenCat(c.key)}
+                                            style={{ flexShrink: 0, padding: '6px 11px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: on ? 'white' : 'transparent', color: on ? 'var(--ink-900)' : 'var(--ink-500)', fontSize: 12, fontWeight: on ? 700 : 600, boxShadow: on ? 'var(--shadow-xs)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+                                        >
+                                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: c.color }}></span>
+                                            {c.label}<span className="muted-text" style={{ fontSize: 10.5 }}>{n}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div style={{ maxHeight: 200, overflowY: 'auto', padding: 8, display: 'grid', gap: 4 }}>
+                                {TUTOR_SCENARIOS.filter((s) => s.cat === scenCat).map((s) => {
+                                    const on = scenarios.includes(s.code);
+                                    return (
+                                        <button
+                                            key={s.code}
+                                            onClick={() => toggleScenario(s.code)}
+                                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', border: on ? '1px solid var(--primary)' : '1px solid transparent', borderRadius: 8, background: on ? 'var(--primary-soft)' : 'transparent', transition: 'all var(--t-base)' }}
+                                        >
+                                            <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: on ? 'var(--primary)' : 'var(--ink-400)', width: 28, flexShrink: 0 }}>{s.code}</span>
+                                            <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-900)' }}>{s.title}</span>
+                                            <span className="muted-text" style={{ fontSize: 10.5, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                                <Icon name="message-square" size={10} />FAQ {s.faq}
+                                            </span>
+                                            <div style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, border: on ? 'none' : '1.5px solid var(--border-strong)', background: on ? 'var(--primary)' : 'transparent', color: 'white', display: 'grid', placeItems: 'center' }}>
+                                                {on && <Icon name="check" size={12} />}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -531,6 +792,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
     const [selected, setSelected] = useState(new Set());
     const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
     const [drawerId, setDrawerId] = useState(null);
+    const [colFilters, setColFilters] = useState({});  // 헤더 엑셀식 필터: 컬럼키 → 제외 Set
 
     // 실데이터 로드 후 최종승인 상태(review_status='completed') 시드.
     useEffect(() => {
@@ -543,9 +805,49 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         if (typeof window !== 'undefined') window.location.hash = `#/detail/${encodeURIComponent(qaId)}`;
     };
 
-    const TEAMS = ['강남 1팀', '강남 2팀'];
+    // 부서 필터 — 실제 결과의 부서(qa_calls.department) distinct. (하드코딩 팀 제거)
+    const TEAMS = React.useMemo(
+        () => [...new Set(results.map((r) => r.team).filter((t) => t && t !== '-'))].sort(),
+        [results]
+    );
+
+    // 헤더 엑셀식 컬럼 필터 — 현재 결과에 존재하는 값만 목록에. (상단 필터바와 AND 결합)
+    const admColVal = {
+        channel: (r) => r.channel || '',
+        team: (r) => r.team || '-',
+        category: (r) => r.category || '-',
+        score: (r) => String(r.score),
+        approval: (r) => (approvedIds.has(r.id) ? 'approved' : 'pending'),
+    };
+    const admColLabel = {
+        channel: (v) => (v === 'inbound' ? '인바운드' : v === 'outbound' ? '아웃바운드' : '-'),
+        team: (v) => v || '-',
+        category: (v) => v || '-',
+        score: (v) => v,
+        approval: (v) => (v === 'approved' ? '승인 완료' : '미승인'),
+    };
+    const ADM_FILTER_COLS = ['channel', 'team', 'category', 'score', 'approval'];
+    const admColOpts = React.useMemo(() => {
+        const out = {};
+        for (const c of ADM_FILTER_COLS) {
+            const seen = new Set();
+            for (const r of results) seen.add(admColVal[c](r));
+            const arr = [...seen];
+            if (c === 'score') arr.sort((a, b) => Number(b) - Number(a));
+            else arr.sort((a, b) => String(admColLabel[c](a)).localeCompare(String(admColLabel[c](b)), 'ko'));
+            out[c] = arr.map((v) => ({ value: v, label: admColLabel[c](v) }));
+        }
+        return out;
+    }, [results, approvedIds]);  // eslint-disable-line react-hooks/exhaustive-deps
+    const setAdmCol = (c, ex) => setColFilters((f) => ({ ...f, [c]: ex }));
+    const passCol = (c, v) => { const ex = colFilters[c]; return !ex || ex.size === 0 || !ex.has(v); };
 
     const filtered = results.filter((r) => {
+        if (!passCol('channel', admColVal.channel(r))) return false;
+        if (!passCol('team', admColVal.team(r))) return false;
+        if (!passCol('category', admColVal.category(r))) return false;
+        if (!passCol('score', admColVal.score(r))) return false;
+        if (!passCol('approval', admColVal.approval(r))) return false;
         if (channel !== 'all' && r.channel !== channel) return false;
         if (team !== 'all' && r.team !== team) return false;
         if (approval === 'approved' && !approvedIds.has(r.id)) return false;
@@ -608,7 +910,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         );
 
     const drawerItem = drawerId ? results.find((r) => r.id === drawerId) : null;
-    const COLS = '36px 104px 84px 1.2fr 88px 84px 1fr 64px 112px 104px 30px';
+    const COLS = '36px 96px 108px 168px 88px 84px 1fr 64px 112px 104px 30px';
 
     return (
         <div>
@@ -774,40 +1076,47 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                     <div className="sub" style={{ marginLeft: 12 }}>{filtered.length}건 표시 중</div>
                 </div>
                 <div>
-                    <div className="tbl-head" style={{ gridTemplateColumns: COLS, borderTop: 0 }}>
+                    <div className="tbl-head tc" style={{ gridTemplateColumns: COLS, borderTop: 0, overflow: 'visible' }}>
                         <div style={{ display: 'grid', placeItems: 'center' }}>
                             <input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={toggleAll} style={{ cursor: 'pointer' }} />
                         </div>
                         <div style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => sortBy('date')}>
-                            일시 <SortIcon k="date" />
+                            상담일시 <SortIcon k="date" />
                         </div>
                         <div>상담번호</div>
                         <div style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => sortBy('name')}>
                             상담사 <SortIcon k="name" />
                         </div>
-                        <div>채널</div>
-                        <div>부서</div>
-                        <div>카테고리</div>
-                        <div style={{ textAlign: 'right', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, justifySelf: 'end' }} onClick={() => sortBy('score')}>
-                            점수 <SortIcon k="score" />
+                        <div><ColumnFilter title="채널" options={admColOpts.channel} excluded={colFilters.channel} onChange={(ex) => setAdmCol('channel', ex)} /></div>
+                        <div><ColumnFilter title="부서" options={admColOpts.team} excluded={colFilters.team} onChange={(ex) => setAdmCol('team', ex)} /></div>
+                        <div><ColumnFilter title="카테고리" options={admColOpts.category} excluded={colFilters.category} onChange={(ex) => setAdmCol('category', ex)} /></div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <ColumnFilter title="점수" options={admColOpts.score} excluded={colFilters.score} onChange={(ex) => setAdmCol('score', ex)} />
+                            <span style={{ cursor: 'pointer', display: 'inline-flex' }} onClick={() => sortBy('score')}><SortIcon k="score" /></span>
                         </div>
                         <div>수기검토</div>
-                        <div>최종승인</div>
+                        <div><ColumnFilter title="최종승인" options={admColOpts.approval} excluded={colFilters.approval} onChange={(ex) => setAdmCol('approval', ex)} align="right" /></div>
                         <div></div>
                     </div>
                     <div style={{ maxHeight: 430, overflowY: 'auto' }}>
                         {filtered.map((r) => {
                             const approved = approvedIds.has(r.id);
                             return (
-                                <div key={r.id} className="tbl-row clickable" onClick={() => openDetail(r.id)} style={{ gridTemplateColumns: COLS, background: selected.has(r.id) ? 'var(--primary-soft)' : undefined }}>
+                                <div key={r.id} className="tbl-row clickable tc" onClick={() => openDetail(r.id)} style={{ gridTemplateColumns: COLS, background: selected.has(r.id) ? 'var(--primary-soft)' : undefined }}>
                                     <div style={{ display: 'grid', placeItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                                         <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} style={{ cursor: 'pointer' }} />
                                     </div>
-                                    <div>
-                                        <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{r.date.slice(5)}</div>
-                                        <div className="muted-text mono" style={{ fontSize: 10.5, marginTop: 2 }}>{r.time}</div>
-                                    </div>
-                                    <div className="mono" style={{ fontSize: 11.5, color: 'var(--ink-500)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.sessionId}>{r.sessionId}</div>
+                                    {(() => {
+                                        const full = r.callDatetime ? formatDateTime(r.callDatetime) : `${r.date} ${r.time}`;
+                                        const [d, t] = full.split(' ');
+                                        return (
+                                            <div style={{ lineHeight: 1.35 }}>
+                                                <div style={{ fontSize: 12, color: '#475467' }}>{d}</div>
+                                                <div style={{ fontSize: 11, color: '#98A2B3' }}>{t || ''}</div>
+                                            </div>
+                                        );
+                                    })()}
+                                    <div className="mono" style={{ fontSize: 11, color: 'var(--ink-500)', fontWeight: 600, lineHeight: 1.3, wordBreak: 'break-all' }} title={r.sessionId}>{r.sessionId}</div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                                         <Avatar id={r.avId} name={r.name} />
                                         <div style={{ minWidth: 0 }}>
@@ -820,7 +1129,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                                     </div>
                                     <div className="muted-text" style={{ fontSize: 12 }}>{r.team}</div>
                                     <div className="muted-text" style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.category}</div>
-                                    <div style={{ textAlign: 'right' }}>
+                                    <div>
                                         <span className={`score-chip ${scoreClass(r.score)}`}>{r.score}</span>
                                     </div>
                                     <div>

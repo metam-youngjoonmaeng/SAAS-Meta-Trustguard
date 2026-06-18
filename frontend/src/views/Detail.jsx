@@ -30,6 +30,18 @@ import {
 } from '../utils/rubricScore';
 import { ArrowLeft, MessageSquare, ListCheck, BarChart3, X, Star } from 'lucide-react';
 
+/** 검수상태 '완료' 배지 호버 툴팁 — 검수자/완료일시(없으면 그 사실) 노출. 평가리스트와 동일 규칙. */
+function reviewTooltip(call, status) {
+    if (status !== REVIEW_STATUS.COMPLETED) return undefined;
+    const who = call?.reviewed_by ? String(call.reviewed_by).trim() : '';
+    const when = call?.reviewed_at ? formatDateTime(call.reviewed_at) : '';
+    const parts = [];
+    if (who) parts.push(`검수자: ${who}`);
+    if (when) parts.push(`완료: ${when}`);
+    if (!parts.length) return '검수자·완료일시 기록 없음 (자동 완료)';
+    return parts.join('\n');
+}
+
 const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }) => {
     // 골드셋 등록/해제는 관리자(admin/super_admin)만. 상담사는 버튼 미노출(서버도 403).
     const canManageGold = role === 'admin' || role === 'super_admin';
@@ -781,7 +793,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                             -
                                         </span>
                                     ) : (
-                                        <ReviewStatusBadge status={currentReviewStatus} />
+                                        <ReviewStatusBadge status={currentReviewStatus} title={reviewTooltip(call, currentReviewStatus)} />
                                     )}
                                 </td>
                             </tr>

@@ -80,6 +80,11 @@ export async function fetchCalls() {
     return request('/api/calls');
 }
 
+// 코칭 배정용 실제 상담사 목록(평균점수·부서·콜수). admin_users + qa_calls 조인.
+export async function fetchAgents() {
+    return request('/api/agents');
+}
+
 // 전체 통계 대시보드 데이터. params: { period: 'day'|'week'|'month', department?: string }
 export async function fetchStats({ period = 'week', department } = {}) {
     const qs = new URLSearchParams({ period });
@@ -97,6 +102,18 @@ export async function fetchAnalysis(qaId) {
 export async function fetchEvaluations(qaId) {
     if (!qaId) return null;
     return request(`/api/evaluations/${encodeURIComponent(qaId)}`);
+}
+
+// 내게 배정된 코칭 — 05 coaching_assignments(본인이 members 에 포함된 것).
+export async function fetchMyCoaching() {
+    return request('/api/coaching/mine');
+}
+
+// 내 TA 지표(부정발화·회복률·금칙어) — 03(Meta_Summary) tb_ta_rslt 를 본인 콜(uid) 기준 집계.
+// 응답: { enabled, total, negative_count/rate, banned_count/rate, recovery_denom/count/rate }.
+// enabled=false 면 TA DB 미연동(프론트는 mock 폴백).
+export async function fetchMyTaMetrics() {
+    return request('/api/me/ta-metrics');
 }
 
 export async function saveAdminComments(qaId, adminComments) {

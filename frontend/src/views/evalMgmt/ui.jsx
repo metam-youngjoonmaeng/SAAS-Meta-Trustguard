@@ -170,6 +170,66 @@ export function ChannelChip({ channel }) {
 }
 
 // ─────────────────────────────────────────────────────
+// ColumnFilter — 테이블 헤더 클릭 → 현재 데이터에 존재하는 값 목록(엑셀식 자동필터).
+//   options: [{ value, label }]  (해당 컬럼에 1건 이상 존재하는 값만 호출부가 전달)
+//   excluded: Set  (체크 해제=숨길 값. 비어있으면 전체 표시)
+//   onChange: (nextExcludedSet) => void
+// ─────────────────────────────────────────────────────
+const EMPTY_SET = new Set();
+export function ColumnFilter({ title, options = [], excluded, onChange, align = 'left' }) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef(null);
+    useEffect(() => {
+        if (!open) return undefined;
+        const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+    }, [open]);
+    const ex = excluded || EMPTY_SET;
+    const active = ex.size > 0;
+    const toggle = (v) => {
+        const next = new Set(ex);
+        if (next.has(v)) next.delete(v); else next.add(v);
+        onChange(next);
+    };
+    return (
+        <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+            <span
+                onClick={() => setOpen((o) => !o)}
+                style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3, userSelect: 'none' }}
+                title="클릭해 값 선택"
+            >
+                {title}
+                <Icon name="list-filter" size={12} style={{ color: active ? 'var(--primary)' : 'var(--ink-300)' }} />
+            </span>
+            {open && (
+                <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                        position: 'absolute', top: 'calc(100% + 6px)', [align]: 0, zIndex: 60,
+                        background: 'white', border: '1px solid var(--border)', borderRadius: 10,
+                        boxShadow: '0 8px 24px rgba(16,24,40,0.14)', padding: 8, minWidth: 168, maxHeight: 280, overflowY: 'auto',
+                    }}
+                >
+                    <div style={{ display: 'flex', gap: 6, padding: '2px 4px 8px', borderBottom: '1px dashed var(--border)', marginBottom: 6 }}>
+                        <button className="btn-mini" style={{ height: 24, flex: 1 }} onClick={() => onChange(new Set())}>전체 선택</button>
+                        <button className="btn-mini" style={{ height: 24, flex: 1 }} onClick={() => onChange(new Set(options.map((o) => o.value)))}>전체 해제</button>
+                    </div>
+                    {options.length === 0 ? (
+                        <div className="muted-text" style={{ fontSize: 12, padding: '4px 6px' }}>값 없음</div>
+                    ) : options.map((o) => (
+                        <label key={String(o.value)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', fontSize: 12.5, fontWeight: 500, color: 'var(--ink-700)', cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: 6 }}>
+                            <input type="checkbox" checked={!ex.has(o.value)} onChange={() => toggle(o.value)} style={{ cursor: 'pointer' }} />
+                            {o.label}
+                        </label>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────
 // Avatar
 // ─────────────────────────────────────────────────────
 export function Avatar({ id, name, size = 'sm' }) {
@@ -240,7 +300,7 @@ export function Seg({ items, value, onChange }) {
 // ─────────────────────────────────────────────────────
 // Modal
 // ─────────────────────────────────────────────────────
-export function Modal({ title, onClose, children, foot }) {
+export function Modal({ title, onClose, children, foot, width }) {
     useEffect(() => {
         const onKey = (e) => {
             if (e.key === 'Escape') onClose?.();
@@ -250,7 +310,11 @@ export function Modal({ title, onClose, children, foot }) {
     }, [onClose]);
     return (
         <div className="modal-scrim" onClick={onClose}>
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div
+                className="modal"
+                onClick={(e) => e.stopPropagation()}
+                style={width ? { width: `min(${width}px, calc(100vw - 32px))` } : undefined}
+            >
                 <div className="modal-head">
                     <h2>{title}</h2>
                     <button className="icon-btn" onClick={onClose}>

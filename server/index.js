@@ -14,7 +14,7 @@ import {
 } from './rubricManual.mjs';
 import { AUDIT_ACTION, insertQaAuditLog, pruneOldAuditLogs } from './auditLog.mjs';
 import { logger, requestLogger } from './logger.mjs';
-import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment } from './checklistCategorySummary.mjs';
+import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChecklistKeys } from './checklistCategorySummary.mjs';
 /* SAMPLE_UPLOAD_FEATURE */ import { ingestSampleToDb, clearSamplesFromDb } from './sampleIngest.mjs';
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
@@ -22,6 +22,7 @@ import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateSta
 import { startIcsQaPoller } from './icsQaPoller.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
+import { taEnabled, fetchTaMetricsByUids, fetchSegmentSentimentsByUids } from './taSource.mjs';
 import { randomUUID } from 'node:crypto';
 import { createBrandRouter } from './brandRoutes.mjs';
 import { createUserProfileRouter } from './userProfile.mjs';
@@ -188,6 +189,56 @@ function buildDefaultPentagonFromChecklistRows(checklistRows) {
     return { team_avg: teamAvg, agent_score: agent, overall_avg: overallAvg };
 }
 
+// 기본(고객지원실) 코오롱 표준 8 카테고리 — 동적 루브릭 콜 판별용.
+// 콜의 행 카테고리가 이 셋과 전혀 겹치지 않으면 동적 루브릭(이커머스/은행 등) 콜.
+const DEFAULT_PENTAGON_CATEGORIES = new Set([
+    '인사 예절', '경청 및 소통', '언어 표현', '니즈 파악',
+    '설명력 및 전달력', '적극성', '업무 정확도', '개인정보 보호',
+]);
+
+// 동적 루브릭 콜: 행 자체 카테고리를 축으로 레이더 구성 (축 수 가변 — FE RadarChart 는 labels 기반).
+// agent_score 키 = 카테고리명 그대로 — FE(useEffectiveBrandConfig)가 radarKeys 를 카테고리로 맞춘다.
+function buildDynamicPentagonFromChecklistRows(checklistRows) {
+    const cats = [];
+    for (const r of checklistRows || []) {
+        const c = String(r?.category || '').trim();
+        if (c && !cats.includes(c)) cats.push(c);
+    }
+    if (!cats.length) {
+        const empty = Object.fromEntries(DEFAULT_RADAR_KEYS.map((k) => [k, 0]));
+        return { team_avg: empty, agent_score: empty, overall_avg: empty };
+    }
+    const agent = {};
+    for (const c of cats) agent[c] = clamp0to100(round1(defaultCategoryPct(c, checklistRows)));
+    const teamAvg = {};
+    const overallAvg = {};
+    for (const c of cats) {
+        const base = agent[c] || 0;
+        teamAvg[c] = clamp0to100(round1(base + Math.min(12, 100 - base)));
+        overallAvg[c] = clamp0to100(round1(base + Math.min(18, 100 - base)));
+    }
+    return { team_avg: teamAvg, agent_score: agent, overall_avg: overallAvg };
+}
+
+function buildDynamicFallbackReportRows(pentagon, aiScore) {
+    const agentScore = pentagon?.agent_score || {};
+    const rows = Object.keys(agentScore).map((cat, i) => {
+        const score = Number(agentScore[cat] || 0);
+        return {
+            item_type_no: i + 1,
+            item_type: cat,
+            rating: reportRatingFromScore(score),
+            comment: `${reportCommentFromScore(score)} (지표 점수: ${round1(score)})`,
+        };
+    });
+    rows.push({
+        item_type_no: 99,
+        item_type: 'summary',
+        comment: reportSummaryFromAiScore(aiScore),
+    });
+    return rows;
+}
+
 function buildDefaultFallbackReportRows(pentagon, aiScore) {
     const agentScore = pentagon?.agent_score || {};
     const rows = DEFAULT_RADAR_REPORT_ITEMS.map((item) => {
@@ -333,6 +384,10 @@ function toCallRow(row) {
         manual_score: hasOverride ? row.total_score : null,
         checklist_complete: checklistComplete,
         review_status: normalizeReviewStatus(row.review_status),
+        // 검수 메타 — 검수상태 배지 호버 시 "검수자/일시" 표시용.
+        // 완료시각 없으면(자동 승격·검수중 등) 검수 시작시각으로 폴백.
+        reviewed_by: row.reviewer_name || null,
+        reviewed_at: row.review_completed_at ?? row.review_started_at ?? null,
         // 채널구분 — ICS tb_stt_master.IO_DIVI. io_divi 원값 + FE 편의용 channel(inbound/outbound) 동시 제공.
         io_divi: row.io_divi ?? null,
         channel: row.io_divi === 'I' ? 'inbound' : row.io_divi === 'O' ? 'outbound' : null,
@@ -489,6 +544,25 @@ async function canAccessCall(req, qaId) {
     const { rows } = await pool.query('SELECT agent_user_id FROM qa_calls WHERE "ID" = $1', [qaId]);
     if (!rows.length) return false;
     return rows[0].agent_user_id === req.session.user_id;
+}
+
+// 수신자별 알림 1건 생성(검수 워크플로우 이벤트 전달). 실패해도 본 동작은 막지 않음.
+async function createNotification(db, n) {
+    if (n?.recipientUserId == null) return;
+    try {
+        await db.query(
+            `INSERT INTO public.notifications
+                (recipient_user_id, type, title, body, resource_type, resource_id, actor_user_id, actor_name, org_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [
+                n.recipientUserId, n.type, n.title, n.body ?? null,
+                n.resourceType ?? null, n.resourceId ?? null,
+                n.actorUserId ?? null, n.actorName ?? null, n.orgId ?? null,
+            ]
+        );
+    } catch (e) {
+        console.error('createNotification error:', e);
+    }
 }
 
 // 관리자(admin/super_admin) 전용 쓰기 게이트. 상담사 등은 403.
@@ -800,6 +874,13 @@ app.get('/api/calls', async (req, res) => {
             params.push(req.session.user_id);
             conds.push(`c.agent_user_id = $${params.length}`);
         }
+        // 실제 응대(=QA평가된) 콜만 노출. 포기호/미응대(상담사 미연결)는 파이프라인이
+        // 평가 산출물을 만들지 못해 평가행/체크리스트/소비자평가가 전무하므로 리스트에서 제외한다.
+        conds.push(`(
+            EXISTS (SELECT 1 FROM qa_evaluation_rows er    WHERE er."ID" = c."ID")
+         OR EXISTS (SELECT 1 FROM qa_consumer_eval_rows cr WHERE cr."ID" = c."ID")
+         OR EXISTS (SELECT 1 FROM qa_checklist_rows kr     WHERE kr."ID" = c."ID")
+        )`);
         const orgFilter = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
         const { rows: callRows } = await pool.query(
             `SELECT
@@ -828,6 +909,9 @@ app.get('/api/calls', async (req, res) => {
                 c.promotion_code AS promotion_code,
                 c.org_id AS org_id,
                 c.review_status AS review_status,
+                c.review_completed_at AS review_completed_at,
+                c.review_started_at AS review_started_at,
+                COALESCE(ru.display_name, ru.login_id, '')::text AS reviewer_name,
                 c.io_divi AS io_divi,
                 cv.consumer_violations,
                 cv.consumer_total,
@@ -843,6 +927,7 @@ app.get('/api/calls', async (req, res) => {
              FROM qa_calls c
              LEFT JOIN public.organizations o ON o.id = c.org_id
              LEFT JOIN public.admin_users au ON au.user_id = c.agent_user_id
+             LEFT JOIN public.admin_users ru ON ru.user_id = c.user_id
              LEFT JOIN (
                  SELECT "ID",
                         COUNT(*) FILTER (WHERE yn = 'N') AS consumer_violations,
@@ -893,8 +978,9 @@ app.get('/api/calls', async (req, res) => {
             evByQa.get(r.qa_id).push(r);
         }
         const payload = (callRows || []).map((row) => {
-            const keys = checklistKeysForDepartment(row.department);
             const chRows = chByQa.get(row.qa_id) || [];
+            // 동적 루브릭 콜(이커머스/은행 등)은 행 자체 카테고리로 집계 — 부서 고정 키셋은 불일치.
+            const keys = effectiveChecklistKeys(row.department, chRows);
             const yn = buildChecklistYnKorFromDbRows(chRows, evByQa.get(row.qa_id) || [], keys);
             // 평가-시점 만점 합산 — 표시 컬럼(keys) 에 해당하는 행만 집계(builder 와 동일 필터).
             // 체크리스트 없으면 null → FE DEFAULT_TOTAL_MAX 폴백.
@@ -912,6 +998,51 @@ app.get('/api/calls', async (req, res) => {
     } catch (error) {
         console.error('GET /api/calls error:', error);
         res.status(500).json({ message: 'Failed to load calls.' });
+    }
+});
+
+/* ── 상담사 목록(코칭 배정용) ─────────────────────────────────
+ * GET /api/agents
+ * 실제로 콜을 처리·평가받은 상담사(qa_calls.agent_user_id)를 admin_users 와 조인해
+ * 이름·부서·평균점수·콜수를 반환. 코칭 배정 대상/멤버 표시의 실데이터 소스.
+ * org 스코프 + is_sandbox 제외. 부서는 admin_users.department 가 비면 콜의 부서로 대체.
+ * ────────────────────────────────────────────────────────── */
+app.get('/api/agents', async (req, res) => {
+    try {
+        const activeOrgId = resolveActiveOrgId(req);
+        const params = [];
+        let where = `WHERE c.is_sandbox = false AND c.agent_user_id IS NOT NULL`;
+        if (activeOrgId != null) {
+            params.push(activeOrgId);
+            where += ` AND c.org_id = $${params.length}`;
+        }
+        const { rows } = await pool.query(
+            `SELECT c.agent_user_id AS user_id,
+                    MAX(c.agent_code) AS agent_code,
+                    COALESCE(MAX(u.display_name), MAX(c.agent_code), '미지정') AS name,
+                    COALESCE(NULLIF(MAX(u.department), ''), MAX(NULLIF(c.department, '')), '미지정') AS department,
+                    ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS score,
+                    COUNT(*) AS calls
+               FROM qa_calls c
+               LEFT JOIN admin_users u ON u.user_id = c.agent_user_id
+               ${where}
+              GROUP BY c.agent_user_id
+              ORDER BY score DESC NULLS LAST, calls DESC`,
+            params
+        );
+        res.json(
+            rows.map((r) => ({
+                id: r.agent_code || `u${r.user_id}`,
+                user_id: r.user_id,
+                name: r.name,
+                team: r.department,
+                score: r.score != null ? Number(r.score) : null,
+                calls: Number(r.calls),
+            }))
+        );
+    } catch (error) {
+        console.error('GET /api/agents error:', error);
+        res.status(500).json({ message: 'Failed to load agents.' });
     }
 });
 
@@ -1125,11 +1256,22 @@ app.get('/api/analysis/:qaId', async (req, res) => {
             ...r,
             result: String(r.ai_eval ?? ''),
         }));
+        // 동적 루브릭 콜(이커머스/은행 등): 행 카테고리가 코오롱 표준 8 카테고리와 전혀 안 겹침 —
+        // 코오롱 매핑으로는 5축 전부 0 이 되므로 행 카테고리 축으로 레이더 구성.
+        const rowCategorySet = new Set(
+            checklistAugmented.map((r) => String(r.category || '').trim()).filter(Boolean)
+        );
+        const isDynamicRubric =
+            isDefault &&
+            rowCategorySet.size > 0 &&
+            ![...rowCategorySet].some((c) => DEFAULT_PENTAGON_CATEGORIES.has(c));
         const pentagon = isHanwha
             ? buildHanwhaPentagonFromChecklistRows(checklistAugmented)
-            : isDefault
-                ? buildDefaultPentagonFromChecklistRows(checklistAugmented)
-                : buildPentagonFromChecklistRows(checklistAugmented);
+            : isDynamicRubric
+                ? buildDynamicPentagonFromChecklistRows(checklistAugmented)
+                : isDefault
+                    ? buildDefaultPentagonFromChecklistRows(checklistAugmented)
+                    : buildPentagonFromChecklistRows(checklistAugmented);
         const { rows: reportRowsRaw } = await pool.query(
             `SELECT item_type_no, item_type, rating, comment, summary
              FROM qa_analysis_report
@@ -1154,9 +1296,11 @@ app.get('/api/analysis/:qaId', async (req, res) => {
                 ? [...persistedReportRows, { item_type_no: 99, item_type: 'summary', comment: summaryText }]
                 : isHanwha
                     ? buildHanwhaFallbackReportRows(pentagon, rows[0].ai_score)
-                    : isDefault
-                        ? buildDefaultFallbackReportRows(pentagon, rows[0].ai_score)
-                        : buildFallbackReportRows(pentagon, rows[0].ai_score);
+                    : isDynamicRubric
+                        ? buildDynamicFallbackReportRows(pentagon, rows[0].ai_score)
+                        : isDefault
+                            ? buildDefaultFallbackReportRows(pentagon, rows[0].ai_score)
+                            : buildFallbackReportRows(pentagon, rows[0].ai_score);
         res.json({
             qa_id: rows[0].qa_id,
             department: dept,
@@ -2844,6 +2988,7 @@ app.post('/api/ingest/from-qa-pipeline', async (req, res) => {
     const track = String(body.track || 'standard').trim().toLowerCase();
 
     const failed = [];
+    const skipped = [];
     const details = [];
     let ingested = 0;
     for (const call of calls) {
@@ -2855,6 +3000,11 @@ app.post('/api/ingest/from-qa-pipeline', async (req, res) => {
                     : await ingestStandardCallFromQaPipeline(pool, call, { baseUrl });
             if (!result.ok) {
                 failed.push({ qa_id: qaIdHint, reason: result.message, warnings: result.warnings });
+                continue;
+            }
+            // 포기호/미응대 — 적재 안 됨(qa_calls 미생성). 실패가 아니라 건너뜀으로 분류.
+            if (result.skipped) {
+                skipped.push({ qa_id: result.qa_id || qaIdHint, reason: result.reason });
                 continue;
             }
             ingested += 1;
@@ -2888,7 +3038,7 @@ app.post('/api/ingest/from-qa-pipeline', async (req, res) => {
         }
     }
 
-    res.json({ ok: failed.length === 0, ingested, failed, details });
+    res.json({ ok: failed.length === 0, ingested, skipped, failed, details });
 });
 
 // ── qa-pipeline 평가 비동기 잡 — SSE 노드 진행상황 중계 ──
@@ -2963,6 +3113,12 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
             if (!result.ok) {
                 job.status = 'error';
                 job.error = result.message || '적재 실패';
+                return;
+            }
+            // 포기호/미응대 — 적재 안 됨. 에러가 아니라 건너뜀으로 완료 처리.
+            if (result.skipped) {
+                job.status = 'done';
+                job.result = { qa_id: result.qa_id, skipped: true, reason: result.reason };
                 return;
             }
             job.status = 'done';
@@ -3046,6 +3202,371 @@ async function bootstrap() {
         console.error('[qa-api] qa_calls production-row 카운트 점검 실패:', err);
     }
 }
+
+/* ── [MERGE from old2-05, additive] 코칭 배정 / 알림 / TA 지표 ─────────────────
+ *   coaching_assignments(mig 26) · notifications(mig 28) · qa_call_recovery(mig 31) + taSource.
+ *   우리 기존 라우트/로직 불변. admin_users(테이블) 만 참조 — users/trainee(mig 29/30) 미의존. */
+
+/* ── Tutor 시나리오 카탈로그(코칭 배정용) ───────────────────────
+ * GET /api/tutor/scenarios
+ * 평가항목 공유의 거울: SSOT(시나리오)=Tutor, QA 가 읽어옴.
+ * 활성 org_id → Tutor `GET /svc/scenarios?qa_org_id=` 호출(X-Service-Token=EVAL_SHARE_TOKEN).
+ * 매핑 키는 평가항목과 동일한 organizations.qa_org_id. 미설정/미페어링 시 빈 카탈로그.
+ * ────────────────────────────────────────────────────────── */
+app.get('/api/tutor/scenarios', requireAdmin, async (req, res) => {
+    const base = String(process.env.TUTOR_API_BASE_URL || '').trim().replace(/\/+$/, '');
+    const token = String(process.env.EVAL_SHARE_TOKEN || '').trim();
+    if (!base || !token) {
+        // 연동 미설정 — 화면은 빈 카탈로그 + 안내로 폴백.
+        res.json({ enabled: false, org_id: null, categories: [], scenarios: [] });
+        return;
+    }
+    const orgId = resolveActiveOrgId(req);
+    if (orgId == null) {
+        res.json({ enabled: true, org_id: null, categories: [], scenarios: [] });
+        return;
+    }
+    try {
+        const url = `${base}/svc/scenarios?qa_org_id=${encodeURIComponent(orgId)}`;
+        const r = await fetch(url, {
+            headers: { 'X-Service-Token': token },
+            signal: AbortSignal.timeout(10000),
+        });
+        if (!r.ok) {
+            console.error(`GET /api/tutor/scenarios upstream HTTP ${r.status}`);
+            res.status(502).json({ enabled: true, message: 'tutor upstream error', categories: [], scenarios: [] });
+            return;
+        }
+        const data = await r.json();
+        res.json({
+            enabled: true,
+            org_id: data.org_id ?? null,
+            categories: Array.isArray(data.categories) ? data.categories : [],
+            scenarios: Array.isArray(data.scenarios) ? data.scenarios : [],
+        });
+    } catch (error) {
+        console.error('GET /api/tutor/scenarios error:', error);
+        res.status(500).json({ enabled: true, message: 'Failed to load tutor scenarios', categories: [], scenarios: [] });
+    }
+});
+
+function toCoachingRow(row) {
+    const dt = row.assigned_at ? new Date(row.assigned_at) : null;
+    const valid = dt && !Number.isNaN(dt.getTime());
+    const assignedAt = valid ? dt.toISOString().slice(0, 10) : null;
+    return {
+        key: String(row.id),
+        id: row.id,
+        title: row.title,
+        targetType: row.target_type,
+        members: Array.isArray(row.members) ? row.members : [],
+        items: Array.isArray(row.action_items) ? row.action_items : [],
+        scenarios: Array.isArray(row.scenario_codes) ? row.scenario_codes : [],
+        channel: row.channel === 'chat' ? 'chat' : 'call',
+        assigned: true,
+        status: '배정됨',
+        assignedBy: row.assigned_by_name || '관리자',
+        assignedAt,
+        assignedAtIso: valid ? dt.toISOString() : null,
+    };
+}
+
+app.get('/api/coaching', requireAdmin, async (req, res) => {
+    try {
+        const orgId = resolveActiveOrgId(req);
+        const params = [];
+        let where = '';
+        if (orgId != null) {
+            params.push(orgId);
+            where = `WHERE g.org_id = $${params.length}`;
+        }
+        const { rows } = await pool.query(
+            `SELECT g.*, au.display_name AS assigned_by_name
+               FROM public.coaching_assignments g
+               LEFT JOIN public.admin_users au ON au.user_id = g.assigned_by_user_id
+               ${where}
+              ORDER BY g.created_at DESC`,
+            params
+        );
+        res.json(rows.map(toCoachingRow));
+    } catch (error) {
+        console.error('GET /api/coaching error:', error);
+        res.status(500).json({ message: 'Failed to load coaching.' });
+    }
+});
+
+app.post('/api/coaching', requireAdmin, async (req, res) => {
+    try {
+        const b = req.body || {};
+        const title = String(b.title || '').trim();
+        const targetType = b.targetType === 'individual' ? 'individual' : 'group';
+        const members = Array.isArray(b.members) ? b.members.map((x) => Number(x)).filter(Number.isFinite) : [];
+        const items = Array.isArray(b.items) ? b.items.map((x) => String(x)).filter((x) => x.trim()) : [];
+        const scenarios = (Array.isArray(b.scenarios) ? b.scenarios.map((x) => String(x)).filter(Boolean) : []).slice(0, 3);
+        const channel = b.channel === 'chat' ? 'chat' : 'call';
+        if (!title) {
+            res.status(400).json({ message: 'title is required' });
+            return;
+        }
+        if (!members.length) {
+            res.status(400).json({ message: '대상 상담사를 1명 이상 선택하세요.' });
+            return;
+        }
+        const orgId = resolveActiveOrgId(req);
+        const { rows } = await pool.query(
+            `INSERT INTO public.coaching_assignments
+                 (org_id, title, target_type, members, action_items, scenario_codes, channel, assigned_by_user_id)
+             VALUES ($1, $2, $3, $4::int[], $5::text[], $6::text[], $7, $8)
+             RETURNING *`,
+            [orgId, title, targetType, members, items, scenarios, channel, req.session?.user_id ?? null]
+        );
+        res.status(201).json(toCoachingRow({ ...rows[0], assigned_by_name: req.session?.display_name || null }));
+    } catch (error) {
+        console.error('POST /api/coaching error:', error);
+        res.status(500).json({ message: 'Failed to create coaching.' });
+    }
+});
+
+app.delete('/api/coaching/:id', requireAdmin, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id)) {
+            res.status(400).json({ message: 'invalid id' });
+            return;
+        }
+        const orgId = resolveActiveOrgId(req);
+        const params = [id];
+        let scope = '';
+        if (orgId != null) {
+            params.push(orgId);
+            scope = ` AND org_id = $${params.length}`;
+        }
+        const { rowCount } = await pool.query(
+            `DELETE FROM public.coaching_assignments WHERE id = $1${scope}`,
+            params
+        );
+        res.json({ ok: true, deleted: rowCount });
+    } catch (error) {
+        console.error('DELETE /api/coaching error:', error);
+        res.status(500).json({ message: 'Failed to delete coaching.' });
+    }
+});
+
+app.get('/api/coaching/mine', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        if (uid == null) {
+            res.json([]);
+            return;
+        }
+        const { rows } = await pool.query(
+            `SELECT g.*, au.display_name AS assigned_by_name
+               FROM public.coaching_assignments g
+               LEFT JOIN public.admin_users au ON au.user_id = g.assigned_by_user_id
+              WHERE $1 = ANY(g.members)
+              ORDER BY g.created_at DESC`,
+            [uid]
+        );
+        res.json(rows.map(toCoachingRow));
+    } catch (error) {
+        console.error('GET /api/coaching/mine error:', error);
+        res.status(500).json({ message: 'Failed to load my coaching.' });
+    }
+});
+
+const NOTIF_WINDOW_DAYS = 30;
+
+function toNotificationRow(r) {
+    return {
+        id: Number(r.id),
+        type: r.type,
+        title: r.title,
+        body: r.body ?? null,
+        resource_type: r.resource_type ?? null,
+        resource_id: r.resource_id ?? null,
+        actor_name: r.actor_name ?? null,
+        read: r.read_at != null,
+        created_at: r.created_at,
+    };
+}
+
+app.get('/api/notifications', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        if (uid == null) { res.json([]); return; }
+        const scope = String(req.query.scope || 'all');
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+        const params = [uid, `${NOTIF_WINDOW_DAYS} days`];
+        let where = `recipient_user_id = $1 AND created_at >= now() - $2::interval`;
+        if (scope === 'current') where += ` AND read_at IS NULL`;
+        params.push(limit);
+        const { rows } = await pool.query(
+            `SELECT * FROM public.notifications WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length}`,
+            params
+        );
+        res.json(rows.map(toNotificationRow));
+    } catch (error) {
+        console.error('GET /api/notifications error:', error);
+        res.status(500).json({ message: 'Failed to load notifications.' });
+    }
+});
+
+app.get('/api/notifications/unread-count', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        if (uid == null) { res.json({ count: 0 }); return; }
+        const { rows } = await pool.query(
+            `SELECT COUNT(*)::int AS count FROM public.notifications WHERE recipient_user_id = $1 AND read_at IS NULL`,
+            [uid]
+        );
+        res.json({ count: rows[0]?.count ?? 0 });
+    } catch (error) {
+        console.error('GET /api/notifications/unread-count error:', error);
+        res.status(500).json({ count: 0 });
+    }
+});
+
+app.post('/api/notifications/read', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
+        await pool.query(
+            `UPDATE public.notifications SET read_at = now() WHERE recipient_user_id = $1 AND read_at IS NULL`,
+            [uid]
+        );
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('POST /api/notifications/read error:', error);
+        res.status(500).json({ message: 'failed' });
+    }
+});
+
+app.post('/api/notifications/:id/read', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        const id = Number(req.params.id);
+        if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
+        if (!Number.isFinite(id)) { res.status(400).json({ message: 'invalid id' }); return; }
+        await pool.query(
+            `UPDATE public.notifications SET read_at = COALESCE(read_at, now()) WHERE id = $1 AND recipient_user_id = $2`,
+            [id, uid]
+        );
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('POST /api/notifications/:id/read error:', error);
+        res.status(500).json({ message: 'failed' });
+    }
+});
+
+app.delete('/api/notifications/:id', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        const id = Number(req.params.id);
+        if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
+        if (!Number.isFinite(id)) { res.status(400).json({ message: 'invalid id' }); return; }
+        const { rowCount } = await pool.query(
+            `DELETE FROM public.notifications WHERE id = $1 AND recipient_user_id = $2`,
+            [id, uid]
+        );
+        res.json({ ok: true, deleted: rowCount });
+    } catch (error) {
+        console.error('DELETE /api/notifications/:id error:', error);
+        res.status(500).json({ message: 'failed' });
+    }
+});
+
+app.delete('/api/notifications', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
+        const { rowCount } = await pool.query(
+            `DELETE FROM public.notifications WHERE recipient_user_id = $1`,
+            [uid]
+        );
+        res.json({ ok: true, deleted: rowCount });
+    } catch (error) {
+        console.error('DELETE /api/notifications error:', error);
+        res.status(500).json({ message: 'failed' });
+    }
+});
+
+app.get('/api/me/ta-metrics', async (req, res) => {
+    if (!req.session?.user_id) {
+        res.status(401).json({ message: 'unauthenticated' });
+        return;
+    }
+    if (!taEnabled()) {
+        res.json({ enabled: false, total: 0, negative_count: 0, negative_rate: null, banned_count: 0, banned_rate: null,
+                   recovery_denom: 0, recovery_count: 0, recovery_rate: null });
+        return;
+    }
+    try {
+        const me = req.session.user_id;
+        const { rows: grp } = await pool.query(
+            `SELECT proj_cd, array_agg("UID") AS uids
+               FROM qa_calls
+              WHERE agent_user_id = $1 AND "UID" IS NOT NULL AND proj_cd IS NOT NULL
+              GROUP BY proj_cd`,
+            [me]
+        );
+        let total = 0, negative = 0, banned = 0;
+        for (const g of grp) {
+            const m = await fetchTaMetricsByUids(g.proj_cd, g.uids || []);
+            total += m.total; negative += m.negative; banned += m.banned;
+
+            const segRows = await fetchSegmentSentimentsByUids(g.proj_cd, g.uids || []);
+            for (const sr of segRows) {
+                const sents = sr.sentiments || [];
+                const segCount = sents.length;
+                const negCount = sents.filter((s) => s === '부정').length;
+                const firstNeg = sents.findIndex((s) => s === '부정');
+                const finalS = segCount ? sents[segCount - 1] : null;
+                const hadNeg = negCount > 0;
+                const recovered = hadNeg && (finalS === '긍정' || finalS === '중립');
+                await pool.query(
+                    `INSERT INTO public.qa_call_recovery
+                        (proj_cd, uid, agent_user_id, segment_count, neg_seg_count, first_neg_idx,
+                         final_sentiment, had_negative, recovered, analyzed_at)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
+                     ON CONFLICT (proj_cd, uid) DO UPDATE SET
+                        agent_user_id = EXCLUDED.agent_user_id,
+                        segment_count = EXCLUDED.segment_count,
+                        neg_seg_count = EXCLUDED.neg_seg_count,
+                        first_neg_idx = EXCLUDED.first_neg_idx,
+                        final_sentiment = EXCLUDED.final_sentiment,
+                        had_negative = EXCLUDED.had_negative,
+                        recovered = EXCLUDED.recovered,
+                        analyzed_at = now()`,
+                    [g.proj_cd, sr.uid, me, segCount, negCount, firstNeg >= 0 ? firstNeg + 1 : null, finalS, hadNeg, recovered]
+                );
+            }
+        }
+        const { rows: rec } = await pool.query(
+            `SELECT count(*) FILTER (WHERE had_negative)::int AS denom,
+                    count(*) FILTER (WHERE recovered)::int    AS recovered
+               FROM public.qa_call_recovery WHERE agent_user_id = $1`,
+            [me]
+        );
+        const rDenom = rec[0]?.denom || 0;
+        const rRec = rec[0]?.recovered || 0;
+
+        const pct = (n) => (total > 0 ? Math.round((n / total) * 1000) / 10 : null);
+        res.json({
+            enabled: true,
+            total,
+            negative_count: negative,
+            negative_rate: pct(negative),
+            banned_count: banned,
+            banned_rate: pct(banned),
+            recovery_denom: rDenom,
+            recovery_count: rRec,
+            recovery_rate: rDenom > 0 ? Math.round((rRec / rDenom) * 1000) / 10 : null,
+        });
+    } catch (e) {
+        console.error('GET /api/me/ta-metrics error:', e?.message || e);
+        res.status(502).json({ enabled: true, error: 'TA 지표 조회 실패' });
+    }
+});
 
 bootstrap()
     .then(() => {

@@ -5,8 +5,13 @@
 -- seed-if-empty.sh 가 매 기동마다 idempotent 재적용.
 -- ============================================================
 
-ALTER TABLE public.admin_users
-    ADD COLUMN IF NOT EXISTS profile_image_path text;
-
-ALTER TABLE public.admin_users
-    ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
+-- 29/30 이후 admin_users 는 VIEW → 테이블일 때만(최초 init) 실행.
+DO $$
+BEGIN
+    IF (SELECT relkind FROM pg_class WHERE oid = to_regclass('public.admin_users')) = 'r' THEN
+        ALTER TABLE public.admin_users
+            ADD COLUMN IF NOT EXISTS profile_image_path text;
+        ALTER TABLE public.admin_users
+            ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
+    END IF;
+END $$;
