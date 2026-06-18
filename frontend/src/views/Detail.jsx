@@ -30,15 +30,15 @@ import {
 } from '../utils/rubricScore';
 import { ArrowLeft, MessageSquare, ListCheck, BarChart3, X, Star } from 'lucide-react';
 
-/** 검수상태 '완료' 배지 호버 툴팁 — 검수자/완료일시(없으면 그 사실) 노출. 평가리스트와 동일 규칙. */
+/** 검수상태 배지 호버 툴팁 — 검토요청·최종승인일 때 검수자/검토(승인)일시 노출. 평가리스트와 동일 규칙. */
 function reviewTooltip(call, status) {
-    if (status !== REVIEW_STATUS.COMPLETED) return undefined;
+    if (status !== REVIEW_STATUS.REVIEW_DONE && status !== REVIEW_STATUS.APPROVED) return undefined;
     const who = call?.reviewed_by ? String(call.reviewed_by).trim() : '';
     const when = call?.reviewed_at ? formatDateTime(call.reviewed_at) : '';
     const parts = [];
     if (who) parts.push(`검수자: ${who}`);
-    if (when) parts.push(`완료: ${when}`);
-    if (!parts.length) return '검수자·완료일시 기록 없음 (자동 완료)';
+    if (when) parts.push(`${status === REVIEW_STATUS.APPROVED ? '승인' : '검토'}: ${when}`);
+    if (!parts.length) return '검수자·검토일시 기록 없음';
     return parts.join('\n');
 }
 

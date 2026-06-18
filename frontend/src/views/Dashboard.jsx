@@ -22,16 +22,16 @@ import ReviewStatusBadge, {
 
 const RUBRIC_TOTAL_MAX = 100;
 
-/** 검수상태 배지 호버 툴팁 — '완료'로 표시될 때 검수자/완료일시 노출.
- *  자동 승격(체크리스트 100%·수기보정) 행은 검수자/일시 기록이 없으므로 그 사실을 명시. */
+/** 검수상태 배지 호버 툴팁 — 검토요청·최종승인일 때 검수자/검토(승인)일시 노출. */
 function reviewTooltip(row) {
-    if (deriveReviewStatus(row) !== REVIEW_STATUS.COMPLETED) return undefined;
+    const st = deriveReviewStatus(row);
+    if (st !== REVIEW_STATUS.REVIEW_DONE && st !== REVIEW_STATUS.APPROVED) return undefined;
     const who = row?.reviewed_by ? String(row.reviewed_by).trim() : '';
     const when = row?.reviewed_at ? formatDateTime(row.reviewed_at) : '';
     const parts = [];
     if (who) parts.push(`검수자: ${who}`);
-    if (when) parts.push(`완료: ${when}`);
-    if (!parts.length) return '검수자·완료일시 기록 없음 (자동 완료)';
+    if (when) parts.push(`${st === REVIEW_STATUS.APPROVED ? '승인' : '검토'}: ${when}`);
+    if (!parts.length) return '검수자·검토일시 기록 없음';
     return parts.join('\n');
 }
 
@@ -378,7 +378,8 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                             <option value="">전체</option>
                             <option value={REVIEW_STATUS.PENDING}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.PENDING]}</option>
                             <option value={REVIEW_STATUS.IN_REVIEW}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.IN_REVIEW]}</option>
-                            <option value={REVIEW_STATUS.COMPLETED}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.COMPLETED]}</option>
+                            <option value={REVIEW_STATUS.REVIEW_DONE}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.REVIEW_DONE]}</option>
+                            <option value={REVIEW_STATUS.APPROVED}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.APPROVED]}</option>
                         </select>
                     </div>
                     <div className="space-y-1.5">

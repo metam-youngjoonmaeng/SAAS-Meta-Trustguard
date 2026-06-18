@@ -1,5 +1,6 @@
 import React from 'react';
 import { Clock3, ShieldCheck, Shield, Headset } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
 // 원본: 01-AI-Tutor-dev/frontend/components/nav.tsx
 // 사이즈/위치 동일: h-60px, 좌측 패딩 22px, 로고 h-22px, 워드마크 fontFamily=Moneygraphy Rounded, fontSize 14.5
@@ -54,6 +55,7 @@ const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user }
                 <div className="app-nav-body">
                     {/* 탭 영역 — 미정의 (원본 동일 구조 유지, 추후 NavLink 추가 위치) */}
                     <div className="app-nav-right">
+                        {user && <NotificationBell />}
                         {user && (
                             <button
                                 type="button"

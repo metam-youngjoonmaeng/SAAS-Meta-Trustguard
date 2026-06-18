@@ -3,14 +3,22 @@
 import React, { useState, useEffect } from 'react';
 import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod } from './ui';
 import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, COACHING_HISTORY, scenById, catMeta } from './mockData';
-import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, fetchCoachingHistory } from '../../services/api';
+import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, fetchCoachingHistory, updateReviewStatus } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
 
 // /api/calls(실데이터) 한 행 → 평가목록 행 모양으로 변환.
 //   평가 ID 개념이 없으므로 상담번호(UID)를 사용. 채널은 io_divi(I/O) → inbound/outbound.
 //   코칭/항목별 점수·요약은 백엔드 미존재 → 비움(이번 범위는 목록만).
 const AV_POOL = ['av-1', 'av-2', 'av-3', 'av-4', 'av-5', 'av-6'];
-const REVIEW_TO_STATUS = { completed: 'completed', in_review: 'reviewed', pending: 'pending' };
+// 검수 4단계(pending/in_review/review_done/approved) → 평가목록 UI 상태(pending/reviewed/completed).
+//   approved(최종승인)만 '완료'. review_done(검토요청)·in_review(검수중)은 '검수중'으로 묶음. 레거시 completed→완료.
+const REVIEW_TO_STATUS = {
+    pending: 'pending',
+    in_review: 'reviewed',
+    review_done: 'reviewed',
+    approved: 'completed',
+    completed: 'completed',
+};
 function hashAv(key) {
     const s = String(key || '');
     let h = 0;
@@ -39,7 +47,7 @@ function adaptCall(c) {
         reviewer: null,
         summary: '',
         selfReview: null,
-        approved: c.review_status === 'completed',
+        approved: c.review_status === 'approved' || c.review_status === 'completed',
     };
 }
 
@@ -939,18 +947,48 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         next.has(id) ? next.delete(id) : next.add(id);
         setSelected(next);
     };
-    const approve = (id) =>
+    // 최종승인 — 백엔드(review_status='approved')에 영구 반영. 낙관적 갱신 후 실패 시 롤백.
+    //   서버는 승인 시 상담사 점수 대비 수정분 diff 를 계산해 해당 상담사에게 알림을 보낸다.
+    const approve = async (id) => {
+        setApprovedIds((s) => new Set(s).add(id));
+        try {
+            await updateReviewStatus(id, 'approved');
+            setResults((list) => (list || []).map((r) => (r.id === id ? { ...r, approved: true, status: 'completed' } : r)));
+        } catch (e) {
+            setApprovedIds((s) => {
+                const n = new Set(s);
+                n.delete(id);
+                return n;
+            });
+            alert(e?.message || '승인에 실패했습니다.');
+        }
+    };
+    const approveSelected = async () => {
+        const ids = [...selected];
+        if (!ids.length) return;
         setApprovedIds((s) => {
             const n = new Set(s);
-            n.add(id);
+            ids.forEach((id) => n.add(id));
             return n;
         });
-    const approveSelected = () =>
-        setApprovedIds((s) => {
-            const n = new Set(s);
-            selected.forEach((id) => n.add(id));
-            return n;
-        });
+        const failed = [];
+        for (const id of ids) {
+            try {
+                await updateReviewStatus(id, 'approved');
+            } catch {
+                failed.push(id);
+            }
+        }
+        setResults((list) => (list || []).map((r) => (ids.includes(r.id) && !failed.includes(r.id) ? { ...r, approved: true, status: 'completed' } : r)));
+        if (failed.length) {
+            setApprovedIds((s) => {
+                const n = new Set(s);
+                failed.forEach((id) => n.delete(id));
+                return n;
+            });
+            alert(`${failed.length}건 승인에 실패했습니다.`);
+        }
+    };
     const toggleAll = () => {
         if (selected.size === filtered.length) setSelected(new Set());
         else setSelected(new Set(filtered.map((r) => r.id)));
