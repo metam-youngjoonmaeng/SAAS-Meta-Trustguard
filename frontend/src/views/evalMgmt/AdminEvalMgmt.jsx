@@ -953,7 +953,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         setApprovedIds((s) => new Set(s).add(id));
         try {
             await updateReviewStatus(id, 'approved');
-            setResults((list) => (list || []).map((r) => (r.id === id ? { ...r, approved: true, status: 'completed' } : r)));
+            // 승인 표시는 approvedIds(로컬 state)로 즉시 반영됨. results는 부모 소유라 여기선 건드리지 않음.
         } catch (e) {
             setApprovedIds((s) => {
                 const n = new Set(s);
@@ -979,7 +979,6 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                 failed.push(id);
             }
         }
-        setResults((list) => (list || []).map((r) => (ids.includes(r.id) && !failed.includes(r.id) ? { ...r, approved: true, status: 'completed' } : r)));
         if (failed.length) {
             setApprovedIds((s) => {
                 const n = new Set(s);
