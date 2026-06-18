@@ -3580,7 +3580,14 @@ app.get('/api/coaching/mine', async (req, res) => {
               ORDER BY g.created_at DESC`,
             [uid]
         );
-        res.json(rows.map(toCoachingRow));
+        // 카드 진행률/완료(취소선)용 — 본인이 그 채널로 배정 이후 완료한 시나리오 코드(튜터 02 연동, 미연동/실패 시 빈 배열).
+        const loginId = req.session?.login_id || null;
+        const out = await Promise.all(rows.map(async (row) => {
+            const base = toCoachingRow(row);
+            const comp = await fetchTutorCompletion(loginId, base.scenarios, base.channel, base.assignedAtIso);
+            return { ...base, completed: comp?.completed || [], done: comp?.done ?? 0, total: comp?.total ?? base.scenarios.length };
+        }));
+        res.json(out);
     } catch (error) {
         console.error('GET /api/coaching/mine error:', error);
         res.status(500).json({ message: 'Failed to load my coaching.' });

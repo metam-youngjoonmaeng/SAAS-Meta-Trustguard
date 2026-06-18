@@ -4,7 +4,7 @@
 //         감정·대화 품질(/api/me/ta-metrics): 부정발화·금칙어=03 tb_ta_rslt, 회복률=05 qa_call_recovery. (미연동 시 mock 폴백)
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon, Gauge, Spark, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod } from './ui';
-import { scoreClass, LEARNING_HISTORY } from './mockData';
+import { scoreClass, LEARNING_HISTORY, TUTOR_SCENARIOS } from './mockData';
 import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, QA_ACTOR_STORAGE_KEY } from '../../services/api';
 import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
 
@@ -477,9 +477,15 @@ export default function CounselorResults() {
                                 const high = g.priority === 'high';
                                 const accent = high ? 'var(--primary)' : '#c67d12';
                                 const soft = high ? 'var(--primary-soft)' : '#fdf2e3';
-                                const inProgress = g.status === '진행 중';
-                                const tutorLabel = g.tutor || ((g.scenarios && g.scenarios.length) ? `시나리오 ${g.scenarios.length}개 연결` : '연결 시나리오 없음');
                                 const isChat = g.channel === 'chat';
+                                // 내 완료 시나리오 — 백엔드(/api/coaching/mine)가 튜터(02) 완료조회로 채워준 코드 배열.
+                                const myDone = Array.isArray(g.completed) ? g.completed : [];
+                                const scenarios = Array.isArray(g.scenarios) ? g.scenarios : [];
+                                const totalScen = scenarios.length;
+                                const doneCount = scenarios.filter((c) => myDone.includes(c)).length;
+                                const allDone = totalScen > 0 && doneCount === totalScen;
+                                const started = doneCount > 0;
+                                const pct = totalScen ? Math.round((doneCount / totalScen) * 100) : 0;
                                 const tutorLink = buildTutorLink(g);
                                 const startLearning = () => {
                                     if (!tutorLink) {
@@ -497,19 +503,36 @@ export default function CounselorResults() {
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
                                                     <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ink-900)' }}>{g.title}</span>
-                                                    <span className="pill" style={{ background: soft, color: accent, fontSize: 10, fontWeight: 700 }}>
-                                                        <Icon name="inbox" size={9} />{g.status || '배정됨'}
+                                                    <span className="pill" style={{ background: allDone ? '#e8f6ed' : started ? soft : 'var(--muted)', color: allDone ? '#2f9759' : started ? accent : 'var(--ink-500)', fontSize: 10, fontWeight: 700 }}>
+                                                        <Icon name={allDone ? 'check-circle' : started ? 'loader' : 'inbox'} size={9} />{allDone ? '완료' : started ? '진행 중' : '시작 전'}
+                                                    </span>
+                                                    <span className="pill" style={{ background: isChat ? '#eef6ee' : 'var(--primary-soft)', color: isChat ? '#3a7a3a' : 'var(--primary)', fontSize: 10, fontWeight: 700 }}>
+                                                        <Icon name={isChat ? 'message-square' : 'phone'} size={9} />{isChat ? '채팅' : '전화'}
                                                     </span>
                                                 </div>
                                                 <div className="muted-text" style={{ fontSize: 11.5 }}>
                                                     <Icon name="user" size={10} style={{ verticalAlign: '-1px', marginRight: 3 }} />
-                                                    {g.assignedBy || '관리자'} 배정{g.assignedAt ? ` · ${g.assignedAt}` : ''}
+                                                    {g.assignedBy || '관리자'} 코치 배정{g.assignedAt ? ` · ${g.assignedAt}` : ''}
                                                 </div>
                                             </div>
                                         </div>
 
+                                        {/* 학습 진행률 */}
+                                        <div style={{ marginBottom: 14 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                                <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-500)' }}>학습 진행률</span>
+                                                <span style={{ fontSize: 11.5, fontWeight: 700, color: allDone ? '#2f9759' : accent }}>
+                                                    <span className="mono">{doneCount}</span>
+                                                    <span className="muted-text" style={{ fontWeight: 600 }}> / {totalScen} 완료</span>
+                                                </span>
+                                            </div>
+                                            <div className="mini-bar">
+                                                <div style={{ width: `${pct}%`, background: allDone ? '#2f9759' : accent }}></div>
+                                            </div>
+                                        </div>
+
                                         {Array.isArray(g.items) && g.items.length > 0 && (
-                                            <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+                                            <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
                                                 {g.items.map((it, i) => (
                                                     <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
                                                         <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${accent}`, color: accent, display: 'grid', placeItems: 'center', flexShrink: 0, marginTop: 1 }}>
@@ -521,13 +544,33 @@ export default function CounselorResults() {
                                             </div>
                                         )}
 
+                                        {/* Tutor 시나리오 — 완료는 체크 + 취소선 칩 */}
+                                        {totalScen > 0 && (
+                                            <div style={{ marginBottom: 14 }}>
+                                                <div className="eyebrow" style={{ fontSize: 10, marginBottom: 7, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                                                    <Icon name="sparkles" size={10} />Tutor 시나리오
+                                                </div>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                                    {scenarios.map((code) => {
+                                                        const s = TUTOR_SCENARIOS.find((x) => x.code === code) || { code, title: code, faq: null };
+                                                        const done = myDone.includes(code);
+                                                        return (
+                                                            <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 9999, background: done ? '#f1f8f4' : 'var(--background-soft)', border: `1px solid ${done ? '#cfe9d9' : 'var(--border)'}` }}>
+                                                                {done ? <Icon name="check-circle" size={11} style={{ color: '#2f9759' }} /> : <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: accent }}>{s.code}</span>}
+                                                                <span style={{ fontSize: 11.5, fontWeight: 600, color: done ? 'var(--ink-400)' : 'var(--ink-900)', textDecoration: done ? 'line-through' : 'none' }}>{s.title}</span>
+                                                                {s.faq != null && <span className="muted-text" style={{ fontSize: 10 }}>FAQ {s.faq}</span>}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+
                                         <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-                                            <span className="pill" style={{ background: isChat ? '#eef6ee' : 'var(--primary-soft)', color: isChat ? '#3a7a3a' : 'var(--primary)', fontSize: 10.5, fontWeight: 700, flexShrink: 0 }}>
-                                                <Icon name={isChat ? 'message-square' : 'phone'} size={10} />{isChat ? '채팅 학습' : '전화 학습'}
-                                            </span>
-                                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{tutorLabel}</span>
-                                            <button className="btn-mini primary" style={{ marginLeft: 'auto', flexShrink: 0 }} onClick={startLearning}>
-                                                <Icon name="play" size={11} />{inProgress ? '이어서 학습' : '학습 시작'}
+                                            <Icon name="graduation-cap" size={13} style={{ color: allDone ? '#2f9759' : accent }} />
+                                            <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{allDone ? '모든 시나리오 완료' : `남은 시나리오 ${totalScen - doneCount}개`}</span>
+                                            <button className="btn-mini primary" style={{ marginLeft: 'auto', flexShrink: 0, background: allDone ? '#2f9759' : undefined, borderColor: allDone ? '#2f9759' : undefined }} onClick={startLearning}>
+                                                <Icon name={allDone ? 'rotate-ccw' : 'play'} size={11} />{allDone ? '복습하기' : started ? '이어서 학습' : '학습 시작'}
                                             </button>
                                         </div>
                                     </div>
