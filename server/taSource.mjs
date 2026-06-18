@@ -1,0 +1,104 @@
+/**
+ * 03-Meta_Summary(TA, TextAnalytics) 결과 DB — 읽기 전용.
+ *
+ * 05(QA)의 상담사 '내 평가결과'에 03의 TA 지표(부정발화·금칙어)를 붙이기 위한 소스.
+ * 조인 키 = (proj_cd, uid). 05 qa_calls.UID ↔ 03 tb_ta_rslt.uid 가 동일 ICS 콜 녹취키로 일치.
+ * (05 가 콜→상담사 귀속을 이미 알고 있으므로, 본인 콜 uid 목록으로 03 지표를 끌어와 집계한다.)
+ *
+ * 지표 정의(03 코드와 동일, 상담=호출 단위):
+ *   - 부정발화: sentiment_cls = '부정' 인 콜 수
+ *   - 금칙어  : banned_hits(JSON) 길이 > 0 인 콜 수 (상담사 발화 기준)
+ *   - 회복률  : 03 에선 상담유형 재인입률(개인 지표 아님) → 여기서 다루지 않음(프론트 mock 유지).
+ *
+ * env-gated: TA_DB_URL(또는 TA_DB_HOST) 미설정 시 taEnabled()=false → 호출부가 폴백.
+ * ICS/IPCC 소스와 동일하게 앱 본체와 독립된 작은 읽기 전용 풀.
+ */
+
+import pg from 'pg';
+import { logger } from './logger.mjs';
+
+function env(key, def = '') {
+    return String(process.env[key] ?? def).trim();
+}
+
+/** TA 결과 DB 접속정보가 채워져야 활성. 미설정 시 전체 no-op. */
+export function taEnabled() {
+    return Boolean(env('TA_DB_URL') || env('TA_DB_HOST'));
+}
+
+let _pool = null;
+
+/** TA 결과 DB(Postgres) 읽기 전용 풀(lazy). 미설정 시 호출부는 taEnabled() 로 가드. */
+function getPool() {
+    if (!taEnabled()) throw new Error('TA DB 연결정보 미설정 (TA_DB_URL 또는 TA_DB_* 환경변수)');
+    if (_pool === null) {
+        const url = env('TA_DB_URL');
+        _pool = url
+            ? new pg.Pool({ connectionString: url, max: 4, connectionTimeoutMillis: 5000, statement_timeout: 10000 })
+            : new pg.Pool({
+                  host: env('TA_DB_HOST'),
+                  port: Number(env('TA_DB_PORT', '5432')) || 5432,
+                  database: env('TA_DB_NAME', 'TA_dev'),
+                  user: env('TA_DB_USER'),
+                  password: process.env.TA_DB_PW ?? process.env.TA_DB_PASSWORD ?? '',
+                  max: 4,
+                  connectionTimeoutMillis: 5000,
+                  statement_timeout: 10000,
+              });
+        const where = url ? '(TA_DB_URL)' : `${env('TA_DB_USER')}@${env('TA_DB_HOST')}:${env('TA_DB_PORT', '5432')}/${env('TA_DB_NAME', 'TA_dev')}`;
+        logger.info(`[ta-source] TA 결과 DB 읽기풀 생성 — ${where}`);
+    }
+    return _pool;
+}
+
+/**
+ * (proj_cd, uids[]) → TA 지표 집계. tb_ta_rslt(realtime) 기준, 콜(=행) 단위.
+ * 반환: { total, negative, banned }  (모두 정수, 03 에 매칭된 콜만 분모)
+ * uids 가 비면 0 집계. 미설정/오류 시 throw(호출부에서 가드/캐치).
+ */
+export async function fetchTaMetricsByUids(projCd, uids) {
+    if (!Array.isArray(uids) || uids.length === 0) {
+        return { total: 0, negative: 0, banned: 0 };
+    }
+    const { rows } = await getPool().query(
+        `SELECT
+            count(*)::int AS total,
+            count(*) FILTER (WHERE sentiment_cls = '부정')::int AS negative,
+            count(*) FILTER (
+                WHERE banned_hits IS NOT NULL
+                  AND jsonb_array_length(to_jsonb(banned_hits)) > 0
+            )::int AS banned
+         FROM public.tb_ta_rslt
+         WHERE proj_cd = $1 AND uid = ANY($2::text[])`,
+        [projCd, uids]
+    );
+    const r = rows[0] || {};
+    return { total: r.total || 0, negative: r.negative || 0, banned: r.banned || 0 };
+}
+
+/**
+ * (proj_cd, uids[]) → 콜별 구간 감정열. 회복률(부정→긍정) 분석 입력.
+ * 03 tb_ta_rslt.segments(JSON).segments[] 의 구간별 sentiment 를 idx 순으로 추출.
+ * 반환: [{ uid, sentiments: ['중립','부정',...] }]  (segments 없는 콜은 제외)
+ */
+export async function fetchSegmentSentimentsByUids(projCd, uids) {
+    if (!Array.isArray(uids) || uids.length === 0) return [];
+    const { rows } = await getPool().query(
+        `SELECT uid, segments FROM public.tb_ta_rslt
+          WHERE proj_cd = $1 AND uid = ANY($2::text[]) AND segments IS NOT NULL`,
+        [projCd, uids]
+    );
+    const out = [];
+    for (const r of rows) {
+        let seg = r.segments;
+        if (typeof seg === 'string') {
+            try { seg = JSON.parse(seg); } catch { seg = null; }
+        }
+        const arr = seg && Array.isArray(seg.segments) ? seg.segments : [];
+        const ordered = arr
+            .filter((s) => s && s.sentiment)
+            .sort((a, b) => (Number(a.idx) || 0) - (Number(b.idx) || 0));
+        out.push({ uid: r.uid, sentiments: ordered.map((s) => String(s.sentiment)) });
+    }
+    return out;
+}

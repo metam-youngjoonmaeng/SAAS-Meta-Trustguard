@@ -1,192 +1,159 @@
 -- ============================================================
--- 16_kolon_eval_item_defs_content.sql — 코오롱 평가항목 실물 콘텐츠 채움
+-- 16_kolon_eval_item_defs_content.sql — 코오롱 평가항목 콘텐츠(최신 프롬프트) 시드
 -- ------------------------------------------------------------
--- 목적: 평가항목 관리 화면(eval_item_defs.criterion / prompt_template)을
---       qa-pipeline 백엔드 실물(감점 기준 + 운영 프롬프트)과 연동.
---       15_kolon_brand_seed.sql 이 만든 코오롱 18항목(criterion/prompt_template=NULL)에
---       사람이 읽는 감점표(criterion)와 운영 프롬프트 원문(prompt_template)을 채운다.
---
--- 소스(READ-ONLY):
---   - 감점 기준: qa-pipeline/nodes/qa_rules.py 의 QA_RULES (item_number 별 max_score / deduction_rules)
---   - 운영 프롬프트:
---       · #1,#2          ← qa-pipeline/v2/prompts/group_a/greeting.md       (그룹 공유 — #1·#2 공통)
---       · #4,#5          ← qa-pipeline/v2/prompts/group_a/listening_comm.md (그룹 공유 — #4·#5 공통)
---       · #6,#7          ← qa-pipeline/v2/prompts/group_a/language.md       (그룹 공유 — #6·#7 공통)
---       · #8,#9          ← qa-pipeline/v2/prompts/group_a/needs.md          (그룹 공유 — #8·#9 공통)
---       · #10            ← qa-pipeline/v2/prompts/group_b/item_10_clarity.sonnet.md
---       · #11            ← qa-pipeline/v2/prompts/group_b/item_11_conclusion_first.sonnet.md
---       · #12            ← qa-pipeline/v2/prompts/group_b/item_12_problem_solving.sonnet.md
---       · #13            ← qa-pipeline/v2/prompts/group_b/item_13_supplementary.sonnet.md
---       · #14            ← qa-pipeline/v2/prompts/group_b/item_14_followup.sonnet.md
---       · #15            ← qa-pipeline/v2/prompts/group_b/item_15_accuracy.sonnet.md
---       · #16            ← qa-pipeline/v2/prompts/group_b/item_16_mandatory_script.sonnet.md
---       · #17            ← qa-pipeline/v2/prompts/group_b/item_17_iv_procedure.sonnet.md
---       · #18            ← qa-pipeline/v2/prompts/group_b/item_18_privacy_protection.sonnet.md
---       · #3             ← 파이프라인 영구 미산출. prompt_template 미채움, criterion 에 사유만 명시.
---   그룹 프롬프트(group_a)는 한 md 가 두 항목을 함께 평가하므로 두 항목의 prompt_template 에 동일 md 전문을 적재.
---
--- 멱등/non-clobbering:
---   - 대상: org_id=(코오롱), department='기본', version=1, order_no=N.
---   - seed-if-empty.sh 가 매 기동 재적용 → UPDATE 는 해당 컬럼이 비었을 때(NULL/'')만 채움.
---     criterion 과 prompt_template 를 분리 UPDATE 하여 운영자가 UI 에서 편집한 값을 절대 덮어쓰지 않는다.
---   - 코오롱 org 부재 시 전체 skip (DO 블록 + RAISE NOTICE) — 15_kolon_brand_seed.sql 패턴.
---   - 프롬프트 md 본문은 dollar-quoting($prompt$ ... $prompt$) 으로 무수정 원문 적재(트리밍만).
+-- 자동 생성: 로컬 MTG DB(org 코오롱) 의 최신 criterion/prompt_template 스냅샷.
+-- 비-clobbering: prompt_template 가 NULL/빈 값일 때만 채움 (운영자 UI 편집값 보존).
+-- org 는 name='코오롱' 으로 resolve — org_id 하드코딩 안 함. org 부재 시 매칭 0건 = no-op.
+-- 15_kolon_brand_seed.sql 이 만든 18항목(prompt_template=NULL)을 채운다.
+-- seed-if-empty.sh 가 매 기동 idempotent 재적용 — 채워진 값은 가드로 건너뜀.
 -- ============================================================
-
 BEGIN;
+UPDATE public.eval_item_defs d SET criterion='배점 10점 / eval_method=rule / 만점(10): 첫인사·소속·이름·용무문의 4요소 전부 포함 / 0점: 하나라도 누락(defect). 부분점수 없음. 도입부 첫 5 상담사 턴 대상 키워드·정규식 매칭.', prompt_template=NULL, updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='KSQI' AND d.order_no=1 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='배점 5점 / eval_method=rule / 0점(defect): 중간부(앞2·뒤2턴 제외) 상담사 발화 중 단답형(네/네네/예/맞아요/맞습니다/아니요/그렇죠) 비율 30% 이상 또는 연속 3턴 이상 / 만점(5): 그 외. 상담사 발화 없으면 보류(defect 아님).', prompt_template=NULL, updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='KSQI' AND d.order_no=2 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='배점 5점 / eval_method=llm / 0점(defect): 업셀링·크로스셀링 거절 의사 표현 후 동일·유사 안내 반복 / 만점(5): 정상 또는 제안 자체 없음(해당없음). 전사 부재·LLM 실패 시 defect=false 인프라 폴백.', prompt_template='당신은 콜센터 상담 품질 평가관이다. 평가 항목 "#3 거부 후 재안내" (배점 5점) 를 판정한다.
 
-DO $migrate$
-DECLARE
-    target_org_id integer;
-BEGIN
-    SELECT id INTO target_org_id
-      FROM public.organizations
-     WHERE name = '코오롱'
-     LIMIT 1;
+[판정 기준]
+- 상담사가 업셀링/크로스셀링(부가서비스·요금제 상향·추가 상품 등) 을 제안하고,
+  고객이 거절 의사("괜찮아요", "필요없어요", "안 할게요", "생각 없어요" 등) 를 표현했는데도
+  상담사가 동일하거나 유사한 안내를 계속 진행하면 결함(defect=true).
+- 업셀링/크로스셀링 제안 자체가 대화에 전혀 없으면 해당없음 → defect=false.
+- 제안은 있었으나 고객이 거절하지 않았거나, 거절 후 상담사가 수용하고 더 권유하지 않으면 정상.
 
-    IF target_org_id IS NULL THEN
-        RAISE NOTICE '코오롱 org 미존재 — 16 콘텐츠 시드 전체 건너뜀.';
-        RETURN;
-    END IF;
+[판정 예시 — 정상(O) / 결함(X)] (평가표 원문)
+< 정상 (O) >
+[상담사] 고객님, 이번에 프리미엄 요금제 안내드려도 괜찮을까요?
+[고객] 아니요, 괜찮습니다.
+[상담사] 네 알겠습니다. 다른 문의사항 있으실까요?
 
-    -- ── criterion (사람이 읽는 감점표) — 비어있을 때만 채움 ──────────────────
-    -- 각 줄: 만점 / 단계별(점수: 사유) — qa_rules.py QA_RULES deduction_rules 기준.
+< 결함 (X) >
+[상담사] 고객님, 이번에 프리미엄 요금제 안내드려도 괜찮을까요?
+[고객] 아니요, 괜찮습니다.
+[상담사] 이번 달만 30% 할인이라 정말 혜택이 좋으신데요, 한번 들어보시면 생각이 달라지실 거예요.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 인사말·소속·상담사명 3요소 모두 포함 / 3점: 3요소 중 1가지 누락 / 0점: 2가지 이상 누락 또는 첫인사 미진행',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 1
-       AND (criterion IS NULL OR criterion = '');
+[공통 규약]
+- 대화에서 화자 마커 "상담사:" / "상담원:" 발화만 평가한다. "고객:" 발화는 맥락 파악용.
+- 결함 여부가 명확하지 않으면 보수적으로 defect=false 로 판정한다 (부당 감점 방지).
+- evidence 의 quote 는 판정 근거가 된 실제 발화를 원문 그대로(짧게) 인용한다.
+- 반드시 아래 JSON 객체 하나만 출력한다. 설명/코드블록/주석을 덧붙이지 않는다.
+  {"defect": true 또는 false, "rationale": "한국어 1~2문장 판정 사유", "evidence": [{"quote": "근거 발화"}]}', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='KSQI' AND d.order_no=3 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='배점 10점 / eval_method=llm / 0점(defect): 두서없음·중언부언·문장 중단·맥락 이탈 두드러짐 / 만점(10): 논리 전개·문장 완결성·맥락 일관성 명확. LLM 1회 호출, 실패·전사 부재 시 defect=false 폴백.', prompt_template='당신은 콜센터 상담 품질 평가관이다. 평가 항목 "#4 쉬운 설명" (배점 10점) 를 판정한다.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 추가문의 확인·인사말·상담사명 모두 진행 / 3점: 인사말·상담사명 중 1가지 누락 또는 추가문의 확인 누락 / 0점: 끝인사 미진행 또는 2가지 이상 누락',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 2
-       AND (criterion IS NULL OR criterion = '');
+[판정 기준]
+- 상담사 설명의 논리 전개 / 문장 완결성 / 맥락 일관성을 본다.
+- 두서없음, 중언부언(같은 말 반복), 문장 중단(말 끊김), 맥락 이탈이 두드러지면 결함(defect=true).
+- 설명이 명확하고 핵심이 정리되어 전달되면 정상(defect=false).
 
-    UPDATE public.eval_item_defs SET criterion =
-        '파이프라인 미산출 항목 — STT 말겹침 구간 미표기로 변별력 없음(레거시 보존). qa_rules.py QA_RULES 에서 제외(2026-05-13 정책). 평가/채점 없음.',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 3
-       AND (criterion IS NULL OR criterion = '');
+[판정 예시 — 정상(O) / 결함(X)] (평가표 원문)
+< 정상 (O) >
+[고객] 요금제 바꾸면 위약금이 있나요?
+[상담사] 네 고객님, 약정 기간이 6개월 남아 있어 해지 위약금이 발생합니다. 금액은 32,000원이며, 요금제 변경 시점에 다음 달 청구서에 반영됩니다.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 상황에 맞는 다양한 호응·공감 표현 1회 이상 / 3점: 단순 ''네'' 위주 호응만 사용 / 0점: 호응·공감 표현 없음 또는 부적절한 반응',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 4
-       AND (criterion IS NULL OR criterion = '');
+< 결함 (X) >
+[고객] 요금제 바꾸면 위약금이 있나요?
+[상담사] 아 그게 이제 바꾸면 뭐가 있냐면 아 위약금이 있긴 한데 그게 이제 약정이 있어서요 그래서 얼마가 나오냐면 한 번 계산을 아 3만 몇천원 정도 나오는데 정확하게는 아 청구서에...
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 대기 전 양해 멘트·대기 후 감사 멘트 모두 진행 / 3점: 대기 전·후 멘트 중 1가지 누락 / 0점: 양해 없이 대기 발생 / 비고: 대기 상황 부재 시 만점 처리',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 5
-       AND (criterion IS NULL OR criterion = '');
+[공통 규약]
+- 대화에서 화자 마커 "상담사:" / "상담원:" 발화만 평가한다. "고객:" 발화는 맥락 파악용.
+- 결함 여부가 명확하지 않으면 보수적으로 defect=false 로 판정한다 (부당 감점 방지).
+- evidence 의 quote 는 판정 근거가 된 실제 발화를 원문 그대로(짧게) 인용한다.
+- 반드시 아래 JSON 객체 하나만 출력한다. 설명/코드블록/주석을 덧붙이지 않는다.
+  {"defect": true 또는 false, "rationale": "한국어 1~2문장 판정 사유", "evidence": [{"quote": "근거 발화"}]}', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='KSQI' AND d.order_no=4 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='배점 10점 / eval_method=llm / 0점(defect): (a) 고객 동일 내용 2회 이상 재진술(리바이벌) 유발 또는 (b) 복합질의 중 일부 답변 누락 / 만점(10): 그 외. LLM 1회 호출, 실패·전사 부재 시 defect=false 폴백.', prompt_template='당신은 콜센터 상담 품질 평가관이다. 평가 항목 "#5 문의내용 파악도" (배점 10점) 를 판정한다.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 반말·비속어·고압적 표현 등 부적절 표현 없이 정중 응대 / 3점: 부적절 표현 1~2회 사용 / 0점: 부적절 표현 다수 사용 또는 불친절한 태도',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 6
-       AND (criterion IS NULL OR criterion = '');
+[판정 기준 — (a)(b) 중 하나라도 해당되면 defect=true]
+(a) 상담사가 문의를 제대로 파악하지 못해 고객이 같은 내용을 2회 이상 재진술하거나
+    되묻게(리바이벌) 만들면 결함.
+(b) 고객의 복합 질의(둘 이상의 문의) 중 일부 문의에 대한 답변이 누락되면 결함.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 거절·불가·안내 상황에서 쿠션어 적절 활용 / 3점: 쿠션어 사용이 형식적이거나 일부 누락 / 0점: 통보식 안내(쿠션어 미사용) / 비고: 거절·불가 상황 부재 시 만점 처리',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 7
-       AND (criterion IS NULL OR criterion = '');
+[판정 예시 — 정상(O) / 결함(X)] (평가표 원문)
+< 정상 (O) >
+[고객] 어제 주문한 상품 언제 도착하고, 취소하면 환불은 얼마나 걸리나요?
+[상담사] 네 고객님, 두 가지 말씀 주신 내용 답변드리겠습니다. 배송은 내일 도착 예정이고, 취소 시 환불은 영업일 기준 3~5일 소요됩니다.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 고객 문의 정확 파악 후 핵심 내용 재확인(복창) / 3점: 문의 파악은 됐으나 재확인 누락 또는 1회 재질의 필요 / 0점: 동문서답 또는 반복적 재질의',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 8
-       AND (criterion IS NULL OR criterion = '');
+< 결함 (X) — 복합질의 누락 >
+[고객] 어제 주문한 상품 언제 도착하고, 환불은 얼마나 걸리나요?
+[상담사] 배송은 내일 예정입니다. 또 문의사항 있으실까요?
+[고객] 환불도 여쭤봤는데요.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 양해 표현과 함께 필요한 고객정보 확인 / 3점: 일부 정보만 확인 또는 양해 표현 없이 확인 / 0점: 고객정보 확인 누락 / 비고: 고객 선제 제공 시 복창 확인하면 만점(structural_only)',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 9
-       AND (criterion IS NULL OR criterion = '');
+< 결함 (X) — 리바이벌 2회 >
+[고객] 어제 가입한 요금제 해지하고 싶어요.
+[상담사] 어떤 요금제요?
+[고객] 어제 가입한 거요.
+[상담사] 다시 말씀해주시겠어요?
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 10점 / 10점: 고객 눈높이에 맞춰 쉽고 명확히 설명 / 7점: 부분적으로 장황하거나 일부 불명확 / 5점: 내부 용어 사용·나열식 설명 또는 고객 되물음 유발 / 0점: 설명 불가 수준 또는 고객 미이해',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 10
-       AND (criterion IS NULL OR criterion = '');
+[유의]
+- 고객이 단순히 추가 정보를 보충하는 것은 재진술이 아니다. 동일 문의의 반복인지 구분한다.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 결론 우선 제시 후 부연 설명 / 3점: 장황하지만 핵심은 전달됨 / 0점: 두서없이 장황하여 핵심 파악 곤란',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 11
-       AND (criterion IS NULL OR criterion = '');
+[공통 규약]
+- 대화에서 화자 마커 "상담사:" / "상담원:" 발화만 평가한다. "고객:" 발화는 맥락 파악용.
+- 결함 여부가 명확하지 않으면 보수적으로 defect=false 로 판정한다 (부당 감점 방지).
+- evidence 의 quote 는 판정 근거가 된 실제 발화를 원문 그대로(짧게) 인용한다.
+- 반드시 아래 JSON 객체 하나만 출력한다. 설명/코드블록/주석을 덧붙이지 않는다.
+  {"defect": true 또는 false, "rationale": "한국어 1~2문장 판정 사유", "evidence": [{"quote": "근거 발화"}]}', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='KSQI' AND d.order_no=5 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='배점 10점 / eval_method=rule / 만점(10): 마지막 5 상담사 턴(종료부)에서 종료인사 키워드 + 이름 2요소 모두 포함 / 0점: 하나라도 누락(defect). 부분점수 없음.', prompt_template=NULL, updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='KSQI' AND d.order_no=6 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='배점 10점 / eval_method=rule / 0점(defect): 고객 인사·감사 직후 상담사 답례 부적절(네/예/여보세요/말씀하세요/말씀하시죠 단답 또는 적절 답례 부재) 1건 이상 / 만점(10): 트리거 전부 적절. 트리거 자체 없으면 보류(defect 아님).', prompt_template=NULL, updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='KSQI' AND d.order_no=7 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='배점 10점 / eval_method=llm(ksqi_rules 선언상 hybrid, 구현은 LLM 1회) / 0점(defect): 고객 발화에 단답형(네/네네/맞습니다/확인해드릴게요)만 반복하고 공감 표현 전무 / 만점(10): 적절 공감 호응. 실패·전사 부재 시 defect=false 폴백.', prompt_template='당신은 콜센터 상담 품질 평가관이다. 평가 항목 "#8 단순 공감 표현" (배점 10점) 를 판정한다.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 적극적 대안 제시 및 해결 의지 표현 / 3점: 기본 안내만 진행하고 대안 미제시 / 0점: 단순 반복 안내 또는 해결 회피',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 12
-       AND (criterion IS NULL OR criterion = '');
+[판정 기준]
+- 고객 발화에 대해 기계적·사무적이지 않게 공감 표현을 섞어 호응하는지 본다.
+- 상담사가 단답형("네", "네네", "맞습니다", "확인해드릴게요")만 반복하고 공감 표현이 전혀 없으면 결함(defect=true).
+- 적절한 공감 표현으로 호응하면 정상(defect=false).
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 선제적 추가 안내로 원스톱 처리 / 3점: 부연 설명 부족으로 추가 문의 가능성 / 0점: 단답형 응대로 고객 재문의 유발',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 13
-       AND (criterion IS NULL OR criterion = '');
+[판정 예시 — 정상(O) / 결함(X)] (평가표 원문)
+< 정상 (O) >
+[고객] 제가 한 달 전에 신청했는데 아직도 처리가 안 됐다고 해서요.
+[상담사] 아~ 그러셨군요. 오래 기다리셨는데 답답하셨겠습니다. 제가 지금 바로 확인해드리겠습니다.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 후속 절차·소요 시간·연락 수단 명확 안내 / 3점: 사후 안내의 구체성 부족 / 0점: 사후 안내 누락 / 비고: 즉시 해결되어 사후 안내 불필요 시 만점 처리',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 14
-       AND (criterion IS NULL OR criterion = '');
+< 결함 (X) >
+[고객] 제가 한 달 전에 신청했는데 아직도 처리가 안 됐다고 해서요.
+[상담사] 네. 확인해드릴게요.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 10점 / 10점: 오안내 없이 정확한 정보 안내 / 5점: 미미한 오류이거나 즉시 정정한 경우 / 0점: 오안내가 있으며 정정이 필요한 경우',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 15
-       AND (criterion IS NULL OR criterion = '');
+[공통 규약]
+- 대화에서 화자 마커 "상담사:" / "상담원:" 발화만 평가한다. "고객:" 발화는 맥락 파악용.
+- 결함 여부가 명확하지 않으면 보수적으로 defect=false 로 판정한다 (부당 감점 방지).
+- evidence 의 quote 는 판정 근거가 된 실제 발화를 원문 그대로(짧게) 인용한다.
+- 반드시 아래 JSON 객체 하나만 출력한다. 설명/코드블록/주석을 덧붙이지 않는다.
+  {"defect": true 또는 false, "rationale": "한국어 1~2문장 판정 사유", "evidence": [{"quote": "근거 발화"}]}', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='KSQI' AND d.order_no=8 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='배점 10점 / eval_method=llm / 0점(defect): 고객 불만·어려움·경조사·양해 등 감정 상황에서 상황별 맞춤 공감(사과·위로·조의·축하·감사) 없이 사무적 응대 / 만점(10): 맞춤 공감 또는 감정 상황 자체 없음(해당없음). 실패·전사 부재 시 defect=false 폴백.', prompt_template='당신은 콜센터 상담 품질 평가관이다. 평가 항목 "#9 고차원 공감 표현" (배점 10점) 를 판정한다.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 업무별 필수 안내사항 모두 누락 없이 이행 / 3점: 필수 안내사항 일부 누락 / 0점: 필수 안내 미진행 또는 다수 누락',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 16
-       AND (criterion IS NULL OR criterion = '');
+[판정 기준]
+- 고객이 불만, 어려움 호소, 경조사(상·결혼 등), 양해 요청 등 감정 상황을 드러낼 때,
+  상담사가 상황별 맞춤 공감(사과·위로·조의·축하·감사) 으로 응대하는지 본다.
+- 그런 감정 상황에서 상담사가 사무적으로만 응대하면 결함(defect=true).
+- 그런 감정 상황이 대화에 전혀 없으면 해당없음 → defect=false.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 개인정보 확인 가이드라인에 따라 절차 이행 / 0점: 확인 절차 누락 또는 정보 선언급(확인 전 고객정보 먼저 말함)',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 17
-       AND (criterion IS NULL OR criterion = '');
+[판정 예시 — 정상(O) / 결함(X)] (평가표 원문)
+< 정상 (O) — 불만 / 경조사 >
+[고객] 벌써 다섯 번째 전화하는 거예요. 정말 너무 힘드네요.
+[상담사] 아~ 정말 많이 속상하셨겠습니다. 반복적으로 불편드린 점 진심으로 사과드립니다. 이번에는 제가 끝까지 책임지고 해결해드리겠습니다.
+[고객] 부모님이 갑자기 돌아가셔서 납부가 어려울 것 같아요.
+[상담사] 아이고, 삼가 위로의 말씀 드립니다. 많이 힘드실 텐데요, 납부 관련해서 도움드릴 수 있는 방법 안내드리겠습니다.
 
-    UPDATE public.eval_item_defs SET criterion =
-        '만점 5점 / 5점: 개인정보 보호 가이드라인 준수 / 0점: 제3자에게 개인정보 안내 또는 정보 유출 발생',
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 18
-       AND (criterion IS NULL OR criterion = '');
+< 결함 (X) — 불만 / 경조사 >
+[고객] 벌써 다섯 번째 전화하는 거예요. 정말 너무 힘드네요.
+[상담사] 네 확인해보겠습니다.
+[고객] 부모님이 갑자기 돌아가셔서 납부가 어려울 것 같아요.
+[상담사] 네, 그럼 요금 관련해서는 어떻게 하실 건가요?
 
-    -- ── prompt_template (운영 프롬프트 md 원문) — 비어있을 때만 채움 ─────────
-    -- #3 은 파이프라인 미산출 항목 → prompt_template 채우지 않음.
+[공통 규약]
+- 대화에서 화자 마커 "상담사:" / "상담원:" 발화만 평가한다. "고객:" 발화는 맥락 파악용.
+- 결함 여부가 명확하지 않으면 보수적으로 defect=false 로 판정한다 (부당 감점 방지).
+- evidence 의 quote 는 판정 근거가 된 실제 발화를 원문 그대로(짧게) 인용한다.
+- 반드시 아래 JSON 객체 하나만 출력한다. 설명/코드블록/주석을 덧붙이지 않는다.
+  {"defect": true 또는 false, "rationale": "한국어 1~2문장 판정 사유", "evidence": [{"quote": "근거 발화"}]}', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='KSQI' AND d.order_no=9 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 인사말·소속·상담사명 3요소 모두 포함 / 3점: 3요소 중 1가지 누락 / 0점: 2가지 이상 누락 또는 첫인사 미진행', prompt_template='# Item #1 — 첫인사 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
 
-    -- group_a/greeting.md — #1, #2 공유
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# 인사 예절 Sub Agent — #1 첫인사 · #2 끝인사
+> **STT 기반 통합 상담평가표 v2.0** 의 "인사 예절" 대분류 (10점) 내 항목 #1.
+> 본 파일은 평가 기준·판정 룰·출력 스키마·공통 정책을 한 파일에 통합한 **self-contained SSOT** 이다.
+> 평가표 원문 그대로 사용하며 임의 추가·수정 금지.
 
-당신은 **STT 기반 통합 상담평가표 v2.0** 의 "인사 예절" 대분류 (10점) 를 평가한다.
-아래 평가 기준은 평가표 원문 그대로이며, 다른 기준으로 추가·수정하지 말 것.
-
-## Evidence 강제 규칙 (원칙 3 — 최우선)
-
-- `evaluation_mode=full` 인 경우 `evidence` 배열에 최소 1개 필수. Evidence 없으면 5점도 부여 금지.
-- Evidence 항목 스키마: `{speaker: "상담사"|"고객", timestamp: "HH:MM:SS"|null, quote: "원문 발화", turn_id: int|null}`
-- Quote 는 전사본 원문 그대로. 수정·요약·의역 금지.
-
----
-
-## Item #1 — 첫인사 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
-
-**평가 항목**: 첫인사
-**배점**: 5점
 **평가모드**: full
 **처리방식**: Rule + LLM verify
 **비고**: 고정 구간(도입부) 평가
 
-### 평가 기준
+---
+
+## 평가 기준
 
 **인사말 + 소속 + 상담사명을 누락 없이 진행하였는가?**
 
@@ -194,43 +161,14 @@ $prompt$# 인사 예절 Sub Agent — #1 첫인사 · #2 끝인사
 - **3점**: 인사말 / 소속 / 상담사명 중 **1가지** 누락
 - **0점**: **2가지 이상** 누락 또는 인사 자체 미진행
 
-### 판정 기준
+## 판정 기준
 
 - 인사말: "안녕하세요", "반갑습니다" 등 일반 인사 표현
 - 소속: 회사명·부서명 (마스킹된 경우 `***` 토큰으로 존재 여부만 확인)
 - 상담사명: 상담사 본인 이름 (마스킹된 경우 `***` 토큰으로 존재 여부만 확인)
 - 세 요소의 순서는 무관. 모두 도입부 3~5 턴 이내에 등장해야 함.
 
----
-
-## Item #2 — 끝인사 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
-
-**평가 항목**: 끝인사
-**배점**: 5점
-**평가모드**: full
-**처리방식**: Rule + LLM verify
-**비고**: 고정 구간(종료부) 평가
-
-### 평가 기준
-
-**종료 시 인사말 + 상담사명을 안내하고, 추가 문의 확인 후 마무리하였는가?**
-
-- **5점**: 추가문의 확인 + 인사말 + 상담사명 **모두** 진행
-- **3점**: 인사말 / 상담사명 중 **1가지** 누락 또는 **추가문의 확인 누락**
-- **0점**: 끝인사 미진행 또는 **2가지 이상** 누락
-
-### 판정 기준
-
-- 인사말: "감사합니다", "좋은 하루 되세요" 등 마무리 인사
-- 상담사명: 종료부에서 본인 이름 재안내 (도입부 안내는 별건)
-- 추가 문의 확인: "더 궁금하신 점 있으세요?", "도움이 필요하신 부분 있으세요?" 등 질문형 확인
-- 종료부는 전사록 마지막 3~5 턴 기준.
-
----
-
-## 공통 출력 포맷
-
-각 item 은 아래 JSON 객체로 반환한다.
+## 출력 형식 (JSON — 단일 객체)
 
 ```json
 {
@@ -246,7 +184,9 @@ $prompt$# 인사 예절 Sub Agent — #1 첫인사 · #2 끝인사
 }
 ```
 
-- `score` 는 정확히 5 / 3 / 0 중 하나. 그 외 값 금지.
+## 출력 규칙 (산술·형식)
+
+- `score` 는 정확히 **5 / 3 / 0** 중 하나. 그 외 값 금지.
 - `deductions`: 감점 내역 배열. 만점이면 빈 배열. 감점 있으면 `{reason, points, evidence_refs: [0, ...]}` 형식.
 - `score + Σ(deductions[].points) === max_score(=5)` 산술 불변식 강제.
 - `self_confidence`: 1~5 (1=불확실, 5=매우 확신).
@@ -254,38 +194,491 @@ $prompt$# 인사 예절 Sub Agent — #1 첫인사 · #2 끝인사
 - Evidence 는 **최소 1개 필수** (full 모드).
 - 한국어로 작성. 한자·영문 혼용 금지.
 
-## 자기 검증 (제출 전 필수)
+## 자기 검증 (제출 전 — 항목 고유)
 
 1. `score + Σ(deductions[].points) == 5` 인가?
 2. Evidence 가 1개 이상인가? (full 모드)
 3. Quote 가 원문 그대로인가? (수정·의역 없음)
-4. `score` 가 5 / 3 / 0 중 하나인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no IN (1, 2)
-       AND (prompt_template IS NULL OR prompt_template = '');
-
-    -- group_a/listening_comm.md — #4, #5 공유
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# 경청 및 소통 Sub Agent — #4 호응 및 공감 · #5 대기 멘트
-
-당신은 **STT 기반 통합 상담평가표 v2.0** 의 "경청 및 소통" 대분류 (10점) 를 평가한다.
-아래 평가 기준은 평가표 원문 그대로이며, 다른 기준으로 추가·수정하지 말 것.
-
-## Evidence 강제 규칙 (원칙 3)
-
-- `evaluation_mode=full` 인 경우 `evidence` 배열에 최소 1개 필수.
-- Evidence 스키마: `{speaker, timestamp, quote, turn_id}`.
-- Quote 는 전사본 원문 그대로.
+4. `score` 가 5 / 3 / 0 중 하나인가?
 
 ---
 
-## Item #4 — 호응 및 공감 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=1 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 추가문의 확인·인사말·상담사명 모두 진행 / 3점: 인사말·상담사명 중 1가지 누락 또는 추가문의 확인 누락 / 0점: 끝인사 미진행 또는 2가지 이상 누락', prompt_template='# Item #2 — 끝인사 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
+
+> **STT 기반 통합 상담평가표 v2.0** 의 "인사 예절" 대분류 (10점) 내 항목 #2.
+> 본 파일은 평가 기준·판정 룰·출력 스키마·공통 정책을 한 파일에 통합한 **self-contained SSOT** 이다.
+> 평가표 원문 그대로 사용하며 임의 추가·수정 금지.
+
+**평가모드**: full
+**처리방식**: Rule + LLM verify
+**비고**: 고정 구간(종료부) 평가
+
+---
+
+## 평가 기준
+
+**종료 시 인사말 + 상담사명을 안내하고, 추가 문의 확인 후 마무리하였는가?**
+
+- **5점**: 추가문의 확인 + 인사말 + 상담사명 **모두** 진행
+- **3점**: 인사말 / 상담사명 중 **1가지** 누락 또는 **추가문의 확인 누락**
+- **0점**: 끝인사 미진행 또는 **2가지 이상** 누락
+
+## 판정 기준
+
+- 인사말: "감사합니다", "좋은 하루 되세요" 등 마무리 인사
+- 상담사명: 종료부에서 본인 이름 재안내 (도입부 안내는 별건)
+- 추가 문의 확인: "더 궁금하신 점 있으세요?", "도움이 필요하신 부분 있으세요?" 등 질문형 확인
+- 종료부는 전사록 마지막 3~5 턴 기준.
+
+## 출력 형식 (JSON — 단일 객체)
+
+```json
+{
+  "item_number": 2,
+  "score": 5,
+  "deductions": [],
+  "evidence": [
+    {"speaker": "상담사", "timestamp": null, "quote": "더 궁금하신 점 있으세요 감사합니다 *** 였습니다", "turn_id": 88}
+  ],
+  "self_confidence": 5,
+  "self_confidence_rationale": "추가문의 확인·인사말·상담사명 모두 명확히 포착되어 판정 확신",
+  "summary": "추가문의 확인 + 인사말 + 상담사명 모두 진행, 5점 부여"
+}
+```
+
+## 출력 규칙 (산술·형식)
+
+- `score` 는 정확히 **5 / 3 / 0** 중 하나. 그 외 값 금지.
+- `deductions`: 감점 내역 배열. 만점이면 빈 배열. 감점 있으면 `{reason, points, evidence_refs: [0, ...]}` 형식.
+- `score + Σ(deductions[].points) === max_score(=5)` 산술 불변식 강제.
+- `self_confidence`: 1~5 (1=불확실, 5=매우 확신).
+- `self_confidence_rationale`: 왜 그 자기확신 점수를 줬는지 **1줄** (신뢰도 근거로 노출됨).
+- Evidence 는 **최소 1개 필수** (full 모드).
+- 한국어로 작성. 한자·영문 혼용 금지.
+
+## 자기 검증 (제출 전 — 항목 고유)
+
+1. `score + Σ(deductions[].points) == 5` 인가?
+2. Evidence 가 1개 이상인가? (full 모드)
+3. Quote 가 원문 그대로인가? (수정·의역 없음)
+4. `score` 가 5 / 3 / 0 중 하나인가?
+
+---
+
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=2 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='파이프라인 미산출 항목 — STT 말겹침 구간 미표기로 변별력 없음(레거시 보존). qa_rules.py QA_RULES 에서 제외(2026-05-13 정책). 평가/채점 없음.', prompt_template=NULL, updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=3 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 상황에 맞는 다양한 호응·공감 표현 1회 이상 / 3점: 단순 ''네'' 위주 호응만 사용 / 0점: 호응·공감 표현 없음 또는 부적절한 반응', prompt_template='# Item #4 — 호응 및 공감 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
+
+> **STT 기반 통합 상담평가표 v2.0** 의 "경청 및 소통" 대분류 (10점) 내 항목 #4.
+> 본 파일은 평가 기준·판정 룰·출력 스키마·공통 정책을 한 파일에 통합한 **self-contained SSOT** 이다.
+> 평가표 원문 그대로 사용하며 임의 추가·수정 금지.
 
 **평가모드**: full
 **처리방식**: LLM + Few-shot
 **비고**: 감정 표현 근처 윈도우 평가
 
-### 평가 기준
+---
+
+## 평가 기준
 
 **고객 상황에 맞는 호응어·공감 표현을 적절히 활용하였는가?**
 
@@ -294,21 +687,259 @@ $prompt$# 경청 및 소통 Sub Agent — #4 호응 및 공감 · #5 대기 멘�
 - **3점**: 단순 "네" 위주의 호응으로 공감이 미흡
 - **0점**: 호응/공감 표현 **전혀 없음** 또는 상황에 맞지 않는 호응
 
-### 판정 기준
+## 판정 기준
 
 - 호응어: "네", "아 네", "그러셨군요" 등 청취 반응 표현
 - 공감 표현: "불편 드려 죄송합니다", "많이 속상하셨겠어요" 등 감정 동조 표현
 - 5점 요건은 **상황에 맞는 다양성** — 단순 "네네" 반복은 3점 이하.
 
+## 출력 형식 (JSON — 단일 객체)
+
+```json
+{
+  "item_number": 4,
+  "score": 5,
+  "deductions": [],
+  "evidence": [
+    {"speaker": "상담사", "timestamp": null, "quote": "...", "turn_id": 14}
+  ],
+  "self_confidence": 4,
+  "self_confidence_rationale": "공감·재진술 표현이 일부만 명확해 확신 보통",
+  "summary": "..."
+}
+```
+
+## 출력 규칙 (산술·형식)
+
+- `score` 는 정확히 **5 / 3 / 0** 중 하나.
+- `score + Σ(deductions[].points) === max_score(=5)`.
+- Evidence 최소 1개 필수 (full 모드).
+- `self_confidence`: 1~5 (1=불확실, 5=매우 확신).
+- `self_confidence_rationale`: 왜 그 자기확신 점수인지 **1줄** (신뢰도 근거로 노출됨).
+- 한국어 작성. 한자 금지.
+
+## 자기 검증 (제출 전 — 항목 고유)
+
+1. "다양한" 표현 근거가 evidence 로 명시됐는가?
+2. Evidence 가 1개 이상인가? (full 모드)
+3. score 가 5 / 3 / 0 중 하나인가?
+4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
+
 ---
 
-## Item #5 — 대기 멘트 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=4 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 대기 전 양해 멘트·대기 후 감사 멘트 모두 진행 / 3점: 대기 전·후 멘트 중 1가지 누락 / 0점: 양해 없이 대기 발생 / 비고: 대기 상황 부재 시 만점 처리', prompt_template='# Item #5 — 대기 멘트 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
+
+> **STT 기반 통합 상담평가표 v2.0** 의 "경청 및 소통" 대분류 (10점) 내 항목 #5.
+> 본 파일은 평가 기준·판정 룰·출력 스키마·공통 정책을 한 파일에 통합한 **self-contained SSOT** 이다.
+> 평가표 원문 그대로 사용하며 임의 추가·수정 금지.
 
 **평가모드**: full
 **처리방식**: LLM + Few-shot
 **비고**: 대기 상황 조건부 — 대기 상황이 없는 경우 **만점 처리**
 
-### 평가 기준
+---
+
+## 평가 기준
 
 **확인을 위한 대기 시 전/후 양해 멘트를 진행하였는가?**
 
@@ -317,82 +948,266 @@ $prompt$# 경청 및 소통 Sub Agent — #4 호응 및 공감 · #5 대기 멘�
 - **3점**: 대기 전 또는 후 멘트 중 **1가지 누락**
 - **0점**: 양해 멘트 없이 대기 발생
 
-### 판정 기준
+## 판정 기준
 
-- 대기 상황: 상담사가 확인·조회 등으로 발화 중단이 발생한 경우.
-- 대기 상황 부재 시 자동 **5점 만점 처리 (evaluation_mode="skipped" 가능)**.
+- **대기 상황 판정 (먼저 수행)**: 상담사가 확인·조회·보류·재시도 등으로 고객을 기다리게 한 상황이
+  있었는지 전사로 직접 판단한다. "잠시만요" 같은 명시 멘트가 없어도 "확인해 볼게요 / 알아볼게요 /
+  조회해 보겠습니다" 같은 **암묵적 대기** 도 대기 상황으로 본다 (규칙 카운트가 0이어도 놓치지 말 것).
+- **대기 상황이 전혀 없으면** → `situation_present=false`, `score=5`, `evaluation_mode="skipped"`,
+  `evidence=[]` (대기 없음 → 평가 불필요).
+- **대기 상황이 있으면** → `situation_present=true`, 대기 전 양해 멘트 + 대기 후 감사 멘트 유/무로 채점.
 - 대기 전/후 멘트는 동일 턴 혹은 인접 턴에서 확인.
 
----
-
-## 공통 출력 포맷
+## 출력 형식 (JSON — 단일 객체)
 
 ```json
-{"items": [
-  {
-    "item_number": 4,
-    "score": 5,
-    "deductions": [],
-    "evidence": [
-      {"speaker": "상담사", "timestamp": null, "quote": "...", "turn_id": 14}
-    ],
-    "self_confidence": 4,
-    "self_confidence_rationale": "공감·재진술 표현이 일부만 명확해 확신 보통",
-    "summary": "..."
-  },
-  {
-    "item_number": 5,
-    "score": 5,
-    "deductions": [],
-    "evidence": [
-      {"speaker": "상담사", "timestamp": null, "quote": "잠시만 기다려 주세요 고객님", "turn_id": 22}
-    ],
-    "self_confidence": 5,
-    "self_confidence_rationale": "대기 양해 발화가 명확해 확신 높음",
-    "summary": "..."
-  }
-]}
+{
+  "item_number": 5,
+  "score": 5,
+  "situation_present": true,
+  "deductions": [],
+  "evidence": [
+    {"speaker": "상담사", "timestamp": null, "quote": "잠시만 기다려 주세요 고객님", "turn_id": 22}
+  ],
+  "self_confidence": 5,
+  "self_confidence_rationale": "대기 양해 발화가 명확해 확신 높음",
+  "summary": "..."
+}
 ```
 
-### 공통 규칙
+## 출력 규칙 (산술·형식)
 
-- `score` 는 정확히 5 / 3 / 0 중 하나.
+- `score` 는 정확히 **5 / 3 / 0** 중 하나.
 - `score + Σ(deductions[].points) === max_score(=5)`.
 - full 모드 evidence 최소 1개 필수. skipped 모드만 빈 배열 허용.
+- `situation_present`(대기 상황 유무) 필드 필수. false 면 score=5, evidence=[].
+- `self_confidence`: 1~5. `self_confidence_rationale`: 왜 그 자기확신 점수인지 **1줄** (신뢰도 근거로 노출됨).
 - 한국어 작성. 한자 금지.
-- `self_confidence_rationale`: 왜 그 자기확신 점수인지 **1줄** (신뢰도 근거로 노출됨).
+- `summary`(판정 사유)에는 `situation_present` 등 **필드명/값을 그대로 쓰지 말 것**.
+  자연어로 서술한다 (예: `"situation_present=false"` ❌ → "대기 상황 없음 — 해당 없음" ⭕).
 
-## 자기 검증 (제출 전)
+## 자기 검증 (제출 전 — 항목 고유)
 
-1. #4 는 "다양한" 표현 근거가 evidence 로 명시됐는가?
-2. #5 에서 대기 상황 없음 시 5점 처리 + evaluation_mode="skipped" 인가?
-3. score 가 5 / 3 / 0 중 하나인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no IN (4, 5)
-       AND (prompt_template IS NULL OR prompt_template = '');
-
-    -- group_a/language.md — #6, #7 공유
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# 언어 표현 Sub Agent — #6 정중한 표현 · #7 쿠션어 활용
-
-당신은 **STT 기반 통합 상담평가표 v2.0** 의 "언어 표현" 대분류 (10점) 를 평가한다.
-아래 평가 기준은 평가표 원문 그대로이며, 다른 기준으로 추가·수정하지 말 것.
-
-## Evidence 강제 규칙
-
-- `evaluation_mode=full` 인 경우 `evidence` 배열에 최소 1개 필수.
-- Evidence 스키마: `{speaker, timestamp, quote, turn_id}`.
-- Quote 는 전사본 원문 그대로.
+1. 대기 상황이 없으면 `situation_present=false` + score=5 + evidence=[] 인가?
+   대기 상황이 있으면(암묵 대기 포함) `situation_present=true` + 양해 멘트 근거 evidence 가 있는가?
+2. score 가 5 / 3 / 0 중 하나인가?
+3. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
 
 ---
 
-## Item #6 — 정중한 표현 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=5 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 반말·비속어·고압적 표현 등 부적절 표현 없이 정중 응대 / 3점: 부적절 표현 1~2회 사용 / 0점: 부적절 표현 다수 사용 또는 불친절한 태도', prompt_template='# Item #6 — 정중한 표현 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
+
+> **STT 기반 통합 상담평가표 v2.0** 의 "언어 표현" 대분류 (10점) 내 항목 #6.
+> 본 파일은 평가 기준·판정 룰·출력 스키마·공통 정책을 한 파일에 통합한 **self-contained SSOT** 이다.
+> 평가표 원문 그대로 사용하며 임의 추가·수정 금지.
 
 **평가모드**: full
 **처리방식**: LLM + 금지어 사전
 **비고**: 금지어 1차 필터링 + LLM 맥락 판정
 
-### 평가 기준
+---
+
+## 평가 기준
 
 **상담에 적합한 정중하고 전문적인 언어를 사용하였는가?**
 
@@ -401,7 +1216,7 @@ $prompt$# 언어 표현 Sub Agent — #6 정중한 표현 · #7 쿠션어 활용
   - 일상어, 반토막말, 사물존칭("상품이십니다"), 내부용어 등
 - **0점**: 부적절한 표현 **다수** 또는 **불친절 표현** 확인
 
-### 판정 기준
+## 판정 기준
 
 - 반말: "~해요", "~야", "~지" 등 (존칭 "~습니다" 미사용)
 - 명령조: "~하세요" 가 명령/강압적으로 사용된 경우
@@ -409,7 +1224,7 @@ $prompt$# 언어 표현 Sub Agent — #6 정중한 표현 · #7 쿠션어 활용
 - 습관어/혼잣말: "어...", "이게..." 가 과도하게 반복되는 경우
 - **쿠션어 부재는 #7 영역** — #6 감점 사유로 사용 금지.
 
-### Evidence 자기검증 규칙 (필수)
+## Evidence 자기검증 규칙 (필수)
 
 evidence 로 인용하는 발화는 **반드시 진짜 부적절한 패턴이어야 함**. 아래 케이스는 부적절 아님 — evidence 인용 금지:
 
@@ -418,7 +1233,7 @@ evidence 로 인용하는 발화는 **반드시 진짜 부적절한 패턴이어
 - ❌ **사후 감사**: "기다려 주셔서 감사합니다" → #5 가점 요소이지 #6 감점 아님.
 - ❌ **고객 발화 그대로 복창**: "주름이 없다" 같이 고객 표현을 짧게 받아 확인 → 정상 (#8 영역).
 
-### 관대 인정 범위 (감점 금지 케이스 — iter05/v4 확장)
+## 비감점 표현 (정상 응대로 인정)
 
 아래 표현은 실무 관용 응대로 인정되어 **감점하지 않는다**:
 
@@ -427,36 +1242,273 @@ evidence 로 인용하는 발화는 **반드시 진짜 부적절한 패턴이어
 - ✅ **filler 음절**: "에" / "아" / "음" 단독 발화 — **2회 이하** 는 자연스러운 응대로 인정 (혼잣말로 보지 않음, 3회 이상만 감점 대상)
 - ✅ **접속 표현**: "그러면" / "그래서" / "아 네" → 자연스러운 대화 흐름, 감점 금지
 
-**감점은 명백한 반말 / 비속어 / 명령조 만 대상으로 함**. 위 관대 조항에 해당하는 표현만 있을 때는 반드시 5점 부여.
+**감점은 명백한 반말 / 비속어 / 명령조 만 대상으로 함**. 위 비감점 표현에 해당하는 표현만 있을 때는 반드시 5점 부여.
 
-### 감점 인정 케이스 (이 중 명확히 매칭될 때만)
+## 감점 인정 케이스 (이 중 명확히 매칭될 때만)
 
 - ✅ **명백한 반말**: "응", "어어", "그래" (종결어미 "~다/~까/~요" 없이 끝남)
 - ✅ **연속 습관어**: "이게 음 약간 그..." 같이 한 발화 안에서 filler **3개 이상** 연속
 - ✅ **사물존칭**: "주문이십니다", "상품이세요"
 - ✅ **명령조**: "~하세요" (요청형 아닌 강압형)
-- ✅ **혼잣말 다수**: 단독 "음" / "어" / "아" 가 **3회 이상** 반복 (2회 이하는 관대 조항으로 감점 금지)
+- ✅ **혼잣말 다수**: 단독 "음" / "어" / "아" 가 **3회 이상** 반복 (2회 이하는 비감점 표현으로 감점 금지)
 - ✅ **비속어** / **불친절 표현** (즉시 0점)
 
-### 점수 결정 절차 (반드시 순서대로)
+## 점수 결정 절차 (반드시 순서대로)
 
-1. 위 "감점 인정 케이스" 중 매칭되는 발화 수 카운트 — 단 "관대 인정 범위" 에 해당하는 표현은 카운트에서 제외
+1. 위 "감점 인정 케이스" 중 매칭되는 발화 수 카운트 — 단 "비감점 표현" 에 해당하는 표현은 카운트에서 제외
 2. 각 매칭 발화는 evidence 에 인용
 3. 매칭 0건 → **5점**
 4. 매칭 1~2건 → **3점**
 5. 매칭 3건+ 또는 비속어/불친절 → **0점**
-6. 의심스러우면 5점 부여 (관대 채점). LLM 자기검증 실패 시 안전망.
-7. **'맞아요' / '성함은요' / filler 2회 이하 만** 으로는 절대 감점 금지 (관대 인정 범위 준수).
+6. 의심스러우면 5점 부여. LLM 자기검증 실패 시 안전망.
+7. **''맞아요'' / ''성함은요'' / filler 2회 이하 만** 으로는 절대 감점 금지 (위 비감점 표현 준수).
+
+## 출력 형식 (JSON — 단일 객체)
+
+```json
+{
+  "item_number": 6,
+  "score": 5,
+  "deductions": [],
+  "evidence": [
+    {"speaker": "상담사", "timestamp": null, "quote": "...", "turn_id": 10}
+  ],
+  "self_confidence": 5,
+  "self_confidence_rationale": "근거 발화가 명확해 확신 높음",
+  "summary": "..."
+}
+```
+
+## 출력 규칙 (산술·형식)
+
+- `score` 는 정확히 **5 / 3 / 0** 중 하나.
+- `score + Σ(deductions[].points) === max_score(=5)`.
+- full 모드 evidence 최소 1개 필수.
+- `self_confidence`: 1~5. `self_confidence_rationale`: 왜 그 자기확신 점수인지 **1줄** (신뢰도 근거로 노출됨).
+- 한국어 작성. 한자 금지.
+
+## 자기 검증 (제출 전 — 항목 고유)
+
+1. 감점 사유에 "쿠션어" 가 있는가? → 즉시 삭제 (#7 영역)
+2. Evidence quote 가 원문 그대로인가?
+3. score 가 5 / 3 / 0 중 하나인가?
+4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
 
 ---
 
-## Item #7 — 쿠션어 활용 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=6 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 거절·불가·안내 상황에서 쿠션어 적절 활용 / 3점: 쿠션어 사용이 형식적이거나 일부 누락 / 0점: 통보식 안내(쿠션어 미사용) / 비고: 거절·불가 상황 부재 시 만점 처리', prompt_template='# Item #7 — 쿠션어 활용 (max_score=5, ALLOWED_STEPS=[5, 3, 0])
+
+> **STT 기반 통합 상담평가표 v2.0** 의 "언어 표현" 대분류 (10점) 내 항목 #7.
+> 본 파일은 평가 기준·판정 룰·출력 스키마·공통 정책을 한 파일에 통합한 **self-contained SSOT** 이다.
+> 평가표 원문 그대로 사용하며 임의 추가·수정 금지.
 
 **평가모드**: full
 **처리방식**: LLM + Few-shot
 **비고**: 거절/불가/양해 상황 조건부 — 해당 상황이 없는 경우 **만점 처리**
 
-### 평가 기준
+---
+
+## 평가 기준
 
 **불가/거절/양해 상황에서 쿠션어(양해 표현)를 적절히 사용하였는가?**
 
@@ -465,16 +1517,17 @@ evidence 로 인용하는 발화는 **반드시 진짜 부적절한 패턴이어
 - **3점**: 쿠션어 사용이 형식적이거나 일부 누락
 - **0점**: 쿠션어 없이 통보식으로 안내
 
-### 판정 기준
+## 판정 기준
 
-- **거절/불가/양해 상황**:
+- **거절/불가/양해 상황 판정 (먼저 수행)**: 아래 상황이 전사에 실제로 있었는지 직접 판단한다.
+  "안 된다/불가" 같은 직접 표현이 없어도 "본사 확인이 필요해서요 / 처리가 어려운 부분이라 /
+  지금은 도와드리기 곤란해서" 같은 **우회 거절** 도 거절 상황으로 본다 (규칙 카운트 0이어도 놓치지 말 것).
   - 요청 거절 ("해당 서비스는 불가합니다")
   - 추가 정보 요구 ("연락처를 다시 한 번 말씀해 주시겠어요?")
   - 대기·재시도 요청 ("잠시만요", "다시 한번 부탁드립니다")
-- 해당 상황 없음 시 → 자동 **5점 (evaluation_mode="skipped" 가능)**.
-- `refusal_count=0` 이면 무조건 5점.
-
----
+- **거절/불가/양해 상황이 전혀 없으면** → `situation_present=false`, `score=5`,
+  `evaluation_mode="skipped"`, `evidence=[]` (쿠션어 불필요).
+- **거절/불가/양해 상황이 있으면** → `situation_present=true`, 쿠션어 사용 여부로 채점.
 
 ## 출력 형식 (★ 절대 규칙)
 
@@ -488,79 +1541,258 @@ evidence 로 인용하는 발화는 **반드시 진짜 부적절한 패턴이어
 
 내부 추론은 머릿속에서만 수행하고, 결과만 다음 스키마로 출력:
 
-## 공통 출력 포맷
-
 ```json
-{"items": [
-  {
-    "item_number": 6,
-    "score": 5,
-    "deductions": [],
-    "evidence": [
-      {"speaker": "상담사", "timestamp": null, "quote": "...", "turn_id": 10}
-    ],
-    "self_confidence": 5,
-    "self_confidence_rationale": "근거 발화가 명확해 확신 높음",
-    "summary": "..."
-  },
-  {
-    "item_number": 7,
-    "score": 5,
-    "refusal_count": 2,
-    "cushion_word_count": 3,
-    "deductions": [],
-    "evidence": [
-      {"speaker": "상담사", "timestamp": null, "quote": "양해 부탁드리고", "turn_id": 54}
-    ],
-    "self_confidence": 5,
-    "self_confidence_rationale": "거절 표현·쿠션어 카운트가 분명해 확신 높음",
-    "summary": "..."
-  }
-]}
+{
+  "item_number": 7,
+  "score": 5,
+  "situation_present": true,
+  "refusal_count": 2,
+  "cushion_word_count": 3,
+  "deductions": [],
+  "evidence": [
+    {"speaker": "상담사", "timestamp": null, "quote": "양해 부탁드리고", "turn_id": 54}
+  ],
+  "self_confidence": 5,
+  "self_confidence_rationale": "거절 표현·쿠션어 카운트가 분명해 확신 높음",
+  "summary": "..."
+}
 ```
 
-### 공통 규칙
+## 출력 규칙 (산술·형식)
 
-- `score` 는 정확히 5 / 3 / 0 중 하나.
+- `score` 는 정확히 **5 / 3 / 0** 중 하나.
 - `score + Σ(deductions[].points) === max_score(=5)`.
 - full 모드 evidence 최소 1개 필수. skipped 모드만 빈 배열 허용.
-- #7 의 `refusal_count` / `cushion_word_count` 필드 필수.
-- `self_confidence_rationale`: 왜 그 자기확신 점수인지 **1줄** (신뢰도 근거로 노출됨).
+- `situation_present`(거절/불가 상황 유무) / `refusal_count` / `cushion_word_count` 필드 필수.
+  `situation_present=false` 면 score=5, evidence=[].
+- `self_confidence`: 1~5. `self_confidence_rationale`: 왜 그 자기확신 점수인지 **1줄** (신뢰도 근거로 노출됨).
 - 한국어 작성. 한자 금지.
+- `summary`(판정 사유)에는 `situation_present` 등 **필드명/값을 그대로 쓰지 말 것**.
+  자연어로 서술한다 (예: `"situation_present=false"` ❌ → "거절/불가 상황 없음 — 해당 없음" ⭕).
 
-## 자기 검증 (제출 전)
+## 자기 검증 (제출 전 — 항목 고유)
 
-1. #6 감점 사유에 "쿠션어" 가 있는가? → 즉시 삭제 (#7 영역)
-2. #7 의 `refusal_count=0` 인데 score<5 인가? → 5점으로 상향
-3. Evidence quote 가 원문 그대로인가?
-4. score 가 5 / 3 / 0 중 하나인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no IN (6, 7)
-       AND (prompt_template IS NULL OR prompt_template = '');
-
-    -- group_a/needs.md — #8, #9 공유
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# 니즈 파악 Sub Agent — #8 문의 파악 및 재확인 · #9 고객정보 확인
-
-당신은 **STT 기반 통합 상담평가표 v2.0** 의 "니즈 파악" 대분류 (10점) 를 평가한다.
-아래 평가 기준은 평가표 원문 그대로이며, 다른 기준으로 추가·수정하지 말 것.
-
-## Evidence 강제 규칙
-
-- `evaluation_mode=full` 인 경우 `evidence` 배열에 최소 1개 필수.
-- `evaluation_mode=structural_only` 인 경우도 evidence 1개 이상 권장 (절차 근거 발화).
-- Evidence 스키마: `{speaker, timestamp, quote, turn_id}`.
-- Quote 는 전사본 원문 그대로 (마스킹 토큰 `***` 도 원문 유지).
+1. 거절/불가/양해 상황이 없으면(우회 거절 포함 점검) `situation_present=false` + score=5 +
+   evidence=[] 인가? 있으면 `situation_present=true` + 쿠션어 근거 evidence 가 있는가?
+2. Evidence quote 가 원문 그대로인가?
+3. score 가 5 / 3 / 0 중 하나인가?
+4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
 
 ---
 
-## Item #8 — 문의 파악 및 재확인(복창) (max_score=5, ALLOWED_STEPS=[5, 3, 0])
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=7 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 고객 문의 정확 파악 후 핵심 내용 재확인(복창) / 3점: 문의 파악은 됐으나 재확인 누락 또는 1회 재질의 필요 / 0점: 동문서답 또는 반복적 재질의', prompt_template='# Item #8 — 문의 파악 및 재확인(복창) (max_score=5, ALLOWED_STEPS=[5, 3, 0])
+
+> **STT 기반 통합 상담평가표 v2.0** 의 "니즈 파악" 대분류 (10점) 내 항목 #8.
+> 본 파일은 평가 기준·판정 룰·출력 스키마·공통 정책을 한 파일에 통합한 **self-contained SSOT** 이다.
+> 평가표 원문 그대로 사용하며 임의 추가·수정 금지.
 
 **평가모드**: full
 **처리방식**: LLM + Few-shot
 **비고**: 본론 시작부 평가
 
-### 평가 기준
+---
+
+## 평가 기준
 
 **고객의 문의 내용을 정확히 파악하고 재확인(복창)하였는가?**
 
@@ -569,21 +1801,259 @@ $prompt$# 니즈 파악 Sub Agent — #8 문의 파악 및 재확인 · #9 고�
 - **3점**: 문의 파악은 되었으나 재확인 누락, 또는 **1회 재질의 발생**
 - **0점**: 문의 내용 미파악으로 **동문서답** 또는 **반복 재질의**
 
-### 판정 기준
+## 판정 기준
 
 - 복창: 고객 발화의 핵심 키워드 또는 의도를 상담사가 본인 문장으로 되풀이하는 것.
 - 단순 "네, 알겠습니다" 는 복창으로 인정 안 함.
 - 본론 시작부 (고객 최초 문의 직후 3~5 턴) 집중 평가.
 
+## 출력 형식 (JSON — 단일 객체)
+
+```json
+{
+  "item_number": 8,
+  "evaluation_mode": "full",
+  "score": 5,
+  "deductions": [],
+  "evidence": [
+    {"speaker": "상담사", "timestamp": null, "quote": "교환이 될지라고 해주셨는데요", "turn_id": 5}
+  ],
+  "self_confidence": 5,
+  "self_confidence_rationale": "니즈 확인 발화가 명확해 확신 높음",
+  "summary": "..."
+}
+```
+
+## 출력 규칙 (산술·형식)
+
+- `score` 는 정확히 **5 / 3 / 0** 중 하나.
+- `score + Σ(deductions[].points) === max_score(=5)`.
+- full 모드 evidence 최소 1개 필수.
+- `self_confidence`: 1~5. `self_confidence_rationale`: 왜 그 자기확신 점수인지 **1줄** (신뢰도 근거로 노출됨).
+- 한국어 작성. 한자 금지.
+
+## 자기 검증 (제출 전 — 항목 고유)
+
+1. 복창 판정이 핵심 키워드 재발화에 근거했는가?
+2. Evidence 가 1개 이상인가? (full 모드)
+3. score 가 5 / 3 / 0 중 하나인가?
+4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
+
 ---
 
-## Item #9 — 고객정보 확인 (max_score=5, ALLOWED_STEPS=[5, 3, 0], **evaluation_mode=structural_only**)
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=8 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 양해 표현과 함께 필요한 고객정보 확인 / 3점: 일부 정보만 확인 또는 양해 표현 없이 확인 / 0점: 고객정보 확인 누락 / 비고: 고객 선제 제공 시 복창 확인하면 만점(structural_only)', prompt_template='# Item #9 — 고객정보 확인 (max_score=5, ALLOWED_STEPS=[5, 3, 0], evaluation_mode=structural_only)
+
+> **STT 기반 통합 상담평가표 v2.0** 의 "니즈 파악" 대분류 (10점) 내 항목 #9.
+> 본 파일은 평가 기준·판정 룰·출력 스키마·공통 정책을 한 파일에 통합한 **self-contained SSOT** 이다.
+> 평가표 원문 그대로 사용하며 임의 추가·수정 금지.
 
 **평가모드**: structural_only
 **처리방식**: LLM
-**비고**: 마스킹으로 내용 검증 불가, **절차만 평가**. T3 필수 라우팅.
+**비고**: 마스킹으로 내용 검증 불가, **절차만 평가**.
 
-### 평가 기준
+---
+
+## 평가 기준
 
 **상담에 필요한 고객 정보(성함, 연락처 등)를 확인하였는가?**
 
@@ -594,7 +2064,7 @@ $prompt$# 니즈 파악 Sub Agent — #8 문의 파악 및 재확인 · #9 고�
 
 **※ 고객이 먼저 정보 제공 시, 상담사가 정보 복창 확인하면 만점.**
 
-### 판정 기준 (structural_only 원칙)
+## 판정 기준 (structural_only 원칙)
 
 - 마스킹 환경 (`***` 토큰) 이므로 **내용 정확성 검증 불가**.
 - 오직 **절차 준수**만 평가:
@@ -603,68 +2073,249 @@ $prompt$# 니즈 파악 Sub Agent — #8 문의 파악 및 재확인 · #9 고�
   3. 상담사의 확인/복창 멘트 ("*** 고객님 본인 맞으십니까")
 - **내용 대조 사유 감점 금지** (마스킹으로 불가능).
 
-### force_t3 적용
+## force_t3 적용
 
 - 항목 #9 는 `force_t3=true` 고정 — 인간 검수 T3 라우팅 필수.
 
----
-
-## 공통 출력 포맷
+## 출력 형식 (JSON — 단일 객체)
 
 ```json
-{"items": [
-  {
-    "item_number": 8,
-    "evaluation_mode": "full",
-    "score": 5,
-    "deductions": [],
-    "evidence": [
-      {"speaker": "상담사", "timestamp": null, "quote": "교환이 될지라고 해주셨는데요", "turn_id": 5}
-    ],
-    "self_confidence": 5,
-    "self_confidence_rationale": "니즈 확인 발화가 명확해 확신 높음",
-    "summary": "..."
-  },
-  {
-    "item_number": 9,
-    "evaluation_mode": "structural_only",
-    "score": 5,
-    "info_count": 2,
-    "apology_present": true,
-    "force_t3": true,
-    "deductions": [],
-    "evidence": [
-      {"speaker": "상담사", "timestamp": null, "quote": "고객님 연락처와 성함 말씀 부탁드리겠습니다", "turn_id": 7}
-    ],
-    "self_confidence": 4,
-    "self_confidence_rationale": "마스킹 환경이라 절차 기준 판정 — 확신 보통",
-    "summary": "마스킹 환경 — 절차 기준 판정"
-  }
-]}
+{
+  "item_number": 9,
+  "evaluation_mode": "structural_only",
+  "score": 5,
+  "info_count": 2,
+  "apology_present": true,
+  "force_t3": true,
+  "deductions": [],
+  "evidence": [
+    {"speaker": "상담사", "timestamp": null, "quote": "고객님 연락처와 성함 말씀 부탁드리겠습니다", "turn_id": 7}
+  ],
+  "self_confidence": 4,
+  "self_confidence_rationale": "마스킹 환경이라 절차 기준 판정 — 확신 보통",
+  "summary": "마스킹 환경 — 절차 기준 판정"
+}
 ```
 
-### 공통 규칙
+## 출력 규칙 (산술·형식)
 
-- `score` 는 정확히 5 / 3 / 0 중 하나.
+- `score` 는 정확히 **5 / 3 / 0** 중 하나.
 - `score + Σ(deductions[].points) === max_score(=5)`.
-- #9 는 `evaluation_mode="structural_only"` + `force_t3=true` 고정.
-- full / structural_only 모드 evidence 최소 1개 필수.
+- `evaluation_mode="structural_only"` + `force_t3=true` 고정.
+- structural_only 모드 evidence 최소 1개 필수.
+- `self_confidence`: 1~5. `self_confidence_rationale`: 왜 그 자기확신 점수인지 **1줄** (신뢰도 근거로 노출됨).
 - 한국어 작성. 한자 금지.
-- `self_confidence_rationale`: 왜 그 자기확신 점수인지 **1줄** (신뢰도 근거로 노출됨).
 
-## 자기 검증 (제출 전)
+## 자기 검증 (제출 전 — 항목 고유)
 
-1. #8 복창 판정이 핵심 키워드 재발화에 근거했는가?
-2. #9 감점 사유에 "내용 불일치" / "정보 오류" 등 내용 대조가 포함됐는가? → 즉시 삭제
-3. #9 에 `evaluation_mode="structural_only"` + `force_t3=true` 가 있는가?
-4. score 가 5 / 3 / 0 중 하나인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no IN (8, 9)
-       AND (prompt_template IS NULL OR prompt_template = '');
+1. 감점 사유에 "내용 불일치" / "정보 오류" 등 내용 대조가 포함됐는가? → 즉시 삭제
+2. `evaluation_mode="structural_only"` + `force_t3=true` 가 있는가?
+3. score 가 5 / 3 / 0 중 하나인가?
+4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
 
-    -- group_b/item_10_clarity.sonnet.md — #10
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# Item #10 — 설명의 명확성 (max 10점)
+---
+
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=9 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 10점 / 10점: 고객 눈높이에 맞춰 쉽고 명확히 설명 / 7점: 부분적으로 장황하거나 일부 불명확 / 5점: 내부 용어 사용·나열식 설명 또는 고객 되물음 유발 / 0점: 설명 불가 수준 또는 고객 미이해', prompt_template='# Item #10 — 설명의 명확성 (max 10점)
 
 **STT 기반 통합 상담평가표 v2.0** 의 "설명력 및 전달력" 대분류 (15점) 내 항목 #10.
 
@@ -724,14 +2375,211 @@ $prompt$# Item #10 — 설명의 명확성 (max 10점)
 1. score 가 10 / 7 / 5 / 0 중 하나인가?
 2. 감점 사유가 xlsx 평가 기준 4단계 중 하나에 직접 대응하는가?
 3. Evidence quote 가 원문 그대로인가?
-4. `score + Σ(deductions.points) == 10` 산술 검증 통과인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 10
-       AND (prompt_template IS NULL OR prompt_template = '');
+4. `score + Σ(deductions.points) == 10` 산술 검증 통과인가?
 
-    -- group_b/item_11_conclusion_first.sonnet.md — #11
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# Item #11 — 두괄식 답변 (max 5점)
+---
+
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=10 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 결론 우선 제시 후 부연 설명 / 3점: 장황하지만 핵심은 전달됨 / 0점: 두서없이 장황하여 핵심 파악 곤란', prompt_template='# Item #11 — 두괄식 답변 (max 5점)
 
 **STT 기반 통합 상담평가표 v2.0** 의 "설명력 및 전달력" 대분류 (15점) 내 항목 #11.
 
@@ -790,14 +2638,211 @@ $prompt$# Item #11 — 두괄식 답변 (max 5점)
 1. score 가 5 / 3 / 0 중 하나인가?
 2. 감점 사유가 xlsx 평가 기준 3단계 중 하나에 직접 대응하는가?
 3. 고객 질문-상담사 답변 쌍을 지적할 수 있는가?
-4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 11
-       AND (prompt_template IS NULL OR prompt_template = '');
+4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
 
-    -- group_b/item_12_problem_solving.sonnet.md — #12
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# Item #12 — 문제 해결 의지 (max 5점)
+---
+
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=11 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 적극적 대안 제시 및 해결 의지 표현 / 3점: 기본 안내만 진행하고 대안 미제시 / 0점: 단순 반복 안내 또는 해결 회피', prompt_template='# Item #12 — 문제 해결 의지 (max 5점)
 
 **STT 기반 통합 상담평가표 v2.0** 의 "적극성" 대분류 (15점) 내 항목 #12.
 
@@ -856,14 +2901,211 @@ $prompt$# Item #12 — 문제 해결 의지 (max 5점)
 1. score 가 5 / 3 / 0 중 하나인가?
 2. 감점 사유가 xlsx 평가 기준 3단계 중 하나에 직접 대응하는가?
 3. Evidence 가 상담사의 적극/소극 신호를 직접 인용하는가?
-4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 12
-       AND (prompt_template IS NULL OR prompt_template = '');
+4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
 
-    -- group_b/item_13_supplementary.sonnet.md — #13
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# Item #13 — 부연 설명 및 추가 안내 (max 5점)
+---
+
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=12 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 선제적 추가 안내로 원스톱 처리 / 3점: 부연 설명 부족으로 추가 문의 가능성 / 0점: 단답형 응대로 고객 재문의 유발', prompt_template='# Item #13 — 부연 설명 및 추가 안내 (max 5점)
 
 **STT 기반 통합 상담평가표 v2.0** 의 "적극성" 대분류 (15점) 내 항목 #13.
 
@@ -921,14 +3163,211 @@ $prompt$# Item #13 — 부연 설명 및 추가 안내 (max 5점)
 1. score 가 5 / 3 / 0 중 하나인가?
 2. 감점 사유가 xlsx 평가 기준 3단계 중 하나에 직접 대응하는가?
 3. Evidence 가 선제 안내 유무를 직접 보여주는가?
-4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 13
-       AND (prompt_template IS NULL OR prompt_template = '');
+4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
 
-    -- group_b/item_14_followup.sonnet.md — #14
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# Item #14 — 사후 안내 (max 5점)
+---
+
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=13 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 후속 절차·소요 시간·연락 수단 명확 안내 / 3점: 사후 안내의 구체성 부족 / 0점: 사후 안내 누락 / 비고: 즉시 해결되어 사후 안내 불필요 시 만점 처리', prompt_template='# Item #14 — 사후 안내 (max 5점)
 
 **STT 기반 통합 상담평가표 v2.0** 의 "적극성" 대분류 (15점) 내 항목 #14.
 
@@ -988,14 +3427,211 @@ $prompt$# Item #14 — 사후 안내 (max 5점)
 1. score 가 5 / 3 / 0 중 하나인가?
 2. 후속 절차가 필요한 상담인지 먼저 판단했는가? (불필요 시 5점)
 3. Evidence 가 사후 안내 여부를 직접 보여주는가?
-4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 14
-       AND (prompt_template IS NULL OR prompt_template = '');
+4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
 
-    -- group_b/item_15_accuracy.sonnet.md — #15
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# Item #15 — 정확한 안내 (max 15점)
+---
+
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=14 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 10점 / 10점: 오안내 없이 정확한 정보 안내 / 5점: 미미한 오류이거나 즉시 정정한 경우 / 0점: 오안내가 있으며 정정이 필요한 경우', prompt_template='# Item #15 — 정확한 안내 (max 15점)
 
 **STT 기반 통합 상담평가표 v3.0** 의 "업무 정확도" 대분류 (20점) 내 항목 #15.
 
@@ -1100,14 +3736,8 @@ Override 적용은 Layer 3 가 자동 처리하며, LLM 응답에 해당 문구�
 1. score 가 **15 / 10 / 5 / 0** 중 하나인가?
 2. `evaluation_mode="partial_with_review"` + `mandatory_human_review=true` 가 있는가?
 3. 오안내 판정 근거로 RAG 문서 또는 상담사 자기정정 발화가 있는가?
-4. `score + Σ(deductions.points) == 15` 산술 검증 통과인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 15
-       AND (prompt_template IS NULL OR prompt_template = '');
-
-    -- group_b/item_16_mandatory_script.sonnet.md — #16
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# Item #16 — 필수 안내 이행 (max 5점)
+4. `score + Σ(deductions.points) == 15` 산술 검증 통과인가?', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=15 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 업무별 필수 안내사항 모두 누락 없이 이행 / 3점: 필수 안내사항 일부 누락 / 0점: 필수 안내 미진행 또는 다수 누락', prompt_template='# Item #16 — 필수 안내 이행 (max 5점)
 
 **STT 기반 통합 상담평가표 v2.0** 의 "업무 정확도" 대분류 (15점) 내 항목 #16.
 
@@ -1171,20 +3801,13 @@ $prompt$# Item #16 — 필수 안내 이행 (max 5점)
 1. score 가 5 / 3 / 0 중 하나인가?
 2. `intent_type` / `required_items` 가 명시됐는가?
 3. 누락 항목 (`missing_items`) 이 감점 사유와 일치하는가?
-4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 16
-       AND (prompt_template IS NULL OR prompt_template = '');
-
-    -- group_b/item_17_iv_procedure.sonnet.md — #17
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# Item #17 — 정보 확인 절차 (max 5점)
+4. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=16 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 개인정보 확인 가이드라인에 따라 절차 이행 / 0점: 확인 절차 누락 또는 정보 선언급(확인 전 고객정보 먼저 말함)', prompt_template='# Item #17 — 정보 확인 절차 (max 5점)
 
 **STT 기반 통합 상담평가표 v2.0** 의 "개인정보 보호" 대분류 (10점) 내 항목 #17.
 
 **평가모드**: compliance_based (절차 준수 여부 기준)
 **처리방식**: Rule 중심 + LLM verify
-**비고**: 패턴 탐지, **T3(필수 검수) 라우팅**
 **ALLOWED_STEPS**: [5, 3, 0]
 
 ## 평가 기준
@@ -1215,7 +3838,7 @@ $prompt$# Item #17 — 정보 확인 절차 (max 5점)
 - **고객 선제 제공 예외 (A)**: 3단계(고객 응답) 가 1/2단계 없이 먼저 등장 + 이후 4단계(복창 확인) 수행 → **5점** (역순 위반 아님)
 - 1~2단계 중 하나만 누락, 3/4단계 수행 → 3점
 - 2단계 이상 누락 또는 4단계(확인 완료) 자체 부재 → 0점
-- `force_t3=true` 고정 — 인간 검수 필수.
+- `force_t3=true` 고정.
 
 ## Evidence 강제
 
@@ -1263,20 +3886,216 @@ $prompt$# Item #17 — 정보 확인 절차 (max 5점)
 2. 고객 선제 제공 케이스 (예외 A) 인지 먼저 확인했는가? — 해당 시 1/2단계 누락을 감점하지 않음 → 5점 유지.
 3. 4단계 순서 (`procedure_steps`) 가 명시됐는가?
 4. `force_t3=true` + `mandatory_human_review=true` 가 있는가?
-5. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 17
-       AND (prompt_template IS NULL OR prompt_template = '');
+5. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
 
-    -- group_b/item_18_privacy_protection.sonnet.md — #18
-    UPDATE public.eval_item_defs SET prompt_template =
-$prompt$# Item #18 — 정보 보호 준수 (max 5점)
+---
+
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=17 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion='만점 5점 / 5점: 개인정보 보호 가이드라인 준수 / 0점: 제3자에게 개인정보 안내 또는 정보 유출 발생', prompt_template='# Item #18 — 정보 보호 준수 (max 5점)
 
 **STT 기반 통합 상담평가표 v3 (2026-04-21)** 의 "개인정보 보호" 대분류 내 항목 #18.
 
 **평가모드**: compliance_based (위반 패턴 탐지)
-**처리방식**: Rule 패턴 + T3 필수
-**비고**: **T3 라우팅 무조건**
+**처리방식**: Rule 패턴 기반 위반 탐지
 **ALLOWED_STEPS**: [5, 3, 0]
 
 ## 평가 기준 (xlsx v3 SSoT)
@@ -1293,7 +4112,7 @@ $prompt$# Item #18 — 정보 보호 준수 (max 5점)
 - **패턴 B**: **제3자 지칭**("남편분", "지인", "가족분") 후 PII 관련 안내
 - **패턴 C**: 고객이 **본인 확인 거부** 후 상담 계속 진행
 
-**※ 마스킹 환경에서는 탐지만 수행, 최종 판정은 T3 인간 검수.**
+**※ 마스킹 환경에서는 위반 패턴 탐지만 수행한다.**
 
 ## PII 카테고리별 심각도 (xlsx 마스킹 정책 시트)
 
@@ -1344,8 +4163,8 @@ $prompt$# Item #18 — 정보 보호 준수 (max 5점)
     {"speaker": "상담사", "timestamp": null, "quote": "*** 고객님 본인 맞으십니까", "turn_id": 14}
   ],
   "self_confidence": 4,
-  "self_confidence_rationale": "위반 패턴 미탐지 — 단 T3 확정 전이라 확신 보통",
-  "summary": "위반 패턴 탐지 없음. 최종 판정은 T3 필수."
+  "self_confidence_rationale": "위반 패턴 미탐지 — 마스킹 환경이라 확신 보통",
+  "summary": "위반 패턴 탐지 없음. 개인정보 노출 미확인."
 }
 ```
 
@@ -1359,7 +4178,7 @@ $prompt$# Item #18 — 정보 보호 준수 (max 5점)
   ],
   "pii_severity_observed": ["중"],
   "deductions": [{"points": 2, "reason": "경미 위반 — 비핵심 PII 1회 선언급 / 즉시 시정"}],
-  "summary": "경미 위반 1건 — 즉시 시정 확인. T3 검수 권고."
+  "summary": "경미 위반 1건 — 즉시 시정 확인."
 }
 ```
 
@@ -1381,12 +4200,209 @@ $prompt$# Item #18 — 정보 보호 준수 (max 5점)
 2. `patterns_checked` 에 A/B/C 3개가 모두 있는가?
 3. 3점 판정 시 `violations[].pattern == "minor_disclosure"` + `severity == "중"` + 시정 사실 명시되어 있는가?
 4. `force_t3=true` + `mandatory_human_review=true` 가 있는가?
-5. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?$prompt$,
-        updated_at = now()
-     WHERE org_id = target_org_id AND department = '기본' AND version = 1 AND order_no = 18
-       AND (prompt_template IS NULL OR prompt_template = '');
+5. `score + Σ(deductions.points) == 5` 산술 검증 통과인가?
 
-    RAISE NOTICE '코오롱(org_id=%) 평가항목 콘텐츠 시드 완료: criterion 18항목(#3 사유만) / prompt_template 17항목(#3 제외).', target_org_id;
-END $migrate$;
+---
 
+## 공통 평가 정책 (모든 항목 공통 — SSOT inline)
+
+> 본 절은 STT 기반 통합 상담평가표 v2.0 xlsx 전 탭(평가모드 / 제외·감점 정책 / 마스킹 정책 / STT 평가 유의사항)
+> 과 AI_QA_Agent_Design_Document_v2.pdf 의 핵심 원칙(원칙 3 Evidence 강제 · 원칙 4 Override 분리 ·
+> 원칙 5 한계 명시) 을 정책으로 묶은 것이다.
+
+### 0. (최우선) 정상 상담 여부 선(先)판정
+
+**전제**: 이 통화의 *평가가능 여부는 앞단(전처리) 게이트가 이미 판정* 했다. 따라서 당신은
+기본적으로 "이 통화는 평가 가능" 을 전제로 **항목 채점에 집중** 한다. 아래 비정상 신호는
+앞단이 놓친 *명백한* 경우의 최종 안전망일 뿐이며, 통화를 unevaluable 로 돌리는 것은
+극히 예외적이어야 한다 (애매하면 반드시 정상 상담으로 채점).
+
+항목을 채점하기 **전에**, 이 통화가 *정상적인 상담 대화*인지 먼저 판단한다.
+아래 **비정상 상담** 신호가 하나라도 명백하면, 해당 항목을 채점하지 말고
+`evaluation_mode="unevaluable"` 로 반환한다 — 점수 미부여, `evidence=[]` 허용,
+`evaluation_mode_reason`(또는 `judgment`)에 *관측된 행동 근거*로 사유를 1문장 기재
+(예: "상담사 욕설·언쟁으로 상담 붕괴" / "상담사 발화 자체가 없음").
+
+**중요**: unevaluable 로 판정하더라도 사유 텍스트에는 "평가 불가 / 인간 검수 라우팅 /
+평가 대상 아님 / 구조적 불가능" 같은 모드·라우팅 메타와 STT/전사 품질 언급을 **쓰지 말 것**.
+평가 한계·모드는 `evaluation_mode` 필드로만 표현하고, 사유 문장에는 *관측된 상담사 행동*만
+서술한다 (예: "상담사 욕설·언쟁으로 정상 응대가 성립하지 않음").
+
+비정상 상담은 **상담사의 행동·발화로 상담이 성립하지 않은 경우에 한정** 한다:
+
+- 상담사가 욕설·비하·반말·고압적 명령("어쩌라고", "알아서 하세요" 류)·응대 거부·
+  임의 종료로 정상적인 상담 응대가 성립하지 않음
+- 폭언·언쟁으로 상담이 붕괴되어 실질적인 업무 응대 자체가 없음
+- 상담사 발화가 전혀 없는 등 상담으로 보기 어려운 무의미 내용
+
+**STT 전사 품질은 비정상 판정 근거가 아니다** — 양측 발화가 존재하나 전사가 단편적·불명확·
+일부 잘림에 그치는 경우는 *비정상 상담이 아니다*. STT 품질 저하/전사 오류/단편성만을 근거로
+`unevaluable` 또는 "비정상 상담" 을 선언하지 말 것. 전사본 품질 판정과 검수 라우팅은 평가
+노드 밖(전처리 quality_gate) 의 책임이다. garbage STT 라도 **텍스트에 보이는 만큼 사실 기반으로
+채점** 하고, 필수 요소가 확인되지 않으면 STT 품질을 거론하지 말고 "미확인" 으로 서술한다.
+
+전사본은 STT(음성→텍스트) 결과이므로 **발음의 부정확함·경미한 오전사·띄어쓰기 오류는 유연하게
+해석** 한다. 발화 흐름과 용건이 파악되면 정상적으로 평가하고, 사소한 전사 잡음을 근거로 감점하거나
+평가 불가로 판단하지 않는다. 내용을 *전혀* 식별할 수 없는 수준의 훼손일 때만 평가 불가에
+해당하며, **그 평가 불가 판정은 개별 항목이 아니라 통화 단위(감독관)가 수행** 한다 — 당신(개별
+항목)은 식별 불가 수준의 훼손이라도 사유에 "STT 오류/전사 품질/인간 검수 라우팅" 같은 메타를
+쓰지 말고, 보이는 발화에 근거해 채점하거나 해당 요소를 "미확인" 으로만 서술한다.
+
+**부재(不在) 기반 만점 금지** — 가장 중요: "해당 상황이 발생하지 않았다"
+(예: 대기 상황 없음, 거절·불가 상황 없음, 위반 없음)는 *정상 상담일 때만* 만점·충족
+근거가 된다. **비정상 상담에서는 상황의 부재가 "잘함"을 의미하지 않으므로**, 부재를
+근거로 만점/충족 판정을 내리지 말고 `unevaluable` 로 처리한다.
+
+판단이 애매하면(정상/비정상 경계, 고객만 불친절하고 상담사는 정상 응대, 전사가 어수선하나
+양측 발화는 있음 등) **정상 상담으로 보고 평소대로 채점**한다(과도한 평가불가 방지). 단, 위
+명백한 행동 기반 비정상 신호가 있으면 반드시 unevaluable. 불친절·욕설 관찰 시 아래 C 절의
+`override_hint` 기재는 그대로 유지(검수 라우팅용).
+
+### A. Evidence 강제 규칙 (원칙 3)
+
+- `evaluation_mode ∈ {full, structural_only, compliance_based, partial_with_review}` 이면
+  `evidence` 배열에 **최소 1건 필수**. Evidence 없이 만점 부여 금지.
+- 각 evidence 원소: `{speaker, timestamp, quote, turn_id}` — speaker 는 "상담사" / "고객" /
+  "업무지식" 중 하나. `quote` 는 전사본 원문 그대로 (수정·요약·의역 금지).
+  금지: 영문 라벨(agent, customer), text/turn 키 사용 — 한국어 speaker + quote 만 허용.
+- `evaluation_mode ∈ {skipped, unevaluable}` 만 `evidence=[]` 허용.
+
+### B. 평가모드 6종 정의 (xlsx "평가모드 정의" 탭)
+
+| mode | 의미 | 적용 예 |
+|---|---|---|
+| `full` | 완전 평가 — 모든 정보 사용, AI 판정 신뢰 가능 | 첫인사/끝인사/쿠션어/두괄식/호응·공감 등 대부분 |
+| `structural_only` | 마스킹으로 내용 검증 불가, 구조/절차만 평가 | 고객정보 확인 (#9) |
+| `compliance_based` | 규정 준수 여부 기준 평가 (내용 무관, 패턴 탐지) | 정보 확인 절차 (#17) / 정보 보호 준수 (#18) |
+| `partial_with_review` | AI 초안 + 인간 검수 필수 — 외부 지식 의존 | 정확한 안내 (#15, RAG 부재 시) |
+| `skipped` | 해당 상황 부재 또는 프로토타입 제외 — **만점 처리** | 말겹침 (#3), 쿠션어 거절 상황 없음 |
+| `unevaluable` | 해당 상황 부재·통화 과소 등으로 평가 불가 — 점수 미부여 | 너무 짧은 통화, 평가 대상 발화 없음 |
+
+모드는 항목별로 rubric 에 지정돼 있으며, 당신은 해당 모드 **안에서만** 평가한다.
+하나의 항목에서 모드를 임의로 downgrade 하려면 `evaluation_mode_reason` 에 사유를 기재.
+
+### C. 공통 감점 Override 정책 (xlsx "제외·감점 정책" 탭, PDF §5.2)
+
+공통 감점 4종은 **Sub Agent 가 직접 전체/카테고리 0점을 강제하지 않는다.**
+당신은 오직 해당 항목의 rubric 판정만 수행하라.
+Override 는 Layer 1 탐지기 + Layer 3 Orchestrator 가 담당 (PDF 원칙 4).
+
+| 감점 조건 | 탐지 위치 | Override 동작 (Orchestrator 가 적용) |
+|---|---|---|
+| **불친절** (욕설·비하·언쟁·임의 단선) | Layer 1 규칙 + Sub Agent LLM 맥락 판정 | 전체 평가 0점 + 관리자 즉시 통보 |
+| **개인정보 유출 의심** (제3자 정보 안내 등) | Layer 1 규칙 (PII 위치 패턴) + 개인정보 Sub Agent | 해당 항목 0점 + 별도 보고서 생성 |
+| **오안내 후 미정정** | Layer 2 업무정확도 Sub Agent (업무지식 RAG 대조) | 업무 정확도 **대분류 전체** 0점 |
+
+**당신의 역할**: rubric 에 따른 항목별 점수 + 감점 사유를 정확히 출력.
+불친절·욕설·제3자 정보 안내·오안내 등을 관찰하면 **해당 항목 감점**과 함께
+`override_hint` 필드에 `"profanity"` / `"privacy_leak"` / `"uncorrected_misinfo"` 기재.
+전체/카테고리 0점 처리는 Orchestrator 가 맡는다.
+
+### D. 마스킹 정책 (xlsx "마스킹 정책" 탭, PDF §9)
+
+- **v1_symbolic (현재)**: 모든 PII 는 `***` 단일 symbol 로 마스킹. 카테고리 구분 없음.
+  개인정보 관련 항목(#9/#17/#18)은 "내용 정확성" 판정 불가 — **"절차 준수 여부" 만** 평가.
+- **v2_categorical (미래 호환)**: `[NAME] [PHONE] [RRN] [ACCOUNT] [CARD] [ADDRESS]
+  [EMAIL] [AMOUNT] [DATE] [PII_OTHER]` 10종 카테고리 토큰. 심각도 순: 최고(RRN) >
+  높음(ACCOUNT/CARD) > 중(NAME/PHONE/ADDRESS/PII_OTHER) > 낮음(EMAIL/AMOUNT/DATE).
+- Quote 에 PII 토큰이 등장하면 **토큰 그대로 인용** (원문 PII 복원 금지).
+- 마스킹 환경에서 "내용 불일치/정보 오류" 사유 감점은 금지 (구조적 불가능).
+
+### E. STT 평가 유의사항 (xlsx "STT 평가 유의사항" 탭)
+
+- **화자 구분 필수**: `상담사` / `고객` 명확 표기 전사본만 평가. 미구분 시 평가 신뢰도 저하.
+- **말겹침/말자름 표기 의존**: STT 에 겹침 구간이 표기된 경우에만 평가 가능.
+  프로토타입에서는 업체별 포맷 차이로 #3 항목 **평가 제외 (skipped 만점 고정)**.
+- **대기/묵음 구간**: `[묵음]` 등 표기가 있으면 대기 멘트 평가에 활용. 미표기 시 멘트 유무로만 판단.
+- **특수 발화**: 외국어 혼용, 수치·영문 약어, 1~2회 발음 오류는 STT 오전사 가능성 — low-confidence
+  신호로 활용하되 상담사 발화 책임으로 감점하지 말 것.
+- **타임스탬프**: 있으면 evidence.timestamp 에 포함, 없으면 `null`.
+- **STT 품질을 판정 사유로 쓰지 말 것**: transcript 가 불명확·단편적이어도 STT 품질/전사
+  오류/음성 품질을 사유로 "평가 불가 / 인간 검수 라우팅 / 비정상 상담" 을 *선언하지 말 것*.
+  전사본 품질 판정과 검수 라우팅은 평가 노드 밖(전처리 quality_gate) 의 책임이다. 평가 노드는
+  텍스트에 보이는 만큼만 사실 기반으로 평가하고, 필수 요소가 텍스트에서 확인되지 않으면 점수
+  사유에 STT 품질을 거론하지 말고 "미확인" 으로 서술 (예: "끝인사 발화 미확인").
+
+### E-2. 판정 사유(judgment/rationale) 작성 규칙
+
+`judgment`(또는 `rationale`) 는 **점수를 가른 핵심 근거 한 가지만 1문장(권장 60~100자)** 으로
+짧게 작성한다. 이커머스·은행 트랙과 동일하게 **핵심만 간결히** — 같은 내용 반복·부연 설명·
+예시 나열("예를 들어 ~")·배경 서술·일반론·개선 제안·다중 문장 누적을 일절 넣지 말 것.
+어떤 상담사 발화·행동이 이 항목 기준을 충족/미충족시켰는지 그 한 가지만 적는다.
+
+**사유에 절대 쓰지 말 것 (어떤 경우에도 금지)**:
+
+1. **STT/전사 품질·재처리 언급**: "STT 전사 품질 저하", "전사 신뢰도 낮음", "전사 오류",
+   "오전사", "STT 재처리", "전사본 손상", "음절 나열", "단편적·불완전"(전사 탓) 등.
+2. **모드/라우팅·조치 메타**: "평가 불가", "평가 대상이 아님", "평가를 진행할 수 없", "구조적으로
+   불가능", "판정 불가", "인간 검수 라우팅/필수/권장", "관리자(상위자) 즉시 통보(대상)",
+   "즉시 escalation/보고 대상", "(별도) override 처리/조치 대상", "별도 처리 대상" 등. 평가 한계는 `evaluation_mode` 필드로만 표현하고,
+   불친절·욕설 등 조치가 필요한 신호는 §C 의 `override_hint` 로만 표기한다 — 사유 문장에는
+   조치·라우팅·통보 메타를 적지 않고 *관측된 상담사 행동·근거*만 서술한다.
+3. **내부 필드/플래그명**: `situation_present`, `evaluation_mode`, `force_t3`, `skipped` 등의
+   필드명/값을 사유 문장에 그대로 쓰지 말 것. (예: "situation_present=false" ❌ →
+   "대기 상황 없음 — 해당 없음" ⭕ 처럼 자연어로 서술)
+4. **빈 플레이스홀더**: "(사유 미제공)" / "사유 미제공" 금지. 항상 그 항목 기준 대비
+   충족/미충족 핵심을 1~2문장으로 채운다.
+5. **발화 원문 직접 인용 금지**: 사유 문장에 상담사·고객의 발화 원문을 따옴표(''...'' / "...")로
+   그대로 옮기지 말 것. 발화 원문(근거 발화)은 **오직 `evidence` 배열의 `quote` 필드에만** 담는다.
+   사유에는 그 발화가 *무엇을 했는지*를 행동·태도로 요약·서술한다 — 원문 인용 없이.
+   - ❌ "상담사가 ''진짜 답답하네'', ''됐고요'', ''바쁘니까 끊을게요'' 라고 말하며 고객을 모욕했다"
+   - ⭕ "상담사가 비하적·고압적 표현으로 고객을 모욕하고 일방적으로 통화를 종료했다"
+     (원문 "진짜 답답하네" 등은 `evidence[].quote` 로 분리해 담는다)
+   예외: KMS/RAG 출처 anchor 표기(§H, `[KMS §3.2]` / `[RAG #...]`)는 인용이 아니므로 허용.
+
+6. **문체 — 명사형 개조식 종결 (필수)**: 사유는 평서문 종결("~습니다 / ~합니다 / ~했다 /
+   ~된다 / ~이다 / ~음을 확인했다")을 쓰지 말고, 반드시 **명사형·개조식으로 종결**한다
+   ("~음 / ~함 / ~없음 / ~부재 / ~미흡 / ~누락 / ~유지 / ~필요" 등). 한 사유 안의 모든 절을
+   명사형으로 통일한다.
+   - ❌ "정중한 존대 표현을 유지했습니다" / "공감 표현이 전혀 없어 감점했습니다"
+   - ⭕ "정중한 존대 표현 유지" / "상황 맞춤 공감 표현 부재"
+   발화 원문 인용(`evidence[].quote`)·점수 표기는 이 규칙과 무관(원문 유지).
+7. **튜닝·내부 규칙 근거 표기 금지**: 사유에 채점 규칙의 *출처·버전·완화 근거*를 쓰지 말 것.
+   금지 표현: "iter05" / "iter0X" / "iter03_clean" 등 튜닝 이터레이션 명칭, "관대 인정 범위" /
+   "관대 채점" / "인정 범위" / "(감점) 제외 (규칙)" / "완화 규칙" / "비감점 규칙" 처럼 *왜 감점에서
+   빠졌는지를 내부 규칙으로 설명하는* 메타. 비감점 판정은 규칙명을 들지 말고 *관측된 표현 자체*로만
+   서술한다.
+   - ❌ "문법이 부정확하나 구어체 축약은 iter05 관대 인정 범위로 감점 제외"
+   - ⭕ "구어체 축약 외 부적절 표현 없어 정중한 존대 유지"
+   (구어체 축약을 감점하지 않는 채점 규칙 자체는 그대로 적용 — 단지 그 근거를 사유에 쓰지 않는다.)
+
+그 외 금지: 장황한 배경 서술·같은 말 반복·일반론·상담 전체 총평·다른 평가 항목 이야기.
+사유는 "이 항목 기준 대비 무엇을 충족/미충족했는가" 한 가지에만 집중한다.
+
+단, 간결화가 **필수 출력 키 누락을 유발해서는 안 된다** — `evidence` / `deductions` /
+`override_hint` 등 기존 출력 필드와 형식은 그대로 유지하고, **사유 텍스트만** 짧고
+항목 집중적으로 작성한다 (근거 발화 원문은 위 A 절대로 `evidence` 배열에 담는다).
+
+### F. 텍스트 평가 제외 영역 (구조적 불가능)
+
+다음은 STT 텍스트만으로는 판정 불가 — 평가 대상에서 제외 또는 낮은 confidence:
+
+- 음성 톤·억양·음색 (친밀감 / 짜증 등)
+- 발화 속도 / 발음 정확성 / 음량
+- 전산 처리 (이력 기재, 결과값 등록, 문자 발송)
+- 비꼼·빈정거림(sarcasm), 감정 변화 속도, 침묵의 질
+
+### G. 자기 검증 체크리스트 (공통 — 모든 제출 전)
+
+1. `score` 가 해당 항목의 ALLOWED_STEPS 중 하나인가?
+2. `score + Σ(deductions[].points) === max_score` 산술 검증 통과?
+3. Evidence 가 `evaluation_mode` 요구 수준을 충족하는가?
+4. Quote 가 전사본 원문 그대로인가? (마스킹 토큰 포함)
+5. compliance_based / structural_only 항목에 "내용 대조 사유 감점" 이 있는가? → 즉시 삭제
+6. 불친절·욕설·제3자 정보 안내·오안내 감지 시 `override_hint` 기재했는가?
+
+### H. 출처 anchor 표기 (선택)
+
+사유(`judgment`) 안에서 KMS 매뉴얼·RAG 사례를 인용할 때는 다음 표준 패턴을 사용한다
+(프론트가 클릭 가능한 링크로 변환):
+
+- KMS 매뉴얼 인용: `[KMS §<섹션>]` (예: `[KMS §3.2]`, `[KMS 회원정보 §3.2]`)
+- RAG few-shot / hit 인용: `[RAG #<hit_id>]` (예: `[RAG #GS-15-001]`, `[RAG #abc123]`)
+
+표기는 의무가 아니며, 알 수 없는 경우 평문으로 두어도 된다. 위 패턴 외 형식
+(`[KMS§3.2]`, `[KMS-3.2]`, `(KMS §3.2)`) 은 인식되지 않으므로 정확한 대괄호 + 공백 형식만 허용.
+', updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='기본' AND d.order_no=18 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
+UPDATE public.eval_item_defs d SET criterion=NULL, prompt_template=NULL, updated_at=now() FROM public.organizations o WHERE o.name='코오롱' AND d.org_id=o.id AND d.department='�⺻' AND d.order_no=19 AND d.version=1 AND coalesce(length(d.prompt_template),0)=0;
 COMMIT;

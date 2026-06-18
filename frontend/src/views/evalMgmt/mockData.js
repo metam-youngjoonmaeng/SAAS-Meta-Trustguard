@@ -95,13 +95,38 @@ export const HEAT_DATA = [
 
 // ─── 코칭 커리큘럼 ───
 export const COACHING_GROUPS = [
-    { key: 'emotion', title: '감정 컨트롤 · 회복 응대', priority: 'high', icon: 'heart-pulse', criteria: '부정 발화 10%↑ 또는 회복률 80%↓', reason: '강한 클레임 상황에서 감정 회복 여지가 큰 상담사 그룹입니다.', items: ['강한 클레임 상황 시뮬레이션 3회 진행', '공감·인정 표현 스크립트 10종 숙지', '감정 라벨링 후 재진술 연습'], tutor: '클레임 응대 시뮬레이션', members: ['A20127', 'A20311', 'A20419'], assigned: true, assignedBy: '이수정', assignedAt: '2026-05-24', status: '진행 중' },
-    { key: 'followup', title: '후속 안내 · 클로징 강화', priority: 'mid', icon: 'phone-forwarded', criteria: '끝 인사·후속 안내 항목 80점 미만', reason: '마무리 단계에서 후속 조치 안내가 누락되는 경향이 있는 그룹입니다.', items: ['클로징 체크리스트 적용 (추가문의·재안내·인사)', '모범 마무리 통화 5건 청취'], tutor: '클로징 커뮤니케이션 코스', members: ['A20419', 'A20203'], assigned: true, assignedBy: '박지원', assignedAt: '2026-05-25', status: '배정됨' },
-    { key: 'lead', title: '두괄식 결론 전달', priority: 'mid', icon: 'list-ordered', criteria: '두괄식 결론 75점 미만', reason: '결론을 먼저 제시하지 못해 통화가 길어지는 경향이 있는 그룹입니다.', items: ['결론–근거–안내 3단 구조 템플릿 학습', '모범 통화 5건 청취 후 셀프 리뷰'], tutor: '두괄식 커뮤니케이션 코스', members: ['A20311', 'A20622'], assigned: false },
-    { key: 'needs', title: '니즈 파악 · 복창', priority: 'high', icon: 'list-checks', criteria: '니즈 파악 79점 미만', reason: '고객 요청을 복창·확인하는 절차가 약해 재문의가 잦은 그룹입니다.', items: ['핵심 복창 체크포인트 셀프 점검 루틴', '니즈 정리 질문 5종 숙지'], tutor: '니즈 파악 집중 코스', members: ['A20518', 'A20127'], assigned: false },
-    { key: 'polite', title: '정중한 표현 · 어법', priority: 'mid', icon: 'message-circle', criteria: '정중한 표현 80점 미만', reason: '거절·안내 시 단정적 표현이 잦아 어조 개선이 필요한 그룹입니다.', items: ['단정적 거절 대신 대안 제시 화법 연습', '정중 표현 스크립트 숙지'], tutor: '응대 화법 코스', members: ['A20311', 'A20127'], assigned: false },
-    { key: 'open', title: '첫 인사 · 도입 표준화', priority: 'mid', icon: 'hand', criteria: '첫 인사 85점 미만', reason: '인사 3요소(인사·소속·성명) 누락이 관찰되는 그룹입니다.', items: ['표준 인사 스크립트 적용', '도입부 모범 통화 3건 청취'], tutor: '오프닝 표준화 코스', members: ['A20622', 'A20518'], assigned: false },
-    { key: 'privacy', title: '개인정보 · 본인 확인', priority: 'high', icon: 'shield-check', criteria: '개인정보 보호 항목 위반 이력', reason: '본인 확인·마스킹 절차 준수가 필요한 고위험 그룹입니다.', items: ['최소 수집 원칙 · 마스킹 절차 재교육', '본인 확인 표준 절차 체크리스트 적용'], tutor: '개인정보 보호 필수 교육', members: ['A20203', 'A20311'], assigned: false },
+    { key: 'emotion', title: '감정 컨트롤 · 회복 응대', priority: 'high', icon: 'heart-pulse', criteria: '부정 발화 10%↑ 또는 회복률 80%↓', reason: '강한 클레임 상황에서 감정 회복 여지가 큰 상담사 그룹입니다.', items: ['강한 클레임 상황 시뮬레이션 3회 진행', '공감·인정 표현 스크립트 10종 숙지', '감정 라벨링 후 재진술 연습'], tutor: '클레임 응대 시뮬레이션', scenarios: ['S18', 'S20', 'S16', 'S23'], members: ['A20127', 'A20311', 'A20419'], channel: 'call', assigned: true, assignedBy: '이수정', assignedAt: '2026-05-24', status: '진행 중', progress: { A20419: ['S18', 'S20'], A20127: ['S18'], A20311: [] } },
+    { key: 'followup', title: '후속 안내 · 클로징 강화', priority: 'mid', icon: 'phone-forwarded', criteria: '끝 인사·후속 안내 항목 80점 미만', reason: '마무리 단계에서 후속 조치 안내가 누락되는 경향이 있는 그룹입니다.', items: ['클로징 체크리스트 적용 (추가문의·재안내·인사)', '모범 마무리 통화 5건 청취'], tutor: '클로징 커뮤니케이션 코스', scenarios: ['S2', 'S8', 'S9'], members: ['A20419', 'A20203'], channel: 'chat', assigned: true, assignedBy: '박지원', assignedAt: '2026-05-25', status: '배정됨', progress: { A20419: [], A20203: ['S2'] } },
+    { key: 'lead', title: '두괄식 결론 전달', priority: 'mid', icon: 'list-ordered', criteria: '두괄식 결론 75점 미만', reason: '결론을 먼저 제시하지 못해 통화가 길어지는 경향이 있는 그룹입니다.', items: ['결론–근거–안내 3단 구조 템플릿 학습', '모범 통화 5건 청취 후 셀프 리뷰'], tutor: '두괄식 커뮤니케이션 코스', scenarios: ['S1', 'S3'], members: ['A20311', 'A20622'], assigned: false },
+    { key: 'needs', title: '니즈 파악 · 복창', priority: 'high', icon: 'list-checks', criteria: '니즈 파악 79점 미만', reason: '고객 요청을 복창·확인하는 절차가 약해 재문의가 잦은 그룹입니다.', items: ['핵심 복창 체크포인트 셀프 점검 루틴', '니즈 정리 질문 5종 숙지'], tutor: '니즈 파악 집중 코스', scenarios: ['S24', 'S27'], members: ['A20518', 'A20127'], assigned: false },
+    { key: 'polite', title: '정중한 표현 · 어법', priority: 'mid', icon: 'message-circle', criteria: '정중한 표현 80점 미만', reason: '거절·안내 시 단정적 표현이 잦아 어조 개선이 필요한 그룹입니다.', items: ['단정적 거절 대신 대안 제시 화법 연습', '정중 표현 스크립트 숙지'], tutor: '응대 화법 코스', scenarios: ['S15', 'S19'], members: ['A20311', 'A20127'], assigned: false },
+    { key: 'open', title: '첫 인사 · 도입 표준화', priority: 'mid', icon: 'hand', criteria: '첫 인사 85점 미만', reason: '인사 3요소(인사·소속·성명) 누락이 관찰되는 그룹입니다.', items: ['표준 인사 스크립트 적용', '도입부 모범 통화 3건 청취'], tutor: '오프닝 표준화 코스', scenarios: ['S29', 'S35'], members: ['A20622', 'A20518'], assigned: false },
+    { key: 'privacy', title: '개인정보 · 본인 확인', priority: 'high', icon: 'shield-check', criteria: '개인정보 보호 항목 위반 이력', reason: '본인 확인·마스킹 절차 준수가 필요한 고위험 그룹입니다.', items: ['최소 수집 원칙 · 마스킹 절차 재교육', '본인 확인 표준 절차 체크리스트 적용'], tutor: '개인정보 보호 필수 교육', scenarios: ['S35', 'S31'], members: ['A20203', 'A20311'], assigned: false },
+];
+
+// ─── 학습 이력 (상담사 본인) — 완료한 코칭/시나리오 누적 기록. 김민서(A20419) 기준 ───
+export const LEARNING_HISTORY = [
+    { id: 'LH-09', date: '2026-05-26', area: '감정 컨트롤 · 회복 응대', icon: 'heart-pulse', scenarios: 2, faq: 20, minutes: 34, scoreBefore: 84, scoreAfter: 89, by: '이수정' },
+    { id: 'LH-08', date: '2026-05-12', area: '감정 컨트롤 · 회복 응대', icon: 'heart-pulse', scenarios: 2, faq: 18, minutes: 28, scoreBefore: 80, scoreAfter: 84, by: '이수정' },
+    { id: 'LH-07', date: '2026-04-28', area: '니즈 파악 · 복창', icon: 'list-checks', scenarios: 2, faq: 15, minutes: 22, scoreBefore: 75, scoreAfter: 82, by: '박지원' },
+    { id: 'LH-06', date: '2026-04-14', area: '정중한 표현 · 어법', icon: 'message-circle', scenarios: 2, faq: 13, minutes: 19, scoreBefore: 79, scoreAfter: 85, by: '박지원' },
+    { id: 'LH-05', date: '2026-03-31', area: '배송 안내 시나리오', icon: 'phone-forwarded', scenarios: 3, faq: 24, minutes: 41, scoreBefore: 82, scoreAfter: 88, by: '이수정' },
+    { id: 'LH-04', date: '2026-03-17', area: '배송 안내 시나리오', icon: 'phone-forwarded', scenarios: 2, faq: 16, minutes: 25, scoreBefore: 78, scoreAfter: 82, by: '이수정' },
+    { id: 'LH-03', date: '2026-03-03', area: '첫 인사 · 도입 표준화', icon: 'hand', scenarios: 2, faq: 11, minutes: 15, scoreBefore: 85, scoreAfter: 91, by: '박지원' },
+];
+
+// ─── 코칭 이력 (관리자 관점) — 상담사별 누적 코칭 기록, 완료율, 점수 개선폭 ───
+export const COACHING_HISTORY = [
+    { id: 'CH-21', counselorId: 'A20419', date: '2026-05-24', area: '감정 컨트롤 · 회복 응대', icon: 'heart-pulse', priority: 'high', scenarios: 4, done: 2, status: '진행 중', scoreBefore: 84, scoreAfter: 89, by: '이수정' },
+    { id: 'CH-15', counselorId: 'A20419', date: '2026-05-12', area: '감정 컨트롤 · 회복 응대', icon: 'heart-pulse', priority: 'high', scenarios: 2, done: 2, status: '완료', scoreBefore: 80, scoreAfter: 84, by: '이수정' },
+    { id: 'CH-08', counselorId: 'A20419', date: '2026-04-28', area: '니즈 파악 · 복창', icon: 'list-checks', priority: 'mid', scenarios: 2, done: 2, status: '완료', scoreBefore: 75, scoreAfter: 82, by: '박지원' },
+    { id: 'CH-03', counselorId: 'A20419', date: '2026-03-31', area: '배송 안내 시나리오', icon: 'phone-forwarded', priority: 'mid', scenarios: 3, done: 3, status: '완료', scoreBefore: 82, scoreAfter: 88, by: '이수정' },
+    { id: 'CH-19', counselorId: 'A20311', date: '2026-05-20', area: '두괄식 결론 전달', icon: 'list-ordered', priority: 'mid', scenarios: 2, done: 0, status: '배정됨', scoreBefore: 76, scoreAfter: 76, by: '박지원' },
+    { id: 'CH-12', counselorId: 'A20311', date: '2026-05-02', area: '두괄식 결론 전달', icon: 'list-ordered', priority: 'mid', scenarios: 2, done: 1, status: '진행 중', scoreBefore: 72, scoreAfter: 76, by: '박지원' },
+    { id: 'CH-05', counselorId: 'A20311', date: '2026-04-08', area: '정중한 표현 · 어법', icon: 'message-circle', priority: 'mid', scenarios: 2, done: 2, status: '완료', scoreBefore: 78, scoreAfter: 80, by: '이수정' },
+    { id: 'CH-20', counselorId: 'A20127', date: '2026-05-22', area: '감정 컨트롤 · 회복 응대', icon: 'heart-pulse', priority: 'high', scenarios: 4, done: 1, status: '진행 중', scoreBefore: 70, scoreAfter: 74, by: '이수정' },
+    { id: 'CH-09', counselorId: 'A20127', date: '2026-04-30', area: '개인정보 · 본인 확인', icon: 'shield-check', priority: 'high', scenarios: 2, done: 2, status: '완료', scoreBefore: 68, scoreAfter: 79, by: '이수정' },
+    { id: 'CH-18', counselorId: 'A20203', date: '2026-05-18', area: '후속 안내 · 클로징 강화', icon: 'phone-forwarded', priority: 'mid', scenarios: 3, done: 1, status: '진행 중', scoreBefore: 81, scoreAfter: 84, by: '박지원' },
 ];
 
 // ─── 헬퍼 ───
@@ -185,3 +210,81 @@ export const STT_TRANSCRIPT = [
     { who: '고객', time: '01:09', text: '네 감사합니다.' },
     { who: '상담사', time: '01:11', text: '별말씀을요. 다른 문의 없으시면 좋은 하루 보내십시오.' },
 ];
+
+// ─────────────────────────────────────────────────────
+// Tutor 시나리오(FAQ) 카탈로그 — 코칭 배정 시 연결할 학습 시나리오.
+// (02-AI-Tutor FAQ 체계 형태의 illustrative 카탈로그. 실시간 백엔드 연동 전 mock)
+// cat = TUTOR_CATEGORIES.key, faq = 연결된 FAQ 수.
+// ─────────────────────────────────────────────────────
+export const TUTOR_CATEGORIES = [
+    { key: 'order', label: '주문/결제', color: '#2f6df6' },
+    { key: 'delivery', label: '배송/물류', color: '#0ca678' },
+    { key: 'cancel', label: '취소/반품/교환/환불', color: '#e8590c' },
+    { key: 'product', label: '상품/재고', color: '#7048e8' },
+    { key: 'account', label: '회원/계정', color: '#d6336c' },
+    { key: 'promo', label: '혜택/프로모션', color: '#2f9e44' },
+    { key: 'system', label: '시스템/기술', color: '#1098ad' },
+    { key: 'etc', label: '기타/일반', color: '#868e96' },
+];
+
+export const TUTOR_SCENARIOS = [
+    // 주문/결제 (7)
+    { code: 'S1', cat: 'order', title: '주문 방법/절차 문의', faq: 10 },
+    { code: 'S2', cat: 'order', title: '주문 내역 조회', faq: 9 },
+    { code: 'S3', cat: 'order', title: '주문 오류/실패', faq: 10 },
+    { code: 'S4', cat: 'order', title: '결제 수단 문의', faq: 8 },
+    { code: 'S5', cat: 'order', title: '결제 오류/실패', faq: 7 },
+    { code: 'S6', cat: 'order', title: '결제 취소 요청', faq: 6 },
+    { code: 'S7', cat: 'order', title: '영수증/증빙 발급', faq: 5 },
+    // 배송/물류 (7)
+    { code: 'S8', cat: 'delivery', title: '배송 조회·추적', faq: 9 },
+    { code: 'S9', cat: 'delivery', title: '배송 지연 안내', faq: 8 },
+    { code: 'S10', cat: 'delivery', title: '배송지 변경', faq: 6 },
+    { code: 'S11', cat: 'delivery', title: '배송비 문의', faq: 5 },
+    { code: 'S12', cat: 'delivery', title: '부분 배송/분할 배송', faq: 4 },
+    { code: 'S13', cat: 'delivery', title: '오배송/분실 처리', faq: 7 },
+    { code: 'S14', cat: 'delivery', title: '수령 확인/부재중', faq: 4 },
+    // 취소/반품/교환/환불 (9)
+    { code: 'S15', cat: 'cancel', title: '주문 취소 요청', faq: 8 },
+    { code: 'S16', cat: 'cancel', title: '반품 신청 절차', faq: 9 },
+    { code: 'S17', cat: 'cancel', title: '교환 신청 절차', faq: 7 },
+    { code: 'S18', cat: 'cancel', title: '환불 진행/지연 문의', faq: 10 },
+    { code: 'S19', cat: 'cancel', title: '반품 배송비 안내', faq: 5 },
+    { code: 'S20', cat: 'cancel', title: '단순 변심 반품 가능 여부', faq: 6 },
+    { code: 'S21', cat: 'cancel', title: '불량/하자 반품', faq: 7 },
+    { code: 'S22', cat: 'cancel', title: '환불 수단/계좌 문의', faq: 6 },
+    { code: 'S23', cat: 'cancel', title: '취소 후 재주문', faq: 4 },
+    // 상품/재고 (5)
+    { code: 'S24', cat: 'product', title: '상품 상세 정보 문의', faq: 7 },
+    { code: 'S25', cat: 'product', title: '재입고 일정 문의', faq: 6 },
+    { code: 'S26', cat: 'product', title: '품절/재고 확인', faq: 5 },
+    { code: 'S27', cat: 'product', title: '옵션/사이즈 문의', faq: 6 },
+    { code: 'S28', cat: 'product', title: '상품 비교/추천', faq: 4 },
+    // 회원/계정 (7)
+    { code: 'S29', cat: 'account', title: '회원가입 절차', faq: 6 },
+    { code: 'S30', cat: 'account', title: '로그인 오류', faq: 7 },
+    { code: 'S31', cat: 'account', title: '비밀번호 재설정', faq: 8 },
+    { code: 'S32', cat: 'account', title: '회원정보 변경', faq: 5 },
+    { code: 'S33', cat: 'account', title: '회원 탈퇴', faq: 4 },
+    { code: 'S34', cat: 'account', title: '본인 인증 문제', faq: 6 },
+    { code: 'S35', cat: 'account', title: '등급/포인트 조회', faq: 5 },
+    // 혜택/프로모션 (4)
+    { code: 'S36', cat: 'promo', title: '쿠폰 발급/사용', faq: 7 },
+    { code: 'S37', cat: 'promo', title: '적립금/포인트 사용', faq: 6 },
+    { code: 'S38', cat: 'promo', title: '이벤트 참여 문의', faq: 4 },
+    { code: 'S39', cat: 'promo', title: '할인 적용 오류', faq: 5 },
+    // 시스템/기술 (3)
+    { code: 'S40', cat: 'system', title: '앱/웹 오류 신고', faq: 6 },
+    { code: 'S41', cat: 'system', title: '알림/푸시 설정', faq: 4 },
+    { code: 'S42', cat: 'system', title: '화면 표시 문제', faq: 3 },
+    // 기타/일반 (2)
+    { code: 'S43', cat: 'etc', title: '고객센터 운영 안내', faq: 3 },
+    { code: 'S44', cat: 'etc', title: '기타 일반 문의', faq: 2 },
+];
+
+export function scenById(code) {
+    return TUTOR_SCENARIOS.find((s) => s.code === code);
+}
+export function catMeta(key) {
+    return TUTOR_CATEGORIES.find((c) => c.key === key) || { label: key, color: 'var(--ink-500)' };
+}

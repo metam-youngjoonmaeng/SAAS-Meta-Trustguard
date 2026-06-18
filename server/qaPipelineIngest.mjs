@@ -165,28 +165,27 @@ function firstCustomerQuote(evals) {
 }
 
 /**
- * judgment + deductions 결합 → reason_text.
- *   "[항목명] judgment" 들을 ' / ' join, 이어서 deductions 를 "사유(-N점)" 개행으로 추가.
+ * judgment → reason_text. "평가 이유" = LLM 판정 사유(judgment)만.
+ *   감점 사유 prose 는 judgment 와 중복이라 미포함 — 감점은 행의 AI평가 점수(예 0/5)가
+ *   "어떤 항목에서 얼마 감점"을 그대로 표현하므로 평가 이유 셀은 판정 사유만 깔끔히 노출.
+ *   단 judgment 가 비어있는 항목만 감점 사유로 폴백(정보 손실 방지·중복 없음).
  */
 function buildReasonText(present) {
     const head = [];
-    const dedLines = [];
     for (const ev of present) {
         const name = itemNameOf(ev);
         const judgment = safeStr(ev?.judgment).trim();
-        head.push(judgment ? `[${name}] ${judgment}` : `[${name}]`);
-        for (const d of safeList(ev?.deductions)) {
-            if (!d || typeof d !== 'object') continue;
-            const reason = safeStr(d.reason).trim();
-            const pts = asNumber(d.points);
-            if (!reason && pts === null) continue;
-            const ptText = pts !== null ? `(-${Math.abs(pts)}점)` : '';
-            dedLines.push(`${reason}${ptText}`.trim());
+        if (judgment) {
+            head.push(`[${name}] ${judgment}`);
+            continue;
         }
+        // judgment 부재 시에만 감점 사유 폴백 (judgment 있으면 중복이라 생략).
+        const reasons = safeList(ev?.deductions)
+            .map((d) => (d && typeof d === 'object' ? safeStr(d.reason).trim() : ''))
+            .filter(Boolean);
+        head.push(reasons.length ? `[${name}] ${reasons.join('; ')}` : `[${name}]`);
     }
-    const parts = [head.join(' / ')];
-    if (dedLines.length) parts.push(dedLines.join('\n'));
-    return parts.filter(Boolean).join('\n');
+    return head.join(' / ');
 }
 
 /**
@@ -332,6 +331,30 @@ function buildEvaluatePayload(call) {
             // 활성 테넌트 평가항목을 요청에 직접 동봉 — 원격(EC2) 백엔드도 프론트 기준 그대로 평가.
             rubric_inline:
                 call?.rubric_inline && typeof call.rubric_inline === 'object' ? call.rubric_inline : undefined,
+            // 코오롱 표준 트랙 전용: 항목별 DB 프롬프트({item_number: prompt_template}) 동봉.
+            // 백엔드 표준 노드(load_prompt/load_group_b_prompt)가 set_prompt_overrides 로 받아
+            // 정적 파일 대신 대시보드 DB 프롬프트로 평가(EC2 file 모드 반영). rubric_inline 과 달리
+            // custom_rubric 트랙을 트리거하지 않아 코오롱 3-페르소나 표준 엔진을 그대로 유지.
+            prompt_overrides:
+                call?.prompt_overrides && typeof call.prompt_overrides === 'object'
+                    ? call.prompt_overrides
+                    : undefined,
+            // 표준 트랙 만점/단계 동적 오버라이드 — prompt_overrides 와 동형({order_no: 값}).
+            // 백엔드가 contextvar 로 받아 분모(max_overrides=만점) / snap allowed_steps(step_overrides)
+            // 를 동적 반영. 미동봉(직접 API 호출 등)이면 백엔드 정적 카탈로그 사용 → 무회귀.
+            max_overrides:
+                call?.max_overrides && typeof call.max_overrides === 'object' ? call.max_overrides : undefined,
+            step_overrides:
+                call?.step_overrides && typeof call.step_overrides === 'object' ? call.step_overrides : undefined,
+            // Additive 트랙: 코오롱 표준 #1~18 은 prompt_overrides 로 튜닝 노드 유지하고,
+            // 카탈로그 비매칭 추가항목(order_no≥19)만 별도 채점하도록 동봉. rubric_inline 과
+            // 달리 custom_rubric full-custom flip 을 유발하지 않음 — 백엔드 graph_v2 가
+            // additive 모드(표준 8노드 + custom_rubric)로 분기. 추가항목 0개면 미동봉(무회귀).
+            additive: call?.additive === true ? true : undefined,
+            additive_items:
+                Array.isArray(call?.additive_items) && call.additive_items.length
+                    ? call.additive_items
+                    : undefined,
         },
     };
 }
@@ -500,6 +523,34 @@ const STANDARD_SKIP_ORDERS = new Set([3]);
 // order_no → 카탈로그 슬롯(category/item/max) 역참조 — 루브릭 트랙 환원 시 사용.
 const STANDARD_CATALOG_BY_ORDER = new Map(STANDARD_ITEM_CATALOG.map((slot) => [slot.order_no, slot]));
 
+/**
+ * 루브릭 항목(rubric.items[i])이 코오롱 표준 카탈로그 슬롯과 일치하는지 — order_no 가 카탈로그에
+ * 존재하고 항목명까지 동일해야 표준(#1~18) 으로 본다. 그 외(order_no≥19 등)는 additive 추가항목.
+ */
+function isStandardCatalogSlot(meta) {
+    const slot = STANDARD_CATALOG_BY_ORDER.get(asNumber(meta?.order_no));
+    return !!slot && safeStr(slot.item).trim() === safeStr(meta?.item).trim();
+}
+
+/**
+ * buildRubricFromDefs 의 rubric.items[i] + rowMeta[i] → metadata.additive_items 항목으로 변환.
+ * 계약(ADDITIVE_CONTRACT §1) 필드: order_no, name, category, max_score, allowed_steps,
+ * criteria_full, prompt_template, scoring_type. 빈 prompt_template 은 placeholder 정화 결과이므로
+ * 그대로 빈 문자열로 전달(백엔드 build_rubric_item_block 가 criteria_full 폴백).
+ */
+function buildAdditiveItem(item, meta) {
+    return {
+        order_no: asNumber(meta?.order_no),
+        name: safeStr(item?.name).trim() || safeStr(meta?.item).trim() || `항목 ${meta?.order_no}`,
+        category: safeStr(item?.category).trim(),
+        max_score: asNumber(item?.max_score),
+        allowed_steps: Array.isArray(item?.allowed_steps) ? item.allowed_steps : undefined,
+        criteria_full: safeStr(item?.criteria_full),
+        prompt_template: safeStr(item?.prompt_template),
+        scoring_type: item?.scoring_type === 'yes_no' ? 'yes_no' : 'numeric',
+    };
+}
+
 // 만점 + judgment 에 아래 마커가 있으면 "평가 대상 상황 자체가 없었다"는 의미 —
 // evidence 발화를 노출하면 혼란 (예: 쿠션어 '거절/불가 상황 미발생'인데 발화 표시).
 const NO_OCCURRENCE_MARKERS = ['미발생', '해당없음', '해당 없음', '불필요'];
@@ -542,22 +593,19 @@ function agentQuoteOf(ev) {
 }
 
 /**
- * 단일 항목 judgment + deductions → reason_text.
- *   judgment 본문 + deductions "사유(-N점)" 개행. 둘 다 없으면 '(사유 미제공)'.
+ * 단일 항목 reason_text → 판정 사유(judgment)만.
+ *   "평가 이유" = LLM 판정 사유. 감점 사유 prose 는 judgment 와 중복 + 행의 AI평가 점수(예 0/5)로
+ *   이미 표현되므로 미포함 (감점 사유 개편 — 한 셀에 뭉치지 않게 분리/제거).
+ *   judgment 부재 시에만 감점 사유로 폴백(정보 손실 방지). 둘 다 없으면 빈 문자열('-' 폴백은 프론트).
  */
 function reasonTextOf(ev) {
-    const lines = [];
     const judgment = safeStr(ev?.judgment).trim();
-    if (judgment) lines.push(judgment);
-    for (const d of safeList(ev?.deductions)) {
-        if (!d || typeof d !== 'object') continue;
-        const reason = safeStr(d.reason).trim();
-        const pts = asNumber(d.points);
-        if (!reason && pts === null) continue;
-        const ptText = pts !== null ? `(-${Math.abs(pts)}점)` : '';
-        lines.push(`${reason}${ptText}`.trim());
-    }
-    return lines.join('\n') || '(사유 미제공)';
+    if (judgment) return judgment;
+    // judgment 부재 시에만 감점 사유 폴백 (judgment 있으면 중복이라 생략).
+    const reasons = safeList(ev?.deductions)
+        .map((d) => (d && typeof d === 'object' ? safeStr(d.reason).trim() : ''))
+        .filter(Boolean);
+    return reasons.join('; ');
 }
 
 /**
@@ -751,6 +799,16 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
     const id = safeStr(call?.qa_id ?? call?.consultation_id ?? call?.id).trim();
     if (!id) return { ok: false, message: 'call.id(qa_id/consultation_id) 가 필요합니다.' };
 
+    // 포기호/미응대 게이트: 파이프라인이 평가 산출물(평가행·체크리스트)을 하나도 만들지
+    // 못한 콜(상담사 미연결 등)은 QA 대상이 아니므로 qa_calls 에 적재하지 않는다.
+    // (화자분리 오인식된 실제 응대콜은 평가행이 산출되므로 정상 적재됨.)
+    const hasEval = Array.isArray(mapped?.evaluations) && mapped.evaluations.length > 0;
+    const hasChecklist = Array.isArray(mapped?.checklist) && mapped.checklist.length > 0;
+    if (!hasEval && !hasChecklist) {
+        return { ok: true, skipped: true, qa_id: id, turns: 0,
+                 reason: '포기호/미응대(평가 산출물 없음) — 적재 안 함' };
+    }
+
     const orgId = await resolveStandardOrgId(pool, call);
 
     const cdate =
@@ -926,14 +984,63 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
         const orgId = await resolveStandardOrgId(pool, call);
         const { rubric, rowMeta: meta } = await buildRubricFromDefs(pool, orgId);
         if (rubric?.items?.length) {
-            const isKolonStandard = (meta || []).every((r) => {
-                const slot = STANDARD_CATALOG_BY_ORDER.get(r.order_no);
-                return slot && slot.item === r.item;
+            rowMeta = meta || [];
+            const items = rubric.items || [];
+            // 항목을 3분류: standard(카탈로그 #1~18 매칭) / extra(order_no≥19 추가항목) / divergent
+            // (order_no≤18 인데 카탈로그 비매칭 = 표준에서 벗어난 항목). items[i] 와 rowMeta[i] 는
+            // buildRubricFromDefs 동일 루프 산출이라 index 정합.
+            const standardIdx = [];
+            const extraIdx = [];
+            let hasDivergent = false;
+            rowMeta.forEach((m, i) => {
+                if (isStandardCatalogSlot(m)) standardIdx.push(i);
+                else if (asNumber(m?.order_no) >= 19) extraIdx.push(i);
+                else hasDivergent = true; // order_no≤18 비매칭 → 표준 트랙 아님(순수 custom)
             });
+            // 표준 트랙 자격: 표준 항목이 1개 이상 + 카탈로그에서 벗어난 #1~18 항목 없음
+            // (= 기존 .every() 매칭 의미 보존). 추가항목(order_no≥19)이 섞여 있어도 표준 항목은
+            // 코오롱 튜닝 노드 유지(rubric_inline 미사용 → flip 방지). divergent 가 있으면(순수 타
+            // 테넌트 자체 루브릭) 기존대로 full custom(rubric_inline) — 무회귀.
+            const isKolonStandard = standardIdx.length > 0 && !hasDivergent;
             if (isKolonStandard) {
-                rubricCall = { ...call, org_id: orgId };
+                // 표준 트랙: rubric_inline 은 빼되(custom_rubric full flip 미트리거 → 코오롱
+                // 3-페르소나 엔진 유지), 표준 항목의 DB 프롬프트를 prompt_overrides
+                // ({order_no: prompt_template}) 로 동봉 → 백엔드 표준 노드가 정적 파일 대신 DB
+                // 프롬프트로 평가. 빈 프롬프트(placeholder 정화)는 제외 → 백엔드 파일 프롬프트 폴백(무회귀).
+                const promptOverrides = {};
+                // 만점/단계 동적 동봉 — 활성 표준항목(#1~18 매칭) 전부. prompt_overrides 와 동일하게
+                // order_no 키. max_overrides={order_no:max_score}, step_overrides={order_no:allowed_steps}.
+                // 백엔드(dynmax-pipeline)가 contextvar 로 받아 분모/snap 단계를 동적 반영. canonical 과
+                // 같아도 동봉(일관). 빈 dict 면 미동봉 → 순수 코오롱 경로와 byte-identical(무회귀).
+                const maxOverrides = {};
+                const stepOverrides = {};
+                for (const i of standardIdx) {
+                    const m = rowMeta[i];
+                    const tpl = items[i]?.prompt_template;
+                    if (tpl && String(tpl).trim()) promptOverrides[m.order_no] = tpl;
+                    const maxScore = asNumber(items[i]?.max_score);
+                    if (maxScore !== null && maxScore > 0) maxOverrides[m.order_no] = Math.round(maxScore);
+                    const steps = items[i]?.allowed_steps;
+                    if (Array.isArray(steps) && steps.length) stepOverrides[m.order_no] = steps;
+                }
+                // 추가항목(order_no≥19, 카탈로그 비매칭) → additive_items 로 별도 동봉.
+                // rubric_inline 과 달리 custom_rubric full flip 미유발. 추가항목 0개면
+                // additive 미동봉 → 순수 코오롱 경로와 byte-identical(무회귀).
+                const additiveItems = extraIdx.map((i) => buildAdditiveItem(items[i], rowMeta[i]));
+                rubricCall = {
+                    ...call,
+                    org_id: orgId,
+                    prompt_overrides: Object.keys(promptOverrides).length ? promptOverrides : undefined,
+                    max_overrides: Object.keys(maxOverrides).length ? maxOverrides : undefined,
+                    step_overrides: Object.keys(stepOverrides).length ? stepOverrides : undefined,
+                    additive: additiveItems.length ? true : undefined,
+                    additive_items: additiveItems.length ? additiveItems : undefined,
+                };
+                // 표준 매핑 폴백 강제: rowMeta 를 비워 mapEvaluateResponseRubric 가 5000번대
+                // 미존재로 null 반환 → mapEvaluateResponseStandard(1:1) 사용. 추가항목 결과는
+                // aggregator(파이프라인)에서 병합되어 응답에 포함됨(impl-agg 담당).
+                rowMeta = [];
             } else {
-                rowMeta = meta || [];
                 rubricCall = { ...call, org_id: orgId, rubric_inline: rubric };
             }
         } else {

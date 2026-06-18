@@ -141,22 +141,35 @@ export function createIcsSsoRouter(pool, { createSession }) {
         // ICS 사용자는 SSO 전용 — 직접 로그인 불가하도록 랜덤(매칭 불가) 해시. 비번변경 팝업 없음(must_change=false).
         const randomHash = crypto.randomBytes(32).toString('hex');
 
+        const returningCols =
+            'user_id, login_id, display_name, role, org_id, department, profile_image_path, must_change_password';
         let row;
         try {
-            const result = await pool.query(
-                `INSERT INTO public.admin_users
-                    (login_id, password_hash, display_name, role, is_active, org_id, must_change_password, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, 1, $5, false, now(), now())
-                 ON CONFLICT (login_id) DO UPDATE SET
-                    display_name = EXCLUDED.display_name,
-                    role = EXCLUDED.role,
+            // admin_users 는 twin 스키마에서 INSTEAD OF 트리거 뷰(users+trainee_registrations 로 라우팅).
+            // 뷰에는 unique 제약이 없어 ON CONFLICT 불가 → 수동 upsert: 먼저 UPDATE, 매칭 없으면 INSERT.
+            const upd = await pool.query(
+                `UPDATE public.admin_users SET
+                    display_name = $2,
+                    role = $3,
                     is_active = 1,
-                    org_id = COALESCE(public.admin_users.org_id, EXCLUDED.org_id),
+                    org_id = COALESCE(org_id, $4),
                     updated_at = now()
-                 RETURNING user_id, login_id, display_name, role, org_id, department, profile_image_path, must_change_password`,
-                [loginId, randomHash, displayName, role, defaultOrgId]
+                 WHERE login_id = $1
+                 RETURNING ${returningCols}`,
+                [loginId, displayName, role, defaultOrgId]
             );
-            row = result.rows[0];
+            if (upd.rows[0]) {
+                row = upd.rows[0];
+            } else {
+                const ins = await pool.query(
+                    `INSERT INTO public.admin_users
+                        (login_id, password_hash, display_name, role, is_active, org_id, must_change_password, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, 1, $5, false, now(), now())
+                     RETURNING ${returningCols}`,
+                    [loginId, randomHash, displayName, role, defaultOrgId]
+                );
+                row = ins.rows[0];
+            }
         } catch (e) {
             console.error('[ics-sso] admin_users JIT upsert 실패:', e?.message || e);
             res.status(500).json({ message: 'ICS 사용자 프로비저닝 실패' });

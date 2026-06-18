@@ -83,6 +83,10 @@ export async function ingestCallByUid(pool, cfg, uid, ingestStandardCallFromQaPi
         logger.error(`[ics-qa/mqtt] ${projCd}/${uid}: 적재 실패 — ${result?.message || '미상'}`);
         return 'fail';
     }
+    if (result.skipped) {
+        logger.info(`[ics-qa/mqtt] ${projCd}/${uid}: 포기호/미응대 — 적재 건너뜀 (turns=${transcript.length})`);
+        return 'empty';
+    }
     logger.info(`[ics-qa/mqtt] ${projCd}/${uid}: 적재 OK (score=${result.total_score ?? '?'}, turns=${transcript.length})`);
     return 'done';
 }
@@ -175,9 +179,14 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
                 logger.error(`[ics-qa] ${projCd}/${uid}: 적재 실패 — ${result?.message || '미상'} (이번 주기 중단, 다음 주기 재시도)`);
                 break; // 워터마크를 직전 성공까지만 전진 → 다음 주기 재시도
             }
-            added += 1;
+            // 성공/포기호 공통으로 커서 전진(재처리 방지). 포기호는 적재 없이 건너뜀.
             cursorEnd = endDt;
             cursorUid = uid;
+            if (result.skipped) {
+                logger.info(`[ics-qa] ${projCd}/${uid}: 포기호/미응대 — 적재 건너뜀(전진, turns=${transcript.length})`);
+                continue;
+            }
+            added += 1;
             logger.info(`[ics-qa] ${projCd}/${uid}: 적재 OK (score=${result.total_score ?? '?'}, turns=${transcript.length})`);
         } catch (err) {
             logger.error(`[ics-qa] ${projCd}/${uid}: 예외 — ${String(err?.message || err)} (이번 주기 중단)`);

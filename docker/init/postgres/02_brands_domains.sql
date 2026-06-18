@@ -76,11 +76,15 @@ ALTER TABLE public.qa_calls ALTER COLUMN org_id SET NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_qa_calls_org ON public.qa_calls (org_id);
 
 -- ── admin_users: 홈 브랜드 + super_admin 역할 도입 ───────────
-ALTER TABLE public.admin_users
-    ADD COLUMN IF NOT EXISTS org_id integer
-    REFERENCES public.organizations(id) ON DELETE SET NULL;
-
-UPDATE public.admin_users SET org_id = 1 WHERE org_id IS NULL;
-
--- admin1 → super_admin (전체 브랜드 관리). test1(샌드박스)은 admin 유지
-UPDATE public.admin_users SET role = 'super_admin' WHERE login_id = 'admin1';
+-- 29/30 마이그레이션 이후 admin_users 는 VIEW 가 되므로, 테이블일 때만(=최초 init) 실행.
+DO $$
+BEGIN
+    IF (SELECT relkind FROM pg_class WHERE oid = to_regclass('public.admin_users')) = 'r' THEN
+        ALTER TABLE public.admin_users
+            ADD COLUMN IF NOT EXISTS org_id integer
+            REFERENCES public.organizations(id) ON DELETE SET NULL;
+        UPDATE public.admin_users SET org_id = 1 WHERE org_id IS NULL;
+        -- admin1 → super_admin (전체 브랜드 관리). test1(샌드박스)은 admin 유지
+        UPDATE public.admin_users SET role = 'super_admin' WHERE login_id = 'admin1';
+    END IF;
+END $$;

@@ -80,6 +80,11 @@ export async function fetchCalls() {
     return request('/api/calls');
 }
 
+// 코칭 배정용 실제 상담사 목록(평균점수·부서·콜수). admin_users + qa_calls 조인.
+export async function fetchAgents() {
+    return request('/api/agents');
+}
+
 // 전체 통계 대시보드 데이터. params: { period: 'day'|'week'|'month', department?: string }
 export async function fetchStats({ period = 'week', department } = {}) {
     const qs = new URLSearchParams({ period });

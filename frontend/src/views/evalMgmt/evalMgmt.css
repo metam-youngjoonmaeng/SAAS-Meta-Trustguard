@@ -106,9 +106,10 @@
   --t-spring: 400ms cubic-bezier(.4, 1.6, .5, 1);
 
   /* ── Typography family stack ─────────────────────────── */
-  --font-sans: "Pretendard Variable", "Pretendard", ui-sans-serif, system-ui,
-               "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-  --font-display: "Moneygraphy Rounded", "Pretendard Variable", "Pretendard",
+  /* 평가리스트(앱 본문)와 글씨체 통일 — globals.css 의 Outfit/Inter + Apple SD Gothic Neo 스택을 동일하게 사용. */
+  --font-sans: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+               'Pretendard', ui-sans-serif, system-ui, 'Malgun Gothic', sans-serif;
+  --font-display: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
                   ui-sans-serif, system-ui, sans-serif;
   --font-pixel:   "Moneygraphy Pixel", "Moneygraphy Rounded", monospace;
   --font-mono: ui-monospace, "SFMono-Regular", "Menlo", monospace;
@@ -505,6 +506,13 @@
 .tg-eval .tbl-row:last-child { border-bottom: 0; }
 .tg-eval .tbl-row:hover { background: #fafbff; }
 .tg-eval .tbl-row.clickable { cursor: pointer; }
+/* 가운데정렬 변형 — 평가목록 등 모든 컬럼 셀/헤더를 트랙 중앙으로. */
+.tg-eval .tbl-head.tc > *,
+.tg-eval .tbl-row.tc > * {
+  justify-self: center;
+  justify-content: center;
+  text-align: center;
+}
 /* ─────────────── Pills / chips ─────────────── */
 .tg-eval .pill {
   display: inline-flex; align-items: center; gap: 6px;

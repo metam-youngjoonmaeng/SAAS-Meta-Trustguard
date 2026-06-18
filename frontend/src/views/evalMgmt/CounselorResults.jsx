@@ -1,8 +1,8 @@
 // 상담사 — 내 평가 결과 (디자인 프로토타입 etc/pages-counselor.jsx 포팅)
 // 내 점수·추이, 감정·대화 품질, 배정된 코칭 플랜, 평가 이력
 import React, { useState } from 'react';
-import { Icon, Gauge, Spark, Heatmap, StatusPill, ScoreBreakdown, PageHead, PeriodPicker, Donut, defaultPeriod } from './ui';
-import { EVAL_RESULTS, DIMENSIONS, DIM_GROUPS, COACHING_GROUPS, HEAT_DATA, scoreClass } from './mockData';
+import { Icon, Gauge, Spark, Heatmap, StatusPill, ScoreBreakdown, PageHead, PeriodPicker, Donut, Modal, defaultPeriod } from './ui';
+import { EVAL_RESULTS, DIMENSIONS, DIM_GROUPS, COACHING_GROUPS, TUTOR_SCENARIOS, LEARNING_HISTORY, HEAT_DATA, scoreClass } from './mockData';
 
 // 감정·대화 품질 카드 (부정비율 / 회복률 / 금칙어)
 function QualityCard({ tone, icon, label, desc, ring, center, delta, footer, hero }) {
@@ -45,6 +45,7 @@ function QualityCard({ tone, icon, label, desc, ring, center, delta, footer, her
 export default function CounselorResults() {
     const [selectedId, setSelectedId] = useState('EVAL-2026-0510');
     const [period, setPeriod] = useState(defaultPeriod('7d'));
+    const [learningHistOpen, setLearningHistOpen] = useState(false);
 
     // 본인(김민서 — A20419) 평가만 필터
     const myEvals = EVAL_RESULTS.filter((r) => r.counselor === 'A20419');
@@ -315,11 +316,16 @@ export default function CounselorResults() {
                         <h3>배정된 코칭 플랜</h3>
                         <span className="muted-text" style={{ fontSize: 12 }}>· 코치가 직접 지정한 학습 커리큘럼</span>
                     </div>
-                    {assignedCurricula.length > 0 && (
-                        <span className="pill blue" style={{ marginLeft: 'auto', fontSize: 10.5 }}>
-                            <Icon name="inbox" size={10} />{assignedCurricula.length}건 배정됨
-                        </span>
-                    )}
+                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {assignedCurricula.length > 0 && (
+                            <span className="pill blue" style={{ fontSize: 10.5 }}>
+                                <Icon name="inbox" size={10} />{assignedCurricula.length}건 배정됨
+                            </span>
+                        )}
+                        <button className="btn-mini" onClick={() => setLearningHistOpen(true)}>
+                            <Icon name="history" size={11} />코칭 이력
+                        </button>
+                    </div>
                 </div>
                 <div className="panel-body">
                     {assignedCurricula.length === 0 ? (
@@ -336,7 +342,14 @@ export default function CounselorResults() {
                                 const high = g.priority === 'high';
                                 const accent = high ? 'var(--primary)' : '#c67d12';
                                 const soft = high ? 'var(--primary-soft)' : '#fdf2e3';
-                                const inProgress = g.status === '진행 중';
+                                // 내 진행 상태 (A20419 = 김민서)
+                                const myDone = (g.progress && g.progress.A20419) || [];
+                                const scenarios = g.scenarios || [];
+                                const totalScen = scenarios.length;
+                                const doneCount = scenarios.filter((c) => myDone.includes(c)).length;
+                                const allDone = totalScen > 0 && doneCount === totalScen;
+                                const started = doneCount > 0;
+                                const pct = totalScen ? Math.round((doneCount / totalScen) * 100) : 0;
                                 return (
                                     <div key={g.key} style={{ border: '1px solid var(--border)', borderRadius: 14, padding: '18px 18px 16px', background: 'white', display: 'flex', flexDirection: 'column', borderTop: `3px solid ${accent}` }}>
                                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
@@ -346,34 +359,72 @@ export default function CounselorResults() {
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
                                                     <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ink-900)' }}>{g.title}</span>
-                                                    <span className="pill" style={{ background: inProgress ? soft : 'var(--muted)', color: inProgress ? accent : 'var(--ink-500)', fontSize: 10, fontWeight: 700 }}>
-                                                        <Icon name={inProgress ? 'loader' : 'inbox'} size={9} />{g.status}
+                                                    <span className="pill" style={{ background: allDone ? '#e8f6ed' : started ? soft : 'var(--muted)', color: allDone ? '#2f9759' : started ? accent : 'var(--ink-500)', fontSize: 10, fontWeight: 700 }}>
+                                                        <Icon name={allDone ? 'check-circle' : started ? 'loader' : 'inbox'} size={9} />{allDone ? '완료' : started ? '진행 중' : '시작 전'}
                                                     </span>
                                                 </div>
                                                 <div className="muted-text" style={{ fontSize: 11.5 }}>
                                                     <Icon name="user" size={10} style={{ verticalAlign: '-1px', marginRight: 3 }} />
-                                                    {g.assignedBy} 코치 배정 · {g.assignedAt}
+                                                    {g.assignedBy || '관리자'} 코치 배정{g.assignedAt ? ` · ${g.assignedAt}` : ''}
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
-                                            {g.items.map((it, i) => (
-                                                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-                                                    <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${accent}`, color: accent, display: 'grid', placeItems: 'center', flexShrink: 0, marginTop: 1 }}>
-                                                        <Icon name="check" size={11} />
-                                                    </div>
-                                                    <span style={{ fontSize: 12.5, color: 'var(--ink-700)', lineHeight: 1.45 }}>{it}</span>
-                                                </div>
-                                            ))}
+                                        {/* 학습 진행률 */}
+                                        <div style={{ marginBottom: 14 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                                <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-500)' }}>학습 진행률</span>
+                                                <span style={{ fontSize: 11.5, fontWeight: 700, color: allDone ? '#2f9759' : accent }}>
+                                                    <span className="mono">{doneCount}</span>
+                                                    <span className="muted-text" style={{ fontWeight: 600 }}> / {totalScen} 완료</span>
+                                                </span>
+                                            </div>
+                                            <div className="mini-bar">
+                                                <div style={{ width: `${pct}%`, background: allDone ? '#2f9759' : accent }}></div>
+                                            </div>
                                         </div>
 
+                                        {Array.isArray(g.items) && g.items.length > 0 && (
+                                            <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+                                                {g.items.map((it, i) => (
+                                                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+                                                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${accent}`, color: accent, display: 'grid', placeItems: 'center', flexShrink: 0, marginTop: 1 }}>
+                                                            <Icon name="check" size={11} />
+                                                        </div>
+                                                        <span style={{ fontSize: 12.5, color: 'var(--ink-700)', lineHeight: 1.45 }}>{it}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* Tutor 시나리오 — 완료는 체크+취소선 칩 */}
+                                        {totalScen > 0 && (
+                                            <div style={{ marginBottom: 14 }}>
+                                                <div className="eyebrow" style={{ fontSize: 10, marginBottom: 7, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                                                    <Icon name="sparkles" size={10} />Tutor 시나리오
+                                                </div>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                                    {scenarios.map((code) => {
+                                                        const s = TUTOR_SCENARIOS.find((x) => x.code === code);
+                                                        if (!s) return null;
+                                                        const done = myDone.includes(code);
+                                                        return (
+                                                            <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 9999, background: done ? '#f1f8f4' : 'var(--background-soft)', border: `1px solid ${done ? '#cfe9d9' : 'var(--border)'}` }}>
+                                                                {done ? <Icon name="check-circle" size={11} style={{ color: '#2f9759' }} /> : <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: accent }}>{s.code}</span>}
+                                                                <span style={{ fontSize: 11.5, fontWeight: 600, color: done ? 'var(--ink-400)' : 'var(--ink-900)', textDecoration: done ? 'line-through' : 'none' }}>{s.title}</span>
+                                                                <span className="muted-text" style={{ fontSize: 10 }}>FAQ {s.faq}</span>
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+
                                         <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-                                            <Icon name="sparkles" size={13} style={{ color: accent }} />
-                                            <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>Tutor 코스</span>
-                                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.tutor}</span>
-                                            <button className="btn-mini primary" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                                                <Icon name="play" size={11} />{inProgress ? '이어서 학습' : '학습 시작'}
+                                            <Icon name="graduation-cap" size={13} style={{ color: allDone ? '#2f9759' : accent }} />
+                                            <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{allDone ? '모든 시나리오 완료' : `남은 시나리오 ${totalScen - doneCount}개`}</span>
+                                            <button className="btn-mini primary" style={{ marginLeft: 'auto', flexShrink: 0, background: allDone ? '#2f9759' : undefined, borderColor: allDone ? '#2f9759' : undefined }}>
+                                                <Icon name={allDone ? 'rotate-ccw' : 'play'} size={11} />{allDone ? '복습하기' : started ? '이어서 학습' : '학습 시작'}
                                             </button>
                                         </div>
                                     </div>
@@ -381,6 +432,81 @@ export default function CounselorResults() {
                             })}
                         </div>
                     )}
+                </div>
+            </div>
+
+            {/* 학습 이력 — 팝업 (코칭 이력 버튼으로 열림) */}
+            {learningHistOpen && (
+                <Modal title="학습 이력" width={820} onClose={() => setLearningHistOpen(false)}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                        <span className="muted-text" style={{ fontSize: 12 }}>지금까지 완료한 코칭 {LEARNING_HISTORY.length}회</span>
+                        <span className="muted-text mono" style={{ marginLeft: 'auto', fontSize: 11 }}>
+                            누적 {LEARNING_HISTORY.reduce((a, h) => a + h.minutes, 0)}분 · 시나리오 {LEARNING_HISTORY.reduce((a, h) => a + h.scenarios, 0)}개
+                        </span>
+                    </div>
+                    <LearningHistory rows={LEARNING_HISTORY} />
+                </Modal>
+            )}
+        </div>
+    );
+}
+
+// 학습 이력 — 타임라인 + 반복 학습 영역 요약
+function LearningHistory({ rows }) {
+    // 영역별 반복 횟수 (반복 = 약점 신호)
+    const byArea = rows.reduce((m, r) => { m[r.area] = (m[r.area] || 0) + 1; return m; }, {});
+    const repeated = Object.entries(byArea).filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]);
+
+    return (
+        <div>
+            {/* 반복 학습 영역 요약 */}
+            {repeated.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '12px 14px', background: 'var(--background-soft)', borderRadius: 10, marginBottom: 18 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700, color: 'var(--ink-700)' }}>
+                        <Icon name="repeat" size={12} style={{ color: 'var(--primary)' }} />자주 학습한 영역
+                    </span>
+                    {repeated.map(([area, n]) => (
+                        <span key={area} className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 11, fontWeight: 700 }}>
+                            {area} <span className="mono">×{n}</span>
+                        </span>
+                    ))}
+                    <span className="muted-text" style={{ fontSize: 11, marginLeft: 'auto' }}>반복이 잦은 영역은 꾸준히 보완이 필요한 부분이에요.</span>
+                </div>
+            )}
+
+            {/* 타임라인 */}
+            <div style={{ position: 'relative' }}>
+                <div style={{ position: 'absolute', left: 19, top: 8, bottom: 8, width: 2, background: 'var(--border)' }}></div>
+                <div style={{ display: 'grid', gap: 4 }}>
+                    {rows.map((h) => {
+                        const gain = h.scoreAfter - h.scoreBefore;
+                        return (
+                            <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 0' }}>
+                                <div style={{ position: 'relative', zIndex: 1, width: 40, flexShrink: 0, display: 'grid', placeItems: 'center' }}>
+                                    <div style={{ width: 34, height: 34, borderRadius: 10, background: 'white', border: '1px solid var(--border)', display: 'grid', placeItems: 'center', color: 'var(--primary)' }}>
+                                        <Icon name={h.icon} size={16} />
+                                    </div>
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)' }}>{h.area}</span>
+                                        <span className="muted-text mono" style={{ fontSize: 11 }}>{h.date}</span>
+                                    </div>
+                                    <div className="muted-text" style={{ fontSize: 11.5, marginTop: 2 }}>
+                                        시나리오 {h.scenarios}개 · FAQ {h.faq}문항 · {h.minutes}분 · {h.by} 코치
+                                    </div>
+                                </div>
+                                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span className="mono" style={{ fontSize: 12, color: 'var(--ink-400)' }}>{h.scoreBefore}</span>
+                                    <Icon name="arrow-right" size={12} style={{ color: 'var(--ink-300)' }} />
+                                    <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)' }}>{h.scoreAfter}</span>
+                                    <span className="pill" style={{ background: gain > 0 ? '#e8f6ed' : 'var(--muted)', color: gain > 0 ? '#2f9759' : 'var(--ink-500)', fontSize: 10.5, fontWeight: 700 }}>
+                                        <Icon name="trending-up" size={10} />+{gain}
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         </div>

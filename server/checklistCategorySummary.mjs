@@ -33,6 +33,26 @@ export function checklistKeysForDepartment(department) {
 }
 
 /**
+ * 부서 고정 키셋 vs 콜 자체 카테고리 중 유효한 쪽 선택.
+ *
+ * 동적 루브릭 콜(이커머스/은행 등 eval_item_defs 자체 항목)은 행 카테고리가 부서
+ * 고정 키셋과 전혀 겹치지 않으므로 — 고정 키셋으로 집계 시 카테고리 합계 전부
+ * 미산출('-') + 만점 합 0(프론트 80 폴백) — 행 카테고리를 키로 사용한다.
+ * 코오롱 표준 콜은 일부라도 겹치므로 기존 키셋 유지 — #15/#16(업무 정확도) 행이
+ * 키셋 밖이어도 합산에 더해지지 않아 만점 80 동결이 깨지지 않는다(회귀 방지).
+ */
+export function effectiveChecklistKeys(department, checklistRows) {
+    const deptKeys = checklistKeysForDepartment(department);
+    const rowCats = [];
+    for (const r of checklistRows || []) {
+        const c = String(r?.category || '').trim();
+        if (c && !rowCats.includes(c)) rowCats.push(c);
+    }
+    if (rowCats.length === 0) return deptKeys;
+    return rowCats.some((c) => deptKeys.includes(c)) ? deptKeys : rowCats;
+}
+
+/**
  * DB에 저장된 checklist_rows(result 없음) + evaluation_rows(ai_eval) 로
  * 대시보드 컬럼별 checklist_yn_kor 객체를 만든다.
  * keys 인자로 브랜드/부서별 카테고리 키 셋을 주입.

@@ -55,7 +55,7 @@ const STYLES = {
     },
 };
 
-const ReviewStatusBadge = ({ status, size = 'sm' }) => {
+const ReviewStatusBadge = ({ status, size = 'sm', title }) => {
     const s = STYLES[status] || STYLES[REVIEW_STATUS.PENDING];
     const label = REVIEW_STATUS_LABEL[status] || REVIEW_STATUS_LABEL[REVIEW_STATUS.PENDING];
     const isCompleted = status === REVIEW_STATUS.COMPLETED;
@@ -64,7 +64,8 @@ const ReviewStatusBadge = ({ status, size = 'sm' }) => {
 
     return (
         <span
-            className={`inline-flex items-center gap-1.5 ${padding} ${fontSize} font-semibold rounded-full border whitespace-nowrap`}
+            title={title || undefined}
+            className={`inline-flex items-center gap-1.5 ${padding} ${fontSize} font-semibold rounded-full border whitespace-nowrap${title ? ' cursor-help' : ''}`}
             style={{ background: s.bg, color: s.text, borderColor: s.border }}
         >
             {isCompleted ? (

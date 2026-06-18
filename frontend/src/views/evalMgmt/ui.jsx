@@ -240,7 +240,7 @@ export function Seg({ items, value, onChange }) {
 // ─────────────────────────────────────────────────────
 // Modal
 // ─────────────────────────────────────────────────────
-export function Modal({ title, onClose, children, foot }) {
+export function Modal({ title, onClose, children, foot, width }) {
     useEffect(() => {
         const onKey = (e) => {
             if (e.key === 'Escape') onClose?.();
@@ -250,7 +250,11 @@ export function Modal({ title, onClose, children, foot }) {
     }, [onClose]);
     return (
         <div className="modal-scrim" onClick={onClose}>
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div
+                className="modal"
+                onClick={(e) => e.stopPropagation()}
+                style={width ? { width: `min(${width}px, calc(100vw - 32px))` } : undefined}
+            >
                 <div className="modal-head">
                     <h2>{title}</h2>
                     <button className="icon-btn" onClick={onClose}>
