@@ -343,11 +343,14 @@ if (!databaseUrl) {
 
 const pool = new Pool({ connectionString: databaseUrl });
 
-const REVIEW_STATUS_VALUES = new Set(['pending', 'in_review', 'completed']);
+// 검수 4단계: pending → in_review → review_done(검토요청) → approved(최종승인).
+// 레거시 3단계의 'completed' 는 'approved' 로 정규화(저장/입력 모두 호환).
+const REVIEW_STATUS_VALUES = new Set(['pending', 'in_review', 'review_done', 'approved']);
 
 function normalizeReviewStatus(value) {
     if (typeof value !== 'string') return 'pending';
-    return REVIEW_STATUS_VALUES.has(value) ? value : 'pending';
+    const v = value === 'completed' ? 'approved' : value;
+    return REVIEW_STATUS_VALUES.has(v) ? v : 'pending';
 }
 
 function toCallRow(row) {
@@ -563,6 +566,14 @@ async function createNotification(db, n) {
     } catch (e) {
         console.error('createNotification error:', e);
     }
+}
+
+// 평가 점수 표시용 — 정수면 정수로, 소수면 소수 2자리까지.
+function fmtEvalNum(n) {
+    if (n == null) return '-';
+    const num = Number(n);
+    if (Number.isNaN(num)) return String(n);
+    return Number.isInteger(num) ? String(num) : String(Math.round(num * 100) / 100);
 }
 
 // 관리자(admin/super_admin) 전용 쓰기 게이트. 상담사 등은 403.
@@ -1513,6 +1524,42 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
         }
     }
 
+    // 쓰기 권한: 관리자=전체 / 상담사=본인 콜 + (검토요청·최종승인 전까지)만 수정(이의제기) / 그 외 차단.
+    {
+        const role = req.session?.role;
+        const isAdmin = role === 'admin' || role === 'super_admin';
+        if (!isAdmin) {
+            if (role !== 'agent') {
+                res.status(403).json({ message: '평가를 수정할 권한이 없습니다.' });
+                return;
+            }
+            try {
+                const { rows: own } = await pool.query(
+                    `SELECT agent_user_id, review_status FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
+                    [qaId]
+                );
+                if (!own[0]) {
+                    res.status(404).json({ message: 'call not found' });
+                    return;
+                }
+                const isOwn = own[0].agent_user_id != null && own[0].agent_user_id === req.session?.user_id;
+                const st = normalizeReviewStatus(own[0].review_status);
+                if (!isOwn) {
+                    res.status(403).json({ message: '본인 콜만 수정할 수 있습니다.' });
+                    return;
+                }
+                if (st === 'review_done' || st === 'approved') {
+                    res.status(403).json({ message: '검토요청/최종승인된 평가는 수정할 수 없습니다.' });
+                    return;
+                }
+            } catch (err) {
+                console.error('PUT /api/evaluations perm guard error:', err);
+                res.status(500).json({ message: 'failed to verify permission' });
+                return;
+            }
+        }
+    }
+
     // 소비자보호부 Y/N 업데이트 분기
     if (Array.isArray(consumerPatches) && consumerPatches.length > 0) {
         try {
@@ -1744,37 +1791,60 @@ app.put('/api/evaluations/:qaId/admin-comments', (_req, res) => {
     res.json({ ok: true, message: 'minimal schema mode: admin_comments disabled' });
 });
 
-// 검수상태 전이 — pending ↔ in_review ↔ completed.
-// completed 인 콜은 in_review 로 되돌릴 수 있어야 함 (재검수 케이스).
-// 시작/완료 타임스탬프는 처음 전이될 때만 채우고 이후 재전이에서는 덮어쓰지 않음 (감사 추적).
+// 검수 4단계 전이 — 대기(pending) → 검수중(in_review) → 검토요청(review_done) → 최종승인(approved).
+//   상담사(agent): 본인 콜 한정, pending↔in_review↔review_done (approved 이후 잠금).
+//   관리자(admin/super): 모든 전이(최종승인 포함).
+//   review_done 진입 시 상담사 점수 스냅샷(counselor_eval), approved 시 관리자 수정분 diff → 상담사 알림.
 app.put('/api/calls/:qaId/review-status', async (req, res) => {
     const qaId = String(req.params.qaId || '').trim();
-    const next = normalizeReviewStatus(req.body?.review_status);
+    const raw = req.body?.review_status;
+    const next = normalizeReviewStatus(raw);
     if (!qaId) {
         res.status(400).json({ message: 'qaId is required' });
         return;
     }
-    if (!REVIEW_STATUS_VALUES.has(req.body?.review_status)) {
+    if (!(REVIEW_STATUS_VALUES.has(raw) || raw === 'completed')) {
         res.status(400).json({ message: 'invalid review_status' });
         return;
     }
 
-    // sandbox 계정은 운영 행 검수상태도 수정 불가 — 운영 데이터 보호.
-    if (req.session?.login_id === SANDBOX_LOGIN_ID) {
-        try {
-            const { rows: targetRow } = await pool.query(
-                `SELECT is_sandbox FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
-                [qaId]
-            );
-            if (targetRow[0] && targetRow[0].is_sandbox === false) {
-                res.status(403).json({ message: 'sandbox account cannot modify production calls' });
-                return;
-            }
-        } catch (err) {
-            console.error('PUT /api/calls/:qaId/review-status sandbox guard error:', err);
-            res.status(500).json({ message: 'failed to verify target row' });
+    // 현재 콜 상태 로드 — 전이 검증·알림 수신자(상담사)·sandbox 판정에 사용.
+    let cur;
+    try {
+        const { rows } = await pool.query(
+            `SELECT review_status, agent_user_id, org_id, is_sandbox FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
+            [qaId]
+        );
+        if (!rows[0]) {
+            res.status(404).json({ message: 'call not found' });
             return;
         }
+        cur = rows[0];
+    } catch (err) {
+        console.error('PUT /api/calls/:qaId/review-status load error:', err);
+        res.status(500).json({ message: 'failed to load target row' });
+        return;
+    }
+
+    // sandbox 계정은 운영 행 검수상태도 수정 불가 — 운영 데이터 보호.
+    if (req.session?.login_id === SANDBOX_LOGIN_ID && cur.is_sandbox === false) {
+        res.status(403).json({ message: 'sandbox account cannot modify production calls' });
+        return;
+    }
+
+    // 역할 기반 전이 검증.
+    const role = req.session?.role;
+    const isAdmin = role === 'admin' || role === 'super_admin';
+    const isAgent = role === 'agent';
+    const isOwn = cur.agent_user_id != null && cur.agent_user_id === req.session?.user_id;
+    const from = normalizeReviewStatus(cur.review_status);
+    const allowed = isAdmin
+        ? true
+        : isAgent && isOwn && from !== 'approved'
+          && (next === 'pending' || next === 'in_review' || next === 'review_done');
+    if (!allowed) {
+        res.status(403).json({ message: '이 상태로 변경할 권한이 없습니다.' });
+        return;
     }
 
     try {
@@ -1782,23 +1852,71 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
             `UPDATE qa_calls
                 SET review_status = $2,
                     review_started_at = CASE
-                        WHEN review_started_at IS NULL AND $2 IN ('in_review', 'completed')
+                        WHEN review_started_at IS NULL AND $2 IN ('in_review', 'review_done', 'approved')
                         THEN now() ELSE review_started_at
                     END,
                     review_completed_at = CASE
-                        WHEN $2 = 'completed' AND review_completed_at IS NULL THEN now()
-                        WHEN $2 <> 'completed' THEN review_completed_at  -- 재검수 시 기존 완료 시각 보존
-                        ELSE review_completed_at
+                        WHEN $2 IN ('review_done', 'approved') AND review_completed_at IS NULL THEN now()
+                        ELSE review_completed_at  -- 되돌림 시 기존 완료 시각 보존
                     END,
+                    approved_at = CASE WHEN $2 = 'approved' THEN COALESCE(approved_at, now()) ELSE approved_at END,
+                    approved_by_user_id = CASE WHEN $2 = 'approved' THEN COALESCE(approved_by_user_id, $3) ELSE approved_by_user_id END,
                     user_id = COALESCE($3, user_id)
               WHERE "ID" = $1
-              RETURNING review_status, review_started_at, review_completed_at`,
+              RETURNING review_status, review_started_at, review_completed_at, approved_at`,
             [qaId, next, req.session?.user_id ?? null]
         );
         if (!rows[0]) {
             res.status(404).json({ message: 'call not found' });
             return;
         }
+
+        // 검토요청(review_done) 진입 시: 상담사 검수 점수 스냅샷(최종승인 diff 기준 고정).
+        if (next === 'review_done' && from !== 'review_done') {
+            try {
+                await pool.query(
+                    `UPDATE qa_evaluation_rows SET counselor_eval = manual_eval WHERE "ID" = $1`,
+                    [qaId]
+                );
+            } catch (e) {
+                console.error('counselor_eval snapshot error:', e);
+            }
+        }
+
+        // 최종승인(approved) 진입 시: 관리자 수정분 diff → 그 콜 상담사에게 알림.
+        if (next === 'approved' && cur.agent_user_id != null) {
+            try {
+                const { rows: diffRows } = await pool.query(
+                    `SELECT order_no, item, counselor_eval, manual_eval
+                       FROM qa_evaluation_rows
+                      WHERE "ID" = $1
+                        AND counselor_eval IS NOT NULL
+                        AND manual_eval IS DISTINCT FROM counselor_eval
+                      ORDER BY order_no`,
+                    [qaId]
+                );
+                const hasDiff = diffRows.length > 0;
+                const changes = diffRows
+                    .map((r) => `${r.item} ${fmtEvalNum(r.counselor_eval)}→${fmtEvalNum(r.manual_eval)}`)
+                    .join(', ');
+                await createNotification(pool, {
+                    recipientUserId: cur.agent_user_id,
+                    type: hasDiff ? 'review_edited' : 'review_approved',
+                    title: hasDiff ? '평가가 수정되어 최종 승인되었습니다' : '평가가 최종 승인되었습니다',
+                    body: hasDiff
+                        ? `변경 ${diffRows.length}건: ${changes}`
+                        : '검토하신 내용 그대로 최종 승인되었습니다.',
+                    resourceType: 'qa_call',
+                    resourceId: qaId,
+                    actorUserId: req.session?.user_id ?? null,
+                    actorName: req.session?.display_name || req.session?.login_id || null,
+                    orgId: cur.org_id ?? null,
+                });
+            } catch (e) {
+                console.error('approve notify error:', e);
+            }
+        }
+
         await insertQaAuditLog(pool, {
             req,
             action: AUDIT_ACTION.QA_REVIEW_STATUS_UPDATE,
@@ -3292,6 +3410,101 @@ app.get('/api/coaching', requireAdmin, async (req, res) => {
     } catch (error) {
         console.error('GET /api/coaching error:', error);
         res.status(500).json({ message: 'Failed to load coaching.' });
+    }
+});
+
+// 튜터(02) 서비스 API 로 한 멤버의 코칭 시나리오 완료수 조회. 미연동/실패 시 null.
+async function fetchTutorCompletion(loginId, codes, channel, sinceIso) {
+    const base = String(process.env.TUTOR_API_BASE_URL || '').trim().replace(/\/+$/, '');
+    const token = String(process.env.EVAL_SHARE_TOKEN || '').trim();
+    if (!base || !token || !loginId || !Array.isArray(codes) || codes.length === 0) return null;
+    try {
+        const qs = new URLSearchParams({ user_id: String(loginId), codes: codes.join(','), channel: channel || 'call' });
+        if (sinceIso) qs.set('since', sinceIso);
+        const r = await fetch(`${base}/svc/coaching-completion?${qs.toString()}`, {
+            headers: { 'X-Service-Token': token },
+            signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) return null;
+        const d = await r.json();
+        return { done: Number(d.done) || 0, total: Number(d.total) || codes.length, completed: Array.isArray(d.completed) ? d.completed : [] };
+    } catch {
+        return null;  // 튜터 미가동/타임아웃 — 이력은 완료수 없이 점수만 표시
+    }
+}
+
+// 코칭 이력 — 코칭배정 × 멤버. 멤버의 배정 전/후 평균점수(qa_calls) + 튜터 시나리오 완료수(02 연동).
+app.get('/api/coaching/history', requireAdmin, async (req, res) => {
+    try {
+        const orgId = resolveActiveOrgId(req);
+        const params = [];
+        let where = '';
+        if (orgId != null) {
+            params.push(orgId);
+            where = `WHERE g.org_id = $${params.length}`;
+        }
+        const { rows } = await pool.query(
+            `SELECT
+                 g.id          AS coaching_id,
+                 g.title       AS title,
+                 g.assigned_at AS assigned_at,
+                 g.channel     AS channel,
+                 g.scenario_codes AS scenario_codes,
+                 COALESCE(cardinality(g.scenario_codes), 0) AS scenarios,
+                 ab.display_name AS by_name,
+                 m.member_uid  AS member_uid,
+                 mu.display_name AS member_name,
+                 mu.login_id   AS member_login,
+                 mu.department   AS member_team,
+                 sc.before_avg AS before_avg,
+                 sc.after_avg  AS after_avg
+               FROM public.coaching_assignments g
+               CROSS JOIN LATERAL unnest(g.members) AS m(member_uid)
+               LEFT JOIN public.admin_users ab ON ab.user_id = g.assigned_by_user_id
+               LEFT JOIN public.admin_users mu ON mu.user_id = m.member_uid
+               LEFT JOIN LATERAL (
+                   SELECT
+                       round(avg(qc."TOTAL_SCORE") FILTER (WHERE qc."CDATE"::timestamptz <  g.assigned_at))::int AS before_avg,
+                       round(avg(qc."TOTAL_SCORE") FILTER (WHERE qc."CDATE"::timestamptz >= g.assigned_at))::int AS after_avg
+                     FROM public.qa_calls qc
+                    WHERE qc.agent_user_id = m.member_uid
+                      AND qc."CDATE" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'   -- 캐스팅 안전(형식 보장)
+                      AND qc."TOTAL_SCORE" IS NOT NULL
+               ) sc ON TRUE
+               ${where}
+              ORDER BY g.assigned_at DESC, g.id DESC`,
+            params
+        );
+        const out = await Promise.all(rows.map(async (r) => {
+            const dt = r.assigned_at ? new Date(r.assigned_at) : null;
+            const valid = dt && !Number.isNaN(dt.getTime());
+            const date = valid ? dt.toISOString().slice(0, 10) : '';
+            const before = r.before_avg == null ? null : Number(r.before_avg);
+            const after = r.after_avg == null ? null : Number(r.after_avg);
+            const channel = r.channel === 'chat' ? 'chat' : 'call';
+            const codes = Array.isArray(r.scenario_codes) ? r.scenario_codes : [];
+            // 튜터(02)에서 이 멤버의 시나리오 완료수 조회(해당 채널·배정 이후). 미연동 시 null.
+            const comp = await fetchTutorCompletion(r.member_login, codes, channel, valid ? dt.toISOString() : null);
+            return {
+                id: `${r.coaching_id}-${r.member_uid}`,
+                counselorId: r.member_uid,
+                counselorName: r.member_name || String(r.member_uid),
+                team: r.member_team || '-',
+                area: r.title,
+                date,
+                by: r.by_name || '관리자',
+                channel,
+                scenarios: Number(r.scenarios) || 0,
+                done: comp ? comp.done : null,          // 완료 시나리오 수(튜터). null=미연동/조회불가
+                scoreBefore: before,
+                scoreAfter: after,
+                hasAfter: after != null,  // 배정 후 콜 존재(효과측정 가능) 여부
+            };
+        }));
+        res.json(out);
+    } catch (error) {
+        console.error('GET /api/coaching/history error:', error);
+        res.status(500).json({ message: 'Failed to load coaching history.' });
     }
 });
 

@@ -125,6 +125,11 @@ export async function deleteCoaching(id) {
     return request(`/api/coaching/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+// 관리자 — 코칭 이력(상담사별). 코칭배정 × 멤버 + 배정 전/후 평균점수.
+export async function fetchCoachingHistory() {
+    return request('/api/coaching/history');
+}
+
 // 내 TA 지표(부정발화·회복률·금칙어) — 03(Meta_Summary) tb_ta_rslt 를 본인 콜(uid) 기준 집계.
 // 응답: { enabled, total, negative_count/rate, banned_count/rate, recovery_denom/count/rate }.
 // enabled=false 면 TA DB 미연동(프론트는 mock 폴백).
@@ -464,15 +469,41 @@ export async function fetchAppLogsRecent({ limit } = {}) {
     return request(`/api/admin/logs/recent${qs ? `?${qs}` : ''}`);
 }
 
-/* ── 알림 ─────────────────────────────────────────────────────
- * 본인이 수행한 평가/적재 완료 이벤트를 qa_audit_logs 에서 파생해 반환.
- * 응답: [{ audit_id, created_at, action, resource_type, resource_id, success, error_message }, ...]
+/* ── 알림(수신자별 영구 알림) ───────────────────────────────────
+ * 검수 워크플로우 이벤트(최종승인·수정반영)를 수신자(상담사) 단위로 영구 저장/조회.
+ * 본인에게 온 알림만 반환(세션 스코프). scope: 'all'(기본) | 'current'(안읽음만).
+ * 응답: [{ id, type, title, body, resource_type, resource_id, actor_name, read, created_at }, ...]
  */
-export async function fetchNotifications({ limit } = {}) {
-    const params = new URLSearchParams();
-    if (limit) params.set('limit', String(limit));
-    const qs = params.toString();
-    return request(`/api/admin/notifications${qs ? `?${qs}` : ''}`);
+export async function fetchNotifications(scope = 'all') {
+    const qs = scope ? `?scope=${encodeURIComponent(scope)}` : '';
+    return request(`/api/notifications${qs}`);
+}
+
+/** 안읽음 알림 개수. 응답: { count }. */
+export async function fetchUnreadCount() {
+    return request('/api/notifications/unread-count');
+}
+
+/** 알림 1건 읽음 처리. */
+export async function markNotificationRead(id) {
+    if (id == null) throw new Error('id is required');
+    return request(`/api/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' });
+}
+
+/** 내 알림 전체 읽음 처리. */
+export async function markAllNotificationsRead() {
+    return request('/api/notifications/read', { method: 'POST' });
+}
+
+/** 알림 1건 삭제. */
+export async function deleteNotification(id) {
+    if (id == null) throw new Error('id is required');
+    return request(`/api/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** 내 알림 전체 삭제. */
+export async function deleteAllNotifications() {
+    return request('/api/notifications', { method: 'DELETE' });
 }
 
 /* ── qa-pipeline 적재 어댑터 ─────────────────────────────────

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod } from './ui';
 import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, COACHING_HISTORY, scenById, catMeta } from './mockData';
-import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching } from '../../services/api';
+import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, fetchCoachingHistory } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
 
 // /api/calls(실데이터) 한 행 → 평가목록 행 모양으로 변환.
@@ -164,7 +164,25 @@ export default function AdminEvalMgmt() {
 function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, onNew }) {
     const [openKey, setOpenKey] = useState(null);
     const [historyOpen, setHistoryOpen] = useState(false);
+    const [historyRows, setHistoryRows] = useState(null);   // null=로딩
     const memberObjs = (ids) => ids.map((id) => agents.find((c) => c.id === id)).filter(Boolean);
+
+    // 코칭 이력 모달 열릴 때 실데이터 로드(코칭배정 × 멤버 + 배정 전/후 점수).
+    useEffect(() => {
+        if (!historyOpen) return undefined;
+        let cancelled = false;
+        setHistoryRows(null);
+        (async () => {
+            try {
+                const data = await fetchCoachingHistory();
+                if (!cancelled) setHistoryRows(Array.isArray(data) ? data : []);
+            } catch (e) {
+                console.error('코칭 이력 로딩 실패:', e);
+                if (!cancelled) setHistoryRows([]);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [historyOpen]);
     const active = coaching.filter((g) => g.assigned);
     const pending = coaching.filter((g) => !g.assigned);
     const openItem = coaching.find((g) => g.key === openKey) || null;
@@ -213,13 +231,13 @@ function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, 
 
             {historyOpen && (
                 <Modal title="상담사별 코칭 이력" width={920} onClose={() => setHistoryOpen(false)}>
-                    <CoachingHistory rows={COACHING_HISTORY} />
-                </Modal>
-            )}
-
-            {historyOpen && (
-                <Modal title="상담사별 코칭 이력" width={920} onClose={() => setHistoryOpen(false)}>
-                    <CoachingHistory rows={COACHING_HISTORY} />
+                    {historyRows === null ? (
+                        <div className="muted-text" style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12.5 }}>불러오는 중…</div>
+                    ) : historyRows.length === 0 ? (
+                        <div className="muted-text" style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12.5 }}>아직 코칭 이력이 없습니다.</div>
+                    ) : (
+                        <CoachingHistory rows={historyRows} />
+                    )}
                 </Modal>
             )}
 
@@ -240,33 +258,38 @@ function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, 
     );
 }
 
-// 코칭 이력 — 상담사별 누적 코칭 기록, 완료율, 점수 개선폭 (펼침형)
+// 코칭 이력 — 상담사별 누적 코칭 기록 + 점수 개선폭 (실데이터: /api/coaching/history).
+// row: { id, counselorId, counselorName, team, area, date, by, channel, scenarios, scoreBefore, scoreAfter, hasAfter }
 function CoachingHistory({ rows }) {
     const [openId, setOpenId] = useState(null);
     if (!rows.length) return null;
-    const cObj = (id) => COUNSELORS.find((c) => c.id === id) || { name: id, team: '-', av: 'av-1' };
+    const fmtScore = (v) => (v == null ? '–' : v);
 
     const groups = {};
     rows.forEach((r) => { (groups[r.counselorId] = groups[r.counselorId] || []).push(r); });
     const list = Object.entries(groups).map(([cid, hs]) => {
-        const sorted = [...hs].sort((a, b) => b.date.localeCompare(a.date));
+        const sorted = [...hs].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        const byDateAsc = [...hs].sort((a, b) => String(a.date).localeCompare(String(b.date)));
         const areaCount = hs.reduce((m, h) => { m[h.area] = (m[h.area] || 0) + 1; return m; }, {});
         const mainArea = Object.entries(areaCount).sort((a, b) => b[1] - a[1])[0];
-        const firstScore = [...hs].sort((a, b) => a.date.localeCompare(b.date))[0].scoreBefore;
-        const lastScore = sorted[0].scoreAfter;
-        const ongoing = hs.some((h) => h.status !== '완료');
-        return { cid, hs: sorted, count: hs.length, mainArea: mainArea[0], mainAreaN: mainArea[1], firstScore, lastScore, gain: lastScore - firstScore, ongoing };
+        // 점수 변화: 가장 이른 코칭의 배정전 평균 → 가장 늦은 코칭의 배정후 평균(있는 값만).
+        const firstScore = byDateAsc.find((h) => h.scoreBefore != null)?.scoreBefore ?? null;
+        const lastScore = sorted.find((h) => h.scoreAfter != null)?.scoreAfter ?? null;
+        const gain = (firstScore != null && lastScore != null) ? lastScore - firstScore : null;
+        const ongoing = hs.some((h) => !h.hasAfter);   // 배정 후 콜 없음 = 효과측정 전(진행 중)
+        const name = hs[0].counselorName || String(cid);
+        const team = hs[0].team || '-';
+        return { cid, name, team, hs: sorted, count: hs.length, mainArea: mainArea[0], mainAreaN: mainArea[1], firstScore, lastScore, gain, ongoing };
     }).sort((a, b) => b.count - a.count);
 
     return (
         <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                <span className="muted-text" style={{ fontSize: 11 }}>상담사를 누르면 받은 코칭 내역이 펼쳐집니다</span>
+                <span className="muted-text" style={{ fontSize: 11 }}>상담사를 누르면 받은 코칭 내역이 펼쳐집니다 · 점수는 배정 전/후 평가 평균</span>
             </div>
 
             <div style={{ display: 'grid', gap: 10 }}>
                 {list.map((g) => {
-                    const c = cObj(g.cid);
                     const open = openId === g.cid;
                     return (
                         <div key={g.cid} style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'white', overflow: 'hidden' }}>
@@ -274,10 +297,10 @@ function CoachingHistory({ rows }) {
                                 onClick={() => setOpenId(open ? null : g.cid)}
                                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', background: open ? 'var(--background-soft)' : 'white', border: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
                             >
-                                <Avatar id={c.av} name={c.name} />
+                                <Avatar id={hashAv(g.cid)} name={g.name} />
                                 <div style={{ minWidth: 0, width: 150 }}>
-                                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-900)' }}>{c.name}</div>
-                                    <div className="muted-text" style={{ fontSize: 11, marginTop: 1 }}>{c.team} · 코칭 {g.count}회</div>
+                                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-900)' }}>{g.name}</div>
+                                    <div className="muted-text" style={{ fontSize: 11, marginTop: 1 }}>{g.team} · 코칭 {g.count}회</div>
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                     <div className="muted-text" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 3 }}>주 문제 영역</div>
@@ -293,12 +316,14 @@ function CoachingHistory({ rows }) {
                                 <div style={{ flexShrink: 0, textAlign: 'right' }}>
                                     <div className="muted-text" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 3 }}>점수 변화</div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-                                        <span className="mono" style={{ fontSize: 11.5, color: 'var(--ink-400)' }}>{g.firstScore}</span>
+                                        <span className="mono" style={{ fontSize: 11.5, color: 'var(--ink-400)' }}>{fmtScore(g.firstScore)}</span>
                                         <Icon name="arrow-right" size={11} style={{ color: 'var(--ink-300)' }} />
-                                        <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)' }}>{g.lastScore}</span>
-                                        <span className="pill" style={{ background: g.gain > 0 ? '#e8f6ed' : 'var(--muted)', color: g.gain > 0 ? '#2f9759' : 'var(--ink-500)', fontSize: 10, fontWeight: 700 }}>
-                                            <Icon name={g.gain > 0 ? 'trending-up' : 'minus'} size={9} />{g.gain > 0 ? `+${g.gain}` : '0'}
-                                        </span>
+                                        <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)' }}>{fmtScore(g.lastScore)}</span>
+                                        {g.gain != null && (
+                                            <span className="pill" style={{ background: g.gain > 0 ? '#e8f6ed' : 'var(--muted)', color: g.gain > 0 ? '#2f9759' : 'var(--ink-500)', fontSize: 10, fontWeight: 700 }}>
+                                                <Icon name={g.gain > 0 ? 'trending-up' : g.gain < 0 ? 'trending-down' : 'minus'} size={9} />{g.gain > 0 ? `+${g.gain}` : g.gain}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                                 {g.ongoing && (
@@ -310,25 +335,33 @@ function CoachingHistory({ rows }) {
                             {open && (
                                 <div style={{ borderTop: '1px solid var(--border)', padding: '6px 16px 12px' }}>
                                     {g.hs.map((h, i) => {
-                                        const gain = h.scoreAfter - h.scoreBefore;
-                                        const isDone = h.status === '완료';
+                                        const gain = (h.scoreBefore != null && h.scoreAfter != null) ? h.scoreAfter - h.scoreBefore : null;
                                         return (
                                             <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: i < g.hs.length - 1 ? '1px dashed var(--border)' : 'none' }}>
                                                 <div style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--background)', display: 'grid', placeItems: 'center', color: 'var(--primary)', flexShrink: 0 }}>
-                                                    <Icon name={h.icon} size={15} />
+                                                    <Icon name="graduation-cap" size={15} />
                                                 </div>
                                                 <div style={{ flex: 1, minWidth: 0 }}>
                                                     <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-900)' }}>{h.area}</div>
-                                                    <div className="muted-text" style={{ fontSize: 10.5, marginTop: 1 }}>{h.date} · {h.by} 코치</div>
+                                                    <div className="muted-text" style={{ fontSize: 10.5, marginTop: 1 }}>{h.date} · {h.by} 배정 · {h.channel === 'chat' ? '채팅' : '전화'}</div>
                                                 </div>
-                                                <span className="pill" style={{ background: isDone ? '#e8f6ed' : 'var(--primary-soft)', color: isDone ? '#2f9759' : 'var(--primary)', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
-                                                    <Icon name={isDone ? 'check' : 'loader'} size={9} />{h.done}/{h.scenarios} {isDone ? '완료' : '진행'}
-                                                </span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, width: 96, justifyContent: 'flex-end' }}>
-                                                    <span className="mono" style={{ fontSize: 11, color: 'var(--ink-400)' }}>{h.scoreBefore}</span>
+                                                {h.done == null ? (
+                                                    <span className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                                                        <Icon name="list-checks" size={9} />시나리오 {h.scenarios}개
+                                                    </span>
+                                                ) : (() => {
+                                                    const allDone = h.scenarios > 0 && h.done >= h.scenarios;
+                                                    return (
+                                                        <span className="pill" style={{ background: allDone ? '#e8f6ed' : 'var(--primary-soft)', color: allDone ? '#2f9759' : 'var(--primary)', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                                                            <Icon name={allDone ? 'check' : 'loader'} size={9} />{h.done}/{h.scenarios} {allDone ? '완료' : '진행'}
+                                                        </span>
+                                                    );
+                                                })()}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, width: 110, justifyContent: 'flex-end' }}>
+                                                    <span className="mono" style={{ fontSize: 11, color: 'var(--ink-400)' }}>{fmtScore(h.scoreBefore)}</span>
                                                     <Icon name="arrow-right" size={10} style={{ color: 'var(--ink-300)' }} />
-                                                    <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-900)' }}>{h.scoreAfter}</span>
-                                                    {gain > 0 && <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: '#2f9759' }}>+{gain}</span>}
+                                                    <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-900)' }}>{h.hasAfter ? h.scoreAfter : '측정 전'}</span>
+                                                    {gain != null && gain > 0 && <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: '#2f9759' }}>+{gain}</span>}
                                                 </div>
                                             </div>
                                         );

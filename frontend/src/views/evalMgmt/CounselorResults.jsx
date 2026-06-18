@@ -11,24 +11,36 @@ import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
 // 회복률 코멘트 기준: 이 값(%) 이상이면 칭찬, 미만이면 분발 멘트. (운영 중 조절 가능)
 const RECOVERY_PRAISE_MIN = 30;
 
-// 배정 코칭 "학습 시작" → 튜터 학습 앱(별도 앱). NEXT_PUBLIC_ 이라 빌드 시점 인라인됨.
+// 배정 코칭 "학습 시작" → 튜터(02-AI-Tutor-ICS) 학습 앱 deep-link. NEXT_PUBLIC_ 이라 빌드 시점 인라인.
 const TUTOR_APP_URL = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_TUTOR_APP_URL) || '';
-// 튜터(8444)는 05 와 동일한 ICS 신뢰 임베드 모델: ?userId=userCd@projCd 만 있으면 /auth/ics-sso 로 자동 로그인.
-// (02 app-shell.tsx: "신뢰 모드 — userId 만 있으면 SSO 시도"). 그래서 본인 login_id 를 userId 로 넘겨야 로그인창 없이 열림.
-function openTutorApp(g) {
-    if (!TUTOR_APP_URL) return;
-    const params = new URLSearchParams();
+
+// 로그인 actor 원본(localStorage). { login_id, auth_source('ics'|'manual'), display_name, ... }
+function readActor() {
+    if (typeof window === 'undefined') return null;
     try {
-        const raw = typeof window !== 'undefined' ? window.localStorage.getItem(QA_ACTOR_STORAGE_KEY) : null;
-        const u = raw ? JSON.parse(raw) : null;
-        const loginId = u && u.login_id ? String(u.login_id) : '';
-        if (loginId.includes('@')) params.set('userId', loginId);  // ICS 계정(userCd@projCd)만 SSO 전달
-    } catch { /* 저장 actor 없음 → userId 없이 열림(튜터가 로그인 폼) */ }
-    const codes = Array.isArray(g?.scenarios) ? g.scenarios : [];
+        const raw = window.localStorage.getItem(QA_ACTOR_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+
+// 배정 코칭 → 튜터 deep-link. 튜터(02 page.tsx)가 from=coaching 으로 코칭모드 진입:
+//   scenarios=<slug,slug>(자동선택) · mode=call|chat(전화/채팅 프리셋) · since=ISO(배정 이후 완료만 인정) · from=coaching(배너 표시 트리거)
+//   userId=userCd@projCd → ICS 로그인 사용자는 튜터가 /auth/ics-sso 자동로그인(로그인창 없음).
+function buildTutorLink(g) {
+    if (!TUTOR_APP_URL) return null;
+    const params = new URLSearchParams();
+    const codes = (g.scenarios || []).filter(Boolean).slice(0, 3);
     if (codes.length) params.set('scenarios', codes.join(','));
-    const qs = params.toString();
-    const url = TUTOR_APP_URL + (qs ? (TUTOR_APP_URL.includes('?') ? '&' : '?') + qs : '');
-    window.open(url, '_blank', 'noopener');
+    params.set('mode', g.channel === 'chat' ? 'chat' : 'call');
+    if (g.assignedAtIso) params.set('since', g.assignedAtIso);
+    params.set('from', 'coaching');
+    const actor = readActor();
+    if (actor && actor.auth_source === 'ics' && actor.login_id) {
+        params.set('userId', String(actor.login_id));
+    }
+    return `${TUTOR_APP_URL.replace(/\/+$/, '')}/?${params.toString()}`;
 }
 
 // 검수 4단계(qa_calls.review_status, 실데이터): 대기 → 검수중 → 검토요청 → 최종승인.
@@ -467,6 +479,15 @@ export default function CounselorResults() {
                                 const soft = high ? 'var(--primary-soft)' : '#fdf2e3';
                                 const inProgress = g.status === '진행 중';
                                 const tutorLabel = g.tutor || ((g.scenarios && g.scenarios.length) ? `시나리오 ${g.scenarios.length}개 연결` : '연결 시나리오 없음');
+                                const isChat = g.channel === 'chat';
+                                const tutorLink = buildTutorLink(g);
+                                const startLearning = () => {
+                                    if (!tutorLink) {
+                                        alert('튜터 학습 앱 주소가 설정되지 않았습니다. 관리자에게 문의하세요.');
+                                        return;
+                                    }
+                                    if (typeof window !== 'undefined') window.open(tutorLink, '_blank', 'noopener');
+                                };
                                 return (
                                     <div key={g.key} style={{ border: '1px solid var(--border)', borderRadius: 14, padding: '18px 18px 16px', background: 'white', display: 'flex', flexDirection: 'column', borderTop: `3px solid ${accent}` }}>
                                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
@@ -501,16 +522,11 @@ export default function CounselorResults() {
                                         )}
 
                                         <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-                                            <Icon name="sparkles" size={13} style={{ color: accent }} />
-                                            <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>Tutor 코스</span>
-                                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tutorLabel}</span>
-                                            <button
-                                                className="btn-mini primary"
-                                                style={{ marginLeft: 'auto', flexShrink: 0 }}
-                                                disabled={!TUTOR_APP_URL}
-                                                title={TUTOR_APP_URL ? '튜터 학습 앱으로 이동' : '튜터 앱 URL(NEXT_PUBLIC_TUTOR_APP_URL) 미설정'}
-                                                onClick={() => openTutorApp(g)}
-                                            >
+                                            <span className="pill" style={{ background: isChat ? '#eef6ee' : 'var(--primary-soft)', color: isChat ? '#3a7a3a' : 'var(--primary)', fontSize: 10.5, fontWeight: 700, flexShrink: 0 }}>
+                                                <Icon name={isChat ? 'message-square' : 'phone'} size={10} />{isChat ? '채팅 학습' : '전화 학습'}
+                                            </span>
+                                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{tutorLabel}</span>
+                                            <button className="btn-mini primary" style={{ marginLeft: 'auto', flexShrink: 0 }} onClick={startLearning}>
                                                 <Icon name="play" size={11} />{inProgress ? '이어서 학습' : '학습 시작'}
                                             </button>
                                         </div>

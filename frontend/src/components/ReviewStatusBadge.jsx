@@ -1,64 +1,44 @@
 import React from 'react';
 import { Check, Play, RotateCcw } from 'lucide-react';
 
+// 검수 4단계 워크플로우: 대기 → 검수중 → 검토요청 → 최종승인.
+//   pending → in_review → review_done → approved
+//   상담사: pending→in_review→review_done(이의제기 후 관리자에 검토요청). 관리자: review_done→approved(최종승인).
 export const REVIEW_STATUS = {
     PENDING: 'pending',
     IN_REVIEW: 'in_review',
-    COMPLETED: 'completed',
+    REVIEW_DONE: 'review_done',
+    APPROVED: 'approved',
+    COMPLETED: 'approved', // (deprecated) 레거시 3단계 'completed' → approved 별칭
 };
 
 export const REVIEW_STATUS_LABEL = {
-    [REVIEW_STATUS.PENDING]: '대기',
-    [REVIEW_STATUS.IN_REVIEW]: '검수중',
-    [REVIEW_STATUS.COMPLETED]: '완료',
+    pending: '대기',
+    in_review: '검수중',
+    review_done: '검토요청',
+    approved: '최종승인',
 };
 
-// 콜 row → 검수상태 결정.
-// - review_status 컬럼이 'in_review'/'completed' 이면 명시적 사용자 의사이므로 그대로 사용.
-// - 'pending' 이거나 미정인데 체크리스트가 사실상 완료 상태 (백엔드의 checklist_complete,
-//   manual_score 둘 중 하나라도 truthy) 면 'completed' 로 승격. 수기 평가만 끝내고 "검수 완료"
-//   버튼을 안 눌렀거나, 모든 행이 골든셋에 들어가 있어 Detail 이 100% 로 표시되는 케이스를 보정.
-const VALID_STATUSES = new Set(Object.values(REVIEW_STATUS));
-
+// 콜 row → 검수상태. 명시적 워크플로우라 자동승격 없이 저장값을 그대로 정규화('completed'→approved).
 export function deriveReviewStatus(call) {
     if (!call) return REVIEW_STATUS.PENDING;
-    const explicit = VALID_STATUSES.has(call.review_status) ? call.review_status : null;
-    if (explicit === REVIEW_STATUS.COMPLETED) return REVIEW_STATUS.COMPLETED;
-    // 모든 행 수기평가 완료(체크리스트 100%)면 '완료'를 우선 — 세션 중 자동 세팅된 옛 'in_review'
-    // 가 100% 인데도 '검수중'으로 남는 문제 보정.
-    if (call.checklist_complete === true) return REVIEW_STATUS.COMPLETED;
-    if (explicit && explicit !== REVIEW_STATUS.PENDING) return explicit;
-    const m = call.manual_score;
-    const hasManualReview = m !== null && m !== undefined && m !== '' && !Number.isNaN(Number(m));
-    if (hasManualReview) return REVIEW_STATUS.COMPLETED;
-    return explicit ?? REVIEW_STATUS.PENDING;
+    const v = call.review_status === 'completed' ? 'approved' : call.review_status;
+    return REVIEW_STATUS_LABEL[v] ? v : REVIEW_STATUS.PENDING;
 }
 
 const STYLES = {
-    [REVIEW_STATUS.PENDING]: {
-        dot: '#98A2B3',
-        bg: '#F2F4F7',
-        text: '#667085',
-        border: '#E4E7EC',
-    },
-    [REVIEW_STATUS.IN_REVIEW]: {
-        dot: '#1E70E0',
-        bg: '#EEF4FB',
-        text: '#055AAF',
-        border: '#BFD4F2',
-    },
-    [REVIEW_STATUS.COMPLETED]: {
-        dot: '#12B76A',
-        bg: '#ECFDF3',
-        text: '#067647',
-        border: '#ABEFC6',
-    },
+    pending: { dot: '#98A2B3', bg: '#F2F4F7', text: '#667085', border: '#E4E7EC' },
+    in_review: { dot: '#1E70E0', bg: '#EEF4FB', text: '#055AAF', border: '#BFD4F2' },
+    // 검토요청: 검수중과 동일한 블루 계열(체크 아이콘으로 "작업 끝, 승인 요청" 구분).
+    review_done: { dot: '#1E70E0', bg: '#EEF4FB', text: '#055AAF', border: '#BFD4F2' },
+    approved: { dot: '#12B76A', bg: '#ECFDF3', text: '#067647', border: '#ABEFC6' },
 };
 
 const ReviewStatusBadge = ({ status, size = 'sm', title }) => {
-    const s = STYLES[status] || STYLES[REVIEW_STATUS.PENDING];
-    const label = REVIEW_STATUS_LABEL[status] || REVIEW_STATUS_LABEL[REVIEW_STATUS.PENDING];
-    const isCompleted = status === REVIEW_STATUS.COMPLETED;
+    const s = STYLES[status] || STYLES.pending;
+    const label = REVIEW_STATUS_LABEL[status] || REVIEW_STATUS_LABEL.pending;
+    // 검토요청·최종승인은 체크 아이콘, 나머지는 점.
+    const isDone = status === REVIEW_STATUS.REVIEW_DONE || status === REVIEW_STATUS.APPROVED;
     const padding = size === 'md' ? 'px-2.5 py-1' : 'px-2 py-0.5';
     const fontSize = size === 'md' ? 'text-[12px]' : 'text-[11.5px]';
 
@@ -68,7 +48,7 @@ const ReviewStatusBadge = ({ status, size = 'sm', title }) => {
             className={`inline-flex items-center gap-1.5 ${padding} ${fontSize} font-semibold rounded-full border whitespace-nowrap${title ? ' cursor-help' : ''}`}
             style={{ background: s.bg, color: s.text, borderColor: s.border }}
         >
-            {isCompleted ? (
+            {isDone ? (
                 <Check size={11} strokeWidth={3} style={{ color: s.dot }} />
             ) : (
                 <span
@@ -83,7 +63,9 @@ const ReviewStatusBadge = ({ status, size = 'sm', title }) => {
 
 export default ReviewStatusBadge;
 
-// 검수상태 전이 액션 버튼 — pending → in_review → completed ↔ in_review.
+// 검수상태 전이 액션 버튼.
+//   상담사: 대기 → [검수 시작] → 검수중 → [검토 요청] → 검토요청(이후 잠금, 관리자 승인 대기)
+//   관리자: 검토요청 → [최종 승인] → 최종승인
 const ACTIONS = {
     [REVIEW_STATUS.PENDING]: {
         next: REVIEW_STATUS.IN_REVIEW,
@@ -92,12 +74,18 @@ const ACTIONS = {
         variant: 'primary',
     },
     [REVIEW_STATUS.IN_REVIEW]: {
-        next: REVIEW_STATUS.COMPLETED,
-        label: '검수 완료',
+        next: REVIEW_STATUS.REVIEW_DONE,
+        label: '검토 요청',
         Icon: Check,
         variant: 'primary',
     },
-    [REVIEW_STATUS.COMPLETED]: {
+    [REVIEW_STATUS.REVIEW_DONE]: {
+        next: REVIEW_STATUS.IN_REVIEW,
+        label: '검수중으로',
+        Icon: RotateCcw,
+        variant: 'ghost',
+    },
+    [REVIEW_STATUS.APPROVED]: {
         next: REVIEW_STATUS.IN_REVIEW,
         label: '재검수',
         Icon: RotateCcw,
