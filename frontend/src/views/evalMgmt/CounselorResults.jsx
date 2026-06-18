@@ -3,13 +3,23 @@
 //         강점·개선(항목 평균), 배정된 코칭(/api/coaching/mine).
 //         감정·대화 품질(/api/me/ta-metrics): 부정발화·금칙어=03 tb_ta_rslt, 회복률=05 qa_call_recovery. (미연동 시 mock 폴백)
 import React, { useState, useEffect, useMemo } from 'react';
-import { Icon, Gauge, Spark, StatusPill, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod } from './ui';
+import { Icon, Gauge, Spark, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod } from './ui';
 import { scoreClass, LEARNING_HISTORY } from './mockData';
 import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, QA_ACTOR_STORAGE_KEY } from '../../services/api';
 import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
 
 // 회복률 코멘트 기준: 이 값(%) 이상이면 칭찬, 미만이면 분발 멘트. (운영 중 조절 가능)
 const RECOVERY_PRAISE_MIN = 30;
+
+// 배정 코칭 "학습 시작" → 튜터 학습 앱(별도 앱). NEXT_PUBLIC_ 이라 빌드 시점 인라인됨.
+const TUTOR_APP_URL = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_TUTOR_APP_URL) || '';
+function openTutorApp(g) {
+    if (!TUTOR_APP_URL) return;
+    let url = TUTOR_APP_URL;
+    const codes = Array.isArray(g?.scenarios) ? g.scenarios : [];
+    if (codes.length) url += (url.includes('?') ? '&' : '?') + 'scenarios=' + encodeURIComponent(codes.join(','));
+    window.open(url, '_blank', 'noopener');
+}
 
 // 검수 4단계(qa_calls.review_status, 실데이터): 대기 → 검수중 → 검토요청 → 최종승인.
 // (레거시 'completed' 는 최종승인으로 흡수.) — 서버 27_review_workflow.sql 와 동일 상태머신.
@@ -484,7 +494,13 @@ export default function CounselorResults() {
                                             <Icon name="sparkles" size={13} style={{ color: accent }} />
                                             <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>Tutor 코스</span>
                                             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tutorLabel}</span>
-                                            <button className="btn-mini primary" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                                            <button
+                                                className="btn-mini primary"
+                                                style={{ marginLeft: 'auto', flexShrink: 0 }}
+                                                disabled={!TUTOR_APP_URL}
+                                                title={TUTOR_APP_URL ? '튜터 학습 앱으로 이동' : '튜터 앱 URL(NEXT_PUBLIC_TUTOR_APP_URL) 미설정'}
+                                                onClick={() => openTutorApp(g)}
+                                            >
                                                 <Icon name="play" size={11} />{inProgress ? '이어서 학습' : '학습 시작'}
                                             </button>
                                         </div>
@@ -587,7 +603,7 @@ export default function CounselorResults() {
                                 <div className="muted-text" style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.team}</div>
                                 <div className="muted-text" style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.category}</div>
                                 <div><span className={`score-chip ${scoreClass(r.score)}`}>{r.score}</span></div>
-                                <div><StatusPill status={r.status} /></div>
+                                <div><ReviewPill status={r.status} /></div>
                             </div>
                         ))}
                     </div>
@@ -618,7 +634,7 @@ export default function CounselorResults() {
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                 <span className="mono" style={{ fontSize: 11, color: 'var(--ink-400)', fontWeight: 700 }}>{selected.sessionId}</span>
-                                <StatusPill status={selected.status} />
+                                <ReviewPill status={selected.status} />
                             </div>
                             <h3>{selected.team}{selected.category && selected.category !== '-' ? ` · ${selected.category}` : ''} · {selected.date} {selected.time}</h3>
                         </div>

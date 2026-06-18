@@ -16,6 +16,9 @@ ENV API_PROXY_TARGET=$API_PROXY_TARGET
 # 개발계 식별용 DEV 배지(선택) — 운영 빌드에서는 미주입 → 미표시
 ARG NEXT_PUBLIC_DEV_BADGE=""
 ENV NEXT_PUBLIC_DEV_BADGE=$NEXT_PUBLIC_DEV_BADGE
+# 배정 코칭 "학습 시작" → 튜터 학습 앱 URL. NEXT_PUBLIC_ 이라 빌드 시점 인라인 필수.
+ARG NEXT_PUBLIC_TUTOR_APP_URL=""
+ENV NEXT_PUBLIC_TUTOR_APP_URL=$NEXT_PUBLIC_TUTOR_APP_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # 네이티브 바인딩(@tailwindcss/oxide)을 빌드 플랫폼(linux-x64-gnu)에 맞춰 받기 위해
