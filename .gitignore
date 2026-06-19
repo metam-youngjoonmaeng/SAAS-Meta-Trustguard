@@ -30,6 +30,8 @@ secrets*.json
 
 # Backup
 *.bak
+# DB 백업 덤프 (수동 pg_dump 산출물 — 깃 추적 제외, 별도 채널 보관)
+backups/
 
 # 비공개 데이터 — baseline 시드 CSV 는 깃허브 비공개
 # (시더 사이드카가 호스트 볼륨 마운트로 적재하므로 운영기에는 별도 채널로 전달)

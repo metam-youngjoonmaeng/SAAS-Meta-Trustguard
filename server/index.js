@@ -3407,20 +3407,42 @@ app.get('/api/coaching', requireAdmin, async (req, res) => {
     try {
         const orgId = resolveActiveOrgId(req);
         const params = [];
-        let where = '';
+        const conds = ['g.archived_at IS NULL'];   // 보드에서 정리(X)한 코칭은 제외(코칭 이력엔 유지).
         if (orgId != null) {
             params.push(orgId);
-            where = `WHERE g.org_id = $${params.length}`;
+            conds.push(`g.org_id = $${params.length}`);
         }
+        const where = `WHERE ${conds.join(' AND ')}`;
         const { rows } = await pool.query(
-            `SELECT g.*, au.display_name AS assigned_by_name
+            `SELECT g.*, au.display_name AS assigned_by_name,
+                    (SELECT array_agg(mu.login_id) FROM public.admin_users mu WHERE mu.user_id = ANY(g.members)) AS member_logins
                FROM public.coaching_assignments g
                LEFT JOIN public.admin_users au ON au.user_id = g.assigned_by_user_id
                ${where}
               ORDER BY g.created_at DESC`,
             params
         );
-        res.json(rows.map(toCoachingRow));
+        // 진행률 — 멤버별 튜터(02) 완료 조회 후 '전원 완료' 집계. 튜터 미연동/실패 시 진행률 미상(null) → X(정리) 미노출.
+        const out = await Promise.all(rows.map(async (row) => {
+            const base = toCoachingRow(row);
+            const logins = Array.isArray(row.member_logins) ? row.member_logins.filter(Boolean) : [];
+            const membersTotal = logins.length;
+            let membersDone = 0;
+            let measurable = membersTotal > 0 && base.scenarios.length > 0;
+            if (measurable) {
+                const comps = await Promise.all(logins.map((lid) =>
+                    fetchTutorCompletion(lid, base.scenarios, base.channel, base.assignedAtIso)));
+                if (comps.some((c) => c == null)) measurable = false;       // 일부라도 조회 실패면 미상 처리
+                else membersDone = comps.filter((c) => c.total > 0 && c.done >= c.total).length;
+            }
+            return {
+                ...base,
+                membersTotal,
+                membersDone: measurable ? membersDone : null,
+                allDone: measurable && membersTotal > 0 && membersDone === membersTotal,
+            };
+        }));
+        res.json(out);
     } catch (error) {
         console.error('GET /api/coaching error:', error);
         res.status(500).json({ message: 'Failed to load coaching.' });
@@ -3591,6 +3613,36 @@ app.delete('/api/coaching/:id', requireAdmin, async (req, res) => {
     } catch (error) {
         console.error('DELETE /api/coaching error:', error);
         res.status(500).json({ message: 'Failed to delete coaching.' });
+    }
+});
+
+// 코칭 보드에서 정리(숨김) — archived_at 세팅. 레코드는 보존(코칭 이력엔 계속 노출). 전원 학습완료 카드의 'X'.
+app.post('/api/coaching/:id/archive', requireAdmin, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id)) {
+            res.status(400).json({ message: 'invalid id' });
+            return;
+        }
+        const orgId = resolveActiveOrgId(req);
+        const params = [id];
+        let scope = '';
+        if (orgId != null) {
+            params.push(orgId);
+            scope = ` AND org_id = $${params.length}`;
+        }
+        const { rowCount } = await pool.query(
+            `UPDATE public.coaching_assignments SET archived_at = now() WHERE id = $1${scope}`,
+            params
+        );
+        if (!rowCount) {
+            res.status(404).json({ message: 'not found' });
+            return;
+        }
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('POST /api/coaching/:id/archive error:', error);
+        res.status(500).json({ message: 'Failed to archive coaching.' });
     }
 });
 

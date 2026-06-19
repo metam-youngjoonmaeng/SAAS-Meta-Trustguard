@@ -125,6 +125,12 @@ export async function deleteCoaching(id) {
     return request(`/api/coaching/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+// 관리자 — 코칭 보드에서 정리(아카이브). 레코드 보존 → 코칭 이력엔 계속 노출.
+export async function archiveCoaching(id) {
+    if (id == null) throw new Error('id is required');
+    return request(`/api/coaching/${encodeURIComponent(id)}/archive`, { method: 'POST' });
+}
+
 // 관리자 — 코칭 이력(상담사별). 코칭배정 × 멤버 + 배정 전/후 평균점수.
 export async function fetchCoachingHistory() {
     return request('/api/coaching/history');

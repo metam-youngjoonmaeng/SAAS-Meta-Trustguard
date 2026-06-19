@@ -38,6 +38,8 @@ ALTER TABLE public.coaching_assignments DROP COLUMN IF EXISTS priority;
 ALTER TABLE public.coaching_assignments DROP COLUMN IF EXISTS icon;
 -- 학습 채널 컬럼(기존 테이블 보강, 멱등). 기존 배정은 기본 'call'.
 ALTER TABLE public.coaching_assignments ADD COLUMN IF NOT EXISTS channel text NOT NULL DEFAULT 'call';
+-- 보드에서 숨김(아카이브) 시각. NULL=진행 보드 노출, 값 있으면 보드에서 제외(코칭 이력엔 유지). 전원 학습완료 후 관리자가 X로 정리.
+ALTER TABLE public.coaching_assignments ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 
 CREATE INDEX IF NOT EXISTS idx_coaching_assignments_org ON public.coaching_assignments (org_id);
 -- 상담사 본인화면에서 "나에게 배정된 코칭" 조회( members @> ARRAY[user_id] )용 GIN 인덱스.

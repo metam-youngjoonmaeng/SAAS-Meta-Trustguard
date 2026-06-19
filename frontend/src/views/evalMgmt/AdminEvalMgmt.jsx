@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod } from './ui';
 import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, scenById, catMeta } from './mockData';
-import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, fetchCoachingHistory, updateReviewStatus } from '../../services/api';
+import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, archiveCoaching, fetchCoachingHistory, updateReviewStatus } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
 import { DEFAULT_TOTAL_MAX } from '../../constants';
 
@@ -137,6 +137,18 @@ export default function AdminEvalMgmt() {
             setCoaching(await reloadCoaching()); // 실패 시 서버 상태로 복구
         }
     };
+    // 전원 학습완료 카드 정리(X) — 보드에서만 숨김(아카이브). 코칭 이력엔 그대로 유지.
+    const archiveItem = async (key) => {
+        const row = coaching.find((g) => g.key === key);
+        const id = row?.id ?? key;
+        setCoaching((list) => list.filter((g) => g.key !== key)); // 낙관적 제거
+        try {
+            await archiveCoaching(id);
+        } catch (e) {
+            console.error('코칭 정리(아카이브) 실패:', e);
+            setCoaching(await reloadCoaching()); // 실패 시 서버 상태로 복구
+        }
+    };
     const addCoaching = async (entry) => {
         try {
             await createCoaching(entry); // DB 저장(POST /api/coaching)
@@ -159,7 +171,7 @@ export default function AdminEvalMgmt() {
                 embedded
                 results={results || []}
                 loading={results === null}
-                beforeList={<CoachingPanel coaching={coaching} agents={agents} onAssign={assign} onUnassign={unassign} onRemove={removeItem} onNew={() => setModalOpen(true)} />}
+                beforeList={<CoachingPanel coaching={coaching} agents={agents} onAssign={assign} onUnassign={unassign} onRemove={removeItem} onArchive={archiveItem} onNew={() => setModalOpen(true)} />}
             />
 
             {modalOpen && (
@@ -177,7 +189,7 @@ export default function AdminEvalMgmt() {
 }
 
 // 코칭 배정 섹션 — 요약 카드 리스트 (클릭 시 상세 모달)
-function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, onNew }) {
+function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, onArchive, onNew }) {
     const [openKey, setOpenKey] = useState(null);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [historyRows, setHistoryRows] = useState(null);   // null=로딩
@@ -214,18 +226,18 @@ function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, 
                     <h3>코칭 배정</h3>
                     <span className="muted-text" style={{ fontSize: 12 }}>· 진행 {active.length} · 배정 대기 {pending.length}</span>
                 </div>
-                <button className="btn-mini" style={{ marginLeft: 'auto' }} onClick={() => setHistoryOpen(true)}>
-                    <Icon name="history" size={11} />코칭 이력
-                </button>
-            </div>
-            <div className="panel-body" style={{ display: 'grid', gap: 18 }}>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: -6 }}>
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button className="btn-mini" onClick={() => setHistoryOpen(true)}>
+                        <Icon name="history" size={11} />코칭 이력
+                    </button>
                     <button className="btn-mini primary" onClick={onNew}>
                         <Icon name="plus" size={11} />새 코칭 배정
                     </button>
                 </div>
+            </div>
+            <div className="panel-body" style={{ display: 'grid', gap: 18 }}>
                 {active.length > 0 && (
-                    <CoachingCarousel label={<>진행 중인 코칭 · {active.length}</>} items={active} memberObjs={memberObjs} onOpen={setOpenKey} />
+                    <CoachingCarousel label={<>진행 중인 코칭 · {active.length}</>} items={active} memberObjs={memberObjs} onOpen={setOpenKey} onArchive={onArchive} />
                 )}
                 {pending.length > 0 && (
                     <CoachingCarousel
@@ -398,7 +410,7 @@ function CoachingHistory({ rows }) {
 }
 
 // 좌우 이전/다음 버튼으로 그룹을 넘겨 보는 캐러셀
-function CoachingCarousel({ label, items, memberObjs, onOpen }) {
+function CoachingCarousel({ label, items, memberObjs, onOpen, onArchive }) {
     const ref = React.useRef(null);
     const [atStart, setAtStart] = useState(true);
     const [atEnd, setAtEnd] = useState(false);
@@ -438,7 +450,7 @@ function CoachingCarousel({ label, items, memberObjs, onOpen }) {
                 <div ref={ref} className="no-scrollbar" onScroll={update} style={{ flex: 1, minWidth: 0, display: 'flex', gap: 12, overflowX: canScroll ? 'auto' : 'visible', scrollSnapType: 'x mandatory', paddingBottom: 2 }}>
                     {items.map((g) => (
                         <div key={g.key} style={{ flex: '0 0 calc((100% - 24px) / 3)', minWidth: 0, scrollSnapAlign: 'start' }}>
-                            <CoachingMiniCard g={g} members={memberObjs(g.members)} onOpen={() => onOpen(g.key)} />
+                            <CoachingMiniCard g={g} members={memberObjs(g.members)} onOpen={() => onOpen(g.key)} onArchive={onArchive} />
                         </div>
                     ))}
                 </div>
@@ -449,9 +461,11 @@ function CoachingCarousel({ label, items, memberObjs, onOpen }) {
 }
 
 // 요약 카드 — 제목 · 상태 · 대상 인원만, 클릭 시 상세
-function CoachingMiniCard({ g, members, onOpen }) {
+function CoachingMiniCard({ g, members, onOpen, onArchive }) {
     const p = COACH_PRIORITY[g.priority] || COACH_PRIORITY.mid;
     const shown = members.slice(0, 4);
+    const measurable = g.membersDone != null && g.membersTotal > 0;  // 튜터 완료 조회 가능(진행률 표시 가능)
+    const pct = measurable ? Math.round((g.membersDone / g.membersTotal) * 100) : 0;
     return (
         <button
             onClick={onOpen}
@@ -465,7 +479,15 @@ function CoachingMiniCard({ g, members, onOpen }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.title}</div>
                     <div style={{ marginTop: 3 }}>
-                        {g.assigned ? (
+                        {g.allDone ? (
+                            <span className="pill green" style={{ fontSize: 9.5 }}>
+                                <Icon name="check" size={9} />학습 완료
+                            </span>
+                        ) : measurable ? (
+                            <span className="pill" style={{ background: 'var(--muted)', color: 'var(--ink-600)', fontSize: 9.5, fontWeight: 700 }}>
+                                <Icon name="loader" size={9} />{g.membersDone}/{g.membersTotal}명 완료
+                            </span>
+                        ) : g.assigned ? (
                             <span className="pill green" style={{ fontSize: 9.5 }}>
                                 <Icon name="check" size={9} />{g.status || '배정됨'}
                             </span>
@@ -474,8 +496,39 @@ function CoachingMiniCard({ g, members, onOpen }) {
                         )}
                     </div>
                 </div>
-                <Icon name="chevron-right" size={16} style={{ color: 'var(--ink-400)', flexShrink: 0 }} />
+                {/* 전원 학습완료 시에만 'X'로 보드에서 정리(아카이브) — 코칭 이력엔 유지. 나머지는 상세 진입 화살표. */}
+                {g.allDone ? (
+                    <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); onArchive?.(g.key); }}
+                        title="완료된 코칭을 보드에서 정리합니다 (코칭 이력엔 유지됩니다)"
+                        style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, display: 'grid', placeItems: 'center', color: 'var(--ink-400)', cursor: 'pointer' }}
+                    >
+                        <Icon name="x" size={14} />
+                    </span>
+                ) : (
+                    <Icon name="chevron-right" size={16} style={{ color: 'var(--ink-400)', flexShrink: 0 }} />
+                )}
             </div>
+            {measurable && (
+                <div style={{ height: 4, borderRadius: 999, background: 'var(--muted)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: g.allDone ? '#12B76A' : 'var(--primary)', borderRadius: 999, transition: 'width var(--t-base)' }} />
+                </div>
+            )}
+            {Array.isArray(g.scenarios) && g.scenarios.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {g.scenarios.slice(0, 3).map((code) => {
+                        const s = TUTOR_SCENARIOS.find((x) => x.code === code) || { code, title: code };
+                        return (
+                            <span key={code} className="pill" style={{ background: 'var(--background-soft)', color: 'var(--ink-600)', fontSize: 10, fontWeight: 600, border: '1px solid var(--border)', maxWidth: '100%' }}>
+                                <Icon name="sparkles" size={9} style={{ color: 'var(--ink-400)', flexShrink: 0 }} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</span>
+                            </span>
+                        );
+                    })}
+                </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 11, borderTop: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex' }}>
                     {shown.map((m, i) => (
