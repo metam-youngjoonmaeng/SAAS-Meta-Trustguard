@@ -1,13 +1,14 @@
 import React from 'react';
 import { Check, Play, RotateCcw } from 'lucide-react';
 
-// 검수 4단계 워크플로우: 대기 → 검수중 → 검토요청 → 최종승인.
-//   pending → in_review → review_done → approved
-//   상담사: pending→in_review→review_done(이의제기 후 관리자에 검토요청). 관리자: review_done→approved(최종승인).
+// 검수 워크플로우(반복 검토 루프): 대기 → 검수중 → 검토요청 →[수정확인]→ 승인.
+//   pending → in_review → review_done → (admin_revised) → approved
+//   상담사: 작성→검토요청 / admin_revised에서 동의(→승인)·재이의(→검수중). 관리자: review_done에서 수정→admin_revised·승인.
 export const REVIEW_STATUS = {
     PENDING: 'pending',
     IN_REVIEW: 'in_review',
     REVIEW_DONE: 'review_done',
+    ADMIN_REVISED: 'admin_revised',
     APPROVED: 'approved',
     COMPLETED: 'approved', // (deprecated) 레거시 3단계 'completed' → approved 별칭
 };
@@ -16,6 +17,7 @@ export const REVIEW_STATUS_LABEL = {
     pending: '대기',
     in_review: '검수중',
     review_done: '검토요청',
+    admin_revised: '수정확인',
     approved: '승인',
 };
 
@@ -32,6 +34,8 @@ const STYLES = {
     in_review: { dot: '#475467', bg: '#E4E7EC', text: '#344054', border: '#CDD2DA' },
     // 검토요청: 검수중과 동일한 블루 계열(체크 아이콘으로 "작업 끝, 승인 요청" 구분).
     review_done: { dot: '#1E70E0', bg: '#EEF4FB', text: '#055AAF', border: '#BFD4F2' },
+    // 수정확인: 상담사 액션 필요 → 주황 계열(주의 환기).
+    admin_revised: { dot: '#F79009', bg: '#FFFAEB', text: '#B54708', border: '#FEDF89' },
     approved: { dot: '#12B76A', bg: '#ECFDF3', text: '#067647', border: '#ABEFC6' },
 };
 

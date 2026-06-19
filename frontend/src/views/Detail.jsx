@@ -165,18 +165,23 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     const currentReviewStatus = reviewStatusOverride ?? deriveReviewStatus(call);
 
     const handleReviewStatusChange = useCallback(
-        async (nextStatus) => {
+        async (nextStatus, { force = false, alertOnError = false } = {}) => {
             if (!qaId || isReviewStatusSaving) return;
             const prev = currentReviewStatus;
             setReviewStatusOverride(nextStatus);
             setIsReviewStatusSaving(true);
             try {
-                await updateReviewStatus(qaId, nextStatus);
+                await updateReviewStatus(qaId, nextStatus, { force });
                 onEvaluationsSaved?.();
                 return true;
             } catch (err) {
                 console.error('updateReviewStatus failed:', err);
                 setReviewStatusOverride(prev);
+                if (alertOnError) {
+                    let m = err?.message || '';
+                    try { m = JSON.parse(err.message)?.message || m; } catch { /* noop */ }
+                    alert(m || '상태 변경에 실패했습니다.');
+                }
                 return false;
             } finally {
                 setIsReviewStatusSaving(false);
@@ -184,6 +189,14 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         },
         [qaId, currentReviewStatus, isReviewStatusSaving, onEvaluationsSaved]
     );
+
+    // 관리자 수정분(상담사 마지막 제출 counselor_eval 대비 현재 manual_eval) — 상담사 확인 배너용.
+    const revisedItems = useMemo(() => {
+        const rows = evaluation?.evaluation_rows || [];
+        return rows
+            .filter((r) => r.counselor_eval != null && r.manual_eval != null && Number(r.manual_eval) !== Number(r.counselor_eval))
+            .map((r) => ({ order_no: r.order_no, item: r.item, from: r.counselor_eval, to: r.manual_eval }));
+    }, [evaluation]);
 
     const handleConsumerYnChange = useCallback(
         (itemNo, nextYn) => {
@@ -802,6 +815,55 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                         </tbody>
                     </table>
                 </div>
+
+                {/* 반복 검토(이의제기) 액션 바 — 역할·상태별. */}
+                {!isConsumer && (() => {
+                    const isAdmin = role === 'admin' || role === 'super_admin';
+                    const isAgent = role === 'agent';
+                    const st = currentReviewStatus;
+                    const saving = isReviewStatusSaving;
+                    const btn = 'px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+                    if (isAdmin && st === REVIEW_STATUS.REVIEW_DONE) {
+                        return (
+                            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#BFD4F2] bg-[#EEF4FB] px-4 py-3">
+                                <span className="text-[13px] text-[#055AAF] mr-auto">상담사 검토 제출분입니다. 점수를 수정했다면 <b>상담사 확인요청</b>, 그대로 확정하려면 <b>최종승인</b>.</span>
+                                <button className={`${btn} bg-white border border-[#BFD4F2] text-[#055AAF] hover:bg-[#E0ECFA]`} disabled={saving} onClick={() => handleReviewStatusChange('admin_revised', { alertOnError: true })}>상담사 확인요청</button>
+                                <button className={`${btn} bg-[#055AAF] text-white hover:bg-[#044a93]`} disabled={saving} onClick={() => handleReviewStatusChange('approved', { alertOnError: true })}>최종승인</button>
+                                <button className={`${btn} bg-white border border-[#FECDCA] text-[#B42318] hover:bg-[#FEF3F2]`} disabled={saving} onClick={() => { if (window.confirm('상담사 확인 없이 강제로 최종승인합니다. 계속할까요?')) handleReviewStatusChange('approved', { force: true, alertOnError: true }); }}>강제 최종승인</button>
+                            </div>
+                        );
+                    }
+                    if (isAdmin && st === REVIEW_STATUS.ADMIN_REVISED) {
+                        return (
+                            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#FEDF89] bg-[#FFFAEB] px-4 py-3">
+                                <span className="text-[13px] text-[#B54708] mr-auto">상담사 확인 대기중입니다(수정 내용 동의 또는 재이의제기).</span>
+                                <button className={`${btn} bg-white border border-[#FECDCA] text-[#B42318] hover:bg-[#FEF3F2]`} disabled={saving} onClick={() => { if (window.confirm('상담사 확인 없이 강제로 최종승인합니다. 계속할까요?')) handleReviewStatusChange('approved', { force: true, alertOnError: true }); }}>강제 최종승인</button>
+                            </div>
+                        );
+                    }
+                    if (isAgent && st === REVIEW_STATUS.ADMIN_REVISED) {
+                        return (
+                            <div className="mb-4 rounded-xl border border-[#FEDF89] bg-[#FFFAEB] px-4 py-3">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[13px] font-bold text-[#B54708]">관리자가 평가를 수정했습니다{revisedItems.length ? ` (${revisedItems.length}건)` : ''}</span>
+                                </div>
+                                {revisedItems.length > 0 && (
+                                    <ul className="text-[12.5px] text-[#7A5B12] mb-2 list-disc pl-5 space-y-0.5">
+                                        {revisedItems.map((it) => (
+                                            <li key={it.order_no}>{it.item} <span className="font-mono">{it.from}→{it.to}</span></li>
+                                        ))}
+                                    </ul>
+                                )}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-[12.5px] text-[#7A5B12] mr-auto">동의하면 최종 확정되고, 재이의제기하면 다시 수정할 수 있습니다.</span>
+                                    <button className={`${btn} bg-[#12B76A] text-white hover:bg-[#0E9F5B]`} disabled={saving} onClick={() => { if (window.confirm('수정 내용에 동의하면 최종 확정됩니다. 계속할까요?')) handleReviewStatusChange('approved', { alertOnError: true }); }}>동의 (최종 확정)</button>
+                                    <button className={`${btn} bg-white border border-[#FEC84B] text-[#B54708] hover:bg-[#FEF0C7]`} disabled={saving} onClick={() => handleReviewStatusChange('in_review', { alertOnError: true })}>재이의제기</button>
+                                </div>
+                            </div>
+                        );
+                    }
+                    return null;
+                })()}
 
                 {isConsumer ? (
                     <div className="flex flex-col lg:flex-row gap-6 items-stretch">

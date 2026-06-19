@@ -51,7 +51,8 @@ function adaptCall(c) {
         score,
         scores: {},
         status: REVIEW_TO_STATUS[c.review_status] || 'pending',
-        reviewStatus: c.review_status || 'pending',   // 원본 4단계값(승인 버튼 게이트용)
+        reviewStatus: c.review_status || 'pending',   // 원본 상태값(승인 버튼 게이트용)
+        reviewRound: Number(c.review_round ?? 0),     // N차 검토 표시용
         reviewer: null,
         summary: '',
         selfReview: null,
@@ -1039,20 +1040,40 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         next.has(id) ? next.delete(id) : next.add(id);
         setSelected(next);
     };
-    // 최종승인 — 백엔드(review_status='approved')에 영구 반영. 낙관적 갱신 후 실패 시 롤백.
-    //   서버는 승인 시 상담사 점수 대비 수정분 diff 를 계산해 해당 상담사에게 알림을 보낸다.
+    // 서버 에러 메시지 추출(request 헬퍼가 응답 본문을 Error.message 로 던짐 — JSON 이면 .message).
+    const friendlyErr = (e) => {
+        try { return JSON.parse(e?.message)?.message || e?.message || ''; } catch { return e?.message || ''; }
+    };
+    // 최종승인 — 무수정이면 바로 approved. 점수를 수정했으면 서버가 409(상담사 확인 필요) → 상세에서 처리 안내.
     const approve = async (id) => {
         setApprovedIds((s) => new Set(s).add(id));
         try {
             await updateReviewStatus(id, 'approved');
-            // 승인 표시는 approvedIds(로컬 state)로 즉시 반영됨. results는 부모 소유라 여기선 건드리지 않음.
         } catch (e) {
             setApprovedIds((s) => {
                 const n = new Set(s);
                 n.delete(id);
                 return n;
             });
-            alert(e?.message || '승인에 실패했습니다.');
+            const m = friendlyErr(e);
+            alert(m.includes('확인이 필요')
+                ? '수정사항이 있어 바로 승인할 수 없습니다.\n상세 화면에서 "상담사 확인요청"을 보내거나 "강제 최종승인"을 사용하세요.'
+                : (m || '승인에 실패했습니다.'));
+        }
+    };
+    // 강제 최종승인 — 상담사 확인 없이 승인(교착 해소용). admin_revised 행에서 사용.
+    const forceApprove = async (id) => {
+        if (!window.confirm('상담사 확인 없이 강제로 최종승인합니다. 계속할까요?')) return;
+        setApprovedIds((s) => new Set(s).add(id));
+        try {
+            await updateReviewStatus(id, 'approved', { force: true });
+        } catch (e) {
+            setApprovedIds((s) => {
+                const n = new Set(s);
+                n.delete(id);
+                return n;
+            });
+            alert(friendlyErr(e) || '강제 승인에 실패했습니다.');
         }
     };
     const approveSelected = async () => {
@@ -1350,10 +1371,10 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                                         <span className={`score-chip ${scoreClass(r.score)}`}>{r.score}</span>
                                     </div>
                                     <div>
-                                        {/* 1차 상담사 자체평가 완료 여부 — 검토요청/최종승인이면 완료. */}
-                                        {r.reviewStatus === 'review_done' || r.reviewStatus === 'approved' || r.reviewStatus === 'completed' ? (
-                                            <span className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700 }} title="상담사 1차 자체평가 완료">
-                                                <Icon name="user-check" size={10} />상담사 검토
+                                        {/* N차 검토 — 상담사가 검토 제출한 횟수(review_round). 0이면 미검토. */}
+                                        {r.reviewRound > 0 ? (
+                                            <span className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700 }} title={`상담사 검토 ${r.reviewRound}회`}>
+                                                <Icon name="user-check" size={10} />{r.reviewRound}차 검토
                                             </span>
                                         ) : (
                                             <span className="muted-text" style={{ fontSize: 11.5, color: 'var(--ink-400)' }}>미검토</span>
@@ -1374,12 +1395,19 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                                                     <Icon name="rotate-ccw" size={10} />취소
                                                 </button>
                                             </div>
+                                        ) : r.reviewStatus === 'admin_revised' ? (
+                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                                <span className="muted-text" style={{ fontSize: 11, color: '#B54708', whiteSpace: 'nowrap' }} title="관리자 수정분을 상담사가 확인 중입니다.">상담사 확인중</span>
+                                                <button className="btn-mini" onClick={() => forceApprove(r.id)} style={{ height: 24, padding: '0 7px' }} title="상담사 확인 없이 강제로 최종승인합니다(교착 해소용).">
+                                                    <Icon name="check" size={10} />강제승인
+                                                </button>
+                                            </div>
                                         ) : r.reviewStatus === 'review_done' ? (
-                                            <button className="btn-mini primary" onClick={() => approve(r.id)} style={{ height: 26, padding: '0 9px' }} title="상담사 1차 자체평가가 제출되었습니다. 승인합니다.">
+                                            <button className="btn-mini primary" onClick={() => approve(r.id)} style={{ height: 26, padding: '0 9px' }} title="상담사 검토 제출분을 최종승인합니다. (점수를 수정했다면 상세에서 '상담사 확인요청')">
                                                 <Icon name="check" size={11} />승인
                                             </button>
                                         ) : (
-                                            <span className="muted-text" style={{ fontSize: 11, color: 'var(--ink-400)', whiteSpace: 'nowrap' }} title="상담사 1차 자체평가(검토요청) 완료 후 승인할 수 있습니다.">
+                                            <span className="muted-text" style={{ fontSize: 11, color: 'var(--ink-400)', whiteSpace: 'nowrap' }} title="상담사 검토요청 완료 후 승인할 수 있습니다.">
                                                 상담사 평가 대기
                                             </span>
                                         )}

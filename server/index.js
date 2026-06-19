@@ -1404,7 +1404,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
 
         // 컬렉션관리부 분기 (기존 로직)
         const { rows: evaluation_rows } = await pool.query(
-            `SELECT "ID" AS qa_id, order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option
+            `SELECT "ID" AS qa_id, order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval
              FROM qa_evaluation_rows
              WHERE "ID" = $1
              ORDER BY order_no ASC`,
