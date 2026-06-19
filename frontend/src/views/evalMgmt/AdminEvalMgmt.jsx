@@ -2,7 +2,7 @@
 // 평가 목록·필터·승인(AdminResults) + 코칭 배정(CoachingPanel/Carousel/MiniCard/DetailModal/CreateModal)
 import React, { useState, useEffect } from 'react';
 import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod } from './ui';
-import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, COACHING_HISTORY, scenById, catMeta } from './mockData';
+import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, scenById, catMeta } from './mockData';
 import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, fetchCoachingHistory, updateReviewStatus } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
 
@@ -44,6 +44,7 @@ function adaptCall(c) {
         score,
         scores: {},
         status: REVIEW_TO_STATUS[c.review_status] || 'pending',
+        reviewStatus: c.review_status || 'pending',   // 원본 4단계값(승인 버튼 게이트용)
         reviewer: null,
         summary: '',
         selfReview: null,
@@ -964,8 +965,16 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         }
     };
     const approveSelected = async () => {
-        const ids = [...selected];
-        if (!ids.length) return;
+        const selectedIds = [...selected];
+        if (!selectedIds.length) return;
+        // 상담사 1차 제출(review_done) 건만 승인 가능 — 나머지는 건너뛰고 안내.
+        const byId = new Map((results || []).map((r) => [r.id, r]));
+        const ids = selectedIds.filter((id) => byId.get(id)?.reviewStatus === 'review_done');
+        const skipped = selectedIds.length - ids.length;
+        if (!ids.length) {
+            alert('승인 가능한 건이 없습니다. 상담사 1차 자체평가(검토요청)가 완료된 건만 승인할 수 있습니다.');
+            return;
+        }
         setApprovedIds((s) => {
             const n = new Set(s);
             ids.forEach((id) => n.add(id));
@@ -985,7 +994,9 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                 failed.forEach((id) => n.delete(id));
                 return n;
             });
-            alert(`${failed.length}건 승인에 실패했습니다.`);
+        }
+        if (failed.length || skipped) {
+            alert(`${failed.length ? `${failed.length}건 승인 실패. ` : ''}${skipped ? `${skipped}건은 상담사 평가 대기라 건너뜀.` : ''}`.trim());
         }
     };
     // 최종승인 취소 — approved → review_done(검토요청)으로 되돌림. 관리자 전용(백엔드도 동일 검증).
@@ -1248,8 +1259,9 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                                         <span className={`score-chip ${scoreClass(r.score)}`}>{r.score}</span>
                                     </div>
                                     <div>
-                                        {r.selfReview ? (
-                                            <span className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700 }} title={`${r.selfReview.by} · ${r.selfReview.date}`}>
+                                        {/* 1차 상담사 자체평가 완료 여부 — 검토요청/최종승인이면 완료. */}
+                                        {r.reviewStatus === 'review_done' || r.reviewStatus === 'approved' || r.reviewStatus === 'completed' ? (
+                                            <span className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700 }} title="상담사 1차 자체평가 완료">
                                                 <Icon name="user-check" size={10} />상담사 검토
                                             </span>
                                         ) : (
@@ -1271,10 +1283,14 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                                                     <Icon name="rotate-ccw" size={10} />취소
                                                 </button>
                                             </div>
-                                        ) : (
-                                            <button className="btn-mini primary" onClick={() => approve(r.id)} style={{ height: 26, padding: '0 9px' }}>
+                                        ) : r.reviewStatus === 'review_done' ? (
+                                            <button className="btn-mini primary" onClick={() => approve(r.id)} style={{ height: 26, padding: '0 9px' }} title="상담사 1차 자체평가가 제출되었습니다. 최종승인합니다.">
                                                 <Icon name="check" size={11} />승인
                                             </button>
+                                        ) : (
+                                            <span className="muted-text" style={{ fontSize: 11, color: 'var(--ink-400)', whiteSpace: 'nowrap' }} title="상담사 1차 자체평가(검토요청) 완료 후 승인할 수 있습니다.">
+                                                상담사 평가 대기
+                                            </span>
                                         )}
                                     </div>
                                     <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-400)' }}>

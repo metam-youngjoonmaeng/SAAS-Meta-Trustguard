@@ -524,11 +524,12 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         return { total, done, pct };
     }, [checklistRows, manualJudgments]);
 
-    // 검수상태 자동 전이 — 검수 시작 버튼 없이 판단 입력만으로 상태가 흐른다.
-    // 판단 1개 이상 입력 → '검수중', 전 항목 입력 → '검토요청'(관리자 최종승인 대기).
-    // 최종승인된 콜은 자동 전이 금지(되돌림 방지). 저장 중이면 다음 사이클에서 따라잡는다.
+    // 검수상태 자동 전이 — 판단 입력만으로 상태가 흐른다. 단, "1차 자체평가 제출(review_done)"은
+    // 상담사(본인) 전용. 관리자가 폼을 채워도 1차로 제출되지 않게 자동전이를 하지 않는다(승인/취소는 평가관리의 명시 버튼).
+    // 판단 1개 이상 → '검수중', 전 항목 입력 → '검토요청'(관리자 최종승인 대기). 최종승인된 콜은 자동전이 금지.
     useEffect(() => {
         if (!reviewTouchedRef.current || isConsumer) return;
+        if (role !== 'agent') return; // 관리자는 자동전이 없음 — 1차 제출은 상담사만
         if (!reviewProgress.total) return;
         if (currentReviewStatus === REVIEW_STATUS.APPROVED) return;
         const desired =
@@ -540,7 +541,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         handleReviewStatusChange(desired).then((ok) => {
             if (ok === false) reviewSyncFailedRef.current = desired;
         });
-    }, [reviewProgress, currentReviewStatus, isReviewStatusSaving, isConsumer, handleReviewStatusChange]);
+    }, [reviewProgress, currentReviewStatus, isReviewStatusSaving, isConsumer, handleReviewStatusChange, role]);
 
     // 새 수기평가 모델 시드:
     // - judgment: manual_eval(double) 을 AI 대비 상대 판단으로 역산

@@ -1832,18 +1832,28 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
         return;
     }
 
-    // 역할 기반 전이 검증.
+    // 역할 기반 전이 검증 — 1차(상담사 자체평가) → 2차(관리자 최종승인) 순서 강제.
+    //   관리자: 최종승인은 상담사 1차 제출(review_done) 후에만. review_done 직접 지정은 승인취소(approved→review_done)만 허용
+    //           (관리자가 1차를 위조하지 못하게). pending/in_review 로의 조정·되돌림은 자유.
+    //   상담사(본인 콜): pending↔in_review↔review_done(1차 작성·제출). approved 이후 잠금.
     const role = req.session?.role;
     const isAdmin = role === 'admin' || role === 'super_admin';
     const isAgent = role === 'agent';
     const isOwn = cur.agent_user_id != null && cur.agent_user_id === req.session?.user_id;
     const from = normalizeReviewStatus(cur.review_status);
-    const allowed = isAdmin
-        ? true
-        : isAgent && isOwn && from !== 'approved'
-          && (next === 'pending' || next === 'in_review' || next === 'review_done');
+    let allowed = false;
+    if (isAdmin) {
+        if (next === 'approved') allowed = from === 'review_done';
+        else if (next === 'review_done') allowed = from === 'approved'; // 승인취소만
+        else allowed = true; // pending, in_review
+    } else if (isAgent && isOwn && from !== 'approved') {
+        allowed = next === 'pending' || next === 'in_review' || next === 'review_done';
+    }
     if (!allowed) {
-        res.status(403).json({ message: '이 상태로 변경할 권한이 없습니다.' });
+        const msg = isAdmin && next === 'approved' && from !== 'review_done'
+            ? '상담사 자체평가(검토요청) 완료 후에만 최종승인할 수 있습니다.'
+            : '이 상태로 변경할 권한이 없습니다.';
+        res.status(403).json({ message: msg });
         return;
     }
 
@@ -3575,9 +3585,19 @@ app.get('/api/coaching/mine', async (req, res) => {
             return;
         }
         const { rows } = await pool.query(
-            `SELECT g.*, au.display_name AS assigned_by_name
+            `SELECT g.*, au.display_name AS assigned_by_name,
+                    sc.before_avg, sc.after_avg
                FROM public.coaching_assignments g
                LEFT JOIN public.admin_users au ON au.user_id = g.assigned_by_user_id
+               LEFT JOIN LATERAL (
+                   SELECT
+                       round(avg(qc."TOTAL_SCORE") FILTER (WHERE qc."CDATE"::timestamptz <  g.assigned_at))::int AS before_avg,
+                       round(avg(qc."TOTAL_SCORE") FILTER (WHERE qc."CDATE"::timestamptz >= g.assigned_at))::int AS after_avg
+                     FROM public.qa_calls qc
+                    WHERE qc.agent_user_id = $1
+                      AND qc."CDATE" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                      AND qc."TOTAL_SCORE" IS NOT NULL
+               ) sc ON TRUE
               WHERE $1 = ANY(g.members)
               ORDER BY g.created_at DESC`,
             [uid]
@@ -3587,7 +3607,13 @@ app.get('/api/coaching/mine', async (req, res) => {
         const out = await Promise.all(rows.map(async (row) => {
             const base = toCoachingRow(row);
             const comp = await fetchTutorCompletion(loginId, base.scenarios, base.channel, base.assignedAtIso);
-            return { ...base, completed: comp?.completed || [], done: comp?.done ?? 0, total: comp?.total ?? base.scenarios.length };
+            const before = row.before_avg == null ? null : Number(row.before_avg);
+            const after = row.after_avg == null ? null : Number(row.after_avg);
+            return {
+                ...base,
+                completed: comp?.completed || [], done: comp?.done ?? 0, total: comp?.total ?? base.scenarios.length,
+                scoreBefore: before, scoreAfter: after, hasAfter: after != null,
+            };
         }));
         res.json(out);
     } catch (error) {
