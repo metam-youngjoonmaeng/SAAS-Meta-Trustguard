@@ -616,7 +616,7 @@ function reasonTextOf(ev) {
  *   #3 / score null / 응답 미존재 항목은 생략 + warnings. 백분율은 존재 행 기준.
  * @returns {{ checklist, evaluations, ai_score, warnings, source }}
  */
-export function mapEvaluateResponseStandard(resp) {
+export function mapEvaluateResponseStandard(resp, maxByOrder = null) {
     const warnings = [];
     const { byItem, source } = indexEvaluations(resp);
     if (byItem.size === 0) {
@@ -645,15 +645,20 @@ export function mapEvaluateResponseStandard(resp) {
             continue;
         }
         const aiEval = round1(score);
+        // 항목 만점: DB 루브릭 max(maxByOrder, 운영자 만점 편집 반영) 우선 → 카탈로그 slot.max 폴백.
+        // maxByOrder 미제공/항목 미포함이면 slot.max → 기존과 byte-identical(무회귀). 코오롱은 DB
+        // max(#2=5·#4=20 등)가 카탈로그와 일치 → 80 보존, #N 만점 편집 시 그 항목만 분모 동적 반영.
+        const _dynMax = maxByOrder ? asNumber(maxByOrder[orderNo]) : null;
+        const itemMax = _dynMax !== null && _dynMax > 0 ? _dynMax : slot.max;
         sumEarned += aiEval;
-        sumMax += slot.max;
+        sumMax += itemMax;
 
         checklist.push({
             order_no: orderNo,
             category: slot.category,
             item: slot.item,
             agent_utterance: agentQuoteOf(ev),
-            validation_time: `배점 ${slot.max}`,
+            validation_time: `배점 ${itemMax}`,
         });
         evaluations.push({
             order_no: orderNo,
@@ -980,6 +985,7 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
     // 루브릭 빌드 실패 시도 표준 18항목 트랙 폴백(mapEvaluateResponseStandard).
     let rowMeta = [];
     let rubricCall = call;
+    let standardMaxByOrder = null; // 코오롱 표준 폴백 매퍼 분모용 DB 루브릭 만점 맵({order_no:max})
     try {
         const orgId = await resolveStandardOrgId(pool, call);
         const { rubric, rowMeta: meta } = await buildRubricFromDefs(pool, orgId);
@@ -1036,6 +1042,10 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                     additive: additiveItems.length ? true : undefined,
                     additive_items: additiveItems.length ? additiveItems : undefined,
                 };
+                // 폴백 매퍼(mapEvaluateResponseStandard)가 분모/만점표기를 DB 루브릭 max 로 동적
+                // 산출하도록 만점 맵 보존(운영자 만점 편집 반영). 명시 max 없는 항목은 매퍼가
+                // 카탈로그로 폴백 → 코오롱 80 보존, 편집 항목만 분모 동적. 맵 비면 null(무회귀).
+                standardMaxByOrder = Object.keys(maxOverrides).length ? { ...maxOverrides } : null;
                 // 표준 매핑 폴백 강제: rowMeta 를 비워 mapEvaluateResponseRubric 가 5000번대
                 // 미존재로 null 반환 → mapEvaluateResponseStandard(1:1) 사용. 추가항목 결과는
                 // aggregator(파이프라인)에서 병합되어 응답에 포함됨(impl-agg 담당).
@@ -1059,7 +1069,7 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
     // 루브릭 매핑 우선, 5000번대 없으면 표준 매핑 폴백.
     let mapped = mapEvaluateResponseRubric(resp, rowMeta);
     if (!mapped) {
-        mapped = mapEvaluateResponseStandard(resp);
+        mapped = mapEvaluateResponseStandard(resp, standardMaxByOrder);
     }
     mapped.warnings = [...warnings, ...(mapped.warnings || [])];
     return mapped;
