@@ -1,7 +1,7 @@
 // 알림 센터(전체 페이지) — 헤더 벨과 동일한 수신자별 알림(/api/notifications)을 큰 화면으로.
 //   현재(안읽음)/지난(읽음) + 클릭 시 읽음·상세 이동, 개별 삭제, 모두 읽음, 새로고침.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Bell, BellOff, CheckCheck, RefreshCw, X, ArrowRight, CheckCircle2, Pencil, ClipboardCheck } from 'lucide-react';
+import { Loader2, Bell, BellOff, CheckCheck, RefreshCw, X, ArrowRight, CheckCircle2, Pencil, ClipboardCheck, GraduationCap, Award } from 'lucide-react';
 import Header from '../components/Header';
 import { fetchNotifications, markNotificationRead, markAllNotificationsRead, deleteNotification } from '../services/api';
 
@@ -11,9 +11,15 @@ const TYPE_META = {
     review_approved: { label: '승인', Icon: CheckCircle2, tone: { bg: 'bg-[#ECFDF3]', fg: 'text-[#067647]' }, chip: 'bg-[#ECFDF3] text-[#067647]' },
     review_edited: { label: '수정 반영', Icon: Pencil, tone: { bg: 'bg-[#FFFAEB]', fg: 'text-[#B54708]' }, chip: 'bg-[#FFFAEB] text-[#B54708]' },
     review_submitted: { label: '검토요청', Icon: ClipboardCheck, tone: { bg: 'bg-[#EEF4FB]', fg: 'text-[#055AAF]' }, chip: 'bg-[#EEF4FB] text-[#055AAF]' },
+    coaching_assigned: { label: '코칭 배정', Icon: GraduationCap, tone: { bg: 'bg-[#F4F3FF]', fg: 'text-[#5925DC]' }, chip: 'bg-[#F4F3FF] text-[#5925DC]' },
+    coaching_completed: { label: '코칭 완료', Icon: Award, tone: { bg: 'bg-[#ECFDF3]', fg: 'text-[#067647]' }, chip: 'bg-[#ECFDF3] text-[#067647]' },
 };
 const metaFor = (t) => TYPE_META[t] || { label: '알림', Icon: Bell, tone: { bg: 'bg-[#F2F4F7]', fg: 'text-[#667085]' }, chip: 'bg-[#F2F4F7] text-[#667085]' };
-const deepLinkOf = (n) => (n.resource_type === 'qa_call' && n.resource_id ? `#/detail/${encodeURIComponent(n.resource_id)}` : null);
+const deepLinkOf = (n) => {
+    if (n.resource_type === 'qa_call' && n.resource_id) return `#/detail/${encodeURIComponent(n.resource_id)}`;
+    if (n.resource_type === 'coaching') return '#/eval-mgmt';
+    return null;
+};
 
 const TAB_OPTIONS = [
     { key: 'all', label: '전체' },

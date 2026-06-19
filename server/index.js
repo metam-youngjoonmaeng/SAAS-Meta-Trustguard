@@ -3547,7 +3547,22 @@ app.post('/api/coaching', requireAdmin, async (req, res) => {
              RETURNING *`,
             [orgId, title, targetType, members, items, scenarios, channel, req.session?.user_id ?? null]
         );
-        res.status(201).json(toCoachingRow({ ...rows[0], assigned_by_name: req.session?.display_name || null }));
+        const created = rows[0];
+        // 배정 대상 상담사에게 코칭 배정 알림.
+        for (const memberId of members) {
+            await createNotification(pool, {
+                recipientUserId: memberId,
+                type: 'coaching_assigned',
+                title: '새 코칭이 배정되었습니다',
+                body: scenarios.length ? `'${title}' · 시나리오 ${scenarios.length}개` : `'${title}'`,
+                resourceType: 'coaching',
+                resourceId: String(created.id),
+                actorUserId: req.session?.user_id ?? null,
+                actorName: req.session?.display_name || req.session?.login_id || null,
+                orgId,
+            });
+        }
+        res.status(201).json(toCoachingRow({ ...created, assigned_by_name: req.session?.display_name || null }));
     } catch (error) {
         console.error('POST /api/coaching error:', error);
         res.status(500).json({ message: 'Failed to create coaching.' });
@@ -3611,9 +3626,36 @@ app.get('/api/coaching/mine', async (req, res) => {
             const comp = await fetchTutorCompletion(loginId, base.scenarios, base.channel, base.assignedAtIso);
             const before = row.before_avg == null ? null : Number(row.before_avg);
             const after = row.after_avg == null ? null : Number(row.after_avg);
+            const done = comp?.done ?? 0;
+            const total = comp?.total ?? base.scenarios.length;
+            // 완료 최초 감지 시 배정자(관리자)에게 1회 알림. 기존 notifications 로 (코칭,완료자) 중복 방지.
+            if (total > 0 && done >= total && row.assigned_by_user_id != null && row.assigned_by_user_id !== uid) {
+                try {
+                    const { rows: exist } = await pool.query(
+                        `SELECT 1 FROM public.notifications
+                          WHERE type = 'coaching_completed' AND resource_id = $1 AND actor_user_id = $2 LIMIT 1`,
+                        [String(row.id), uid]
+                    );
+                    if (!exist.length) {
+                        await createNotification(pool, {
+                            recipientUserId: row.assigned_by_user_id,
+                            type: 'coaching_completed',
+                            title: '코칭이 완료되었습니다',
+                            body: `${req.session?.display_name || '상담사'}님이 '${base.title}' 코칭을 완료했습니다 (${done}/${total})`,
+                            resourceType: 'coaching',
+                            resourceId: String(row.id),
+                            actorUserId: uid,
+                            actorName: req.session?.display_name || req.session?.login_id || null,
+                            orgId: row.org_id ?? null,
+                        });
+                    }
+                } catch (e) {
+                    console.error('coaching_completed notify error:', e);
+                }
+            }
             return {
                 ...base,
-                completed: comp?.completed || [], done: comp?.done ?? 0, total: comp?.total ?? base.scenarios.length,
+                completed: comp?.completed || [], done, total,
                 scoreBefore: before, scoreAfter: after, hasAfter: after != null,
             };
         }));

@@ -2,7 +2,7 @@
 // 03(Meta-Summary) 알림센터 디자인을 차용하되, 데이터는 05 백엔드(수신자별 영구 알림)에서 가져온다.
 //   현재 알림 = 안읽음(read=false), 지난 알림 = 읽음. 카드 클릭 시 읽음 처리 + 상세 이동.
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Bell, X, Trash2, CheckCircle2, Pencil, ClipboardCheck } from 'lucide-react';
+import { Bell, X, Trash2, CheckCircle2, Pencil, ClipboardCheck, GraduationCap, Award } from 'lucide-react';
 import {
     fetchNotifications,
     fetchUnreadCount,
@@ -16,8 +16,17 @@ const TYPE_META = {
     review_approved: { label: '승인', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: CheckCircle2 },
     review_edited: { label: '수정 반영', cls: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]', Icon: Pencil },
     review_submitted: { label: '검토요청', cls: 'bg-[#EEF4FB] text-[#055AAF] border-[#BFD4F2]', Icon: ClipboardCheck },
+    coaching_assigned: { label: '코칭 배정', cls: 'bg-[#F4F3FF] text-[#5925DC] border-[#D9D6FE]', Icon: GraduationCap },
+    coaching_completed: { label: '코칭 완료', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: Award },
 };
 const metaOf = (t) => TYPE_META[t] || { label: '알림', cls: 'bg-[#F2F4F7] text-[#667085] border-[#E4E7EC]', Icon: Bell };
+
+// 알림 → 이동할 해시. qa_call=상세, coaching=평가/코칭 화면(eval-mgmt; 역할별로 적합 화면 렌더).
+function hashFor(n) {
+    if (n.resource_type === 'qa_call' && n.resource_id) return `#/detail/${encodeURIComponent(n.resource_id)}`;
+    if (n.resource_type === 'coaching') return '#/eval-mgmt';
+    return null;
+}
 
 function fmtTime(ts) {
     if (!ts) return '';
@@ -73,9 +82,8 @@ export default function NotificationBell() {
             setUnread((c) => Math.max(0, c - 1));
             markNotificationRead(n.id).catch(() => {});
         }
-        if (n.resource_type === 'qa_call' && n.resource_id && typeof window !== 'undefined') {
-            window.location.hash = `#/detail/${encodeURIComponent(n.resource_id)}`;
-        }
+        const hash = hashFor(n);
+        if (hash && typeof window !== 'undefined') window.location.hash = hash;
         setOpen(false);
     };
 
@@ -178,6 +186,7 @@ export default function NotificationBell() {
                                             <div className="flex items-center gap-2 text-[11px] text-[#98A2B3]">
                                                 <span>{fmtTime(n.created_at)}</span>
                                                 {n.resource_type === 'qa_call' && <span>· 클릭 시 상세로 이동</span>}
+                                                {n.resource_type === 'coaching' && <span>· 클릭 시 코칭으로 이동</span>}
                                             </div>
                                             <button
                                                 type="button"
