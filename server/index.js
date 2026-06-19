@@ -1350,6 +1350,13 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
         }
         const callMeta = callRows[0];
 
+        // 관리자 코멘트 — qa_admin_comments(qa_id 단일행에 전체 배열 보관). 없으면 [].
+        const { rows: acRows } = await pool.query(
+            'SELECT comments FROM public.qa_admin_comments WHERE qa_id = $1',
+            [qaId]
+        );
+        const adminComments = Array.isArray(acRows[0]?.comments) ? acRows[0].comments : [];
+
         const { rows: convRaw } = await pool.query(
             `SELECT "ID" AS qa_id, turn_no, ''::text AS ts, speaker, "text" AS text
              FROM qa_conversations
@@ -1397,7 +1404,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
                     score: r.score === null || r.score === undefined ? 0 : Number(r.score),
                 })),
                 conversation: convRaw,
-                admin_comments: [],
+                admin_comments: adminComments,
             });
             return;
         }
@@ -1493,7 +1500,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
             evaluation_rows: evaluation_rows_with_metrics,
             checklist_rows,
             conversation: convRaw,
-            admin_comments: [],
+            admin_comments: adminComments,
         });
     } catch (error) {
         console.error('GET /api/evaluations/:qaId error:', error);
@@ -1791,8 +1798,21 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
     }
 });
 
-app.put('/api/evaluations/:qaId/admin-comments', (_req, res) => {
-    res.json({ ok: true, message: 'minimal schema mode: admin_comments disabled' });
+app.put('/api/evaluations/:qaId/admin-comments', async (req, res) => {
+    const qaId = req.params.qaId;
+    const list = Array.isArray(req.body?.admin_comments) ? req.body.admin_comments : [];
+    try {
+        await pool.query(
+            `INSERT INTO public.qa_admin_comments (qa_id, comments, updated_at)
+                 VALUES ($1, $2::jsonb, now())
+             ON CONFLICT (qa_id) DO UPDATE SET comments = EXCLUDED.comments, updated_at = now()`,
+            [qaId, JSON.stringify(list)]
+        );
+        res.json({ ok: true, admin_comments: list });
+    } catch (error) {
+        console.error('PUT /api/evaluations/:qaId/admin-comments error:', error);
+        res.status(500).json({ message: 'Failed to save admin comments.' });
+    }
 });
 
 // 검수 4단계 전이 — 대기(pending) → 검수중(in_review) → 검토요청(review_done) → 최종승인(approved).
