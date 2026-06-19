@@ -1250,7 +1250,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                             <span style={{ cursor: 'pointer', display: 'inline-flex' }} onClick={() => sortBy('score')}><SortIcon k="score" /></span>
                         </div>
                         <div>수기검토</div>
-                        <div><ColumnFilter title="최종승인" options={admColOpts.approval} excluded={colFilters.approval} onChange={(ex) => setAdmCol('approval', ex)} align="right" /></div>
+                        <div><ColumnFilter title="승인" options={admColOpts.approval} excluded={colFilters.approval} onChange={(ex) => setAdmCol('approval', ex)} align="right" /></div>
                         <div></div>
                     </div>
                     <div style={{ maxHeight: 430, overflowY: 'auto' }}>
@@ -1307,13 +1307,13 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                                                     className="btn-mini"
                                                     onClick={() => unapprove(r.id)}
                                                     style={{ height: 24, padding: '0 7px' }}
-                                                    title="최종승인을 취소하고 검토요청 상태로 되돌립니다"
+                                                    title="승인을 취소하고 검토요청 상태로 되돌립니다"
                                                 >
                                                     <Icon name="rotate-ccw" size={10} />취소
                                                 </button>
                                             </div>
                                         ) : r.reviewStatus === 'review_done' ? (
-                                            <button className="btn-mini primary" onClick={() => approve(r.id)} style={{ height: 26, padding: '0 9px' }} title="상담사 1차 자체평가가 제출되었습니다. 최종승인합니다.">
+                                            <button className="btn-mini primary" onClick={() => approve(r.id)} style={{ height: 26, padding: '0 9px' }} title="상담사 1차 자체평가가 제출되었습니다. 승인합니다.">
                                                 <Icon name="check" size={11} />승인
                                             </button>
                                         ) : (

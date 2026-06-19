@@ -7,6 +7,7 @@ import { Icon, Gauge, Spark, ChannelChip, ColumnFilter, PageHead, PeriodPicker, 
 import { scoreClass, TUTOR_SCENARIOS } from './mockData';
 import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, QA_ACTOR_STORAGE_KEY } from '../../services/api';
 import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
+import { ReviewStatusBadge } from '../../components';
 
 // 회복률 코멘트 기준: 이 값(%) 이상이면 칭찬, 미만이면 분발 멘트. (운영 중 조절 가능)
 const RECOVERY_PRAISE_MIN = 30;
@@ -48,8 +49,8 @@ function buildTutorLink(g) {
 const REVIEW_STATUS_META = {
     pending:     { label: '대기',     cls: 'gray' },
     in_review:   { label: '검수중',   cls: 'blue' },
-    review_done: { label: '검토요청', cls: 'yellow' },
-    approved:    { label: '최종승인', cls: 'green' },
+    review_done: { label: '검토요청', cls: 'blue' },
+    approved:    { label: '승인',     cls: 'green' },
 };
 const REVIEW_NEEDS_ME = new Set(['pending', 'in_review']);  // 상담사 본인 액션이 남은 단계
 
@@ -58,11 +59,7 @@ function normReviewStatus(s) {
     return REVIEW_STATUS_META[v] ? v : 'pending';
 }
 
-// 검수상태 칩 — 4단계 라벨/색.
-function ReviewPill({ status }) {
-    const m = REVIEW_STATUS_META[status] || REVIEW_STATUS_META.pending;
-    return <span className={`pill ${m.cls}`}><span className="dot"></span>{m.label}</span>;
-}
+// 검수상태 칩 — 앱 전역 공용 배지(ReviewStatusBadge)로 통일: 대기(회색)·검수중(파랑)·검토요청(파랑+체크)·승인(초록+체크).
 
 // 최근 평가 테이블 컬럼 폭: 상담일시·상담사·상담번호·채널·부서·상담유형·점수·검수상태
 const RECENT_COLS = '104px 88px 1.4fr 104px 0.9fr 0.9fr 58px 92px';
@@ -672,7 +669,7 @@ export default function CounselorResults() {
                                 <div className="muted-text" style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.team}</div>
                                 <div className="muted-text" style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.category}</div>
                                 <div><span className={`score-chip ${scoreClass(r.score)}`}>{r.score}</span></div>
-                                <div><ReviewPill status={r.status} /></div>
+                                <div><ReviewStatusBadge status={r.status} /></div>
                             </div>
                         ))}
                     </div>
@@ -703,7 +700,7 @@ export default function CounselorResults() {
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                 <span className="mono" style={{ fontSize: 11, color: 'var(--ink-400)', fontWeight: 700 }}>{selected.sessionId}</span>
-                                <ReviewPill status={selected.status} />
+                                <ReviewStatusBadge status={selected.status} />
                             </div>
                             <h3>{selected.team}{selected.category && selected.category !== '-' ? ` · ${selected.category}` : ''} · {selected.date} {selected.time}</h3>
                         </div>

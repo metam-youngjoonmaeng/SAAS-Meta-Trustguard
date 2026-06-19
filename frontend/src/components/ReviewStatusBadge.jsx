@@ -16,7 +16,7 @@ export const REVIEW_STATUS_LABEL = {
     pending: '대기',
     in_review: '검수중',
     review_done: '검토요청',
-    approved: '최종승인',
+    approved: '승인',
 };
 
 // 콜 row → 검수상태. 명시적 워크플로우라 자동승격 없이 저장값을 그대로 정규화('completed'→approved).
@@ -28,7 +28,8 @@ export function deriveReviewStatus(call) {
 
 const STYLES = {
     pending: { dot: '#98A2B3', bg: '#F2F4F7', text: '#667085', border: '#E4E7EC' },
-    in_review: { dot: '#1E70E0', bg: '#EEF4FB', text: '#055AAF', border: '#BFD4F2' },
+    // 검수중: 진행 중 단계라 회색 계열(대기보다 진하게) — 파란색은 '완료된 느낌'이라 회색으로.
+    in_review: { dot: '#475467', bg: '#E4E7EC', text: '#344054', border: '#CDD2DA' },
     // 검토요청: 검수중과 동일한 블루 계열(체크 아이콘으로 "작업 끝, 승인 요청" 구분).
     review_done: { dot: '#1E70E0', bg: '#EEF4FB', text: '#055AAF', border: '#BFD4F2' },
     approved: { dot: '#12B76A', bg: '#ECFDF3', text: '#067647', border: '#ABEFC6' },
