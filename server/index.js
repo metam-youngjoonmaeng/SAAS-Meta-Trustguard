@@ -892,6 +892,8 @@ app.get('/api/calls', async (req, res) => {
          OR EXISTS (SELECT 1 FROM qa_consumer_eval_rows cr WHERE cr."ID" = c."ID")
          OR EXISTS (SELECT 1 FROM qa_checklist_rows kr     WHERE kr."ID" = c."ID")
         )`);
+        // 상담사 발화가 전혀 없이 끊긴 콜(상담사 미응답/즉시 종료)은 평가 대상이 아니므로 리스트에서 제외.
+        conds.push(`EXISTS (SELECT 1 FROM qa_conversations q WHERE q."ID" = c."ID" AND q.speaker = '상담사')`);
         const orgFilter = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
         const { rows: callRows } = await pool.query(
             `SELECT
