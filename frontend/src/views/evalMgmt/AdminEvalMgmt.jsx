@@ -5,6 +5,13 @@ import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown,
 import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, scenById, catMeta } from './mockData';
 import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, fetchCoachingHistory, updateReviewStatus } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
+import { DEFAULT_TOTAL_MAX } from '../../constants';
+
+// 점수 구간(우수/보통/코칭) 임계값 — 만점 고정(100) 가정 대신 평가항목 만점(루브릭 배점 합)에 비례.
+//   만점은 평가항목관리에서 바뀔 수 있으므로 DEFAULT_TOTAL_MAX(활성 배점 합) 기준 90%/75% 로 자동 산출.
+const SCORE_MAX = Number(DEFAULT_TOTAL_MAX) > 0 ? Number(DEFAULT_TOTAL_MAX) : 100;
+const SCORE_HIGH = Math.round(SCORE_MAX * 0.9);   // 우수 기준(이상)
+const SCORE_LOW = Math.round(SCORE_MAX * 0.75);   // 코칭 기준(미만)
 
 // /api/calls(실데이터) 한 행 → 평가목록 행 모양으로 변환.
 //   평가 ID 개념이 없으므로 상담번호(UID)를 사용. 채널은 io_divi(I/O) → inbound/outbound.
@@ -116,9 +123,9 @@ export default function AdminEvalMgmt() {
         return () => { cancelled = true; };
     }, []);
 
-    // DB 코칭은 모두 '배정됨'(assigned) 상태 — 별도 배정/해제 토글은 의미 없음(생성=배정).
+    // DB 코칭은 모두 '배정됨'(assigned) 상태 — 생성=배정이므로 '배정 취소'는 해당 배정을 삭제 처리.
     const assign = () => {};
-    const unassign = () => {};
+    const unassign = (key) => removeItem(key);
     const removeItem = async (key) => {
         const row = coaching.find((g) => g.key === key);
         const id = row?.id ?? key;
@@ -174,7 +181,8 @@ function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, 
     const [openKey, setOpenKey] = useState(null);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [historyRows, setHistoryRows] = useState(null);   // null=로딩
-    const memberObjs = (ids) => ids.map((id) => agents.find((c) => c.id === id)).filter(Boolean);
+    // 코칭 members 는 숫자 user_id(coaching_assignments.members) — agents 의 user_id 로 매칭(agents.id 는 agent_code 라 불일치).
+    const memberObjs = (ids) => ids.map((id) => agents.find((c) => c.user_id === id)).filter(Boolean);
 
     // 코칭 이력 모달 열릴 때 실데이터 로드(코칭배정 × 멤버 + 배정 전/후 점수).
     useEffect(() => {
@@ -256,7 +264,11 @@ function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, 
                     members={memberObjs(openItem.members)}
                     onClose={() => setOpenKey(null)}
                     onAssign={onAssign}
-                    onUnassign={onUnassign}
+                    onUnassign={(k) => {
+                        if (typeof window !== 'undefined' && !window.confirm('이 코칭 배정을 취소할까요? 배정이 삭제됩니다.')) return;
+                        onUnassign(k);
+                        setOpenKey(null);
+                    }}
                     onRemove={(k) => {
                         onRemove(k);
                         setOpenKey(null);
@@ -587,6 +599,7 @@ function CoachingDetailModal({ g, members, onClose, onAssign, onUnassign, onRemo
 // 코칭 만들기 모달
 function CoachingCreateModal({ agents = [], onClose, onCreate }) {
     const [targetType, setTargetType] = useState('group');
+    const [channel, setChannel] = useState('call');   // 학습 채널 — 'call'(전화) | 'chat'(채팅). Tutor 딥링크 mode 로 전달.
     const [selected, setSelected] = useState([]);
     const [focus, setFocus] = useState('');
     const [items, setItems] = useState([]);
@@ -645,6 +658,7 @@ function CoachingCreateModal({ agents = [], onClose, onCreate }) {
             scenarios: scenarios.length ? scenarios : (p.scenarios || []),
             members: selected,
             targetType,
+            channel,
             assigned: true,
             assignedBy: '관리자',
             assignedAt: formatDateTime(new Date()).slice(0, 10),
@@ -667,22 +681,37 @@ function CoachingCreateModal({ agents = [], onClose, onCreate }) {
             }
         >
             <div style={{ display: 'grid', gap: 20, minWidth: 0 }}>
-                {/* 대상 유형 */}
+                {/* 대상 유형 + 채널 (나란히) */}
                 <div className="field" style={{ minWidth: 0 }}>
-                    <span className="field-label">대상 유형</span>
-                    <div className="seg" style={{ alignSelf: 'flex-start' }}>
-                        <button className={`seg-btn ${targetType === 'group' ? 'active' : ''}`} onClick={() => setTargetType('group')}>그룹</button>
-                        <button
-                            className={`seg-btn ${targetType === 'individual' ? 'active' : ''}`}
-                            onClick={() => {
-                                setTargetType('individual');
-                                setSelected((s) => s.slice(0, 1));
-                            }}
-                        >
-                            개인
-                        </button>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 32 }}>
+                        <div style={{ minWidth: 0 }}>
+                            <span className="field-label">대상 유형</span>
+                            <div className="seg" style={{ alignSelf: 'flex-start' }}>
+                                <button className={`seg-btn ${targetType === 'group' ? 'active' : ''}`} onClick={() => setTargetType('group')}>그룹</button>
+                                <button
+                                    className={`seg-btn ${targetType === 'individual' ? 'active' : ''}`}
+                                    onClick={() => {
+                                        setTargetType('individual');
+                                        setSelected((s) => s.slice(0, 1));
+                                    }}
+                                >
+                                    개인
+                                </button>
+                            </div>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                            <span className="field-label">채널</span>
+                            <div className="seg" style={{ alignSelf: 'flex-start' }}>
+                                <button className={`seg-btn ${channel === 'call' ? 'active' : ''}`} onClick={() => setChannel('call')}>전화</button>
+                                <button className={`seg-btn ${channel === 'chat' ? 'active' : ''}`} onClick={() => setChannel('chat')}>채팅</button>
+                            </div>
+                        </div>
                     </div>
-                    <span className="field-hint">{targetType === 'group' ? '여러 상담사를 한 코칭으로 묶어 배정합니다.' : '한 명에게 개별 배정합니다.'}</span>
+                    <span className="field-hint">
+                        {targetType === 'group' ? '여러 상담사를 한 코칭으로 묶어 배정합니다.' : '한 명에게 개별 배정합니다.'}
+                        {' · '}
+                        {channel === 'chat' ? '채팅(텍스트) 시나리오로 학습합니다.' : '전화(통화) 시나리오로 학습합니다.'}
+                    </span>
                 </div>
 
                 {/* 대상 상담사 (실DB) */}
@@ -693,11 +722,11 @@ function CoachingCreateModal({ agents = [], onClose, onCreate }) {
                             <div className="muted-text" style={{ fontSize: 12, gridColumn: '1 / -1', padding: '10px 2px' }}>연동된 상담사가 없습니다.</div>
                         )}
                         {agents.map((c) => {
-                            const on = selected.includes(c.id);
+                            const on = selected.includes(c.user_id);
                             return (
                                 <button
-                                    key={c.id}
-                                    onClick={() => toggleMember(c.id)}
+                                    key={c.user_id}
+                                    onClick={() => toggleMember(c.user_id)}
                                     style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', minWidth: 0, border: on ? '1px solid var(--primary)' : '1px solid var(--border)', borderRadius: 10, background: on ? 'var(--primary-soft)' : 'white', transition: 'all var(--t-base)' }}
                                 >
                                     <Avatar id={c.av} name={c.name} />
@@ -925,9 +954,9 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         if (team !== 'all' && r.team !== team) return false;
         if (approval === 'approved' && !approvedIds.has(r.id)) return false;
         if (approval === 'pending' && approvedIds.has(r.id)) return false;
-        if (scoreRange === 'high' && r.score < 90) return false;
-        if (scoreRange === 'mid' && (r.score < 75 || r.score >= 90)) return false;
-        if (scoreRange === 'low' && r.score >= 75) return false;
+        if (scoreRange === 'high' && r.score < SCORE_HIGH) return false;
+        if (scoreRange === 'mid' && (r.score < SCORE_LOW || r.score >= SCORE_HIGH)) return false;
+        if (scoreRange === 'low' && r.score >= SCORE_LOW) return false;
         if (search) {
             const q = search.toLowerCase();
             if (!`${r.name} ${r.sessionId} ${r.category} ${r.team} ${r.id}`.toLowerCase().includes(q)) return false;
@@ -1019,8 +1048,8 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
     };
 
     const avgScore = filtered.length ? Math.round((filtered.reduce((s, r) => s + r.score, 0) / filtered.length) * 10) / 10 : 0;
-    const excellent = filtered.filter((r) => r.score >= 90).length;
-    const coachingCnt = filtered.filter((r) => r.score < 75).length;
+    const excellent = filtered.filter((r) => r.score >= SCORE_HIGH).length;
+    const coachingCnt = filtered.filter((r) => r.score < SCORE_LOW).length;
 
     const sortBy = (key) => {
         if (sort.key === key) setSort({ key, dir: sort.dir === 'asc' ? 'desc' : 'asc' });
@@ -1083,7 +1112,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                 </div>
                 <div className="kpi">
                     <span className="eyebrow" style={{ color: '#2f9759' }}>
-                        <Icon name="trophy" />우수 (90+)
+                        <Icon name="trophy" />우수 ({SCORE_HIGH}+)
                     </span>
                     <div className="value" style={{ color: '#2f9759' }}>
                         {excellent}<span className="unit">건</span>
@@ -1092,7 +1121,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                 </div>
                 <div className="kpi">
                     <span className="eyebrow" style={{ color: 'var(--destructive)' }}>
-                        <Icon name="alert-triangle" />코칭 필요 (75 미만)
+                        <Icon name="alert-triangle" />코칭 필요 ({SCORE_LOW} 미만)
                     </span>
                     <div className="value" style={{ color: 'var(--destructive)' }}>
                         {coachingCnt}<span className="unit">건</span>
@@ -1136,9 +1165,9 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                         <span className="eyebrow" style={{ fontSize: 10.5 }}>점수</span>
                         <div className="seg">
                             <button className={`seg-btn ${scoreRange === 'all' ? 'active' : ''}`} onClick={() => setScoreRange('all')}>전체</button>
-                            <button className={`seg-btn ${scoreRange === 'high' ? 'active' : ''}`} onClick={() => setScoreRange('high')}>우수 90+</button>
-                            <button className={`seg-btn ${scoreRange === 'mid' ? 'active' : ''}`} onClick={() => setScoreRange('mid')}>보통 75-89</button>
-                            <button className={`seg-btn ${scoreRange === 'low' ? 'active' : ''}`} onClick={() => setScoreRange('low')}>코칭 &lt;75</button>
+                            <button className={`seg-btn ${scoreRange === 'high' ? 'active' : ''}`} onClick={() => setScoreRange('high')}>우수 {SCORE_HIGH}+</button>
+                            <button className={`seg-btn ${scoreRange === 'mid' ? 'active' : ''}`} onClick={() => setScoreRange('mid')}>보통 {SCORE_LOW}-{SCORE_HIGH - 1}</button>
+                            <button className={`seg-btn ${scoreRange === 'low' ? 'active' : ''}`} onClick={() => setScoreRange('low')}>코칭 &lt;{SCORE_LOW}</button>
                         </div>
                     </div>
                 </div>
