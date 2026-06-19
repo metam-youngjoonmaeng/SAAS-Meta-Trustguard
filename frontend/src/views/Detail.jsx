@@ -537,22 +537,32 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         return { total, done, pct };
     }, [checklistRows, manualJudgments]);
 
-    // 검수상태 자동 전이 — 판단 입력만으로 상태가 흐른다. 단, "1차 자체평가 제출(review_done)"은
-    // 상담사(본인) 전용. 관리자가 폼을 채워도 1차로 제출되지 않게 자동전이를 하지 않는다(승인/취소는 평가관리의 명시 버튼).
-    // 판단 1개 이상 → '검수중', 전 항목 입력 → '검토요청'(관리자 최종승인 대기). 최종승인된 콜은 자동전이 금지.
+    // 검수상태 자동 전이 — 상담사(본인) 자체평가 진행에 따라 흐른다.
+    //  · 판단 1개 입력 → '검수중'(단순 열람으론 안 바뀌게 reviewTouchedRef 필요)
+    //  · 전 항목 입력(100%) → '검토요청' 자동 제출. 이 전이는 reviewTouchedRef 없이도(=새로고침 후에도)
+    //    '검수중' 상태에서 100% 면 발동 — 예전엔 touched 가 false 라 새로고침 시 100% 인데도 멈췄다(버그).
+    //  관리자는 자동전이 없음(폼을 채워도 1차로 제출되지 않게). 승인/수정확인/최종승인 콜은 자동전이 금지.
     useEffect(() => {
-        if (!reviewTouchedRef.current || isConsumer) return;
-        if (role !== 'agent') return; // 관리자는 자동전이 없음 — 1차 제출은 상담사만
-        if (!reviewProgress.total) return;
-        if (currentReviewStatus === REVIEW_STATUS.APPROVED) return;
-        const desired =
-            reviewProgress.done >= reviewProgress.total
-                ? REVIEW_STATUS.REVIEW_DONE
-                : REVIEW_STATUS.IN_REVIEW;
-        if (desired === currentReviewStatus || isReviewStatusSaving) return;
-        if (reviewSyncFailedRef.current === desired) return;
-        handleReviewStatusChange(desired).then((ok) => {
-            if (ok === false) reviewSyncFailedRef.current = desired;
+        if (isConsumer || role !== 'agent') return;
+        if (!reviewProgress.total || isReviewStatusSaving) return;
+        const cur = currentReviewStatus;
+        if (cur === REVIEW_STATUS.APPROVED || cur === REVIEW_STATUS.REVIEW_DONE || cur === REVIEW_STATUS.ADMIN_REVISED) return;
+        const complete = reviewProgress.done >= reviewProgress.total;
+        if (!complete) {
+            // 검수중 진입 — 본인이 직접 입력했을 때만.
+            if (!reviewTouchedRef.current || cur === REVIEW_STATUS.IN_REVIEW) return;
+            if (reviewSyncFailedRef.current === REVIEW_STATUS.IN_REVIEW) return;
+            handleReviewStatusChange(REVIEW_STATUS.IN_REVIEW).then((ok) => {
+                if (ok === false) reviewSyncFailedRef.current = REVIEW_STATUS.IN_REVIEW;
+            });
+            return;
+        }
+        // 100% 완료 → 검토요청 자동 제출. 이미 '검수중'이면 새로고침 후에도(touched 불문) 발동.
+        // 'pending' 에서 바로 100% 인 경우엔 본인이 방금 채운 경우(touched)만 — 단순 열람 보호.
+        if (cur !== REVIEW_STATUS.IN_REVIEW && !reviewTouchedRef.current) return;
+        if (reviewSyncFailedRef.current === REVIEW_STATUS.REVIEW_DONE) return;
+        handleReviewStatusChange(REVIEW_STATUS.REVIEW_DONE).then((ok) => {
+            if (ok === false) reviewSyncFailedRef.current = REVIEW_STATUS.REVIEW_DONE;
         });
     }, [reviewProgress, currentReviewStatus, isReviewStatusSaving, isConsumer, handleReviewStatusChange, role]);
 
@@ -838,6 +848,33 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                             <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#FEDF89] bg-[#FFFAEB] px-4 py-3">
                                 <span className="text-[13px] text-[#B54708] mr-auto">상담사 확인 대기중입니다(수정 내용 동의 또는 재이의제기).</span>
                                 <button className={`${btn} bg-white border border-[#FECDCA] text-[#B42318] hover:bg-[#FEF3F2]`} disabled={saving} onClick={() => { if (window.confirm('상담사 확인 없이 강제로 최종승인합니다. 계속할까요?')) handleReviewStatusChange('approved', { force: true, alertOnError: true }); }}>강제 최종승인</button>
+                            </div>
+                        );
+                    }
+                    if (isAgent && (st === REVIEW_STATUS.PENDING || st === REVIEW_STATUS.IN_REVIEW)) {
+                        const ready = reviewProgress.total > 0 && reviewProgress.done >= reviewProgress.total;
+                        return (
+                            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#BFD4F2] bg-[#EEF4FB] px-4 py-3">
+                                <span className="text-[13px] text-[#055AAF] mr-auto">
+                                    {ready
+                                        ? '모든 항목을 평가했습니다. 검토요청을 제출하면 관리자 2차 검토로 넘어갑니다.'
+                                        : `자체평가를 모두 입력하면 검토요청을 제출할 수 있습니다 (${reviewProgress.done}/${reviewProgress.total}).`}
+                                </span>
+                                <button
+                                    className={`${btn} ${ready ? 'bg-[#055AAF] text-white hover:bg-[#044a93]' : 'bg-[#EAEFF6] text-[#98A2B3]'}`}
+                                    disabled={saving || !ready}
+                                    title={ready ? '1차 자체평가를 제출합니다' : '모든 항목 입력 후 제출할 수 있습니다'}
+                                    onClick={() => { if (window.confirm('1차 자체평가를 제출하면 관리자 검토로 넘어가며, 이후 수정은 관리자 확인요청을 거쳐야 합니다. 제출할까요?')) handleReviewStatusChange('review_done', { alertOnError: true }); }}
+                                >검토요청 (제출)</button>
+                            </div>
+                        );
+                    }
+                    if (isAdmin && st === REVIEW_STATUS.APPROVED) {
+                        return (
+                            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#ABEFC6] bg-[#ECFDF3] px-4 py-3">
+                                <span className="text-[13px] text-[#067647] mr-auto">최종 승인된 평가입니다. 상담사에게 다시 확인받으려면 <b>재검토 요청</b>, 단순 되돌리려면 <b>승인 취소</b>.</span>
+                                <button className={`${btn} bg-white border border-[#FEDF89] text-[#B54708] hover:bg-[#FFFAEB]`} disabled={saving} onClick={() => { if (window.confirm('최종 승인을 해제하고 상담사에게 재검토를 요청합니다. 계속할까요?')) handleReviewStatusChange('admin_revised', { alertOnError: true }); }}>재검토 요청</button>
+                                <button className={`${btn} bg-white border border-[#E4E7EC] text-[#475467] hover:bg-[#F2F4F7]`} disabled={saving} onClick={() => { if (window.confirm('최종 승인을 취소하고 검토요청 상태로 되돌립니다. 계속할까요?')) handleReviewStatusChange('review_done', { alertOnError: true }); }}>승인 취소</button>
                             </div>
                         );
                     }

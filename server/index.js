@@ -1852,7 +1852,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
     if (isAdmin) {
         if (next === 'pending' || next === 'in_review') allowed = true;
         else if (next === 'review_done') allowed = (from === 'approved'); // 승인취소
-        else if (next === 'admin_revised') allowed = (from === 'review_done'); // 수정 후 확인요청
+        else if (next === 'admin_revised') allowed = (from === 'review_done' || from === 'approved'); // 수정 후 확인요청 / 승인분 재검토 요청
         else if (next === 'approved') allowed = (from === 'review_done' || from === 'admin_revised');
     } else if (isAgent && isOwn) {
         if (from === 'pending' && next === 'in_review') allowed = true;
@@ -1900,7 +1900,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
         }
     } else if (next === 'admin_revised') {
         diffRows = await computeDiff();
-        action = 'revise';
+        action = (from === 'approved') ? 'reopen' : 'revise'; // 승인분을 다시 상담사 확인 단계로 (재검토 요청)
     } else if (next === 'review_done') {
         action = (from === 'approved') ? 'cancel' : 'submit';
     } else if (next === 'in_review' && from === 'admin_revised') {
@@ -1923,8 +1923,8 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                         ELSE review_completed_at
                     END,
                     approved_at = CASE WHEN $2 = 'approved' THEN COALESCE(approved_at, now()) ELSE NULL END,
-                    approved_by_user_id = CASE WHEN $2 = 'approved' THEN $5 ELSE NULL END,
-                    user_id = COALESCE($3, user_id)
+                    approved_by_user_id = CASE WHEN $2 = 'approved' THEN $5::integer ELSE NULL END,
+                    user_id = COALESCE($3::integer, user_id)
               WHERE "ID" = $1
               RETURNING review_status, review_round, review_started_at, review_completed_at, approved_at`,
             [qaId, next, uid, bumpRound, approvedBy]
@@ -1965,6 +1965,13 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                     recipientUserId: cur.agent_user_id, type: 'review_revised',
                     title: '평가가 수정되어 확인이 필요합니다',
                     body: diffRows.length ? `관리자 수정 ${diffRows.length}건: ${changesText}` : '관리자가 평가를 검토했습니다. 확인해 주세요.',
+                    resourceType: 'qa_call', resourceId: qaId, actorUserId: uid, actorName, orgId: cur.org_id ?? null,
+                });
+            } else if (action === 'reopen' && N) {
+                await createNotification(pool, {
+                    recipientUserId: cur.agent_user_id, type: 'review_revised',
+                    title: '승인된 평가가 재검토 요청되었습니다',
+                    body: '관리자가 최종 승인을 해제하고 재검토를 요청했습니다. 확인해 주세요.',
                     resourceType: 'qa_call', resourceId: qaId, actorUserId: uid, actorName, orgId: cur.org_id ?? null,
                 });
             } else if (action === 'approve' && N) {
