@@ -1859,8 +1859,9 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                         WHEN $2 IN ('review_done', 'approved') AND review_completed_at IS NULL THEN now()
                         ELSE review_completed_at  -- 되돌림 시 기존 완료 시각 보존
                     END,
-                    approved_at = CASE WHEN $2 = 'approved' THEN COALESCE(approved_at, now()) ELSE approved_at END,
-                    approved_by_user_id = CASE WHEN $2 = 'approved' THEN COALESCE(approved_by_user_id, $3) ELSE approved_by_user_id END,
+                    -- approved 가 아니면 승인 메타 정리(최종승인 취소 시 stale 방지)
+                    approved_at = CASE WHEN $2 = 'approved' THEN COALESCE(approved_at, now()) ELSE NULL END,
+                    approved_by_user_id = CASE WHEN $2 = 'approved' THEN COALESCE(approved_by_user_id, $3) ELSE NULL END,
                     user_id = COALESCE($3, user_id)
               WHERE "ID" = $1
               RETURNING review_status, review_started_at, review_completed_at, approved_at`,
@@ -1871,8 +1872,9 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
             return;
         }
 
-        // 검토요청(review_done) 진입 시: 상담사 검수 점수 스냅샷(최종승인 diff 기준 고정).
-        if (next === 'review_done' && from !== 'review_done') {
+        // 검토요청(review_done) 정방향 진입(검수중→검토요청) 시에만 상담사 점수 스냅샷.
+        //   최종승인 취소(approved→review_done)에서는 재스냅샷 금지 — 원본 상담사 점수 보존(diff 기준 유지).
+        if (next === 'review_done' && from === 'in_review') {
             try {
                 await pool.query(
                     `UPDATE qa_evaluation_rows SET counselor_eval = manual_eval WHERE "ID" = $1`,

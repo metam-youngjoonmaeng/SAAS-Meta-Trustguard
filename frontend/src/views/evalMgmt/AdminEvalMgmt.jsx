@@ -988,6 +988,20 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
             alert(`${failed.length}건 승인에 실패했습니다.`);
         }
     };
+    // 최종승인 취소 — approved → review_done(검토요청)으로 되돌림. 관리자 전용(백엔드도 동일 검증).
+    const unapprove = async (id) => {
+        setApprovedIds((s) => {
+            const n = new Set(s);
+            n.delete(id);
+            return n;
+        });
+        try {
+            await updateReviewStatus(id, 'review_done');
+        } catch (e) {
+            setApprovedIds((s) => new Set(s).add(id)); // 실패 시 롤백
+            alert(e?.message || '승인 취소에 실패했습니다.');
+        }
+    };
     const toggleAll = () => {
         if (selected.size === filtered.length) setSelected(new Set());
         else setSelected(new Set(filtered.map((r) => r.id)));
@@ -1244,9 +1258,19 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                                     </div>
                                     <div onClick={(e) => e.stopPropagation()}>
                                         {approved ? (
-                                            <span className="pill green" style={{ fontSize: 10.5, fontWeight: 700 }}>
-                                                <Icon name="check-circle" size={10} />승인 완료
-                                            </span>
+                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                                <span className="pill green" style={{ fontSize: 10.5, fontWeight: 700 }}>
+                                                    <Icon name="check-circle" size={10} />승인 완료
+                                                </span>
+                                                <button
+                                                    className="btn-mini"
+                                                    onClick={() => unapprove(r.id)}
+                                                    style={{ height: 24, padding: '0 7px' }}
+                                                    title="최종승인을 취소하고 검토요청 상태로 되돌립니다"
+                                                >
+                                                    <Icon name="rotate-ccw" size={10} />취소
+                                                </button>
+                                            </div>
                                         ) : (
                                             <button className="btn-mini primary" onClick={() => approve(r.id)} style={{ height: 26, padding: '0 9px' }}>
                                                 <Icon name="check" size={11} />승인
