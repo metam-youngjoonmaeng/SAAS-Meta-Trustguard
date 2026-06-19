@@ -445,9 +445,9 @@ function CoachingCarousel({ label, items, memberObjs, onOpen, onArchive }) {
     );
 
     return (
-        <div>
+        <div style={{ minWidth: 0 }}>
             <div className="eyebrow" style={{ fontSize: 10.5, display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>{label}</div>
-            <div style={{ display: 'flex', alignItems: 'stretch', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'stretch', gap: 10, minWidth: 0 }}>
                 {canScroll && sideBtn(-1, atStart)}
                 <div ref={ref} className="no-scrollbar" onScroll={update} style={{ flex: 1, minWidth: 0, display: 'flex', gap: 12, overflowX: canScroll ? 'auto' : 'visible', scrollSnapType: 'x mandatory', paddingBottom: 2 }}>
                     {items.map((g) => (
