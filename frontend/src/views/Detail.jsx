@@ -851,24 +851,6 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                             </div>
                         );
                     }
-                    if (isAgent && (st === REVIEW_STATUS.PENDING || st === REVIEW_STATUS.IN_REVIEW)) {
-                        const ready = reviewProgress.total > 0 && reviewProgress.done >= reviewProgress.total;
-                        return (
-                            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#BFD4F2] bg-[#EEF4FB] px-4 py-3">
-                                <span className="text-[13px] text-[#055AAF] mr-auto">
-                                    {ready
-                                        ? '모든 항목을 평가했습니다. 검토요청을 제출하면 관리자 2차 검토로 넘어갑니다.'
-                                        : `자체평가를 모두 입력하면 검토요청을 제출할 수 있습니다 (${reviewProgress.done}/${reviewProgress.total}).`}
-                                </span>
-                                <button
-                                    className={`${btn} ${ready ? 'bg-[#055AAF] text-white hover:bg-[#044a93]' : 'bg-[#EAEFF6] text-[#98A2B3]'}`}
-                                    disabled={saving || !ready}
-                                    title={ready ? '1차 자체평가를 제출합니다' : '모든 항목 입력 후 제출할 수 있습니다'}
-                                    onClick={() => { if (window.confirm('1차 자체평가를 제출하면 관리자 검토로 넘어가며, 이후 수정은 관리자 확인요청을 거쳐야 합니다. 제출할까요?')) handleReviewStatusChange('review_done', { alertOnError: true }); }}
-                                >검토요청 (제출)</button>
-                            </div>
-                        );
-                    }
                     if (isAdmin && st === REVIEW_STATUS.APPROVED) {
                         return (
                             <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#ABEFC6] bg-[#ECFDF3] px-4 py-3">
