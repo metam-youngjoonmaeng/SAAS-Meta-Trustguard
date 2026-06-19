@@ -3551,7 +3551,8 @@ app.post('/api/coaching', requireAdmin, async (req, res) => {
         const targetType = b.targetType === 'individual' ? 'individual' : 'group';
         const members = Array.isArray(b.members) ? b.members.map((x) => Number(x)).filter(Number.isFinite) : [];
         const items = Array.isArray(b.items) ? b.items.map((x) => String(x)).filter((x) => x.trim()) : [];
-        const scenarios = (Array.isArray(b.scenarios) ? b.scenarios.map((x) => String(x)).filter(Boolean) : []).slice(0, 3);
+        // 배정 시나리오는 개수 제한 없음(관리자가 많이 줄 수 있음). 튜터가 한 번에 3개씩 소거하며 진행.
+        const scenarios = Array.isArray(b.scenarios) ? b.scenarios.map((x) => String(x)).filter(Boolean) : [];
         const channel = b.channel === 'chat' ? 'chat' : 'call';
         if (!title) {
             res.status(400).json({ message: 'title is required' });

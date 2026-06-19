@@ -212,7 +212,8 @@ function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, 
         })();
         return () => { cancelled = true; };
     }, [historyOpen]);
-    const active = coaching.filter((g) => g.assigned);
+    // 진행 중인 코칭 — 학습 완료(allDone) 카드는 항상 맨 뒤로(미완료 먼저, 완료 나중). 그 외 순서는 유지.
+    const active = coaching.filter((g) => g.assigned).sort((a, b) => (a.allDone ? 1 : 0) - (b.allDone ? 1 : 0));
     const pending = coaching.filter((g) => !g.assigned);
     const openItem = coaching.find((g) => g.key === openKey) || null;
 
@@ -466,11 +467,16 @@ function CoachingMiniCard({ g, members, onOpen, onArchive }) {
     const shown = members.slice(0, 4);
     const measurable = g.membersDone != null && g.membersTotal > 0;  // 튜터 완료 조회 가능(진행률 표시 가능)
     const pct = measurable ? Math.round((g.membersDone / g.membersTotal) * 100) : 0;
+    // 시나리오 칩 — 카드는 약 2줄(최대 4칩)까지만, 초과분은 "… 외 N건". 전체는 카드 클릭(상세)에서 확인.
+    const allScen = Array.isArray(g.scenarios) ? g.scenarios : [];
+    const MAX_CHIPS = 4;
+    const scenOverflow = allScen.length > MAX_CHIPS ? allScen.length - (MAX_CHIPS - 1) : 0;
+    const visibleScen = scenOverflow ? allScen.slice(0, MAX_CHIPS - 1) : allScen;
     return (
         <button
             onClick={onOpen}
             className="hover-lift"
-            style={{ width: '100%', boxSizing: 'border-box', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px', background: 'white', borderTop: `3px solid ${p.accent}`, display: 'flex', flexDirection: 'column', gap: 12 }}
+            style={{ width: '100%', height: '100%', boxSizing: 'border-box', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px', background: 'white', borderTop: `3px solid ${p.accent}`, display: 'flex', flexDirection: 'column', gap: 12 }}
         >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 34, height: 34, borderRadius: 10, background: p.soft, color: p.accent, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
@@ -516,20 +522,23 @@ function CoachingMiniCard({ g, members, onOpen, onArchive }) {
                     <div style={{ height: '100%', width: `${pct}%`, background: g.allDone ? '#12B76A' : 'var(--primary)', borderRadius: 999, transition: 'width var(--t-base)' }} />
                 </div>
             )}
-            {Array.isArray(g.scenarios) && g.scenarios.length > 0 && (
+            {allScen.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                    {g.scenarios.slice(0, 3).map((code) => {
+                    {visibleScen.map((code) => {
                         const s = TUTOR_SCENARIOS.find((x) => x.code === code) || { code, title: code };
                         return (
-                            <span key={code} className="pill" style={{ background: 'var(--background-soft)', color: 'var(--ink-600)', fontSize: 10, fontWeight: 600, border: '1px solid var(--border)', maxWidth: '100%' }}>
+                            <span key={code} className="pill" style={{ background: 'var(--background-soft)', color: 'var(--ink-600)', fontSize: 10, fontWeight: 600, border: '1px solid var(--border)', maxWidth: '47%' }}>
                                 <Icon name="sparkles" size={9} style={{ color: 'var(--ink-400)', flexShrink: 0 }} />
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</span>
                             </span>
                         );
                     })}
+                    {scenOverflow > 0 && (
+                        <span className="pill" style={{ background: 'transparent', color: 'var(--ink-400)', fontSize: 10, fontWeight: 600, border: 'none' }}>… 외 {scenOverflow}건</span>
+                    )}
                 </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 11, borderTop: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 11, marginTop: 'auto', borderTop: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex' }}>
                     {shown.map((m, i) => (
                         <span key={m.id} style={{ marginLeft: i === 0 ? 0 : -8, borderRadius: '50%', boxShadow: '0 0 0 2px white', display: 'inline-flex' }}>

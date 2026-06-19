@@ -32,7 +32,11 @@ function readActor() {
 function buildTutorLink(g) {
     if (!TUTOR_APP_URL) return null;
     const params = new URLSearchParams();
-    const codes = (g.scenarios || []).filter(Boolean).slice(0, 3);
+    // 배정은 무제한이지만 튜터는 동시 3개까지 — 미완료 시나리오 우선으로 다음 3개를 전달(방문할수록 소거됨).
+    const all = (g.scenarios || []).filter(Boolean);
+    const done = Array.isArray(g.completed) ? g.completed : [];
+    const remaining = all.filter((c) => !done.includes(c));
+    const codes = (remaining.length ? remaining : all).slice(0, 3);
     if (codes.length) params.set('scenarios', codes.join(','));
     params.set('mode', g.channel === 'chat' ? 'chat' : 'call');
     if (g.assignedAtIso) params.set('since', g.assignedAtIso);
