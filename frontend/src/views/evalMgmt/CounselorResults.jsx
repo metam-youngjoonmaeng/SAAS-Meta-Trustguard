@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon, Gauge, Spark, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod } from './ui';
 import { scoreClass, TUTOR_SCENARIOS } from './mockData';
-import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, QA_ACTOR_STORAGE_KEY } from '../../services/api';
+import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
 import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
 import { ReviewStatusBadge } from '../../components';
 
@@ -46,6 +46,141 @@ function buildTutorLink(g) {
         params.set('userId', String(actor.login_id));
     }
     return `${TUTOR_APP_URL.replace(/\/+$/, '')}/?${params.toString()}`;
+}
+
+// 본인 기준 전 시나리오 완료 여부(정렬·X 노출용).
+function coachingAllDone(g) {
+    const sc = Array.isArray(g.scenarios) ? g.scenarios : [];
+    const done = Array.isArray(g.completed) ? g.completed : [];
+    return sc.length > 0 && sc.every((c) => done.includes(c));
+}
+
+// 배정 코칭 — 관리자(AdminEvalMgmt)와 동일한 가로 캐러셀(3개씩, 좌우 화살표). 컴팩트 카드로 공간 절약.
+function CoachingCarousel({ items, onArchive }) {
+    const ref = React.useRef(null);
+    const [atStart, setAtStart] = useState(true);
+    const [atEnd, setAtEnd] = useState(false);
+    const update = () => {
+        const el = ref.current;
+        if (!el) return;
+        setAtStart(el.scrollLeft <= 2);
+        setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 2);
+    };
+    React.useEffect(() => { update(); }, [items.length]);
+    const page = (dir) => {
+        const el = ref.current;
+        if (!el) return;
+        el.scrollBy({ left: dir * el.clientWidth * 0.92, behavior: 'smooth' });
+        setTimeout(update, 320);
+    };
+    const canScroll = items.length > 3;
+    const sideBtn = (dir, disabled) => (
+        <button
+            onClick={() => page(dir)}
+            disabled={disabled}
+            aria-label={dir < 0 ? '이전' : '다음'}
+            style={{ flexShrink: 0, alignSelf: 'center', width: 32, height: 32, borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'white', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)', color: disabled ? 'var(--ink-300)' : 'var(--ink-700)', cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}
+        >
+            <Icon name={dir < 0 ? 'chevron-left' : 'chevron-right'} size={16} />
+        </button>
+    );
+    return (
+        <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'stretch', gap: 10, minWidth: 0 }}>
+                {canScroll && sideBtn(-1, atStart)}
+                <div ref={ref} className="no-scrollbar" onScroll={update} style={{ flex: 1, minWidth: 0, display: 'flex', gap: 12, overflowX: canScroll ? 'auto' : 'visible', scrollSnapType: 'x mandatory', paddingBottom: 2 }}>
+                    {items.map((g) => (
+                        <div key={g.key} style={{ flex: '0 0 calc((100% - 24px) / 3)', minWidth: 0, scrollSnapAlign: 'start' }}>
+                            <CounselorCoachingCard g={g} onArchive={onArchive} />
+                        </div>
+                    ))}
+                </div>
+                {canScroll && sideBtn(1, atEnd)}
+            </div>
+        </div>
+    );
+}
+
+// 상담사용 컴팩트 코칭 카드 — 진행률 + 시나리오(2줄, 외 N건) + 학습 시작. 액션아이템 체크리스트는 공간상 제외(상세는 코칭 이력).
+function CounselorCoachingCard({ g, onArchive }) {
+    const high = g.priority === 'high';
+    const accent = high ? 'var(--primary)' : '#c67d12';
+    const soft = high ? 'var(--primary-soft)' : '#fdf2e3';
+    const isChat = g.channel === 'chat';
+    const myDone = Array.isArray(g.completed) ? g.completed : [];
+    const scenarios = Array.isArray(g.scenarios) ? g.scenarios : [];
+    const totalScen = scenarios.length;
+    const doneCount = scenarios.filter((c) => myDone.includes(c)).length;
+    const allDone = totalScen > 0 && doneCount === totalScen;
+    const started = doneCount > 0;
+    const pct = totalScen ? Math.round((doneCount / totalScen) * 100) : 0;
+    const tutorLink = buildTutorLink(g);
+    const startLearning = () => {
+        if (!tutorLink) { alert('튜터 학습 앱 주소가 설정되지 않았습니다. 관리자에게 문의하세요.'); return; }
+        if (typeof window !== 'undefined') window.open(tutorLink, '_blank', 'noopener');
+    };
+    const MAX_CHIPS = 4;
+    const overflow = scenarios.length > MAX_CHIPS ? scenarios.length - (MAX_CHIPS - 1) : 0;
+    const visible = overflow ? scenarios.slice(0, MAX_CHIPS - 1) : scenarios;
+    return (
+        <div style={{ height: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px', background: 'white', borderTop: `3px solid ${accent}`, display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: soft, color: accent, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <Icon name={g.icon || 'graduation-cap'} size={16} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.title}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
+                        <span className="pill" style={{ background: allDone ? '#e8f6ed' : started ? soft : 'var(--muted)', color: allDone ? '#2f9759' : started ? accent : 'var(--ink-500)', fontSize: 9.5, fontWeight: 700 }}>
+                            <Icon name={allDone ? 'check-circle' : started ? 'loader' : 'inbox'} size={9} />{allDone ? '완료' : started ? '진행 중' : '시작 전'}
+                        </span>
+                        <span className="pill" style={{ background: isChat ? '#eef6ee' : 'var(--primary-soft)', color: isChat ? '#3a7a3a' : 'var(--primary)', fontSize: 9.5, fontWeight: 700 }}>
+                            <Icon name={isChat ? 'message-square' : 'phone'} size={9} />{isChat ? '채팅' : '전화'}
+                        </span>
+                    </div>
+                </div>
+                {/* 전 시나리오 완료 시에만 X로 내 보드에서 정리(코칭 이력엔 유지) — 관리자 카드와 동일. */}
+                {allDone && (
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onArchive?.(g.id); }}
+                        title="완료한 코칭을 내 목록에서 정리합니다 (코칭 이력엔 유지됩니다)"
+                        style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, display: 'grid', placeItems: 'center', color: 'var(--ink-400)', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                    >
+                        <Icon name="x" size={14} />
+                    </button>
+                )}
+            </div>
+            <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-500)' }}>학습 진행률</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: allDone ? '#2f9759' : accent }}><span className="mono">{doneCount}</span><span className="muted-text" style={{ fontWeight: 600 }}> / {totalScen}</span></span>
+                </div>
+                <div className="mini-bar"><div style={{ width: `${pct}%`, background: allDone ? '#2f9759' : accent }}></div></div>
+            </div>
+            {totalScen > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {visible.map((code) => {
+                        const s = TUTOR_SCENARIOS.find((x) => x.code === code) || { code, title: code };
+                        const done = myDone.includes(code);
+                        return (
+                            <span key={code} className="pill" style={{ maxWidth: '47%', background: done ? '#f1f8f4' : 'var(--background-soft)', color: done ? 'var(--ink-400)' : 'var(--ink-600)', fontSize: 10, fontWeight: 600, border: `1px solid ${done ? '#cfe9d9' : 'var(--border)'}` }}>
+                                <Icon name={done ? 'check' : 'sparkles'} size={9} style={{ color: done ? '#2f9759' : 'var(--ink-400)', flexShrink: 0 }} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: done ? 'line-through' : 'none' }}>{s.title}</span>
+                            </span>
+                        );
+                    })}
+                    {overflow > 0 && <span className="pill" style={{ background: 'transparent', color: 'var(--ink-400)', fontSize: 10, fontWeight: 600, border: 'none' }}>… 외 {overflow}건</span>}
+                </div>
+            )}
+            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 8, paddingTop: 11, borderTop: '1px solid var(--border)' }}>
+                <span className="muted-text" style={{ fontSize: 11 }}>{allDone ? '모두 완료' : `남은 ${totalScen - doneCount}개`}</span>
+                <button className="btn-mini primary" style={{ marginLeft: 'auto', flexShrink: 0, background: allDone ? '#2f9759' : undefined, borderColor: allDone ? '#2f9759' : undefined }} onClick={startLearning}>
+                    <Icon name={allDone ? 'rotate-ccw' : 'play'} size={11} />{allDone ? '복습' : started ? '이어서' : '학습 시작'}
+                </button>
+            </div>
+        </div>
+    );
 }
 
 // 검수 4단계(qa_calls.review_status, 실데이터): 대기 → 검수중 → 검토요청 → 최종승인.
@@ -251,6 +386,21 @@ export default function CounselorResults() {
         return () => { cancelled = true; };
     }, []);
 
+    // 완료 카드 'X' — 내 보드에서만 정리(멤버별 아카이브). 코칭 이력 팝업엔 계속 노출.
+    const archiveCoachingCard = async (id) => {
+        setCoaching((list) => list.map((g) => (g.id === id ? { ...g, memberArchived: true } : g)));
+        try {
+            await archiveMyCoaching(id);
+        } catch (e) {
+            console.error('코칭 정리 실패:', e);
+            setCoaching((list) => list.map((g) => (g.id === id ? { ...g, memberArchived: false } : g))); // 실패 시 복구
+        }
+    };
+    // 보드 표시용 — 본인이 치운 것 제외 + 완료(allDone) 카드는 항상 맨 뒤. (코칭 이력은 전체 coaching 사용)
+    const boardCoaching = coaching
+        .filter((g) => !g.memberArchived)
+        .sort((a, b) => (coachingAllDone(a) ? 1 : 0) - (coachingAllDone(b) ? 1 : 0));
+
     // 각 평가의 항목별 점수 로드(강점·개선 집계 + 선택 상세). 최근 50건으로 제한.
     useEffect(() => {
         if (!evals || !evals.length) return undefined;
@@ -454,9 +604,9 @@ export default function CounselorResults() {
                         <span className="muted-text" style={{ fontSize: 12 }}>· 코치가 직접 지정한 학습 커리큘럼</span>
                     </div>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {coaching.length > 0 && (
+                        {boardCoaching.length > 0 && (
                             <span className="pill blue" style={{ fontSize: 10.5 }}>
-                                <Icon name="inbox" size={10} />{coaching.length}건 배정됨
+                                <Icon name="inbox" size={10} />{boardCoaching.length}건 진행 중
                             </span>
                         )}
                         <button className="btn-mini" onClick={() => setLearningHistOpen(true)}>
@@ -465,120 +615,16 @@ export default function CounselorResults() {
                     </div>
                 </div>
                 <div className="panel-body">
-                    {coaching.length === 0 ? (
+                    {boardCoaching.length === 0 ? (
                         <div style={{ padding: '40px 20px', textAlign: 'center' }}>
                             <div style={{ width: 48, height: 48, borderRadius: 14, background: 'var(--background)', border: '1px solid var(--border)', display: 'grid', placeItems: 'center', color: 'var(--ink-400)', margin: '0 auto 14px' }}>
                                 <Icon name="inbox" size={20} />
                             </div>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-900)', marginBottom: 6 }}>아직 배정된 코칭이 없습니다</div>
-                            <div className="muted-text" style={{ fontSize: 12.5, lineHeight: 1.55, maxWidth: 360, margin: '0 auto' }}>코치가 평가 결과를 검토한 뒤 맞춤 학습 커리큘럼을 배정하면 이곳에 표시됩니다.</div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-900)', marginBottom: 6 }}>{coaching.length === 0 ? '아직 배정된 코칭이 없습니다' : '진행 중인 코칭이 없습니다'}</div>
+                            <div className="muted-text" style={{ fontSize: 12.5, lineHeight: 1.55, maxWidth: 360, margin: '0 auto' }}>{coaching.length === 0 ? '코치가 평가 결과를 검토한 뒤 맞춤 학습 커리큘럼을 배정하면 이곳에 표시됩니다.' : '완료한 코칭은 상단 "코칭 이력"에서 확인할 수 있습니다.'}</div>
                         </div>
                     ) : (
-                        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                            {coaching.map((g) => {
-                                const high = g.priority === 'high';
-                                const accent = high ? 'var(--primary)' : '#c67d12';
-                                const soft = high ? 'var(--primary-soft)' : '#fdf2e3';
-                                const isChat = g.channel === 'chat';
-                                // 내 완료 시나리오 — 백엔드(/api/coaching/mine)가 튜터(02) 완료조회로 채워준 코드 배열.
-                                const myDone = Array.isArray(g.completed) ? g.completed : [];
-                                const scenarios = Array.isArray(g.scenarios) ? g.scenarios : [];
-                                const totalScen = scenarios.length;
-                                const doneCount = scenarios.filter((c) => myDone.includes(c)).length;
-                                const allDone = totalScen > 0 && doneCount === totalScen;
-                                const started = doneCount > 0;
-                                const pct = totalScen ? Math.round((doneCount / totalScen) * 100) : 0;
-                                const tutorLink = buildTutorLink(g);
-                                const startLearning = () => {
-                                    if (!tutorLink) {
-                                        alert('튜터 학습 앱 주소가 설정되지 않았습니다. 관리자에게 문의하세요.');
-                                        return;
-                                    }
-                                    if (typeof window !== 'undefined') window.open(tutorLink, '_blank', 'noopener');
-                                };
-                                return (
-                                    <div key={g.key} style={{ border: '1px solid var(--border)', borderRadius: 14, padding: '18px 18px 16px', background: 'white', display: 'flex', flexDirection: 'column', borderTop: `3px solid ${accent}` }}>
-                                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-                                            <div style={{ width: 40, height: 40, borderRadius: 11, background: soft, color: accent, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                                                <Icon name={g.icon || 'graduation-cap'} size={19} />
-                                            </div>
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
-                                                    <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ink-900)' }}>{g.title}</span>
-                                                    <span className="pill" style={{ background: allDone ? '#e8f6ed' : started ? soft : 'var(--muted)', color: allDone ? '#2f9759' : started ? accent : 'var(--ink-500)', fontSize: 10, fontWeight: 700 }}>
-                                                        <Icon name={allDone ? 'check-circle' : started ? 'loader' : 'inbox'} size={9} />{allDone ? '완료' : started ? '진행 중' : '시작 전'}
-                                                    </span>
-                                                    <span className="pill" style={{ background: isChat ? '#eef6ee' : 'var(--primary-soft)', color: isChat ? '#3a7a3a' : 'var(--primary)', fontSize: 10, fontWeight: 700 }}>
-                                                        <Icon name={isChat ? 'message-square' : 'phone'} size={9} />{isChat ? '채팅' : '전화'}
-                                                    </span>
-                                                </div>
-                                                <div className="muted-text" style={{ fontSize: 11.5 }}>
-                                                    <Icon name="user" size={10} style={{ verticalAlign: '-1px', marginRight: 3 }} />
-                                                    {g.assignedBy || '관리자'} 코치 배정{g.assignedAt ? ` · ${g.assignedAt}` : ''}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* 학습 진행률 */}
-                                        <div style={{ marginBottom: 14 }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                                                <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-500)' }}>학습 진행률</span>
-                                                <span style={{ fontSize: 11.5, fontWeight: 700, color: allDone ? '#2f9759' : accent }}>
-                                                    <span className="mono">{doneCount}</span>
-                                                    <span className="muted-text" style={{ fontWeight: 600 }}> / {totalScen} 완료</span>
-                                                </span>
-                                            </div>
-                                            <div className="mini-bar">
-                                                <div style={{ width: `${pct}%`, background: allDone ? '#2f9759' : accent }}></div>
-                                            </div>
-                                        </div>
-
-                                        {Array.isArray(g.items) && g.items.length > 0 && (
-                                            <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
-                                                {g.items.map((it, i) => (
-                                                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-                                                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${accent}`, color: accent, display: 'grid', placeItems: 'center', flexShrink: 0, marginTop: 1 }}>
-                                                            <Icon name="check" size={11} />
-                                                        </div>
-                                                        <span style={{ fontSize: 12.5, color: 'var(--ink-700)', lineHeight: 1.45 }}>{it}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        {/* Tutor 시나리오 — 완료는 체크 + 취소선 칩 */}
-                                        {totalScen > 0 && (
-                                            <div style={{ marginBottom: 14 }}>
-                                                <div className="eyebrow" style={{ fontSize: 10, marginBottom: 7, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                                                    <Icon name="sparkles" size={10} />Tutor 시나리오
-                                                </div>
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                                    {scenarios.map((code) => {
-                                                        const s = TUTOR_SCENARIOS.find((x) => x.code === code) || { code, title: code, faq: null };
-                                                        const done = myDone.includes(code);
-                                                        return (
-                                                            <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 9999, background: done ? '#f1f8f4' : 'var(--background-soft)', border: `1px solid ${done ? '#cfe9d9' : 'var(--border)'}` }}>
-                                                                {done ? <Icon name="check-circle" size={11} style={{ color: '#2f9759' }} /> : <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: accent }}>{s.code}</span>}
-                                                                <span style={{ fontSize: 11.5, fontWeight: 600, color: done ? 'var(--ink-400)' : 'var(--ink-900)', textDecoration: done ? 'line-through' : 'none' }}>{s.title}</span>
-                                                                {s.faq != null && <span className="muted-text" style={{ fontSize: 10 }}>FAQ {s.faq}</span>}
-                                                            </span>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-                                            <Icon name="graduation-cap" size={13} style={{ color: allDone ? '#2f9759' : accent }} />
-                                            <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{allDone ? '모든 시나리오 완료' : `남은 시나리오 ${totalScen - doneCount}개`}</span>
-                                            <button className="btn-mini primary" style={{ marginLeft: 'auto', flexShrink: 0, background: allDone ? '#2f9759' : undefined, borderColor: allDone ? '#2f9759' : undefined }} onClick={startLearning}>
-                                                <Icon name={allDone ? 'rotate-ccw' : 'play'} size={11} />{allDone ? '복습하기' : started ? '이어서 학습' : '학습 시작'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                        <CoachingCarousel items={boardCoaching} onArchive={archiveCoachingCard} />
                     )}
                 </div>
             </div>

@@ -3749,6 +3749,39 @@ app.post('/api/coaching/:id/archive', requireAdmin, async (req, res) => {
     }
 });
 
+// 상담사 본인 보드에서 정리(숨김) — member_archived 에 본인 user_id 추가. 그룹의 다른 멤버·관리자엔 영향 없음. 코칭 이력엔 유지.
+app.post('/api/coaching/:id/archive-mine', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        if (uid == null) {
+            res.status(401).json({ message: 'authentication required' });
+            return;
+        }
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id)) {
+            res.status(400).json({ message: 'invalid id' });
+            return;
+        }
+        // 본인이 멤버인 코칭만 — array_append(중복 방지).
+        const { rowCount } = await pool.query(
+            `UPDATE public.coaching_assignments
+                SET member_archived = (
+                    SELECT array_agg(DISTINCT x) FROM unnest(array_append(member_archived, $2)) AS x
+                )
+              WHERE id = $1 AND $2 = ANY(members)`,
+            [id, uid]
+        );
+        if (!rowCount) {
+            res.status(404).json({ message: 'not found' });
+            return;
+        }
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('POST /api/coaching/:id/archive-mine error:', error);
+        res.status(500).json({ message: 'Failed to archive coaching.' });
+    }
+});
+
 app.get('/api/coaching/mine', async (req, res) => {
     try {
         const uid = req.session?.user_id;
@@ -3808,10 +3841,12 @@ app.get('/api/coaching/mine', async (req, res) => {
                     console.error('coaching_completed notify error:', e);
                 }
             }
+            const memberArchived = Array.isArray(row.member_archived) && row.member_archived.includes(uid);
             return {
                 ...base,
                 completed: comp?.completed || [], done, total,
                 scoreBefore: before, scoreAfter: after, hasAfter: after != null,
+                memberArchived,  // 본인이 보드에서 치움 → 보드 제외, 코칭 이력엔 유지
             };
         }));
         res.json(out);

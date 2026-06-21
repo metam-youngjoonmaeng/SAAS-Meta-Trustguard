@@ -40,6 +40,8 @@ ALTER TABLE public.coaching_assignments DROP COLUMN IF EXISTS icon;
 ALTER TABLE public.coaching_assignments ADD COLUMN IF NOT EXISTS channel text NOT NULL DEFAULT 'call';
 -- 보드에서 숨김(아카이브) 시각. NULL=진행 보드 노출, 값 있으면 보드에서 제외(코칭 이력엔 유지). 전원 학습완료 후 관리자가 X로 정리.
 ALTER TABLE public.coaching_assignments ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+-- 멤버(상담사)별 본인 보드에서 정리(숨김)한 user_id 목록. 그룹 코칭에서 한 명이 치워도 다른 멤버·관리자 보드엔 영향 없음. 코칭 이력엔 유지.
+ALTER TABLE public.coaching_assignments ADD COLUMN IF NOT EXISTS member_archived integer[] NOT NULL DEFAULT '{}';
 
 CREATE INDEX IF NOT EXISTS idx_coaching_assignments_org ON public.coaching_assignments (org_id);
 -- 상담사 본인화면에서 "나에게 배정된 코칭" 조회( members @> ARRAY[user_id] )용 GIN 인덱스.

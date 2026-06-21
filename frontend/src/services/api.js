@@ -131,6 +131,12 @@ export async function archiveCoaching(id) {
     return request(`/api/coaching/${encodeURIComponent(id)}/archive`, { method: 'POST' });
 }
 
+// 상담사 — 본인 보드에서만 정리(멤버별). 다른 멤버·관리자 보드엔 영향 없음. 코칭 이력엔 유지.
+export async function archiveMyCoaching(id) {
+    if (id == null) throw new Error('id is required');
+    return request(`/api/coaching/${encodeURIComponent(id)}/archive-mine`, { method: 'POST' });
+}
+
 // 관리자 — 코칭 이력(상담사별). 코칭배정 × 멤버 + 배정 전/후 평균점수.
 export async function fetchCoachingHistory() {
     return request('/api/coaching/history');
