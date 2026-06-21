@@ -1045,8 +1045,8 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                 </span>
                                                             </div>
                                                         </td>
-                                                        <td className="px-3 py-3 align-top text-[14px] font-semibold text-[#101828] tabular-nums">{r.ai_eval_label}</td>
-                                                        <td className="px-3 py-3 align-top">
+                                                        <td className="px-3 py-3 align-middle text-[14px] font-semibold text-[#101828] tabular-nums">{r.ai_eval_label}</td>
+                                                        <td className="px-3 py-3 align-middle">
                                                             <ManualJudgmentCell
                                                                 judgment={manualJudgments[r.row_key]?.judgment || ''}
                                                                 goldSet={manualJudgments[r.row_key]?.goldSet || false}
@@ -1055,9 +1055,9 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                 canManageGold={canManageGold}
                                                             />
                                                         </td>
-                                                        <td className="px-3 py-3 align-top text-[14px] text-[#475467] tabular-nums">{r.match_rate}</td>
-                                                        <td className="px-3 py-3 align-top text-[14px] text-[#475467] tabular-nums">{r.monthly_avg}</td>
-                                                        <td className="px-3 py-3 align-top text-[14px] text-[#475467] tabular-nums">{r.team_avg}</td>
+                                                        <td className="px-3 py-3 align-middle text-[14px] text-[#475467] tabular-nums">{r.match_rate}</td>
+                                                        <td className="px-3 py-3 align-middle text-[14px] text-[#475467] tabular-nums">{r.monthly_avg}</td>
+                                                        <td className="px-3 py-3 align-middle text-[14px] text-[#475467] tabular-nums">{r.team_avg}</td>
                                                     </tr>
                                                 );
                                             });
