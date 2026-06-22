@@ -43,14 +43,11 @@ function buildCrumbs(activeTab, role, onHome) {
             { label: '상담 QA 분석 결과' },
         ];
     }
-    const roleLabel = (ROLE_META[role] && ROLE_META[role].label) || '';
+    // 페이지 정보만 표시 — 역할(관리자/상담사 등)은 브레드크럼에 넣지 않음.
     const tabLabel = activeTab === 'eval-mgmt'
         ? (role === 'agent' ? '내 평가 결과' : '평가 관리')
         : (TAB_LABELS[activeTab] || '');
-    const out = [];
-    if (roleLabel) out.push({ label: roleLabel });
-    if (tabLabel) out.push({ label: tabLabel });
-    return out;
+    return tabLabel ? [{ label: tabLabel }] : [];
 }
 
 function initialsOf(user) {
