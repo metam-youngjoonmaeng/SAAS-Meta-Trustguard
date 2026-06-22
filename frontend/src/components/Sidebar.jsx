@@ -31,8 +31,8 @@ const ADMIN_NAV_GROUPS = [
     {
         section: '운영관리',
         items: [
-            { label: '평가 관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
-            { label: 'AI 평가항목 관리', tab: 'eval-items', Icon: Bot },
+            { label: '상담사 평가관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
+            { label: 'AI QA 항목관리', tab: 'eval-items', Icon: Bot },
             { label: '사용자 관리', tab: 'users', Icon: Users },
         ],
     },
@@ -55,8 +55,8 @@ const SUPER_ADMIN_NAV_GROUPS = [
     {
         section: '운영관리',
         items: [
-            { label: '평가 관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
-            { label: 'AI 평가항목 관리', tab: 'eval-items', Icon: Bot },
+            { label: '상담사 평가관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
+            { label: 'AI QA 항목관리', tab: 'eval-items', Icon: Bot },
             { label: '사용자 관리', tab: 'users', Icon: Users },
             { label: '브랜드 관리', tab: 'brands', Icon: Building2 },
         ],
