@@ -408,7 +408,11 @@ function PromptEditModal({ focus, onClose, onChanged }) {
             {loading ? (
                 <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>불러오는 중…</div>
             ) : isHistory ? (
-                <HistoryView history={history} expanded={histExpanded} onToggle={setHistExpanded} fmtTs={fmtTs} />
+                <HistoryView
+                    history={history} expanded={histExpanded} onToggle={setHistExpanded} fmtTs={fmtTs}
+                    baseUncertain={meta?.default_uncertain_def || ''}
+                    baseContradiction={meta?.default_contradiction_def || ''}
+                />
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {/* 헤더 액션 — 공용 Modal 헤더는 수정 불가라 본문 상단 우측에 '변경이력' 배치. */}
@@ -465,7 +469,10 @@ function PromptEditModal({ focus, onClose, onChanged }) {
 
 // 변경 이력 뷰 — 버전별 스냅샷 목록(최신순). 행 클릭 시 그 버전의 두 정의문 전체 노출(읽기전용).
 // 직전(더 오래된) 버전과 비교해 어떤 기준이 바뀌었는지 배지로 표시.
-function HistoryView({ history, expanded, onToggle, fmtTs }) {
+function HistoryView({ history, expanded, onToggle, fmtTs, baseUncertain = '', baseContradiction = '' }) {
+    // 가장 오래된 항목의 '이전'은 시스템 기본값(v0). 첫 변경도 기본값 대비 diff 로 보이게 한다.
+    const baseline = { version: 0, uncertain_def: baseUncertain, contradiction_def: baseContradiction, isBaseline: true };
+    const prevOf = (idx) => history?.[idx + 1] || baseline;
     if (history === null) {
         return <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>이력 불러오는 중…</div>;
     }
@@ -480,8 +487,7 @@ function HistoryView({ history, expanded, onToggle, fmtTs }) {
     }
     const changedLabels = (idx) => {
         const cur = history[idx];
-        const prev = history[idx + 1]; // 더 오래된 버전
-        if (!prev) return ['최초 저장'];
+        const prev = prevOf(idx); // 더 오래된 버전(없으면 기본값 v0)
         const out = [];
         if ((cur.uncertain_def || '') !== (prev.uncertain_def || '')) out.push('불확실 표현');
         if ((cur.contradiction_def || '') !== (prev.contradiction_def || '')) out.push('근거–점수 모순');
@@ -513,16 +519,8 @@ function HistoryView({ history, expanded, onToggle, fmtTs }) {
                         {open && (
                             <div style={{ borderTop: '1px solid var(--border-soft)', background: 'var(--background-soft)', padding: 13, display: 'flex', flexDirection: 'column', gap: 14 }}>
                                 {(() => {
-                                    const prev = history[idx + 1]; // 더 오래된 버전
-                                    if (!prev) {
-                                        // 최초 저장 — 전/후 없음, 현재 내용만.
-                                        return DIFF_FIELDS.map((f) => (
-                                            <div key={f.key}>
-                                                <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 5 }}>{f.label}</div>
-                                                <div style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{h[f.key] || '—'}</div>
-                                            </div>
-                                        ));
-                                    }
+                                    const prev = prevOf(idx); // 더 오래된 버전(없으면 기본값 v0)
+                                    const prevLabel = prev.isBaseline ? '기본값' : `v${prev.version}`;
                                     const changed = DIFF_FIELDS.filter((f) => (h[f.key] || '') !== (prev[f.key] || ''));
                                     if (changed.length === 0) {
                                         return <div style={{ fontSize: 11.5, fontStyle: 'italic', color: 'var(--ink-400)' }}>이 버전에서 바뀐 기준이 없습니다.</div>;
@@ -531,7 +529,7 @@ function HistoryView({ history, expanded, onToggle, fmtTs }) {
                                         <div key={f.key}>
                                             <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 5 }}>{f.label}</div>
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'white' }}>
-                                                <div style={{ padding: '6px 10px', background: 'var(--background-soft)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border-soft)', fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--ink-500)' }}>이전 (v{prev.version})</div>
+                                                <div style={{ padding: '6px 10px', background: 'var(--background-soft)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border-soft)', fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--ink-500)' }}>이전 ({prevLabel})</div>
                                                 <div style={{ padding: '6px 10px', background: '#EEF4FB', borderBottom: '1px solid var(--border-soft)', fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', color: '#055AAF' }}>현재 (v{h.version})</div>
                                                 <div style={{ padding: '9px 10px', borderRight: '1px solid var(--border)', fontSize: 12, color: 'var(--ink-600)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
                                                     <DiffText value={prev[f.key]} other={h[f.key]} mode="before" />
