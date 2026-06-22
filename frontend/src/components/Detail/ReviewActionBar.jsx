@@ -119,8 +119,9 @@ export default function ReviewActionBar({ status, role, isSaving, onChange, revi
             body = { tone: 'primary', msg: '상담사 검토 제출분입니다. 점수를 확인 후 확정하거나, 재검토가 필요하면 반려하세요.',
                 buttons: [wfBtn('반려', 'warn', () => openForm('reject'), { icon: CornerUpLeft }), wfBtn('최종 승인', 'success', () => onChange('approved', { alertOnError: true }), { icon: Check })] };
         } else if (status === 'objection') {
+            // 이의제기엔 '반려 ↔ 확정' 두 갈래만 — 강제 확정은 재검토 후 승인과 결과가 같아 제거(혼동 방지).
             body = { tone: 'danger', msg: `상담사가 이의제기했습니다${rounds > 1 ? ` (${rounds}회째)` : ''}. 재검토 후 승인하거나 다시 반려할 수 있습니다.`,
-                buttons: [forceBtn, wfBtn('다시 반려', 'warn', () => openForm('reject'), { icon: CornerUpLeft }), wfBtn('재검토 후 승인', 'success', () => onChange('approved', { alertOnError: true }), { icon: Check })] };
+                buttons: [wfBtn('다시 반려', 'warn', () => openForm('reject'), { icon: CornerUpLeft }), wfBtn('재검토 후 승인', 'success', () => onChange('approved', { alertOnError: true }), { icon: Check })] };
         } else if (status === 'admin_revised') {
             body = { tone: 'warn', msg: '반려 처리됨 · 상담사의 동의 또는 이의제기를 기다리고 있습니다.', buttons: forceBtn };
         } else if (status === 'approved') {

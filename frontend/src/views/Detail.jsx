@@ -11,7 +11,6 @@ import {
     saveManualEvaluationPatches,
     fetchReviewEvents,
 } from '../services/api';
-import Header from '../components/Header';
 import RadarChart from '../components/Detail/RadarChart';
 import ConsumerEvalTable from '../components/Detail/ConsumerEvalTable';
 import ConsumerAnalysisPanel from '../components/Detail/ConsumerAnalysisPanel';
@@ -21,7 +20,6 @@ import ReviewStatusBadge, {
     REVIEW_STATUS,
     deriveReviewStatus,
 } from '../components/ReviewStatusBadge';
-import { PRODUCT_NAME } from '../branding';
 import { DEFAULT_TOTAL_MAX, getBrandConfig } from '../constants';
 import useDefaultRubricMax from '../hooks/useDefaultRubricMax';
 import { formatDateTime, formatDuration, formatTime } from '../utils/formatters';
@@ -769,36 +767,34 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                 </div>
 
                 <div className="bg-white rounded-[14px] border border-[#E4E7EC] shadow-sm overflow-x-auto mb-6">
-                    <table className="w-full min-w-[1400px] border-collapse">
+                    <table className="w-full min-w-[1180px] border-collapse">
                         <thead>
-                            <tr className="bg-[#F9FAFB] text-[11px] text-[#667085]">
-                                <th className="px-3 py-2 text-center border-r border-[#EEF2F7]">UID</th>
-                                <th className="px-3 py-2 text-center border-r border-[#EEF2F7]">상담번호</th>
-                                <th className="px-3 py-2 text-center border-r border-[#EEF2F7]">상담일시</th>
-                                <th className="px-3 py-2 text-center border-r border-[#EEF2F7]">상담시간</th>
-                                <th className="px-3 py-2 text-center border-r border-[#EEF2F7]">부서</th>
-                                <th className="px-3 py-2 text-center border-r border-[#EEF2F7]">직무</th>
-                                <th className="px-3 py-2 text-center border-r border-[#EEF2F7]">상담사ID</th>
-                                <th className="px-3 py-2 text-center border-r border-[#EEF2F7]">상담사명</th>
-                                <th className="px-3 py-2 text-center border-r border-[#EEF2F7]">고객번호</th>
-                                <th className="px-3 py-2 text-center border-r border-[#EEF2F7]">고객등급</th>
-                                <th className="px-3 py-2 text-center border-r border-[#EEF2F7]">AI평가</th>
-                                <th className="px-3 py-2 text-center">검수상태</th>
+                            <tr className="bg-[#F9FAFB] text-[10px] text-[#667085]">
+                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">상담번호</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">상담일시</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">상담시간</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">부서</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">직무</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">상담사ID</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">상담사명</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">고객번호</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">고객등급</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">AI평가</th>
+                                <th className="px-2.5 py-1.5 text-center">검수상태</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr className="text-xs text-[#101828]">
-                                <td className="px-3 py-2 text-center border-r border-[#EEF2F7]">{call.qa_id || qaId || '-'}</td>
-                                <td className="px-3 py-2 text-center border-r border-[#EEF2F7]">{call.call_no || '-'}</td>
-                                <td className="px-3 py-2 text-center border-r border-[#EEF2F7]">{formatDateTime(call.call_datetime)}</td>
-                                <td className="px-3 py-2 text-center border-r border-[#EEF2F7]">{formatDuration(call.duration_sec)}</td>
-                                <td className="px-3 py-2 text-center border-r border-[#EEF2F7]">{call.department || department || '-'}</td>
-                                <td className="px-3 py-2 text-center border-r border-[#EEF2F7]">{call.role || (isConsumer ? '전체' : '-')}</td>
-                                <td className="px-3 py-2 text-center border-r border-[#EEF2F7]">{call.agent_id || '-'}</td>
-                                <td className="px-3 py-2 text-center border-r border-[#EEF2F7]">{call.agent_name || '-'}</td>
-                                <td className="px-3 py-2 text-center border-r border-[#EEF2F7]">{call.customer_no || '-'}</td>
-                                <td className="px-3 py-2 text-center border-r border-[#EEF2F7]">{call.customer_grade || '-'}</td>
-                                <td className="px-3 py-2 text-center border-r border-[#EEF2F7]">
+                            <tr className="text-[11px] text-[#101828]">
+                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.call_no || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{formatDateTime(call.call_datetime)}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{formatDuration(call.duration_sec)}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.department || department || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.role || (isConsumer ? '전체' : '-')}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.agent_id || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.agent_name || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.customer_no || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.customer_grade || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">
                                     {isConsumer
                                         ? '-'
                                         : call.ai_score === null || call.ai_score === undefined || call.ai_score === ''
@@ -807,9 +803,9 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                             ? `${Math.max(0, Math.round(Number(call.ai_score) * 10) / 10)} / ${callTotalMax}`
                                             : String(Math.max(0, Math.round(Number(call.ai_score))))}
                                 </td>
-                                <td className="px-3 py-2 text-center">
+                                <td className="px-2.5 py-1.5 text-center">
                                     {isConsumer ? (
-                                        <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-[13px] font-semibold bg-[#F9FAFB] text-[#98A2B3]">
+                                        <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-[12px] font-semibold bg-[#F9FAFB] text-[#98A2B3]">
                                             -
                                         </span>
                                     ) : (
@@ -919,17 +915,17 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                             </div>
 
                             <div className="flex-1 min-h-0 p-0 overflow-auto">
-                                <table className="w-full h-full min-w-[1100px] text-center">
+                                <table className="w-full h-full min-w-[1040px] text-center">
                                     <thead>
                                         <tr>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-20">구분</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-20">평가항목</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-44 text-left">평가 이유</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-44 text-left">평가 발화</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-24">AI평가</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-40">수기평가</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-24">당월평균</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-24">직무평균</th>
+                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-20">구분</th>
+                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-20">평가항목</th>
+                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-44 text-left">평가 이유</th>
+                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-44 text-left">평가 발화</th>
+                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-24">AI평가</th>
+                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-40">수기평가</th>
+                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-24">당월평균</th>
+                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-24">직무평균</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-[#F2F4F7]">
@@ -950,15 +946,15 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                         {showCategory && (
                                                             <td
                                                                 rowSpan={categorySpans.get(r.category)}
-                                                                className="px-3 py-3 align-top text-[13px] font-semibold text-[#101828] border-r border-[#F2F4F7] bg-[#FAFBFC]/40"
+                                                                className="px-2.5 py-2.5 align-top text-[12px] font-semibold text-[#101828] border-r border-[#F2F4F7] bg-[#FAFBFC]/40"
                                                             >
                                                                 {r.category}
                                                             </td>
                                                         )}
-                                                        <td className="px-3 py-3 align-top text-[14px] font-medium text-[#101828] whitespace-pre-line leading-snug">{r.item}</td>
-                                                        <td className="px-3 py-3 align-top text-left text-xs text-[#475467] leading-relaxed">{r.reason_text}</td>
+                                                        <td className="px-2.5 py-2.5 align-top text-[13px] font-medium text-[#101828] whitespace-pre-line leading-snug">{r.item}</td>
+                                                        <td className="px-2.5 py-2.5 align-top text-left text-[11px] text-[#475467] leading-relaxed">{r.reason_text}</td>
                                                         <td
-                                                            className="px-3 py-3 align-top text-left text-xs text-[#475467] leading-relaxed cursor-pointer hover:text-[#055AAF] hover:bg-[#FAFBFC] transition-colors group/utt"
+                                                            className="px-2.5 py-2.5 align-top text-left text-[11px] text-[#475467] leading-relaxed cursor-pointer hover:text-[#055AAF] hover:bg-[#FAFBFC] transition-colors group/utt"
                                                             onClick={() => {
                                                                 const match = r.agent_utterance || '';
                                                                 setHighlightText(match);
@@ -994,8 +990,8 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                 </span>
                                                             </div>
                                                         </td>
-                                                        <td className="px-3 py-3 align-middle text-[14px] font-semibold text-[#101828] tabular-nums">{r.ai_eval_label}</td>
-                                                        <td className="px-3 py-3 align-middle">
+                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] font-semibold text-[#101828] tabular-nums">{r.ai_eval_label}</td>
+                                                        <td className="px-2.5 py-2.5 align-middle">
                                                             <ManualJudgmentCell
                                                                 judgment={manualJudgments[r.row_key]?.judgment || ''}
                                                                 goldSet={manualJudgments[r.row_key]?.goldSet || false}
@@ -1004,8 +1000,8 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                 canManageGold={canManageGold}
                                                             />
                                                         </td>
-                                                        <td className="px-3 py-3 align-middle text-[14px] text-[#475467] tabular-nums">{r.monthly_avg}</td>
-                                                        <td className="px-3 py-3 align-middle text-[14px] text-[#475467] tabular-nums">{r.team_avg}</td>
+                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] text-[#475467] tabular-nums">{r.monthly_avg}</td>
+                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] text-[#475467] tabular-nums">{r.team_avg}</td>
                                                     </tr>
                                                 );
                                             });
