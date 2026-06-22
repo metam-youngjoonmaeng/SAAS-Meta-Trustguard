@@ -268,7 +268,7 @@ export default function BatchManage() {
                                     { v: 'realtime', label: '실시간' }, { v: 'hourly', label: '매시간' }, { v: 'daily', label: '매일' }, { v: 'manual', label: '수동' },
                                 ]} />
                                 {scope.freq === 'daily' && (
-                                    <input type="time" value={scope.time} onChange={(e) => setSk('time', e.target.value)} style={{ ...bInput, width: 110 }} />
+                                    <input type="time" value={scope.time} onChange={(e) => setSk('time', e.target.value)} style={{ ...bInput, width: 150 }} />
                                 )}
                             </div>
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
