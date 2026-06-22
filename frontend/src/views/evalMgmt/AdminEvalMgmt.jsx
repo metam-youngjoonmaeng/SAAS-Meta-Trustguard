@@ -955,7 +955,6 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
     const [approval, setApproval] = useState('all');
     const [approvedIds, setApprovedIds] = useState(() => new Set());
     const [scoreRange, setScoreRange] = useState('all');
-    const [search, setSearch] = useState('');
     const [selected, setSelected] = useState(new Set());
     const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
     const [drawerId, setDrawerId] = useState(null);
@@ -1022,10 +1021,6 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         if (scoreRange === 'high' && r.score < SCORE_HIGH) return false;
         if (scoreRange === 'mid' && (r.score < SCORE_LOW || r.score >= SCORE_HIGH)) return false;
         if (scoreRange === 'low' && r.score >= SCORE_LOW) return false;
-        if (search) {
-            const q = search.toLowerCase();
-            if (!`${r.name} ${r.sessionId} ${r.category} ${r.team} ${r.id}`.toLowerCase().includes(q)) return false;
-        }
         return true;
     })
         .slice()
@@ -1207,27 +1202,6 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                         </div>
                     </div>
                 </div>
-            </div>
-
-            {/* 검색 + 필터 초기화 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '12px 2px 16px' }}>
-                <div style={{ position: 'relative', width: 340, maxWidth: '60%' }}>
-                    <Icon name="search" size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-400)', pointerEvents: 'none' }} />
-                    <input type="text" className="text-input" placeholder="평가 ID·상담사·세션 검색" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: '100%', paddingLeft: 34 }} />
-                </div>
-                <button
-                    className="btn-mini"
-                    style={{ marginLeft: 'auto' }}
-                    onClick={() => {
-                        setChannel('all');
-                        setTeam('all');
-                        setApproval('all');
-                        setScoreRange('all');
-                        setSearch('');
-                    }}
-                >
-                    <Icon name="x" />필터 초기화
-                </button>
             </div>
 
             {/* Bulk action toolbar */}
