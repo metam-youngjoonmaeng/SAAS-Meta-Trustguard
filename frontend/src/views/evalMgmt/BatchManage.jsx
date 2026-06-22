@@ -199,12 +199,12 @@ export default function BatchManage() {
     return (
         <div>
             <PageHead title="AI 평가 배치 관리" sub="AI가 평가한 콜 중 사람이 재청취·검토할 대상을 조건으로 선별합니다. AI 오판 보정과 평가 신뢰성 확보를 위한 표본 추출 규칙을 설정하세요.">
-                <button style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-700)', padding: '9px 15px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <Icon name="save" size={15} />배치 저장
-                </button>
-                <button style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '9px 16px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <Icon name="play" size={15} />지금 실행
-                </button>
+                {/* '지금 실행'은 수동 주기일 때만 노출 — 스케줄(실시간/매시간/매일)은 자동 실행이라 수동 트리거 불필요. */}
+                {scope.freq === 'manual' && (
+                    <button style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '9px 16px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        <Icon name="play" size={15} />지금 실행
+                    </button>
+                )}
             </PageHead>
 
             {/* 요약 바 */}
@@ -326,7 +326,7 @@ export default function BatchManage() {
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--ink-400)', marginBottom: 10, lineHeight: 1.5, background: 'var(--warning-soft)', border: '1px solid var(--warning-border)', borderRadius: 8, padding: '8px 11px' }}>
                             <Icon name="info" size={12} style={{ verticalAlign: '-2px', marginRight: 4, color: 'var(--warning-ink)' }} />
-                            상황이 없으면 <strong>“해당 없음”</strong>으로 평가되는 항목은 불확실 표현 검사에서 제외하는 것이 좋습니다.
+                            조건에 따라 자동으로 <strong>‘해당 없음’</strong>으로 처리되는 항목은 신뢰도 검증에서 제외하는 것을 권장합니다.
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
                             {DIMENSIONS.map((d) => {
@@ -393,6 +393,13 @@ export default function BatchManage() {
                         <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>점 이상</span>
                     </SubRule>
                 </FilterCard>
+            </div>
+
+            {/* 하단 액션 바 — 조건 설정을 마친 뒤 저장(상단에서 하단으로 이동, 자연스러운 흐름). */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}>
+                <button style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '11px 20px', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <Icon name="save" size={16} />배치 저장
+                </button>
             </div>
         </div>
     );
