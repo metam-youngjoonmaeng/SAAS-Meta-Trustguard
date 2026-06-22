@@ -12,6 +12,7 @@
 import pg from 'pg';
 import { logger } from './logger.mjs';
 import { judgeEnabled, judgeModel, resolvePrompt, judgeReasons } from './geminiJudge.mjs';
+import { stampByQaIds } from './manualReview.mjs';
 
 const { Pool } = pg;
 
@@ -43,6 +44,7 @@ async function main() {
     if (!targets.length) { await pool.end(); return; }
 
     let done = 0, failed = 0, flagged = 0;
+    const judgedIds = [];
     for (const t of targets) {
         const { rows: items } = await pool.query(
             `SELECT er.order_no, er.item, er.ai_eval AS score, er.reason_text,
@@ -71,6 +73,7 @@ async function main() {
                 [t.id, JSON.stringify(judged), hasU, hasW, hasC, version, model]
             );
             done += 1;
+            judgedIds.push(t.id);
             if (done % 10 === 0) console.log(`[judge-bf] ${done}/${targets.length} …`);
         } catch (e) {
             failed += 1;
@@ -78,6 +81,13 @@ async function main() {
         }
     }
     console.log(`[judge-bf] 완료 — 판정 ${done}, 실패 ${failed}, 신뢰도이슈 ${flagged}건`);
+
+    // 판정 결과를 수기평가 대상 도장에 반영(신뢰도 사유 갱신).
+    try {
+        const stamped = await stampByQaIds(pool, judgedIds);
+        console.log(`[judge-bf] 수기평가 대상 도장 갱신 — ${stamped}건`);
+    } catch (e) { console.error('[judge-bf] 도장 갱신 실패:', e?.message || e); }
+
     await pool.end();
 }
 

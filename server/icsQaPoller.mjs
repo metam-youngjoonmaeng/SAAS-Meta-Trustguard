@@ -18,6 +18,7 @@
  */
 
 import { icsEnabled, listCompletedCalls, fetchTranscript, maxCompletedEndDate, getCallMaster, durationSecFromDates } from './icsSource.mjs';
+import { applyManualReviewStamps } from './manualReview.mjs';
 import { logger } from './logger.mjs';
 
 function env(key, def = '') {
@@ -192,6 +193,7 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
     let skippedByGate = 0;
     let cursorEnd = wm.endDate;
     let cursorUid = wm.uid;
+    const evaluatedIds = []; // 이번 주기에 평가·적재된 qa_id — 수기평가 대상 도장용
 
     for (const c of calls) {
         const uid = String(c.uid);
@@ -243,6 +245,7 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
                 continue;
             }
             added += 1;
+            evaluatedIds.push(call.qa_id);
             logger.info(`[ics-qa] ${projCd}/${uid}: 적재 OK (score=${result.total_score ?? '?'}, turns=${transcript.length})`);
         } catch (err) {
             logger.error(`[ics-qa] ${projCd}/${uid}: 예외 — ${String(err?.message || err)} (이번 주기 중단)`);
@@ -251,6 +254,14 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
     }
 
     if (skippedByGate > 0) logger.info(`[ics-qa] ${projCd}: 통화시간 게이트로 ${skippedByGate}건 AI 평가 제외`);
+
+    // 수기평가 대상 도장 — 이번에 평가된 콜을 카드 조건으로 즉시 표식(실시간 누적).
+    if (evaluatedIds.length) {
+        try {
+            const stamped = await applyManualReviewStamps(pool, orgId, { qaIds: evaluatedIds });
+            if (stamped > 0) logger.info(`[ics-qa] ${projCd}: 수기평가 대상 ${stamped}건 도장`);
+        } catch (e) { logger.warn(`[ics-qa] 수기평가 도장 실패: ${e?.message || e}`); }
+    }
 
     if (cursorEnd !== wm.endDate || cursorUid !== wm.uid || added > 0) {
         await writeWatermark(pool, { projCd, orgId, endDate: cursorEnd, uid: cursorUid, added });

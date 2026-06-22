@@ -752,11 +752,30 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     return (
         <>
             <div className="pb-10 w-full">
-                {/* 상단 제목 제거(상단바 브레드크럼이 대체) — 상담사/상담번호 + 목록으로만 컴팩트하게 */}
-                <div className="flex items-center justify-between gap-4 mb-5">
-                    <p className="text-sm text-[#667085] truncate">
-                        {`${call.agent_name || '-'} 상담사 | 상담번호: ${call.call_no || '-'}`}
-                    </p>
+                {/* 상단 제목 제거(상단바 브레드크럼이 대체) — 상담사/상담번호 + 수기평가 사유 딱지 + 목록으로 */}
+                <div className="flex items-start justify-between gap-4 mb-5">
+                    <div className="min-w-0">
+                        <p className="text-sm text-[#667085] truncate">
+                            {`${call.agent_name || '-'} 상담사 | 상담번호: ${call.call_no || '-'}`}
+                        </p>
+                        {(() => {
+                            const reasons = evaluation?.manual_review_reasons || call.manual_review_reasons || [];
+                            if (!Array.isArray(reasons) || reasons.length === 0) return null;
+                            return (
+                                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                    <span className="text-[11px] text-[#98A2B3]">수기평가 대상 사유</span>
+                                    {reasons.map((r, i) => (
+                                        <span
+                                            key={i}
+                                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]"
+                                        >
+                                            {r}
+                                        </span>
+                                    ))}
+                                </div>
+                            );
+                        })()}
+                    </div>
                     <button
                         onClick={onBack}
                         className="shrink-0 px-4 py-2 border border-[#D0D5DD] rounded-lg text-sm font-semibold text-[#344054] hover:bg-gray-50 flex items-center gap-2"

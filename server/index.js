@@ -886,6 +886,10 @@ app.get('/api/calls', async (req, res) => {
             params.push(req.session.user_id);
             conds.push(`c.agent_user_id = $${params.length}`);
         }
+        // '수기평가 대상만' 필터 — 배치 조건으로 도장(manual_review)된 콜만.
+        if (String(req.query.manual_review || '') === 'true') {
+            conds.push(`c.manual_review = true`);
+        }
         // 실제 응대(=QA평가된) 콜만 노출. 포기호/미응대(상담사 미연결)는 파이프라인이
         // 평가 산출물을 만들지 못해 평가행/체크리스트/소비자평가가 전무하므로 리스트에서 제외한다.
         conds.push(`(
@@ -903,7 +907,7 @@ app.get('/api/calls', async (req, res) => {
                 c."UID" AS uid,
                 c."CALL_SEQ" AS call_no,
                 c."CDATE" AS call_datetime,
-                NULL::integer AS duration_sec,
+                c.duration_sec AS duration_sec,
                 ''::text AS team_name,
                 c.agent_code AS agent_code,
                 ''::text AS agent_id,
@@ -928,6 +932,8 @@ app.get('/api/calls', async (req, res) => {
                 c.review_started_at AS review_started_at,
                 COALESCE(ru.display_name, ru.login_id, '')::text AS reviewer_name,
                 c.io_divi AS io_divi,
+                c.manual_review AS manual_review,
+                c.manual_review_reasons AS manual_review_reasons,
                 cv.consumer_violations,
                 cv.consumer_total,
                 EXISTS(
@@ -1340,7 +1346,8 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
     }
     try {
         const { rows: callRows } = await pool.query(
-            `SELECT "ID" AS qa_id, department, role, ai_analysis_target, ai_analysis_reason, voc_code, promotion_code
+            `SELECT "ID" AS qa_id, department, role, ai_analysis_target, ai_analysis_reason, voc_code, promotion_code,
+                    manual_review, manual_review_reasons
              FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
             [qaId]
         );
@@ -1349,6 +1356,8 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
             return;
         }
         const callMeta = callRows[0];
+        // 수기평가 대상 사유(상세 배지용) — ['저품질 검증 · 평균점수 미달', ...]
+        const manualReviewReasons = Array.isArray(callMeta.manual_review_reasons) ? callMeta.manual_review_reasons : [];
 
         // 관리자 코멘트 — qa_admin_comments(qa_id 단일행에 전체 배열 보관). 없으면 [].
         const { rows: acRows } = await pool.query(
@@ -1405,6 +1414,8 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
                 })),
                 conversation: convRaw,
                 admin_comments: adminComments,
+                manual_review: !!callMeta.manual_review,
+                manual_review_reasons: manualReviewReasons,
             });
             return;
         }
@@ -1501,6 +1512,8 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
             checklist_rows,
             conversation: convRaw,
             admin_comments: adminComments,
+            manual_review: !!callMeta.manual_review,
+            manual_review_reasons: manualReviewReasons,
         });
     } catch (error) {
         console.error('GET /api/evaluations/:qaId error:', error);

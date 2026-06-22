@@ -118,6 +118,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
         consultationType: '',
         reviewStatus: '',
         aiTarget: '',
+        manualOnly: false,
     });
 
     // 부서 변경 시 부서별 의미 없는 필터(직무·분석대상) 초기화
@@ -229,9 +230,10 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
             if (filters.item && filters.item !== 'AI_QA' && !(row.evaluation_items || []).includes(filters.item)) return false;
             if (filters.consultationType && row.consultation_type !== filters.consultationType) return false;
             if (filters.reviewStatus && deriveReviewStatus(row) !== filters.reviewStatus) return false;
+            if (filters.manualOnly && !row.manual_review) return false;
             return true;
         });
-    }, [calls, filters.startDate, filters.endDate, filters.role, filters.aiTarget, filters.agent, filters.item, filters.consultationType, filters.reviewStatus, department, DEPARTMENT_OPTIONS]);
+    }, [calls, filters.startDate, filters.endDate, filters.role, filters.aiTarget, filters.agent, filters.item, filters.consultationType, filters.reviewStatus, filters.manualOnly, department, DEPARTMENT_OPTIONS]);
 
     // 자동 전환: 선택 버전과 날짜 범위가 완전히 어긋나 0건이면 데이터가 있는 버전으로 fallback.
     // 0건 ≠ 자동 전환: 사용자가 선택한 버전 안에 콜이 있으면 그대로 유지 (부분 겹침은 부분만 표시).
@@ -385,6 +387,17 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                         </select>
                     </div>
                     <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">수기평가 대상</label>
+                        <select
+                            className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 outline-none cursor-pointer"
+                            value={filters.manualOnly ? 'only' : ''}
+                            onChange={(e) => setFilters(prev => ({ ...prev, manualOnly: e.target.value === 'only' }))}
+                        >
+                            <option value="">전체</option>
+                            <option value="only">수기평가 대상만</option>
+                        </select>
+                    </div>
+                    <div className="space-y-1.5">
                         <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">항목</label>
                         <select
                             className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm outline-none cursor-not-allowed text-[#667085] disabled:opacity-100"
@@ -497,7 +510,19 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                                                     <ChevronRight size={16} />
                                                 </button>
                                             </td>
-                                            <td className="px-3 py-3 font-mono text-[12px] text-[#475467]">{row.call_no || '-'}</td>
+                                            <td className="px-3 py-3 font-mono text-[12px] text-[#475467]">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>{row.call_no || '-'}</span>
+                                                    {row.manual_review && (
+                                                        <span
+                                                            title={Array.isArray(row.manual_review_reasons) ? row.manual_review_reasons.join(', ') : ''}
+                                                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89] whitespace-nowrap"
+                                                        >
+                                                            수기평가
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDateTime(row.call_datetime)}</td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{row.role || '-'}</td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDuration(row.duration_sec)}</td>
@@ -602,7 +627,19 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                                                     </button>
                                                 )}
                                             </td>
-                                            <td className="px-3 py-3 font-mono text-[12px] text-[#475467]">{row.call_no || '-'}</td>
+                                            <td className="px-3 py-3 font-mono text-[12px] text-[#475467]">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>{row.call_no || '-'}</span>
+                                                    {row.manual_review && (
+                                                        <span
+                                                            title={Array.isArray(row.manual_review_reasons) ? row.manual_review_reasons.join(', ') : ''}
+                                                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89] whitespace-nowrap"
+                                                        >
+                                                            수기평가
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDateTime(row.call_datetime)}</td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{row.voc_code || '-'}</td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{row.promotion_code || '-'}</td>
