@@ -144,7 +144,7 @@ const EvalItems = ({ activeBrandId }) => {
         : null;
 
     return (
-        <div className="animate-fade-in pb-10 w-full max-w-[1280px] mx-auto">
+        <div className="animate-fade-in pb-10 w-full">
             <Header
                 title={`${PRODUCT_NAME} · AI 평가항목 관리`}
                 subtitle="체크리스트 항목과 Pentagon 5축의 라벨·기준·프롬프트를 한 곳에서 관리합니다."

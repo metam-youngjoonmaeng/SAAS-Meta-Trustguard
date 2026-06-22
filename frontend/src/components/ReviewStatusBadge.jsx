@@ -1,14 +1,16 @@
 import React from 'react';
 import { Check, Play, RotateCcw } from 'lucide-react';
 
-// 검수 워크플로우(반복 검토 루프): 대기 → 검수중 → 검토요청 →[수정확인]→ 승인.
-//   pending → in_review → review_done → (admin_revised) → approved
-//   상담사: 작성→검토요청 / admin_revised에서 동의(→승인)·재이의(→검수중). 관리자: review_done에서 수정→admin_revised·승인.
+// 검수 워크플로우(반려/이의제기 루프): 대기 → 검수중 → 검토요청 →[반려↔이의제기]→ 확정.
+//   pending → in_review → review_done → (admin_revised 반려 ↔ objection 이의제기) → approved(확정)
+//   상담사: 검토 제출(→검토요청) / 반려분에 점수 동의(→확정)·이의제기(→이의제기).
+//   관리자: 직접 확정 / 반려(사유)·최종 승인 / 이의제기분 재검토 후 승인·다시 반려 / 강제 확정 / 확정 취소.
 export const REVIEW_STATUS = {
     PENDING: 'pending',
     IN_REVIEW: 'in_review',
     REVIEW_DONE: 'review_done',
     ADMIN_REVISED: 'admin_revised',
+    OBJECTION: 'objection',
     APPROVED: 'approved',
     COMPLETED: 'approved', // (deprecated) 레거시 3단계 'completed' → approved 별칭
 };
@@ -17,8 +19,9 @@ export const REVIEW_STATUS_LABEL = {
     pending: '대기',
     in_review: '검수중',
     review_done: '검토요청',
-    admin_revised: '수정확인',
-    approved: '승인',
+    admin_revised: '반려',
+    objection: '이의제기',
+    approved: '확정',
 };
 
 // 콜 row → 검수상태. 명시적 워크플로우라 자동승격 없이 저장값을 그대로 정규화('completed'→approved).
@@ -34,8 +37,10 @@ const STYLES = {
     in_review: { dot: '#475467', bg: '#E4E7EC', text: '#344054', border: '#CDD2DA' },
     // 검토요청: 검수중과 동일한 블루 계열(체크 아이콘으로 "작업 끝, 승인 요청" 구분).
     review_done: { dot: '#1E70E0', bg: '#EEF4FB', text: '#055AAF', border: '#BFD4F2' },
-    // 수정확인: 상담사 액션 필요 → 주황 계열(주의 환기).
+    // 반려: 상담사 액션 필요 → 주황 계열(주의 환기).
     admin_revised: { dot: '#F79009', bg: '#FFFAEB', text: '#B54708', border: '#FEDF89' },
+    // 이의제기: 관리자 재검토 필요 → 적색 계열.
+    objection: { dot: '#D92D20', bg: '#FEF3F2', text: '#B42318', border: '#FECDCA' },
     approved: { dot: '#12B76A', bg: '#ECFDF3', text: '#067647', border: '#ABEFC6' },
 };
 

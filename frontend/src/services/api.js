@@ -172,12 +172,22 @@ export async function saveManualEvaluationPatches(qaId, manualPatches) {
 
 /** 검수상태 변경. 반복 검토 루프: pending/in_review/review_done/admin_revised/approved.
  *  force=true 면 수정사항이 있어도 상담사 확인 없이 강제 최종승인(관리자 오버라이드). */
-export async function updateReviewStatus(qaId, reviewStatus, { force = false } = {}) {
+export async function updateReviewStatus(qaId, reviewStatus, { force = false, reason } = {}) {
     if (!qaId) throw new Error('qaId is required');
     return request(`/api/calls/${encodeURIComponent(qaId)}/review-status`, {
         method: 'PUT',
-        body: JSON.stringify({ review_status: reviewStatus, ...(force ? { force: true } : {}) }),
+        body: JSON.stringify({
+            review_status: reviewStatus,
+            ...(force ? { force: true } : {}),
+            ...(reason ? { reason } : {}),
+        }),
     });
+}
+
+// 검수 이력(타임라인) — 상세화면 "검수 이력" 팝업용. created_at 오름차순.
+export async function fetchReviewEvents(qaId) {
+    if (!qaId) return [];
+    return request(`/api/calls/${encodeURIComponent(qaId)}/review-events`);
 }
 
 

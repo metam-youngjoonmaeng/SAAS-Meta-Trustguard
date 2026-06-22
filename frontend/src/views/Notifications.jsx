@@ -11,9 +11,9 @@ const TYPE_META = {
     review_approved: { label: '승인', Icon: CheckCircle2, tone: { bg: 'bg-[#ECFDF3]', fg: 'text-[#067647]' }, chip: 'bg-[#ECFDF3] text-[#067647]' },
     review_edited: { label: '수정 반영', Icon: Pencil, tone: { bg: 'bg-[#FFFAEB]', fg: 'text-[#B54708]' }, chip: 'bg-[#FFFAEB] text-[#B54708]' },
     review_submitted: { label: '검토요청', Icon: ClipboardCheck, tone: { bg: 'bg-[#EEF4FB]', fg: 'text-[#055AAF]' }, chip: 'bg-[#EEF4FB] text-[#055AAF]' },
-    review_revised: { label: '수정확인', Icon: Pencil, tone: { bg: 'bg-[#FFFAEB]', fg: 'text-[#B54708]' }, chip: 'bg-[#FFFAEB] text-[#B54708]' },
+    review_revised: { label: '반려', Icon: Pencil, tone: { bg: 'bg-[#FFFAEB]', fg: 'text-[#B54708]' }, chip: 'bg-[#FFFAEB] text-[#B54708]' },
     review_acknowledged: { label: '동의', Icon: CheckCircle2, tone: { bg: 'bg-[#ECFDF3]', fg: 'text-[#067647]' }, chip: 'bg-[#ECFDF3] text-[#067647]' },
-    review_reobjected: { label: '재이의', Icon: Undo2, tone: { bg: 'bg-[#FEF3F2]', fg: 'text-[#B42318]' }, chip: 'bg-[#FEF3F2] text-[#B42318]' },
+    review_reobjected: { label: '이의제기', Icon: Undo2, tone: { bg: 'bg-[#FEF3F2]', fg: 'text-[#B42318]' }, chip: 'bg-[#FEF3F2] text-[#B42318]' },
     coaching_assigned: { label: '코칭 배정', Icon: GraduationCap, tone: { bg: 'bg-[#F4F3FF]', fg: 'text-[#5925DC]' }, chip: 'bg-[#F4F3FF] text-[#5925DC]' },
     coaching_completed: { label: '코칭 완료', Icon: Award, tone: { bg: 'bg-[#ECFDF3]', fg: 'text-[#067647]' }, chip: 'bg-[#ECFDF3] text-[#067647]' },
 };
@@ -154,7 +154,7 @@ const Notifications = () => {
     };
 
     return (
-        <div className="w-full max-w-[1280px] mx-auto">
+        <div className="w-full">
             <Header
                 title="알림 센터"
                 subtitle={`나에게 온 알림(검수 승인·수정 등)을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신합니다 (최근 30일).`}

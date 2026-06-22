@@ -189,10 +189,11 @@ const REVIEW_STATUS_META = {
     pending:       { label: '대기',     cls: 'gray' },
     in_review:     { label: '검수중',   cls: 'blue' },
     review_done:   { label: '검토요청', cls: 'blue' },
-    admin_revised: { label: '수정확인', cls: 'amber' },
-    approved:      { label: '승인',     cls: 'green' },
+    admin_revised: { label: '반려',     cls: 'amber' },
+    objection:     { label: '이의제기', cls: 'red' },
+    approved:      { label: '확정',     cls: 'green' },
 };
-const REVIEW_NEEDS_ME = new Set(['pending', 'in_review', 'admin_revised']);  // 상담사 본인 액션이 남은 단계(수정확인 포함)
+const REVIEW_NEEDS_ME = new Set(['pending', 'in_review', 'admin_revised']);  // 상담사 본인 액션이 남은 단계(반려=동의/이의제기 선택)
 
 function normReviewStatus(s) {
     const v = s === 'completed' ? 'approved' : s;

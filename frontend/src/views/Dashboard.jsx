@@ -270,7 +270,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
     }, [baseFilteredCalls, versionFilterInfo.effectiveVersion, matchCallToVersion]);
 
     return (
-        <div className="animate-fade-in w-full max-w-[1280px] mx-auto">
+        <div className="animate-fade-in w-full">
             <Header
                 title={PRODUCT_NAME}
                 subtitle={PLATFORM_TITLE}
@@ -379,6 +379,8 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                             <option value={REVIEW_STATUS.PENDING}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.PENDING]}</option>
                             <option value={REVIEW_STATUS.IN_REVIEW}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.IN_REVIEW]}</option>
                             <option value={REVIEW_STATUS.REVIEW_DONE}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.REVIEW_DONE]}</option>
+                            <option value={REVIEW_STATUS.ADMIN_REVISED}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.ADMIN_REVISED]}</option>
+                            <option value={REVIEW_STATUS.OBJECTION}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.OBJECTION]}</option>
                             <option value={REVIEW_STATUS.APPROVED}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.APPROVED]}</option>
                         </select>
                     </div>

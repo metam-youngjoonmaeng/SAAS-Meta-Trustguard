@@ -23,6 +23,8 @@ const REVIEW_TO_STATUS = {
     pending: 'pending',
     in_review: 'reviewed',
     review_done: 'reviewed',
+    admin_revised: 'reviewed',
+    objection: 'reviewed',
     approved: 'completed',
     completed: 'completed',
 };
@@ -1040,42 +1042,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         next.has(id) ? next.delete(id) : next.add(id);
         setSelected(next);
     };
-    // 서버 에러 메시지 추출(request 헬퍼가 응답 본문을 Error.message 로 던짐 — JSON 이면 .message).
-    const friendlyErr = (e) => {
-        try { return JSON.parse(e?.message)?.message || e?.message || ''; } catch { return e?.message || ''; }
-    };
-    // 최종승인 — 무수정이면 바로 approved. 점수를 수정했으면 서버가 409(상담사 확인 필요) → 상세에서 처리 안내.
-    const approve = async (id) => {
-        setApprovedIds((s) => new Set(s).add(id));
-        try {
-            await updateReviewStatus(id, 'approved');
-        } catch (e) {
-            setApprovedIds((s) => {
-                const n = new Set(s);
-                n.delete(id);
-                return n;
-            });
-            const m = friendlyErr(e);
-            alert(m.includes('확인이 필요')
-                ? '수정사항이 있어 바로 승인할 수 없습니다.\n상세 화면에서 "상담사 확인요청"을 보내거나 "강제 최종승인"을 사용하세요.'
-                : (m || '승인에 실패했습니다.'));
-        }
-    };
-    // 강제 최종승인 — 상담사 확인 없이 승인(교착 해소용). admin_revised 행에서 사용.
-    const forceApprove = async (id) => {
-        if (!window.confirm('상담사 확인 없이 강제로 최종승인합니다. 계속할까요?')) return;
-        setApprovedIds((s) => new Set(s).add(id));
-        try {
-            await updateReviewStatus(id, 'approved', { force: true });
-        } catch (e) {
-            setApprovedIds((s) => {
-                const n = new Set(s);
-                n.delete(id);
-                return n;
-            });
-            alert(friendlyErr(e) || '강제 승인에 실패했습니다.');
-        }
-    };
+    // 목록 일괄 승인(검토요청 건만) — 단건 승인/반려/확정취소 등 상세 액션은 상세화면 ReviewActionBar 로 이동.
     const approveSelected = async () => {
         const selectedIds = [...selected];
         if (!selectedIds.length) return;
@@ -1109,20 +1076,6 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         }
         if (failed.length || skipped) {
             alert(`${failed.length ? `${failed.length}건 승인 실패. ` : ''}${skipped ? `${skipped}건은 상담사 평가 대기라 건너뜀.` : ''}`.trim());
-        }
-    };
-    // 최종승인 취소 — approved → review_done(검토요청)으로 되돌림. 관리자 전용(백엔드도 동일 검증).
-    const unapprove = async (id) => {
-        setApprovedIds((s) => {
-            const n = new Set(s);
-            n.delete(id);
-            return n;
-        });
-        try {
-            await updateReviewStatus(id, 'review_done');
-        } catch (e) {
-            setApprovedIds((s) => new Set(s).add(id)); // 실패 시 롤백
-            alert(e?.message || '승인 취소에 실패했습니다.');
         }
     };
     const toggleAll = () => {
@@ -1338,7 +1291,6 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                     </div>
                     <div style={{ maxHeight: 430, overflowY: 'auto' }}>
                         {filtered.map((r) => {
-                            const approved = approvedIds.has(r.id);
                             return (
                                 <div key={r.id} className="tbl-row clickable tc" onClick={() => openDetail(r.id)} style={{ gridTemplateColumns: COLS, background: selected.has(r.id) ? 'var(--primary-soft)' : undefined }}>
                                     <div style={{ display: 'grid', placeItems: 'center' }} onClick={(e) => e.stopPropagation()}>
@@ -1381,36 +1333,24 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                                         )}
                                     </div>
                                     <div onClick={(e) => e.stopPropagation()}>
-                                        {approved ? (
-                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                                <span className="pill green" style={{ fontSize: 10.5, fontWeight: 700 }}>
-                                                    <Icon name="check-circle" size={10} />승인 완료
+                                        {/* 검수상태 — 6단계 배지(읽기 전용). 승인/반려/이의제기 등 액션은 상세화면에서. */}
+                                        {(() => {
+                                            const RS = {
+                                                pending: { label: '대기', bg: 'var(--muted)', ink: 'var(--ink-500)', dot: 'var(--ink-400)' },
+                                                in_review: { label: '검수중', bg: '#E4E7EC', ink: '#344054', dot: '#475467' },
+                                                review_done: { label: '검토요청', bg: 'var(--primary-soft)', ink: 'var(--primary)', dot: 'var(--primary)' },
+                                                admin_revised: { label: '반려', bg: '#FFFAEB', ink: '#B54708', dot: '#F79009' },
+                                                objection: { label: '이의제기', bg: '#FEF3F2', ink: '#B42318', dot: '#D92D20' },
+                                                approved: { label: '확정', bg: '#ECFDF3', ink: '#067647', dot: '#12B76A' },
+                                            };
+                                            const k = r.reviewStatus === 'completed' ? 'approved' : (r.reviewStatus || 'pending');
+                                            const m = RS[k] || RS.pending;
+                                            return (
+                                                <span className="pill" style={{ background: m.bg, color: m.ink, fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: m.dot, display: 'inline-block' }} />{m.label}
                                                 </span>
-                                                <button
-                                                    className="btn-mini"
-                                                    onClick={() => unapprove(r.id)}
-                                                    style={{ height: 24, padding: '0 7px' }}
-                                                    title="승인을 취소하고 검토요청 상태로 되돌립니다"
-                                                >
-                                                    <Icon name="rotate-ccw" size={10} />취소
-                                                </button>
-                                            </div>
-                                        ) : r.reviewStatus === 'admin_revised' ? (
-                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                                <span className="muted-text" style={{ fontSize: 11, color: '#B54708', whiteSpace: 'nowrap' }} title="관리자 수정분을 상담사가 확인 중입니다.">상담사 확인중</span>
-                                                <button className="btn-mini" onClick={() => forceApprove(r.id)} style={{ height: 24, padding: '0 7px' }} title="상담사 확인 없이 강제로 최종승인합니다(교착 해소용).">
-                                                    <Icon name="check" size={10} />강제승인
-                                                </button>
-                                            </div>
-                                        ) : r.reviewStatus === 'review_done' ? (
-                                            <button className="btn-mini primary" onClick={() => approve(r.id)} style={{ height: 26, padding: '0 9px' }} title="상담사 검토 제출분을 최종승인합니다. (점수를 수정했다면 상세에서 '상담사 확인요청')">
-                                                <Icon name="check" size={11} />승인
-                                            </button>
-                                        ) : (
-                                            <span className="muted-text" style={{ fontSize: 11, color: 'var(--ink-400)', whiteSpace: 'nowrap' }} title="상담사 검토요청 완료 후 승인할 수 있습니다.">
-                                                상담사 평가 대기
-                                            </span>
-                                        )}
+                                            );
+                                        })()}
                                     </div>
                                     <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-400)' }}>
                                         <Icon name="chevron-right" size={14} />

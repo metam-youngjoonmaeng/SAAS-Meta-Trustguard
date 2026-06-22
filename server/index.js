@@ -345,7 +345,7 @@ const pool = new Pool({ connectionString: databaseUrl });
 
 // 검수 단계: pending → in_review → review_done(검토요청) → [admin_revised(관리자 수정·상담사 확인대기)] → approved(최종승인).
 // 레거시 3단계의 'completed' 는 'approved' 로 정규화(저장/입력 모두 호환).
-const REVIEW_STATUS_VALUES = new Set(['pending', 'in_review', 'review_done', 'admin_revised', 'approved']);
+const REVIEW_STATUS_VALUES = new Set(['pending', 'in_review', 'review_done', 'admin_revised', 'objection', 'approved']);
 
 function normalizeReviewStatus(value) {
     if (typeof value !== 'string') return 'pending';
@@ -1856,32 +1856,60 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
         return;
     }
 
-    // 역할 기반 전이 검증 — 반복 검토 루프.
-    //   상담사(본인): pending→in_review→review_done(제출,round+1) / admin_revised→in_review(재이의)·approved(동의).
-    //   관리자: review_done→admin_revised(수정·확인요청)·approved(무수정 승인 or 강제) / admin_revised→approved(강제) /
-    //           approved→review_done(승인취소) / pending·in_review 조정.
+    // 역할 기반 전이 검증 — 반려/이의제기 루프(새 설계).
+    //   상담사(본인): pending→in_review(검수시작) / pending·in_review→review_done(검토제출,round+1) /
+    //                 admin_revised→objection(이의제기,사유)·approved(점수 동의→확정).
+    //   관리자: pending·in_review→approved(직접 확정) / review_done→admin_revised(반려,사유)·approved(최종 승인) /
+    //           objection→approved(재검토 후 승인)·admin_revised(다시 반려,사유) / admin_revised→approved(강제 확정) /
+    //           approved→review_done(확정 취소).
     const role = req.session?.role;
     const isAdmin = role === 'admin' || role === 'super_admin';
     const isAgent = role === 'agent';
     const isOwn = cur.agent_user_id != null && cur.agent_user_id === req.session?.user_id;
     const from = normalizeReviewStatus(cur.review_status);
     const uid = req.session?.user_id ?? null;
-    const force = req.body?.force === true;
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : null;
 
     let allowed = false;
     if (isAdmin) {
         if (next === 'pending' || next === 'in_review') allowed = true;
-        else if (next === 'review_done') allowed = (from === 'approved'); // 승인취소
-        else if (next === 'admin_revised') allowed = (from === 'review_done' || from === 'approved'); // 수정 후 확인요청 / 승인분 재검토 요청
-        else if (next === 'approved') allowed = (from === 'review_done' || from === 'admin_revised');
+        else if (next === 'approved') allowed = ['pending', 'in_review', 'review_done', 'objection', 'admin_revised'].includes(from);
+        else if (next === 'admin_revised') allowed = (from === 'review_done' || from === 'objection'); // 반려 / 다시 반려
+        else if (next === 'review_done') allowed = (from === 'approved'); // 확정 취소
     } else if (isAgent && isOwn) {
-        if (from === 'pending' && next === 'in_review') allowed = true;
-        else if (from === 'in_review' && (next === 'review_done' || next === 'pending')) allowed = true;
-        else if (from === 'admin_revised' && (next === 'in_review' || next === 'approved')) allowed = true;
+        if (from === 'pending' && next === 'in_review') allowed = true; // 검수 시작(작성중 표시)
+        else if ((from === 'pending' || from === 'in_review') && next === 'review_done') allowed = true; // 검토 제출
+        else if (from === 'admin_revised' && (next === 'objection' || next === 'approved')) allowed = true; // 이의제기 / 점수 동의
     }
     if (!allowed) {
         res.status(403).json({ message: '이 상태로 변경할 권한이 없습니다.' });
         return;
+    }
+
+    // 반려/이의제기엔 사유 필수.
+    if ((next === 'admin_revised' || next === 'objection') && !reason) {
+        res.status(400).json({ message: '사유를 입력해 주세요.' });
+        return;
+    }
+
+    // 검토요청 제출은 수기평가 100% 완료해야 가능(프론트 버튼 게이트의 백엔드 백스톱 — API 직접 호출 우회 방지).
+    //   "판단됨" 정의 = manual_eval_option 설정됨 OR manual_eval≠ai_eval (GET /api/evaluations 의 judged 와 동일).
+    if (isAgent && next === 'review_done' && (from === 'pending' || from === 'in_review')) {
+        const { rows: prog } = await pool.query(
+            `SELECT count(*)::int AS total,
+                    count(*) FILTER (
+                        WHERE (manual_eval_option IS NOT NULL AND btrim(manual_eval_option) <> '')
+                           OR (ai_eval IS NOT NULL AND manual_eval IS NOT NULL AND manual_eval IS DISTINCT FROM ai_eval)
+                    )::int AS judged
+               FROM qa_evaluation_rows WHERE "ID" = $1`,
+            [qaId]
+        );
+        const total = prog[0]?.total ?? 0;
+        const judged = prog[0]?.judged ?? 0;
+        if (total > 0 && judged < total) {
+            res.status(400).json({ message: `수기평가를 모두 입력해야 검토요청할 수 있습니다 (${judged}/${total}).` });
+            return;
+        }
     }
 
     // counselor_eval(상담사 마지막 제출) 대비 manual_eval(현재) 변경분.
@@ -1896,38 +1924,36 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
         return rows;
     }
 
-    // 행위(action) 판정 + 승인 시 force 강제 규칙 + 승인자 결정.
+    // 행위(action) 판정 + 승인자 결정.
     let action = null;
     let diffRows = [];
     let approvedBy = null;
     if (next === 'approved') {
         if (isAgent) {
-            action = 'agree'; // 상담사 동의 → 즉시 승인. 승인자=마지막 수정 관리자.
+            action = 'agree'; // 상담사 점수 동의 → 확정. 승인자=마지막 반려 관리자.
             const { rows: rev } = await pool.query(
-                `SELECT actor_user_id FROM qa_review_events WHERE qa_id=$1 AND action='revise' ORDER BY id DESC LIMIT 1`, [qaId]
+                `SELECT actor_user_id FROM qa_review_events WHERE qa_id=$1 AND action IN ('reject','reject_again') ORDER BY id DESC LIMIT 1`, [qaId]
             );
             approvedBy = rev[0]?.actor_user_id ?? uid;
         } else {
-            diffRows = await computeDiff();
-            const hasDiff = diffRows.length > 0;
-            if (from === 'review_done' && !hasDiff) action = 'approve';
-            else if (force) action = 'force_approve';
-            else {
-                res.status(409).json({ message: '수정사항이 있어 상담사 확인이 필요합니다. "상담사 확인요청" 또는 "강제 최종승인"을 사용하세요.' });
-                return;
-            }
+            if (from === 'review_done') action = 'approve';            // 최종 승인
+            else if (from === 'objection') action = 'reapprove';       // 재검토 후 승인
+            else if (from === 'admin_revised') action = 'force_approve'; // 강제 확정
+            else action = 'direct_approve';                            // pending/in_review 직접 확정
             approvedBy = uid;
         }
     } else if (next === 'admin_revised') {
         diffRows = await computeDiff();
-        action = (from === 'approved') ? 'reopen' : 'revise'; // 승인분을 다시 상담사 확인 단계로 (재검토 요청)
+        action = (from === 'objection') ? 'reject_again' : 'reject'; // 반려 / 다시 반려
+    } else if (next === 'objection') {
+        action = 'object'; // 이의제기
     } else if (next === 'review_done') {
         action = (from === 'approved') ? 'cancel' : 'submit';
-    } else if (next === 'in_review' && from === 'admin_revised') {
-        action = 'reobject';
+    } else if (next === 'in_review' && from === 'pending') {
+        action = 'start';
     }
 
-    const bumpRound = (next === 'review_done' && from === 'in_review');
+    const bumpRound = (action === 'submit');
 
     try {
         const { rows } = await pool.query(
@@ -1935,7 +1961,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                 SET review_status = $2,
                     review_round = review_round + CASE WHEN $4 THEN 1 ELSE 0 END,
                     review_started_at = CASE
-                        WHEN review_started_at IS NULL AND $2 IN ('in_review', 'review_done', 'admin_revised', 'approved')
+                        WHEN review_started_at IS NULL AND $2 IN ('in_review', 'review_done', 'admin_revised', 'objection', 'approved')
                         THEN now() ELSE review_started_at
                     END,
                     review_completed_at = CASE
@@ -1956,20 +1982,20 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
         const updated = rows[0];
         const round = updated.review_round;
 
-        // 검토요청 정방향 제출(검수중→검토요청) 시에만 상담사 점수 스냅샷(이후 관리자 수정 diff 기준).
-        if (next === 'review_done' && from === 'in_review') {
+        // 검토요청 제출(→검토요청) 시 상담사 점수 스냅샷(이후 관리자 변경분 diff 기준).
+        if (action === 'submit') {
             await pool.query(`UPDATE qa_evaluation_rows SET counselor_eval = manual_eval WHERE "ID" = $1`, [qaId])
                 .catch((e) => console.error('counselor_eval snapshot error:', e));
         }
 
-        // 감사 이벤트 기록.
+        // 감사 이벤트 기록(사유·변경분 포함).
         if (action) {
-            const changed = (action === 'revise' || action === 'force_approve') && diffRows.length
+            const changed = (action === 'reject' || action === 'reject_again' || action === 'force_approve') && diffRows.length
                 ? JSON.stringify(diffRows.map((r) => ({ order_no: r.order_no, item: r.item, from: r.counselor_eval, to: r.manual_eval })))
                 : null;
             await pool.query(
-                `INSERT INTO qa_review_events (qa_id, round, actor_user_id, action, changed_items) VALUES ($1,$2,$3,$4,$5::jsonb)`,
-                [qaId, round, uid, action, changed]
+                `INSERT INTO qa_review_events (qa_id, round, actor_user_id, action, changed_items, reason) VALUES ($1,$2,$3,$4,$5::jsonb,$6)`,
+                [qaId, round, uid, action, changed, reason]
             ).catch((e) => console.error('review event insert error:', e));
         }
 
@@ -1980,50 +2006,37 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                 .map((r) => `${r.item} ${fmtEvalNum(r.counselor_eval)}→${fmtEvalNum(r.manual_eval)}`)
                 .join(', ');
             const N = (cur.agent_user_id != null);
-            if (action === 'revise' && N) {
-                await createNotification(pool, {
-                    recipientUserId: cur.agent_user_id, type: 'review_revised',
-                    title: '평가가 수정되어 확인이 필요합니다',
-                    body: diffRows.length ? `관리자 수정 ${diffRows.length}건: ${changesText}` : '관리자가 평가를 검토했습니다. 확인해 주세요.',
-                    resourceType: 'qa_call', resourceId: qaId, actorUserId: uid, actorName, orgId: cur.org_id ?? null,
-                });
-            } else if (action === 'reopen' && N) {
-                await createNotification(pool, {
-                    recipientUserId: cur.agent_user_id, type: 'review_revised',
-                    title: '승인된 평가가 재검토 요청되었습니다',
-                    body: '관리자가 최종 승인을 해제하고 재검토를 요청했습니다. 확인해 주세요.',
-                    resourceType: 'qa_call', resourceId: qaId, actorUserId: uid, actorName, orgId: cur.org_id ?? null,
-                });
-            } else if (action === 'approve' && N) {
-                await createNotification(pool, {
-                    recipientUserId: cur.agent_user_id, type: 'review_approved',
-                    title: '평가가 최종 승인되었습니다', body: '검토하신 내용 그대로 최종 승인되었습니다.',
-                    resourceType: 'qa_call', resourceId: qaId, actorUserId: uid, actorName, orgId: cur.org_id ?? null,
-                });
+            const notifyAgent = (type, title, body) => createNotification(pool, {
+                recipientUserId: cur.agent_user_id, type, title, body,
+                resourceType: 'qa_call', resourceId: qaId, actorUserId: uid, actorName, orgId: cur.org_id ?? null,
+            });
+            if ((action === 'reject' || action === 'reject_again') && N) {
+                await notifyAgent('review_revised',
+                    action === 'reject_again' ? '평가가 다시 반려되었습니다' : '평가가 반려되었습니다',
+                    `반려 사유: ${reason}${diffRows.length ? ` · 변경 ${diffRows.length}건(${changesText})` : ''}`);
+            } else if ((action === 'approve' || action === 'reapprove' || action === 'direct_approve') && N) {
+                await notifyAgent('review_approved', '평가가 확정되었습니다',
+                    action === 'reapprove' ? '재검토 후 점수가 확정되었습니다.' : '평가 점수가 최종 확정되었습니다.');
             } else if (action === 'force_approve' && N) {
-                await createNotification(pool, {
-                    recipientUserId: cur.agent_user_id, type: 'review_edited',
-                    title: '평가가 수정되어 최종 승인되었습니다',
-                    body: diffRows.length ? `변경 ${diffRows.length}건: ${changesText}` : '관리자가 최종 승인했습니다.',
-                    resourceType: 'qa_call', resourceId: qaId, actorUserId: uid, actorName, orgId: cur.org_id ?? null,
-                });
+                await notifyAgent('review_edited', '평가가 강제 확정되었습니다',
+                    diffRows.length ? `변경 ${diffRows.length}건: ${changesText}` : '관리자가 점수를 확정했습니다.');
             } else if (action === 'agree' && approvedBy != null) {
                 await createNotification(pool, {
                     recipientUserId: approvedBy, type: 'review_acknowledged',
-                    title: '상담사가 수정에 동의했습니다',
-                    body: `${actorName || '상담사'}님이 수정 내용에 동의하여 최종 승인되었습니다 (${round}차).`,
+                    title: '상담사가 점수에 동의했습니다',
+                    body: `${actorName || '상담사'}님이 점수에 동의하여 확정되었습니다.`,
                     resourceType: 'qa_call', resourceId: qaId, actorUserId: uid, actorName, orgId: cur.org_id ?? null,
                 });
-            } else if (action === 'reobject') {
+            } else if (action === 'object') {
                 const { rows: rev } = await pool.query(
-                    `SELECT actor_user_id FROM qa_review_events WHERE qa_id=$1 AND action='revise' ORDER BY id DESC LIMIT 1`, [qaId]
+                    `SELECT actor_user_id FROM qa_review_events WHERE qa_id=$1 AND action IN ('reject','reject_again') ORDER BY id DESC LIMIT 1`, [qaId]
                 );
                 const target = rev[0]?.actor_user_id;
                 if (target != null) {
                     await createNotification(pool, {
                         recipientUserId: target, type: 'review_reobjected',
-                        title: '상담사가 재이의제기했습니다',
-                        body: `${actorName || '상담사'}님이 재이의제기했습니다. 다시 검토가 필요합니다.`,
+                        title: '상담사가 이의제기했습니다',
+                        body: `이의제기 사유: ${reason}`,
                         resourceType: 'qa_call', resourceId: qaId, actorUserId: uid, actorName, orgId: cur.org_id ?? null,
                     });
                 }
@@ -2062,6 +2075,39 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
             error_message: String(error?.message || error),
         });
         res.status(500).json({ message: 'failed to update review_status' });
+    }
+});
+
+// 검수 이력(타임라인) — 상세화면 "검수 이력" 팝업용. 최신순 아님(오름차순) — 타임라인 누적 표시.
+app.get('/api/calls/:qaId/review-events', async (req, res) => {
+    const qaId = String(req.params.qaId || '').trim();
+    if (!qaId) {
+        res.status(400).json({ message: 'qaId is required' });
+        return;
+    }
+    try {
+        const { rows } = await pool.query(
+            `SELECT e.id, e.round, e.action, e.changed_items, e.reason, e.created_at,
+                    e.actor_user_id, u.name AS actor_name
+               FROM qa_review_events e
+               LEFT JOIN users u ON u.id = e.actor_user_id
+              WHERE e.qa_id = $1
+              ORDER BY e.id ASC`,
+            [qaId]
+        );
+        res.json(rows.map((r) => ({
+            id: Number(r.id),
+            round: Number(r.round ?? 0),
+            action: r.action,
+            changed_items: r.changed_items || null,
+            reason: r.reason || null,
+            actor_user_id: r.actor_user_id ?? null,
+            actor_name: r.actor_name || null,
+            created_at: r.created_at,
+        })));
+    } catch (error) {
+        console.error('GET /api/calls/:qaId/review-events error:', error);
+        res.status(500).json({ message: 'failed to load review events' });
     }
 });
 

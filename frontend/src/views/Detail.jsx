@@ -9,12 +9,14 @@ import {
     removeGoldenSet,
     updateReviewStatus,
     saveManualEvaluationPatches,
+    fetchReviewEvents,
 } from '../services/api';
 import Header from '../components/Header';
 import RadarChart from '../components/Detail/RadarChart';
 import ConsumerEvalTable from '../components/Detail/ConsumerEvalTable';
 import ConsumerAnalysisPanel from '../components/Detail/ConsumerAnalysisPanel';
 import ManualJudgmentCell from '../components/Detail/ManualJudgmentCell';
+import ReviewActionBar from '../components/Detail/ReviewActionBar';
 import ReviewStatusBadge, {
     REVIEW_STATUS,
     deriveReviewStatus,
@@ -164,15 +166,24 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     }, [qaId]);
     const currentReviewStatus = reviewStatusOverride ?? deriveReviewStatus(call);
 
+    // 검수 이력(타임라인) — 상태 변경마다 재로딩.
+    const [reviewEvents, setReviewEvents] = useState([]);
+    const reloadReviewEvents = useCallback(() => {
+        if (!qaId) return;
+        fetchReviewEvents(qaId).then((rows) => setReviewEvents(Array.isArray(rows) ? rows : [])).catch(() => {});
+    }, [qaId]);
+    useEffect(() => { reloadReviewEvents(); }, [reloadReviewEvents]);
+
     const handleReviewStatusChange = useCallback(
-        async (nextStatus, { force = false, alertOnError = false } = {}) => {
+        async (nextStatus, { force = false, alertOnError = false, reason } = {}) => {
             if (!qaId || isReviewStatusSaving) return;
             const prev = currentReviewStatus;
             setReviewStatusOverride(nextStatus);
             setIsReviewStatusSaving(true);
             try {
-                await updateReviewStatus(qaId, nextStatus, { force });
+                await updateReviewStatus(qaId, nextStatus, { force, reason });
                 onEvaluationsSaved?.();
+                reloadReviewEvents();
                 return true;
             } catch (err) {
                 console.error('updateReviewStatus failed:', err);
@@ -187,7 +198,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                 setIsReviewStatusSaving(false);
             }
         },
-        [qaId, currentReviewStatus, isReviewStatusSaving, onEvaluationsSaved]
+        [qaId, currentReviewStatus, isReviewStatusSaving, onEvaluationsSaved, reloadReviewEvents]
     );
 
     // 관리자 수정분(상담사 마지막 제출 counselor_eval 대비 현재 manual_eval) — 상담사 확인 배너용.
@@ -537,32 +548,18 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         return { total, done, pct };
     }, [checklistRows, manualJudgments]);
 
-    // 검수상태 자동 전이 — 상담사(본인) 자체평가 진행에 따라 흐른다.
-    //  · 판단 1개 입력 → '검수중'(단순 열람으론 안 바뀌게 reviewTouchedRef 필요)
-    //  · 전 항목 입력(100%) → '검토요청' 자동 제출. 이 전이는 reviewTouchedRef 없이도(=새로고침 후에도)
-    //    '검수중' 상태에서 100% 면 발동 — 예전엔 touched 가 false 라 새로고침 시 100% 인데도 멈췄다(버그).
-    //  관리자는 자동전이 없음(폼을 채워도 1차로 제출되지 않게). 승인/수정확인/최종승인 콜은 자동전이 금지.
+    // 검수상태 자동 전이 — '검수 시작'(대기→검수중)만 자동.
+    //  상담사가 첫 판단을 입력하면 '검수중'으로 표시. 검토요청 '제출'은 명시 버튼(아래 액션바)으로만 —
+    //  보이지 않는 자동 제출은 새로고침/리로드 race 로 멈추는 문제가 있어 제거했다(설계: 명시 검토 제출).
+    //  관리자는 자동전이 없음. 검토요청/반려/이의제기/확정 상태는 자동전이 금지.
     useEffect(() => {
         if (isConsumer || role !== 'agent') return;
         if (!reviewProgress.total || isReviewStatusSaving) return;
-        const cur = currentReviewStatus;
-        if (cur === REVIEW_STATUS.APPROVED || cur === REVIEW_STATUS.REVIEW_DONE || cur === REVIEW_STATUS.ADMIN_REVISED) return;
-        const complete = reviewProgress.done >= reviewProgress.total;
-        if (!complete) {
-            // 검수중 진입 — 본인이 직접 입력했을 때만.
-            if (!reviewTouchedRef.current || cur === REVIEW_STATUS.IN_REVIEW) return;
-            if (reviewSyncFailedRef.current === REVIEW_STATUS.IN_REVIEW) return;
-            handleReviewStatusChange(REVIEW_STATUS.IN_REVIEW).then((ok) => {
-                if (ok === false) reviewSyncFailedRef.current = REVIEW_STATUS.IN_REVIEW;
-            });
-            return;
-        }
-        // 100% 완료 → 검토요청 자동 제출. 이미 '검수중'이면 새로고침 후에도(touched 불문) 발동.
-        // 'pending' 에서 바로 100% 인 경우엔 본인이 방금 채운 경우(touched)만 — 단순 열람 보호.
-        if (cur !== REVIEW_STATUS.IN_REVIEW && !reviewTouchedRef.current) return;
-        if (reviewSyncFailedRef.current === REVIEW_STATUS.REVIEW_DONE) return;
-        handleReviewStatusChange(REVIEW_STATUS.REVIEW_DONE).then((ok) => {
-            if (ok === false) reviewSyncFailedRef.current = REVIEW_STATUS.REVIEW_DONE;
+        if (currentReviewStatus !== REVIEW_STATUS.PENDING) return;
+        if (!reviewTouchedRef.current) return; // 단순 열람 보호 — 직접 입력했을 때만
+        if (reviewSyncFailedRef.current === REVIEW_STATUS.IN_REVIEW) return;
+        handleReviewStatusChange(REVIEW_STATUS.IN_REVIEW).then((ok) => {
+            if (ok === false) reviewSyncFailedRef.current = REVIEW_STATUS.IN_REVIEW;
         });
     }, [reviewProgress, currentReviewStatus, isReviewStatusSaving, isConsumer, handleReviewStatusChange, role]);
 
@@ -682,7 +679,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     }
 
     const sttPanel = (
-        <div className="bg-white rounded-xl border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col lg:h-[884px] overflow-hidden animate-in slide-in-from-right-4 duration-500">
+        <div className="bg-white rounded-[14px] border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col lg:h-[884px] overflow-hidden animate-in slide-in-from-right-4 duration-500">
             <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex justify-between items-center">
                 <div className="flex items-center gap-2.5">
                     <MessageSquare size={16} className="text-[#475467]" />
@@ -756,24 +753,22 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
 
     return (
         <>
-            <div className="animate-fade-in pb-10" style={{ zoom: 0.9 }}>
-                <Header
-                    title={`${PRODUCT_NAME} · 상담 QA 분석 결과`}
-                    subtitle={`${call.agent_name || '-'} 상담사 | 상담번호: ${call.call_no || '-'}`}
-                    actions={
-                        <div className="flex gap-2">
-                            <button
-                                onClick={onBack}
-                                className="px-4 py-2 border border-[#D0D5DD] rounded-lg text-sm font-semibold text-[#344054] hover:bg-gray-50 flex items-center gap-2"
-                            >
-                                <ArrowLeft size={16} />
-                                목록으로
-                            </button>
-                        </div>
-                    }
-                />
+            <div className="animate-fade-in pb-10 w-full">
+                {/* 상단 제목 제거(상단바 브레드크럼이 대체) — 상담사/상담번호 + 목록으로만 컴팩트하게 */}
+                <div className="flex items-center justify-between gap-4 mb-5">
+                    <p className="text-sm text-[#667085] truncate">
+                        {`${call.agent_name || '-'} 상담사 | 상담번호: ${call.call_no || '-'}`}
+                    </p>
+                    <button
+                        onClick={onBack}
+                        className="shrink-0 px-4 py-2 border border-[#D0D5DD] rounded-lg text-sm font-semibold text-[#344054] hover:bg-gray-50 flex items-center gap-2"
+                    >
+                        <ArrowLeft size={16} />
+                        목록으로
+                    </button>
+                </div>
 
-                <div className="bg-white rounded-xl border border-[#E4E7EC] shadow-sm overflow-x-auto mb-6">
+                <div className="bg-white rounded-[14px] border border-[#E4E7EC] shadow-sm overflow-x-auto mb-6">
                     <table className="w-full min-w-[1400px] border-collapse">
                         <thead>
                             <tr className="bg-[#F9FAFB] text-[11px] text-[#667085]">
@@ -826,63 +821,18 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                     </table>
                 </div>
 
-                {/* 반복 검토(이의제기) 액션 바 — 역할·상태별. */}
-                {!isConsumer && (() => {
-                    const isAdmin = role === 'admin' || role === 'super_admin';
-                    const isAgent = role === 'agent';
-                    const st = currentReviewStatus;
-                    const saving = isReviewStatusSaving;
-                    const btn = 'px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
-                    if (isAdmin && st === REVIEW_STATUS.REVIEW_DONE) {
-                        return (
-                            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#BFD4F2] bg-[#EEF4FB] px-4 py-3">
-                                <span className="text-[13px] text-[#055AAF] mr-auto">상담사 검토 제출분입니다. 점수를 수정했다면 <b>상담사 확인요청</b>, 그대로 확정하려면 <b>최종승인</b>.</span>
-                                <button className={`${btn} bg-white border border-[#BFD4F2] text-[#055AAF] hover:bg-[#E0ECFA]`} disabled={saving} onClick={() => handleReviewStatusChange('admin_revised', { alertOnError: true })}>상담사 확인요청</button>
-                                <button className={`${btn} bg-[#055AAF] text-white hover:bg-[#044a93]`} disabled={saving} onClick={() => handleReviewStatusChange('approved', { alertOnError: true })}>최종승인</button>
-                                <button className={`${btn} bg-white border border-[#FECDCA] text-[#B42318] hover:bg-[#FEF3F2]`} disabled={saving} onClick={() => { if (window.confirm('상담사 확인 없이 강제로 최종승인합니다. 계속할까요?')) handleReviewStatusChange('approved', { force: true, alertOnError: true }); }}>강제 최종승인</button>
-                            </div>
-                        );
-                    }
-                    if (isAdmin && st === REVIEW_STATUS.ADMIN_REVISED) {
-                        return (
-                            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#FEDF89] bg-[#FFFAEB] px-4 py-3">
-                                <span className="text-[13px] text-[#B54708] mr-auto">상담사 확인 대기중입니다(수정 내용 동의 또는 재이의제기).</span>
-                                <button className={`${btn} bg-white border border-[#FECDCA] text-[#B42318] hover:bg-[#FEF3F2]`} disabled={saving} onClick={() => { if (window.confirm('상담사 확인 없이 강제로 최종승인합니다. 계속할까요?')) handleReviewStatusChange('approved', { force: true, alertOnError: true }); }}>강제 최종승인</button>
-                            </div>
-                        );
-                    }
-                    if (isAdmin && st === REVIEW_STATUS.APPROVED) {
-                        return (
-                            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#ABEFC6] bg-[#ECFDF3] px-4 py-3">
-                                <span className="text-[13px] text-[#067647] mr-auto">최종 승인된 평가입니다. 상담사에게 다시 확인받으려면 <b>재검토 요청</b>, 단순 되돌리려면 <b>승인 취소</b>.</span>
-                                <button className={`${btn} bg-white border border-[#FEDF89] text-[#B54708] hover:bg-[#FFFAEB]`} disabled={saving} onClick={() => { if (window.confirm('최종 승인을 해제하고 상담사에게 재검토를 요청합니다. 계속할까요?')) handleReviewStatusChange('admin_revised', { alertOnError: true }); }}>재검토 요청</button>
-                                <button className={`${btn} bg-white border border-[#E4E7EC] text-[#475467] hover:bg-[#F2F4F7]`} disabled={saving} onClick={() => { if (window.confirm('최종 승인을 취소하고 검토요청 상태로 되돌립니다. 계속할까요?')) handleReviewStatusChange('review_done', { alertOnError: true }); }}>승인 취소</button>
-                            </div>
-                        );
-                    }
-                    if (isAgent && st === REVIEW_STATUS.ADMIN_REVISED) {
-                        return (
-                            <div className="mb-4 rounded-xl border border-[#FEDF89] bg-[#FFFAEB] px-4 py-3">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-[13px] font-bold text-[#B54708]">관리자가 평가를 수정했습니다{revisedItems.length ? ` (${revisedItems.length}건)` : ''}</span>
-                                </div>
-                                {revisedItems.length > 0 && (
-                                    <ul className="text-[12.5px] text-[#7A5B12] mb-2 list-disc pl-5 space-y-0.5">
-                                        {revisedItems.map((it) => (
-                                            <li key={it.order_no}>{it.item} <span className="font-mono">{it.from}→{it.to}</span></li>
-                                        ))}
-                                    </ul>
-                                )}
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-[12.5px] text-[#7A5B12] mr-auto">동의하면 최종 확정되고, 재이의제기하면 다시 수정할 수 있습니다.</span>
-                                    <button className={`${btn} bg-[#12B76A] text-white hover:bg-[#0E9F5B]`} disabled={saving} onClick={() => { if (window.confirm('수정 내용에 동의하면 최종 확정됩니다. 계속할까요?')) handleReviewStatusChange('approved', { alertOnError: true }); }}>동의 (최종 확정)</button>
-                                    <button className={`${btn} bg-white border border-[#FEC84B] text-[#B54708] hover:bg-[#FEF0C7]`} disabled={saving} onClick={() => handleReviewStatusChange('in_review', { alertOnError: true })}>재이의제기</button>
-                                </div>
-                            </div>
-                        );
-                    }
-                    return null;
-                })()}
+                {/* 검수 워크플로우 액션 바 — 스텝퍼 + 역할별 액션 + 사유/이력 팝업(새 설계). */}
+                {!isConsumer && (
+                    <ReviewActionBar
+                        status={currentReviewStatus}
+                        role={role}
+                        isSaving={isReviewStatusSaving}
+                        onChange={(next, opts) => handleReviewStatusChange(next, opts)}
+                        reviewEvents={reviewEvents}
+                        revisedItems={revisedItems}
+                        progress={reviewProgress}
+                    />
+                )}
 
                 {isConsumer ? (
                     <div className="flex flex-col lg:flex-row gap-6 items-stretch">
@@ -922,7 +872,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                         표 전체 높이로 늘어남 → h-[884px] 로 확정해 카드 안에서만 스크롤되게 함. */}
                     <div className="lg:w-2/3 flex flex-col gap-6 min-h-0 lg:h-[884px]">
                         {/* Main Content Tabs */}
-                        <div className="bg-white rounded-xl border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col flex-1 min-h-0 lg:h-[884px] w-full overflow-hidden">
+                        <div className="bg-white rounded-[14px] border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col flex-1 min-h-0 lg:h-[884px] w-full overflow-hidden">
                             <div className="px-5 py-3 border-b border-[#F2F4F7] bg-[#FAFBFC]">
                                 <div className="flex justify-between items-center">
                                     <div className="flex items-center gap-2.5 min-w-0">
@@ -978,7 +928,6 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                             <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-44 text-left">평가 발화</th>
                                             <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-24">AI평가</th>
                                             <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-40">수기평가</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-24">매칭률</th>
                                             <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-24">당월평균</th>
                                             <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-3 text-[13px] font-semibold text-[#667085] w-24">직무평균</th>
                                         </tr>
@@ -1055,7 +1004,6 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                 canManageGold={canManageGold}
                                                             />
                                                         </td>
-                                                        <td className="px-3 py-3 align-middle text-[14px] text-[#475467] tabular-nums">{r.match_rate}</td>
                                                         <td className="px-3 py-3 align-middle text-[14px] text-[#475467] tabular-nums">{r.monthly_avg}</td>
                                                         <td className="px-3 py-3 align-middle text-[14px] text-[#475467] tabular-nums">{r.team_avg}</td>
                                                     </tr>
@@ -1073,7 +1021,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                         {rightView === 'analysis' ?
                             <div className="flex flex-col gap-6 lg:h-[884px] animate-in slide-in-from-right-4 duration-500">
                                 {/* Radar Chart Card */}
-                                <div className="bg-white rounded-xl border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col h-[440px] shrink-0 overflow-visible">
+                                <div className="bg-white rounded-[14px] border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col h-[440px] shrink-0 overflow-visible">
                                     <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-2.5">
                                         <BarChart3 size={16} className="text-[#475467]" />
                                         <h3 className="text-[14px] font-semibold text-[#101828] tracking-tight">Pentagon Diagram</h3>
@@ -1135,7 +1083,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                 </div>
 
                                 {/* Analysis Comments / Admin Actions */}
-                                <div className="bg-white rounded-xl border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col h-[420px] shrink-0 overflow-hidden">
+                                <div className="bg-white rounded-[14px] border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col h-[420px] shrink-0 overflow-hidden">
                                     <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-2.5">
                                         <MessageSquare size={16} className="text-[#475467]" />
                                         <h3 className="text-[14px] font-semibold text-[#101828] tracking-tight">관리자 코멘트</h3>

@@ -404,7 +404,7 @@ const Logs = () => {
     const [activeTab, setActiveTab] = useState('audit');
 
     return (
-        <div className="w-full max-w-[1280px] mx-auto">
+        <div className="w-full">
             <Header
                 title="실시간 로그"
                 subtitle={

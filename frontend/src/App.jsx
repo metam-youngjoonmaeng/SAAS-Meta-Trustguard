@@ -11,6 +11,7 @@ import EvalMgmt from './views/EvalMgmt';
 import Sidebar from './components/Sidebar';
 import Nav from './components/Nav';
 import ProfileModal from './components/ProfileModal';
+import PageContainer from './components/PageContainer';
 import {
     fetchCalls,
     fetchOrganizations,
@@ -519,6 +520,7 @@ function App() {
                 remainingMs={remainingMs}
                 isDev={process.env.NODE_ENV !== 'production' || Boolean(process.env.NEXT_PUBLIC_DEV_BADGE)}
                 user={currentUser}
+                activeTab={activeTab}
             />
             <div className="app-shell-body">
                 <Sidebar
@@ -530,6 +532,7 @@ function App() {
                     onTabClick={handleSidebarTabClick}
                 />
                 <main className="app-shell-main">
+                <PageContainer>
                 {activeTab === 'dashboard' && (
                     <Dashboard
                         calls={calls}
@@ -598,6 +601,7 @@ function App() {
                         <p className="text-sm text-[#667085]">admin 권한이 필요합니다.</p>
                     </div>
                 )}
+                </PageContainer>
                 </main>
             </div>
             {(profileModalOpen || forceChangePassword) && currentUser && (

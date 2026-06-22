@@ -16,9 +16,9 @@ const TYPE_META = {
     review_approved: { label: '승인', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: CheckCircle2 },
     review_edited: { label: '수정 반영', cls: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]', Icon: Pencil },
     review_submitted: { label: '검토요청', cls: 'bg-[#EEF4FB] text-[#055AAF] border-[#BFD4F2]', Icon: ClipboardCheck },
-    review_revised: { label: '수정확인', cls: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]', Icon: Pencil },
+    review_revised: { label: '반려', cls: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]', Icon: Pencil },
     review_acknowledged: { label: '동의', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: CheckCircle2 },
-    review_reobjected: { label: '재이의', cls: 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]', Icon: Undo2 },
+    review_reobjected: { label: '이의제기', cls: 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]', Icon: Undo2 },
     coaching_assigned: { label: '코칭 배정', cls: 'bg-[#F4F3FF] text-[#5925DC] border-[#D9D6FE]', Icon: GraduationCap },
     coaching_completed: { label: '코칭 완료', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: Award },
 };

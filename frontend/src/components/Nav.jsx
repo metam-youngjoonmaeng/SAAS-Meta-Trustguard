@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock3, ShieldCheck, Shield, Headset } from 'lucide-react';
+import { Clock3, ShieldCheck, Shield, Headset, Home, ChevronRight } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 
 // 원본: 01-AI-Tutor-dev/frontend/components/nav.tsx
@@ -22,6 +22,37 @@ const ROLE_META = {
     agent:       { label: '상담사',     Icon: Headset,     variant: 'agent' },
 };
 
+// 탭 → 라벨 (사이드바와 동일). 상단바 브레드크럼 표시용.
+const TAB_LABELS = {
+    dashboard: '평가 리스트',
+    'eval-items': 'AI 평가항목 관리',
+    users: '사용자 관리',
+    brands: '브랜드 관리',
+    stats: '전체 통계',
+    notifications: '알림',
+    logs: '실시간 로그',
+};
+
+// 현재 위치 브레드크럼 세그먼트 — 상세는 부모(평가 리스트)→현재, 그 외는 역할→탭명.
+// onClick 있는 세그먼트만 클릭 가능(평가 리스트로 복귀).
+function buildCrumbs(activeTab, role, onHome) {
+    if (!activeTab) return [];
+    if (activeTab === 'detail') {
+        return [
+            { label: '평가 리스트', onClick: onHome },
+            { label: '상담 QA 분석 결과' },
+        ];
+    }
+    const roleLabel = (ROLE_META[role] && ROLE_META[role].label) || '';
+    const tabLabel = activeTab === 'eval-mgmt'
+        ? (role === 'agent' ? '내 평가 결과' : '평가 관리')
+        : (TAB_LABELS[activeTab] || '');
+    const out = [];
+    if (roleLabel) out.push({ label: roleLabel });
+    if (tabLabel) out.push({ label: tabLabel });
+    return out;
+}
+
 function initialsOf(user) {
     if (!user) return '?';
     const src = String(user.display_name || user.login_id || '').trim();
@@ -34,10 +65,11 @@ function initialsOf(user) {
     return src.slice(0, 2).toUpperCase();
 }
 
-const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user }) => {
+const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, activeTab }) => {
     const roleMeta = user?.role ? ROLE_META[user.role] : null;
     const displayName = user?.display_name || user?.login_id || '';
     const avatarUrl = user?.profile_image_url;
+    const crumbs = buildCrumbs(activeTab, user?.role, onHomeClick);
     return (
         <nav className="app-nav">
             <div className="app-nav-inner">
@@ -53,7 +85,37 @@ const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user }
                 </button>
 
                 <div className="app-nav-body">
-                    {/* 탭 영역 — 미정의 (원본 동일 구조 유지, 추후 NavLink 추가 위치) */}
+                    {/* 현재 위치 브레드크럼 (좌측) */}
+                    {user && crumbs.length > 0 && (
+                        <nav className="flex items-center gap-1.5 text-[13px] min-w-0" aria-label="현재 위치">
+                            <button
+                                type="button"
+                                onClick={onHomeClick}
+                                className="flex items-center text-[#667085] hover:text-[#055AAF] transition-colors shrink-0"
+                                aria-label="평가 리스트(홈)"
+                            >
+                                <Home size={15} />
+                            </button>
+                            {crumbs.map((c, i) => (
+                                <React.Fragment key={i}>
+                                    <ChevronRight size={13} className="text-[#D0D5DD] shrink-0" />
+                                    {c.onClick ? (
+                                        <button
+                                            type="button"
+                                            onClick={c.onClick}
+                                            className="text-[#667085] hover:text-[#055AAF] font-medium transition-colors truncate"
+                                        >
+                                            {c.label}
+                                        </button>
+                                    ) : (
+                                        <span className={`truncate ${i === crumbs.length - 1 ? 'text-[#101828] font-semibold' : 'text-[#667085]'}`}>
+                                            {c.label}
+                                        </span>
+                                    )}
+                                </React.Fragment>
+                            ))}
+                        </nav>
+                    )}
                     <div className="app-nav-right">
                         {user && <NotificationBell />}
                         {user && (

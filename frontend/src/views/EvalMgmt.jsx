@@ -10,11 +10,11 @@ import CounselorResults from './evalMgmt/CounselorResults';
 
 export default function EvalMgmt({ role }) {
     const isAdmin = role === 'admin' || role === 'super_admin';
-    // 평가 리스트·전체 통계와 동일한 고정 최대 가로폭(1280px, 가운데 정렬). [[ui-fixed-max-content-width]]
-    // 센터링은 바깥 래퍼에서 처리 — .tg-eval 에는 스코프된 `margin:0` 리셋이 있어
-    // 거기에 mx-auto 를 주면 덮어써져 좌측 쏠림이 됨(평가관리만 그랬던 원인).
+    // 본문 고정 가로폭은 App.jsx 의 PageContainer 가 단일 통제. [[ui-fixed-max-content-width]]
+    // .tg-eval 에는 스코프된 `margin:0` 리셋이 있어 mx-auto 가 덮어써지므로
+    // 센터링은 바깥(PageContainer)에서만 처리한다(평가관리 좌측 쏠림 방지).
     return (
-        <div className="w-full max-w-[1280px] mx-auto">
+        <div className="w-full">
             <div className="tg-eval">
                 {isAdmin ? <AdminEvalMgmt /> : <CounselorResults />}
             </div>

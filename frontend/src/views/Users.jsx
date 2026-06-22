@@ -952,7 +952,7 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
     const hiddenSelectedCount = selected.size - visibleSelectedIds.length;
 
     return (
-        <div className="w-full max-w-[1280px] mx-auto">
+        <div className="w-full">
             <Header
                 title="사용자 관리"
                 subtitle="Meta-Trustguard 에 등록된 관리자 계정을 관리합니다."

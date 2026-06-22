@@ -450,7 +450,7 @@ const Brands = () => {
     const totalSessions = items.reduce((s, b) => s + (b.sessions || 0), 0);
 
     return (
-        <div className="w-full max-w-[1280px] mx-auto">
+        <div className="w-full">
             <Header
                 title="브랜드 관리"
                 subtitle="브랜드(=조직)와 도메인(=업종)을 등록·편집합니다. 콜 데이터는 등록된 브랜드 단위로 격리됩니다."
