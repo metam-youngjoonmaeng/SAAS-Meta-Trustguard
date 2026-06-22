@@ -1270,7 +1270,7 @@ app.get('/api/analysis/:qaId', async (req, res) => {
     }
     try {
         const { rows } = await pool.query(
-            'SELECT "ID" AS qa_id, "AI_SCORE" AS ai_score, "TOTAL_SCORE" AS total_score, department, org_id FROM qa_calls WHERE "ID" = $1 LIMIT 1',
+            'SELECT "ID" AS qa_id, "AI_SCORE" AS ai_score, "TOTAL_SCORE" AS total_score, department FROM qa_calls WHERE "ID" = $1 LIMIT 1',
             [qaId]
         );
         if (!rows[0]) {
@@ -1278,16 +1278,13 @@ app.get('/api/analysis/:qaId', async (req, res) => {
             return;
         }
         const dept = rows[0].department;
-        const orgId = Number(rows[0].org_id);
-        const isStandard = Number.isFinite(orgId) && LEGACY_STANDARD_ORG_IDS.has(orgId);
-        // 소비자보호부(신한 표준) 콜만 Pentagon 분석 트랙 미사용 — 표준 org 한정.
-        if (isStandard && dept === '소비자보호부') {
+        // 소비자보호부 콜은 Pentagon 분석 트랙 사용 안 함 — 빈 응답.
+        if (dept === '소비자보호부') {
             res.json({ qa_id: rows[0].qa_id, department: '소비자보호부', pentagon: null, report: [] });
             return;
         }
-        // 트랙 선택은 org 우선 — 표준(1/2/3)만 부서 기반 고정 트랙, 그 외는 동적.
-        const isHanwha = isStandard && dept === '고객센터';
-        const isDefault = isStandard && dept === '고객지원실';
+        const isHanwha = dept === '고객센터';
+        const isDefault = dept === '고객지원실';
         const { rows: checklistRows } = await pool.query(
             `SELECT c.order_no, c.category, c.item, c.validation_time, e.ai_eval
              FROM qa_checklist_rows c
@@ -1306,17 +1303,14 @@ app.get('/api/analysis/:qaId', async (req, res) => {
         const rowCategorySet = new Set(
             checklistAugmented.map((r) => String(r.category || '').trim()).filter(Boolean)
         );
-        // 사용자 생성 트랙(표준 org 외)은 무조건 행 카테고리 축으로 동적 구성.
-        // 표준 코오롱(고객지원실)도 행 카테고리가 표준 8셋과 무중첩이면 동적(레거시 이커머스/은행 보존).
         const isDynamicRubric =
-            !isStandard ||
-            (isDefault &&
-                rowCategorySet.size > 0 &&
-                ![...rowCategorySet].some((c) => DEFAULT_PENTAGON_CATEGORIES.has(c)));
-        const pentagon = isDynamicRubric
-            ? buildDynamicPentagonFromChecklistRows(checklistAugmented)
-            : isHanwha
-                ? buildHanwhaPentagonFromChecklistRows(checklistAugmented)
+            isDefault &&
+            rowCategorySet.size > 0 &&
+            ![...rowCategorySet].some((c) => DEFAULT_PENTAGON_CATEGORIES.has(c));
+        const pentagon = isHanwha
+            ? buildHanwhaPentagonFromChecklistRows(checklistAugmented)
+            : isDynamicRubric
+                ? buildDynamicPentagonFromChecklistRows(checklistAugmented)
                 : isDefault
                     ? buildDefaultPentagonFromChecklistRows(checklistAugmented)
                     : buildPentagonFromChecklistRows(checklistAugmented);

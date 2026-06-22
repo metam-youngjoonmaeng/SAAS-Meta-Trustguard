@@ -89,16 +89,9 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     });
     // 표시용 체크리스트: 신규 브랜드는 DB 기반(effectiveTemplate), 레거시는 정적 템플릿.
     const checklistTemplate = dynamic ? (effectiveTemplate || []) : brandConfig.checklistTemplate;
-    // Pentagon 축: 사용자 생성 트랙(동적)은 서버가 내려준 카테고리명 키를 그대로 축으로 사용(가변 N축).
-    // 레거시(신한/한화/코오롱)는 정적 5축 키/라벨 보존. RadarChart 는 labels 길이 기반이라 N축 렌더 가능.
-    const dynamicAxisKeys = useMemo(() => {
-        if (!dynamic) return null;
-        const ag = analysis?.pentagon?.agent_score;
-        const keys = ag && typeof ag === 'object' ? Object.keys(ag) : [];
-        return keys.length ? keys : null;
-    }, [dynamic, analysis]);
-    const PENTAGON_KEYS = dynamicAxisKeys || brandConfig.radarKeys;
-    const PENTAGON_LABELS = dynamicAxisKeys || brandConfig.radarLabels;
+    // Pentagon 축은 브랜드 설정의 정적 5축 고정 (동적 N축 미사용).
+    const PENTAGON_KEYS = brandConfig.radarKeys;
+    const PENTAGON_LABELS = brandConfig.radarLabels;
 
     // 뒤로가기 시 Dashboard 가 이 콜의 부서 탭을 복원할 수 있도록 sessionStorage 에 기록.
     // (Dashboard.jsx 의 DASHBOARD_DEPT_STORAGE_KEY 와 동일 키.)
