@@ -30,7 +30,7 @@ BEGIN
     ) THEN
         ALTER TABLE public.qa_calls
             ADD CONSTRAINT qa_calls_review_status_chk
-            CHECK (review_status IN ('pending', 'in_review', 'completed'));
+            CHECK (review_status IN ('pending', 'in_review', 'review_done', 'admin_revised', 'objection', 'approved', 'completed'));
     END IF;
 END$$;
 

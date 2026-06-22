@@ -30,6 +30,9 @@ UPDATE public.qa_calls
        approved_by_user_id  = COALESCE(approved_by_user_id, user_id)
  WHERE review_status = 'completed';
 
+-- 멱등 + 전체값 집합(33/36과 동일) — 시더 재적용 시 'objection'/'admin_revised' 데이터가 있어도 통과.
+-- (이전: DROP 없이 좁은 5값만 ADD → 재적용 시 objection 행에 막혀 시더 실패하던 버그 수정.)
+ALTER TABLE public.qa_calls DROP CONSTRAINT IF EXISTS qa_calls_review_status_chk;
 ALTER TABLE public.qa_calls
     ADD CONSTRAINT qa_calls_review_status_chk
-    CHECK (review_status IN ('pending', 'in_review', 'review_done', 'approved', 'completed'));
+    CHECK (review_status IN ('pending', 'in_review', 'review_done', 'admin_revised', 'objection', 'approved', 'completed'));
