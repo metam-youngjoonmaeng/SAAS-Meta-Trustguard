@@ -193,7 +193,8 @@ function PromptEditModal({ focus, onClose, onChanged }) {
     const [u, setU] = useState('');   // 두 정의문 모두 로드 — 화면엔 focus 하나만 보이지만 저장 시 둘 다 전송(미편집분 보존).
     const [c, setC] = useState('');
     const [meta, setMeta] = useState(null);
-    const [busy, setBusy] = useState(false);
+    const [busy, setBusy] = useState(false);       // 저장(PUT) 진행 — 버튼/입력 잠금
+    const [rejudging, setRejudging] = useState(false); // 기존 평가 재판정 — 백그라운드(닫아도 계속)
     const [status, setStatus] = useState(null); // 재판정 진행상황
     const [msg, setMsg] = useState(null);        // { type, text }
 
@@ -231,29 +232,37 @@ function PromptEditModal({ focus, onClose, onChanged }) {
     }, []);
 
     const handleSave = async () => {
+        // 1) 저장(PUT) — 빠르고 블로킹. 끝나면 버튼 잠금 해제(닫기 가능).
         setBusy(true); setMsg(null); setStatus(null);
+        let saved;
         try {
-            const saved = await saveBatchPrompt({ uncertain_def: u, contradiction_def: c });
-            if (saved.unchanged) {
-                setMsg({ type: 'info', text: '변경 사항이 없어 재판정은 생략됐습니다.' });
-                return;
-            }
-            if (!meta?.judge_enabled) {
-                setMsg({ type: 'warn', text: `저장 완료 (v${saved.version}). 단, GEMINI_API_KEY 미설정이라 재판정은 키 설정 후 실행됩니다.` });
-                onChanged?.();
-                return;
-            }
-            setStatus({ running: true, done: 0, total: saved.stale_count });
-            setMsg({ type: 'info', text: `저장 완료 (v${saved.version}). 재판정 대상 ${saved.stale_count}콜 — 잠시만요…` });
+            saved = await saveBatchPrompt({ uncertain_def: u, contradiction_def: c });
+        } catch (e) {
+            setMsg({ type: 'error', text: '저장 실패: ' + (e?.message || '오류') });
+            setBusy(false);
+            return;
+        }
+        setBusy(false);
+        if (saved.unchanged) { setMsg({ type: 'info', text: '변경 사항이 없습니다.' }); return; }
+        onChanged?.();
+        if (!meta?.judge_enabled) {
+            setMsg({ type: 'warn', text: `저장 완료 (v${saved.version}). GEMINI_API_KEY 미설정 — 새 기준은 이후 평가부터 적용됩니다.` });
+            return;
+        }
+        // 2) 기존 평가 재판정 — 백그라운드. 모달을 닫아도 서버에서 계속 진행된다.
+        setMsg({ type: 'done', text: `저장 완료 (v${saved.version}). 기존 ${saved.stale_count}콜은 백그라운드에서 재판정 중 — 닫으셔도 됩니다.` });
+        setRejudging(true);
+        setStatus({ running: true, done: 0, total: saved.stale_count });
+        try {
             await rejudgeConfidence();
             const fin = await pollUntilDone();
             const n = fin?.result?.done ?? fin?.done ?? saved.stale_count;
-            setMsg({ type: 'done', text: `재판정 완료 — ${n}콜 반영. 미리보기·평가 리스트에 적용됩니다.` });
+            setMsg({ type: 'done', text: `저장 완료 · 기존 ${n}콜 재판정 반영됨.` });
             onChanged?.();
         } catch (e) {
-            setMsg({ type: 'error', text: '저장/재판정 실패: ' + (e?.message || '오류') });
+            setMsg({ type: 'warn', text: '저장은 완료됐지만 재판정 실패: ' + (e?.message || '오류') });
         } finally {
-            setBusy(false);
+            setRejudging(false);
         }
     };
 
@@ -285,7 +294,7 @@ function PromptEditModal({ focus, onClose, onChanged }) {
                         type="button" onClick={handleSave} disabled={busy || loading}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '9px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: busy || loading ? 'default' : 'pointer', fontFamily: 'inherit', opacity: busy || loading ? 0.6 : 1 }}
                     >
-                        <Icon name="save" size={15} />{busy ? '처리 중…' : '저장 + 재판정'}
+                        <Icon name="save" size={15} />{busy ? '저장 중…' : '저장'}
                     </button>
                 </div>
             }
@@ -296,7 +305,7 @@ function PromptEditModal({ focus, onClose, onChanged }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <div style={{ fontSize: 12, color: 'var(--ink-500)', lineHeight: 1.55, background: 'var(--warning-soft)', border: '1px solid var(--warning-border)', borderRadius: 8, padding: '9px 12px' }}>
                         <Icon name="info" size={13} style={{ verticalAlign: '-2px', marginRight: 5, color: 'var(--warning-ink)' }} />
-                        AI가 매긴 점수·근거를 LLM이 읽고 판정합니다. 출력 형식 같은 골격은 시스템이 고정하고, 아래 <strong>판단 기준</strong>만 수정합니다. 저장하면 변경분이 자동 재판정됩니다.
+                        AI가 매긴 점수·근거를 LLM이 읽고 판정합니다. 출력 형식 같은 골격은 시스템이 고정하고, 아래 <strong>판단 기준</strong>만 수정합니다. 저장하면 새 기준이 적용되고, 기존 평가는 백그라운드에서 다시 판정됩니다.
                     </div>
 
                     <div style={{ padding: 14, borderRadius: 12, background: 'var(--background-soft)', border: '1px solid var(--border-soft)' }}>
