@@ -4370,6 +4370,15 @@ app.put('/api/batch/prompt', requireAdmin, async (req, res) => {
             [PROMPT_ORG, systemPrompt, storeU, storeC, updatedBy]
         );
         const version = rows[0]?.version ?? 1;
+        // 변경 이력 append(읽기전용 스냅샷). 실패해도 저장은 성공으로 처리.
+        try {
+            await pool.query(
+                `INSERT INTO public.qa_batch_prompt_history
+                     (org_id, version, uncertain_def, contradiction_def, updated_at, updated_by, updated_by_name)
+                 VALUES ($1, $2, $3, $4, now(), $5, $6)`,
+                [PROMPT_ORG, version, newU, newC, updatedBy, req.session?.display_name ?? null]
+            );
+        } catch (he) { console.error('prompt history insert error:', he?.message || he); }
         const { rows: sc } = await pool.query(
             `SELECT count(*)::int AS n FROM qa_calls c
               WHERE c.is_sandbox = false
@@ -4382,6 +4391,24 @@ app.put('/api/batch/prompt', requireAdmin, async (req, res) => {
     } catch (e) {
         console.error('PUT /api/batch/prompt error:', e?.message || e);
         res.status(500).json({ ok: false, message: '판정 프롬프트 저장 실패' });
+    }
+});
+
+// GET /api/batch/prompt/history — 판정 프롬프트 변경 이력(버전별 스냅샷, 최신순). 읽기전용.
+app.get('/api/batch/prompt/history', requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await pool.query(
+            `SELECT version, uncertain_def, contradiction_def, updated_at, updated_by, updated_by_name
+               FROM public.qa_batch_prompt_history
+              WHERE org_id = $1
+              ORDER BY version DESC, id DESC
+              LIMIT 100`,
+            [PROMPT_ORG]
+        );
+        res.json({ ok: true, items: rows });
+    } catch (e) {
+        console.error('GET /api/batch/prompt/history error:', e?.message || e);
+        res.status(500).json({ ok: false, message: '변경 이력 조회 실패' });
     }
 });
 

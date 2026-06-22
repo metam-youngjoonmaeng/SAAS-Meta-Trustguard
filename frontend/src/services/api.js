@@ -193,6 +193,10 @@ export async function rejudgeConfidence() {
 export async function fetchRejudgeStatus() {
     return request('/api/batch/rejudge/status');
 }
+// 판정 프롬프트 변경 이력(버전별 스냅샷, 최신순). 응답: { items: [{ version, uncertain_def, contradiction_def, updated_at, updated_by_name }] }.
+export async function fetchBatchPromptHistory() {
+    return request('/api/batch/prompt/history');
+}
 
 export async function saveAdminComments(qaId, adminComments) {
     if (!qaId) throw new Error('qaId is required');

@@ -6,7 +6,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Icon, PageHead, Modal } from './ui';
 import {
     fetchBatchConfig, saveBatchConfig, previewBatch, fetchBatchEvalItems,
-    fetchBatchPrompt, saveBatchPrompt, rejudgeConfidence, fetchRejudgeStatus,
+    fetchBatchPrompt, saveBatchPrompt, rejudgeConfidence, fetchRejudgeStatus, fetchBatchPromptHistory,
 } from '../../services/api';
 
 // 작은 입력 컨트롤 공통 스타일
@@ -197,6 +197,9 @@ function PromptEditModal({ focus, onClose, onChanged }) {
     const [rejudging, setRejudging] = useState(false); // 기존 평가 재판정 — 백그라운드(닫아도 계속)
     const [status, setStatus] = useState(null); // 재판정 진행상황
     const [msg, setMsg] = useState(null);        // { type, text }
+    const [view, setView] = useState('edit');    // 'edit' | 'history'
+    const [history, setHistory] = useState(null); // null=미로드, []=이력없음
+    const [histExpanded, setHistExpanded] = useState(null); // 펼친 버전
 
     useEffect(() => {
         let alive = true;
@@ -230,6 +233,23 @@ function PromptEditModal({ focus, onClose, onChanged }) {
             if (!s.running) return s;
         }
     }, []);
+
+    const openHistory = useCallback(async () => {
+        setView('history');
+        setHistExpanded(null);
+        try {
+            const r = await fetchBatchPromptHistory();
+            setHistory(r?.items || []);
+        } catch { setHistory([]); }
+    }, []);
+
+    const fmtTs = (s) => {
+        if (!s) return '';
+        const d = new Date(s);
+        if (Number.isNaN(d.getTime())) return String(s);
+        const p = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    };
 
     const handleSave = async () => {
         // 1) 저장(PUT) — 빠르고 블로킹. 끝나면 버튼 잠금 해제(닫기 가능).
@@ -270,39 +290,73 @@ function PromptEditModal({ focus, onClose, onChanged }) {
         : msg?.type === 'warn' ? 'var(--warning-ink, #b45309)'
         : msg?.type === 'done' ? 'var(--success-ink, #15803d)' : 'var(--primary)';
 
+    const isHistory = view === 'history';
+    const editFoot = (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+            <button
+                type="button" onClick={restoreDefaults} disabled={busy || loading}
+                style={{ background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit' }}
+            >
+                기본값 복원
+            </button>
+            <div style={{ flex: 1 }} />
+            <button
+                type="button" onClick={busy ? undefined : onClose} disabled={busy}
+                style={{ background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit' }}
+            >
+                닫기
+            </button>
+            <button
+                type="button" onClick={handleSave} disabled={busy || loading}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '9px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: busy || loading ? 'default' : 'pointer', fontFamily: 'inherit', opacity: busy || loading ? 0.6 : 1 }}
+            >
+                <Icon name="save" size={15} />{busy ? '저장 중…' : '저장'}
+            </button>
+        </div>
+    );
+    const historyFoot = (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+            <button
+                type="button" onClick={() => setView('edit')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+                <Icon name="chevron-left" size={15} />편집으로
+            </button>
+            <div style={{ flex: 1 }} />
+            <button
+                type="button" onClick={onClose}
+                style={{ background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+                닫기
+            </button>
+        </div>
+    );
+
     return (
         <Modal
-            title={`${critLabel} — 판정 기준 수정`}
+            title={isHistory ? '판정 기준 변경 이력' : `${critLabel} — 판정 기준 수정`}
             width={620}
             onClose={busy ? undefined : onClose}
-            foot={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-                    <button
-                        type="button" onClick={restoreDefaults} disabled={busy || loading}
-                        style={{ background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit' }}
-                    >
-                        기본값 복원
-                    </button>
-                    <div style={{ flex: 1 }} />
-                    <button
-                        type="button" onClick={busy ? undefined : onClose} disabled={busy}
-                        style={{ background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit' }}
-                    >
-                        닫기
-                    </button>
-                    <button
-                        type="button" onClick={handleSave} disabled={busy || loading}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '9px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: busy || loading ? 'default' : 'pointer', fontFamily: 'inherit', opacity: busy || loading ? 0.6 : 1 }}
-                    >
-                        <Icon name="save" size={15} />{busy ? '저장 중…' : '저장'}
-                    </button>
-                </div>
-            }
+            foot={isHistory ? historyFoot : editFoot}
         >
             {loading ? (
                 <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>불러오는 중…</div>
+            ) : isHistory ? (
+                <HistoryView history={history} expanded={histExpanded} onToggle={setHistExpanded} fmtTs={fmtTs} />
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {/* 헤더 액션 — 공용 Modal 헤더는 수정 불가라 본문 상단 우측에 '변경이력' 배치. */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: -4 }}>
+                        <button
+                            type="button" onClick={openHistory} disabled={busy}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'transparent', border: 0, color: 'var(--ink-500)', fontSize: 12, fontWeight: 600, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', padding: '2px 4px' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-500)'; }}
+                        >
+                            <Icon name="history" size={14} />변경이력
+                        </button>
+                    </div>
+
                     <div style={{ fontSize: 12, color: 'var(--ink-500)', lineHeight: 1.55, background: 'var(--warning-soft)', border: '1px solid var(--warning-border)', borderRadius: 8, padding: '9px 12px' }}>
                         <Icon name="info" size={13} style={{ verticalAlign: '-2px', marginRight: 5, color: 'var(--warning-ink)' }} />
                         AI가 매긴 점수·근거를 LLM이 읽고 판정합니다. 출력 형식 같은 골격은 시스템이 고정하고, 아래 <strong>판단 기준</strong>만 수정합니다. 저장하면 새 기준이 적용되고, 기존 평가는 백그라운드에서 다시 판정됩니다.
@@ -340,6 +394,72 @@ function PromptEditModal({ focus, onClose, onChanged }) {
                 </div>
             )}
         </Modal>
+    );
+}
+
+// 변경 이력 뷰 — 버전별 스냅샷 목록(최신순). 행 클릭 시 그 버전의 두 정의문 전체 노출(읽기전용).
+// 직전(더 오래된) 버전과 비교해 어떤 기준이 바뀌었는지 배지로 표시.
+function HistoryView({ history, expanded, onToggle, fmtTs }) {
+    if (history === null) {
+        return <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>이력 불러오는 중…</div>;
+    }
+    if (history.length === 0) {
+        return (
+            <div style={{ padding: 28, textAlign: 'center', color: 'var(--ink-400)', fontSize: 13, lineHeight: 1.6 }}>
+                <Icon name="history" size={22} style={{ color: 'var(--ink-300)', marginBottom: 8 }} />
+                <div>아직 변경 이력이 없습니다.</div>
+                <div style={{ fontSize: 11.5 }}>현재 기본값으로 동작 중 — 저장하면 이력이 쌓입니다.</div>
+            </div>
+        );
+    }
+    const changedLabels = (idx) => {
+        const cur = history[idx];
+        const prev = history[idx + 1]; // 더 오래된 버전
+        if (!prev) return ['최초 저장'];
+        const out = [];
+        if ((cur.uncertain_def || '') !== (prev.uncertain_def || '')) out.push('불확실 표현');
+        if ((cur.contradiction_def || '') !== (prev.contradiction_def || '')) out.push('근거–점수 모순');
+        return out.length ? out : ['변경'];
+    };
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {history.map((h, idx) => {
+                const open = expanded === h.version;
+                return (
+                    <div key={h.version} style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'white', overflow: 'hidden' }}>
+                        <button
+                            type="button" onClick={() => onToggle(open ? null : h.version)}
+                            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', background: 'transparent', border: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+                        >
+                            <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)', fontVariantNumeric: 'tabular-nums', minWidth: 30 }}>v{h.version}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                    {changedLabels(idx).map((lbl) => (
+                                        <span key={lbl} style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 9999, background: 'var(--primary-soft-flat)', color: 'var(--primary)' }}>{lbl}</span>
+                                    ))}
+                                </div>
+                                <div style={{ fontSize: 11.5, color: 'var(--ink-400)', marginTop: 4 }}>
+                                    {fmtTs(h.updated_at)}{h.updated_by_name ? ` · ${h.updated_by_name}` : ''}
+                                </div>
+                            </div>
+                            <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} style={{ color: 'var(--ink-400)' }} />
+                        </button>
+                        {open && (
+                            <div style={{ borderTop: '1px solid var(--border-soft)', background: 'var(--background-soft)', padding: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div>
+                                    <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 4 }}>불확실 표현</div>
+                                    <div style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{h.uncertain_def || '—'}</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 4 }}>근거–점수 모순</div>
+                                    <div style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{h.contradiction_def || '—'}</div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
     );
 }
 
