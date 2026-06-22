@@ -854,6 +854,10 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
     // 채널구분 'I'(인바운드)/'O'(아웃바운드) — ICS tb_stt_master.IO_DIVI. 그 외 값/없음은 NULL.
     const ioDiviRaw = safeStr(call?.io_divi).trim().toUpperCase();
     const ioDivi = ioDiviRaw === 'I' || ioDiviRaw === 'O' ? ioDiviRaw : null;
+    // 통화 소요시간(초) — ICS CALL_END_DATE-CALL_START_DATE 차. 폴러가 call.duration_sec 로 전달.
+    // 음수/비숫자/없음은 null(미상). 배치 "통화시간" 조건이 이 값을 선별에 사용.
+    const durRaw = asNumber(call?.duration_sec);
+    const durationSec = durRaw !== null && Number.isFinite(durRaw) && durRaw >= 0 ? Math.round(durRaw) : null;
     let agentUserId = null;
     if (agentCode && projCd) {
         try {
@@ -892,9 +896,9 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         await client.query(
             `INSERT INTO qa_calls
                  ("ID","CALL_SEQ","CDATE","UID","AI_SCORE","TOTAL_SCORE",
-                  department, role, org_id, proj_cd, agent_code, agent_user_id, io_divi,
+                  department, role, org_id, proj_cd, agent_code, agent_user_id, io_divi, duration_sec,
                   ai_analysis_target, ai_analysis_reason, voc_code, promotion_code, is_sandbox)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NULL,NULL,NULL,NULL,false)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NULL,NULL,NULL,NULL,false)
              ON CONFLICT ("ID") DO UPDATE SET
                "CALL_SEQ" = EXCLUDED."CALL_SEQ",
                "CDATE" = EXCLUDED."CDATE",
@@ -908,12 +912,13 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
                agent_code = EXCLUDED.agent_code,
                agent_user_id = EXCLUDED.agent_user_id,
                io_divi = COALESCE(EXCLUDED.io_divi, qa_calls.io_divi),
+               duration_sec = COALESCE(EXCLUDED.duration_sec, qa_calls.duration_sec),
                ai_analysis_target = NULL,
                ai_analysis_reason = NULL,
                voc_code = NULL,
                promotion_code = NULL,
                is_sandbox = false`,
-            [id, callSeq, cdate, uid, score, score, department, role, orgId, projCd, agentCode, agentUserId, ioDivi]
+            [id, callSeq, cdate, uid, score, score, department, role, orgId, projCd, agentCode, agentUserId, ioDivi, durationSec]
         );
         for (const t of conversation) {
             await client.query(

@@ -4096,6 +4096,201 @@ app.get('/api/me/ta-metrics', async (req, res) => {
     }
 });
 
+// ───────────────────────────────────────────────────────────────────────────
+// AI 평가 배치관리 (BatchManage)
+//   조건 세트(5개 카드 + 공통 통화시간/스케줄)를 브랜드별로 저장하고,
+//   "예상 대상" 을 우리 DB(qa_calls)로 실제 산출한다.
+//   현재 산출 가능(우리 데이터): ① 저품질 평균점수 미달 / 공통 통화시간 / ⑤ 고점·무작위표본.
+//   미지원(데이터·정의 대기): ② AI 신뢰도(엔진 confidence), ③ 리스크(기준 미정),
+//                              ④ 근속(상담사 입사일 없음), ① 필수항목/업무지식(기준 미정).
+// ───────────────────────────────────────────────────────────────────────────
+function batchOrgKey(req) {
+    // 브랜드별 1행. super_admin '전체'(null)는 0 버킷에 보관.
+    const a = resolveActiveOrgId(req);
+    return a == null ? 0 : a;
+}
+
+// GET /api/batch/config — 현재 브랜드의 저장된 조건. 없으면 config:null (프론트 기본값 사용).
+app.get('/api/batch/config', requireAdmin, async (req, res) => {
+    try {
+        const orgId = batchOrgKey(req);
+        const { rows } = await pool.query(
+            `SELECT config, updated_at, updated_by FROM public.qa_batch_configs WHERE org_id = $1`,
+            [orgId]
+        );
+        res.json({
+            ok: true,
+            org_id: orgId,
+            config: rows[0]?.config ?? null,
+            updated_at: rows[0]?.updated_at ?? null,
+        });
+    } catch (e) {
+        console.error('GET /api/batch/config error:', e?.message || e);
+        res.status(500).json({ ok: false, message: '배치 설정 조회 실패' });
+    }
+});
+
+// PUT /api/batch/config — 조건 세트 저장(upsert). body: { config: {...} }
+app.put('/api/batch/config', requireAdmin, async (req, res) => {
+    const config = req.body?.config;
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+        return res.status(400).json({ ok: false, message: 'config(object) 가 필요합니다.' });
+    }
+    try {
+        const orgId = batchOrgKey(req);
+        const updatedBy = req.session?.user_id ?? null;
+        await pool.query(
+            `INSERT INTO public.qa_batch_configs (org_id, config, updated_at, updated_by)
+             VALUES ($1, $2::jsonb, now(), $3)
+             ON CONFLICT (org_id) DO UPDATE SET
+               config = EXCLUDED.config, updated_at = now(), updated_by = EXCLUDED.updated_by`,
+            [orgId, JSON.stringify(config), updatedBy]
+        );
+        res.json({ ok: true, org_id: orgId });
+    } catch (e) {
+        console.error('PUT /api/batch/config error:', e?.message || e);
+        res.status(500).json({ ok: false, message: '배치 설정 저장 실패' });
+    }
+});
+
+// GET /api/batch/eval-items — ② '적용 평가 항목' 칩용. 실제 평가된 항목(order_no+item) 집합.
+//   eval_item_defs(부서·버전 엉킴) 대신, 그 org 콜이 실제 평가받은 항목으로 — ② 판정 order_no 와 정확히 일치.
+app.get('/api/batch/eval-items', requireAdmin, async (req, res) => {
+    try {
+        const orgId = batchOrgKey(req);
+        const params = [];
+        let orgClause = '';
+        if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
+        const { rows } = await pool.query(
+            `SELECT er.order_no, max(er.item) AS item, count(DISTINCT er."ID")::int AS calls
+               FROM qa_evaluation_rows er
+               JOIN qa_calls c ON c."ID" = er."ID"
+              WHERE c.is_sandbox = false ${orgClause}
+              GROUP BY er.order_no
+              ORDER BY er.order_no`,
+            params
+        );
+        res.json({ ok: true, org_id: orgId, items: rows });
+    } catch (e) {
+        console.error('GET /api/batch/eval-items error:', e?.message || e);
+        res.status(500).json({ ok: false, message: '평가 항목 조회 실패' });
+    }
+});
+
+// POST /api/batch/preview — 조건 → 예상 대상 콜 수(실데이터). body: { config }
+app.post('/api/batch/preview', requireAdmin, async (req, res) => {
+    const cfg = req.body?.config || {};
+    try {
+        const orgId = batchOrgKey(req);
+        const on = cfg.on || {};
+        const q = cfg.quality || {};
+        const bias = cfg.bias || {};
+        const scope = cfg.scope || {};
+
+        const num = (v, def) => (Number.isFinite(Number(v)) ? Number(v) : def);
+        // 통화시간(분) → 초. max<=0 또는 max<=min 이면 상한 없음(매우 큰 값).
+        const minSec = Math.max(0, Math.round(num(scope.minMin, 0) * 60));
+        let maxMin = num(scope.maxMin, 0);
+        const maxSec = maxMin > 0 && maxMin * 60 > minSec ? Math.round(maxMin * 60) : 2147483647;
+
+        const conf = cfg.confidence || {};
+
+        // 지원 조건 플래그 (우리 데이터로 산출 가능한 것만)
+        const qOn = !!(on.quality && q.avgBelow);
+        const qRel = q.avgMode === 'rel';
+        const qRelPts = num(q.avgRel, 0);
+        const qAbs = num(q.avgAbs, 0);
+        const bHighOn = !!(on.bias && bias.highScore);
+        const bHigh = num(bias.highThreshold, 101);
+        // ② 신뢰도 — 저장된 LLM 판정(qa_confidence_judgments)을 선택 항목으로 스코프해서 필터.
+        const uncOn = !!conf.uncertain;
+        const conOn = !!conf.contradiction;
+        const confOn = !!(on.confidence && (uncOn || conOn));
+        // 적용 평가 항목: excluded(order_no 배열) 제외 = 나머지만 검사. 빈 배열이면 전 항목.
+        const excluded = Array.isArray(conf.excluded)
+            ? conf.excluded.map((x) => Number(x)).filter((n) => Number.isInteger(n))
+            : [];
+
+        const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, confOn, uncOn, conOn, excluded];
+        let orgClause = '';
+        if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
+
+        const sql = `
+            WITH scoped AS (
+                SELECT c."TOTAL_SCORE"::numeric AS score, c.duration_sec, cj.judgments
+                  FROM qa_calls c
+                  LEFT JOIN qa_confidence_judgments cj ON cj.qa_id = c."ID"
+                 WHERE c.is_sandbox = false ${orgClause}
+            ), in_scope AS (
+                SELECT score, duration_sec, judgments FROM scoped
+                 WHERE duration_sec IS NOT NULL AND duration_sec >= $1 AND duration_sec < $2
+            ), agg AS (
+                SELECT avg(score) AS org_avg FROM in_scope
+            ), flagged AS (
+                SELECT
+                    ($3 AND ( ($4 AND a.org_avg IS NOT NULL AND i.score <= a.org_avg - $5) OR (NOT $4 AND i.score < $6) )) AS q_match,
+                    ($7 AND i.score >= $8) AS b_match,
+                    ($9 AND EXISTS (
+                        SELECT 1 FROM jsonb_array_elements(coalesce(i.judgments, '[]'::jsonb)) e
+                         WHERE NOT ((e->>'order_no')::int = ANY($12::int[]))
+                           AND ( ($10 AND (e->>'uncertain')::boolean) OR ($11 AND (e->>'contradiction')::boolean) )
+                    )) AS c_match,
+                    (i.judgments IS NOT NULL) AS judged
+                  FROM in_scope i CROSS JOIN agg a
+            )
+            SELECT
+                (SELECT count(*) FROM scoped)::int   AS pool,
+                (SELECT count(*) FROM in_scope)::int AS in_scope_cnt,
+                (SELECT round(org_avg, 1) FROM agg)  AS org_avg,
+                count(*) FILTER (WHERE q_match)::int  AS quality_cnt,
+                count(*) FILTER (WHERE b_match)::int  AS bias_high_cnt,
+                count(*) FILTER (WHERE c_match)::int  AS confidence_cnt,
+                count(*) FILTER (WHERE judged)::int   AS judged_cnt,
+                count(*) FILTER (WHERE q_match OR b_match OR c_match)::int AS union_cnt
+            FROM flagged`;
+
+        const { rows } = await pool.query(sql, params);
+        const r = rows[0] || { pool: 0, in_scope_cnt: 0, org_avg: null, quality_cnt: 0, bias_high_cnt: 0, confidence_cnt: 0, judged_cnt: 0, union_cnt: 0 };
+
+        // ⑤ 무작위 표본 — 필터가 아닌 표본 추출이라 추정(범위 내 콜 × %).
+        const randomOn = !!(on.bias && bias.random);
+        const randomPct = num(bias.randomPct, 0);
+        const biasRandomEst = randomOn ? Math.round((r.in_scope_cnt * randomPct) / 100) : 0;
+
+        const totalTargets = Math.min(r.in_scope_cnt, (r.union_cnt || 0) + biasRandomEst);
+
+        res.json({
+            ok: true,
+            org_id: orgId,
+            pool: r.pool,
+            in_scope: r.in_scope_cnt,
+            org_avg: r.org_avg != null ? Number(r.org_avg) : null,
+            total_targets: totalTargets,
+            scope: { min_sec: minSec, max_sec: maxSec === 2147483647 ? null : maxSec },
+            conditions: {
+                quality: on.quality
+                    ? { supported: true, count: r.quality_cnt,
+                        note: '평균점수 미달만 반영 — 필수항목 기준 미정' }
+                    : { supported: true, count: 0, note: '비활성' },
+                confidence: on.confidence
+                    ? { supported: true, count: r.confidence_cnt, judged: r.judged_cnt,
+                        note: r.judged_cnt < r.in_scope_cnt ? `LLM 판정 ${r.judged_cnt}/${r.in_scope_cnt}콜 (미판정분 재판정 필요)` : null }
+                    : { supported: true, count: 0, note: '비활성' },
+                risk:       { supported: false, count: 0, note: '리스크 기준(금칙어·고객신호) 정의 대기' },
+                tenure:     { supported: false, count: 0, note: '상담사 입사일 데이터 보강 대기' },
+                bias: on.bias
+                    ? { supported: true, count: (r.bias_high_cnt || 0) + biasRandomEst,
+                        high_count: r.bias_high_cnt, random_est: biasRandomEst,
+                        note: randomOn ? '무작위 표본은 추정치' : null }
+                    : { supported: true, count: 0, note: '비활성' },
+            },
+        });
+    } catch (e) {
+        console.error('POST /api/batch/preview error:', e?.message || e);
+        res.status(500).json({ ok: false, message: '배치 미리보기 산출 실패' });
+    }
+});
+
 bootstrap()
     .then(() => {
         app.listen(PORT, () => {

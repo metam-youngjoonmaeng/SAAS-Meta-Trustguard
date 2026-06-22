@@ -149,6 +149,28 @@ export async function fetchMyTaMetrics() {
     return request('/api/me/ta-metrics');
 }
 
+// AI 평가 배치관리 — 조건 설정 조회/저장 + 예상 대상 미리보기(실데이터).
+// config = BatchManage 화면 state 직렬화({ on, quality, confidence, tenure, bias, scope }).
+export async function fetchBatchConfig() {
+    return request('/api/batch/config');
+}
+export async function saveBatchConfig(config) {
+    return request('/api/batch/config', {
+        method: 'PUT',
+        body: JSON.stringify({ config: config || {} }),
+    });
+}
+export async function previewBatch(config) {
+    return request('/api/batch/preview', {
+        method: 'POST',
+        body: JSON.stringify({ config: config || {} }),
+    });
+}
+// ② '적용 평가 항목' 칩 — 실제 평가된 항목(order_no+item). 제외 order_no 로 ② 검사 스코프.
+export async function fetchBatchEvalItems() {
+    return request('/api/batch/eval-items');
+}
+
 export async function saveAdminComments(qaId, adminComments) {
     if (!qaId) throw new Error('qaId is required');
     return request(`/api/evaluations/${encodeURIComponent(qaId)}/admin-comments`, {

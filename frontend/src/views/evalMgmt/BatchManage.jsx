@@ -2,11 +2,9 @@
 // AI QA가 평가한 콜 중 "특정 조건"에 해당하는 콜만 사람이 재청취·검토 대상으로 배치.
 // 5개 검사 조건(on/off) + 공통 범위(통화시간·기간) + 배치 스케줄.
 // 디자인 원본: etc/pages-batch.jsx (디자인 시스템은 evalMgmt 토큰 .tg-eval 스코프 재사용).
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Icon, PageHead } from './ui';
-import { DIMENSIONS } from './mockData';
-
-const TOTAL_POOL = 1240; // 오늘 AI 평가 완료된 전체 콜 (데모)
+import { fetchBatchConfig, saveBatchConfig, previewBatch, fetchBatchEvalItems } from '../../services/api';
 
 // 작은 입력 컨트롤 공통 스타일
 const bInput = {
@@ -135,10 +133,16 @@ function FilterCard({ idx, icon, title, tag, desc, on, onToggle, est, children }
                     <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 3, lineHeight: 1.45 }}>{desc}</div>
                 </div>
                 {on && est != null && (
-                    <div style={{ textAlign: 'right', flexShrink: 0, marginRight: 4 }}>
-                        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{est.toLocaleString()}</div>
-                        <div style={{ fontSize: 10.5, color: 'var(--ink-400)', marginTop: 3 }}>예상 대상</div>
-                    </div>
+                    typeof est === 'number' ? (
+                        <div style={{ textAlign: 'right', flexShrink: 0, marginRight: 4 }}>
+                            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{est.toLocaleString()}</div>
+                            <div style={{ fontSize: 10.5, color: 'var(--ink-400)', marginTop: 3 }}>예상 대상</div>
+                        </div>
+                    ) : (
+                        <div style={{ textAlign: 'right', flexShrink: 0, marginRight: 4, maxWidth: 96 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-400)', lineHeight: 1.35 }}>{est}</div>
+                        </div>
+                    )
                 )}
                 <Toggle checked={on} onChange={onToggle} />
             </div>
@@ -158,14 +162,15 @@ export default function BatchManage() {
     const toggle = (k) => setOn((s) => ({ ...s, [k]: !s[k] }));
 
     // ① 저품질
-    const [q, setQ] = useState({ avgBelow: true, avgMode: 'rel', avgRel: 10, avgAbs: 70, essential: true, essThreshold: 60, jobTest: false });
+    const [q, setQ] = useState({ avgBelow: true, avgMode: 'rel', avgRel: 10, avgAbs: 70, essential: true, essThreshold: 60 });
     const setQk = (k, v) => setQ((s) => ({ ...s, [k]: v }));
 
-    // ② AI 신뢰도
-    const [c, setC] = useState({ uncertain: true, contradiction: true, weak: false });
+    // ② AI 신뢰도 (weak '근거 빈약'은 기준 모호 + 과검출(53%)로 제외 — 불확실 표현·근거-점수 모순만)
+    const [c, setC] = useState({ uncertain: true, contradiction: true });
     const setCk = (k, v) => setC((s) => ({ ...s, [k]: v }));
-    const [excluded, setExcluded] = useState(new Set(['supp', 'follow'])); // 특수 항목 제외(데모)
+    const [excluded, setExcluded] = useState(new Set()); // 제외할 평가항목 order_no 집합(기본: 전 항목 포함)
     const toggleExcluded = (key) => setExcluded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
+    const [evalItems, setEvalItems] = useState([]); // 실제 평가된 항목(order_no+item) — ② 적용 항목 칩
 
     // ④ 근속
     const [tenure, setTenure] = useState({ junior: true, juniorMonths: 6, senior: true, seniorYears: 5 });
@@ -179,29 +184,95 @@ export default function BatchManage() {
     const [scope, setScope] = useState({ minMin: 3, maxMin: 60, freq: 'daily', time: '02:00' });
     const setSk = (k, v) => setScope((s) => ({ ...s, [k]: v }));
 
-    // 예상 대상 건수 추정 (데모 휴리스틱)
-    const est = useMemo(() => {
-        const e = {};
-        e.quality = on.quality ? Math.round(TOTAL_POOL * (0.06 + (q.avgBelow ? 0.05 : 0) + (q.essential ? 0.03 : 0) + (q.jobTest ? 0.02 : 0))) : 0;
-        e.confidence = on.confidence ? Math.round(TOTAL_POOL * ((c.uncertain ? 0.04 : 0) + (c.contradiction ? 0.03 : 0) + (c.weak ? 0.03 : 0))) : 0;
-        e.risk = on.risk ? Math.round(TOTAL_POOL * 0.035) : 0;
-        e.tenure = on.tenure ? Math.round(TOTAL_POOL * ((tenure.junior ? 0.05 : 0) + (tenure.senior ? 0.04 : 0))) : 0;
-        e.bias = on.bias ? Math.round(TOTAL_POOL * ((bias.random ? bias.randomPct / 100 : 0) + (bias.highScore ? 0.02 : 0))) : 0;
-        return e;
-    }, [on, q, c, tenure, bias]);
+    // ── 실연동: 저장된 설정 로드 + 서버 미리보기(예상 대상 실수치) + 저장 ─────────────
+    const [preview, setPreview] = useState(null);
+    const [loaded, setLoaded] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [savedAt, setSavedAt] = useState(null);
 
-    const scopeFactor = 0.82; // 통화시간 범위로 인한 축소 비율(데모)
-    const rawTotal = Object.values(est).reduce((a, b) => a + b, 0);
-    const totalTargets = Math.min(TOTAL_POOL, Math.round(rawTotal * scopeFactor));
+    // 현재 화면 state → 서버 config 직렬화(Set→배열).
+    const config = useMemo(() => ({
+        on, quality: q, confidence: { ...c, excluded: Array.from(excluded) }, tenure, bias, scope,
+    }), [on, q, c, excluded, tenure, bias, scope]);
+
+    // 마운트 시 저장된 설정 1회 로드(있으면 state 복원).
+    useEffect(() => {
+        let alive = true;
+        fetchBatchConfig()
+            .then((res) => {
+                if (!alive) return;
+                const cfg = res?.config;
+                if (cfg && typeof cfg === 'object') {
+                    if (cfg.on) setOn((s) => ({ ...s, ...cfg.on }));
+                    if (cfg.quality) setQ((s) => ({ ...s, ...cfg.quality }));
+                    if (cfg.confidence) {
+                        const { excluded: ex, ...rest } = cfg.confidence;
+                        setC((s) => ({ ...s, ...rest }));
+                        if (Array.isArray(ex)) setExcluded(new Set(ex));
+                    }
+                    if (cfg.tenure) setTenure((s) => ({ ...s, ...cfg.tenure }));
+                    if (cfg.bias) setBias((s) => ({ ...s, ...cfg.bias }));
+                    if (cfg.scope) setScope((s) => ({ ...s, ...cfg.scope }));
+                }
+            })
+            .catch(() => {})
+            .finally(() => { if (alive) setLoaded(true); });
+        return () => { alive = false; };
+    }, []);
+
+    // 적용 평가 항목 — 실제 평가된 항목 1회 로드.
+    useEffect(() => {
+        let alive = true;
+        fetchBatchEvalItems().then((res) => { if (alive && res?.ok) setEvalItems(res.items || []); }).catch(() => {});
+        return () => { alive = false; };
+    }, []);
+
+    // config 변경 → 디바운스 후 서버 미리보기 갱신(실데이터 예상 대상).
+    useEffect(() => {
+        if (!loaded) return;
+        const t = setTimeout(() => {
+            previewBatch(config).then((res) => { if (res?.ok) setPreview(res); }).catch(() => {});
+        }, 350);
+        return () => clearTimeout(t);
+    }, [config, loaded]);
+
+    const handleSave = useCallback(async () => {
+        setSaving(true);
+        try {
+            await saveBatchConfig(config);
+            setSavedAt(new Date());
+        } catch (e) {
+            alert('배치 설정 저장 실패: ' + (e?.message || '오류'));
+        } finally {
+            setSaving(false);
+        }
+    }, [config]);
+
+    // 카드별 예상 대상 — 지원 조건은 실수치(number), 미지원은 사유 라벨(string).
+    const cardEst = (key) => {
+        const cc = preview?.conditions?.[key];
+        if (!cc) return null; // 미리보기 도착 전
+        if (cc.supported) return cc.count ?? 0;
+        return key === 'confidence' ? '엔진 연동 대기'
+            : key === 'risk' ? '기준 정의 대기'
+            : key === 'tenure' ? '데이터 보강 대기' : '미지원';
+    };
+    const pool = preview ? preview.pool : null;
+    const totalTargets = preview ? preview.total_targets : null;
     const activeCount = Object.values(on).filter(Boolean).length;
-    const coverage = Math.round((totalTargets / TOTAL_POOL) * 100);
+    const coverage = preview && preview.pool > 0 ? Math.round((preview.total_targets / preview.pool) * 100) : 0;
 
     return (
         <div>
             <PageHead title="AI 평가 배치 관리" sub="AI가 평가한 콜 중 사람이 재청취·검토할 대상을 조건으로 선별합니다. AI 오판 보정과 평가 신뢰성 확보를 위한 표본 추출 규칙을 설정하세요.">
                 {/* '지금 실행'은 수동 주기일 때만 노출 — 스케줄(실시간/매시간/매일)은 자동 실행이라 수동 트리거 불필요. */}
                 {scope.freq === 'manual' && (
-                    <button style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '9px 16px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <button
+                        type="button"
+                        onClick={() => alert('수동 실행은 배치 실행 로직 연동 후 활성화됩니다. (현재는 조건 저장만 지원)')}
+                        title="배치 실행 로직 연동 예정"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '9px 16px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', opacity: 0.6 }}
+                    >
                         <Icon name="play" size={15} />지금 실행
                     </button>
                 )}
@@ -215,9 +286,11 @@ export default function BatchManage() {
                     </span>
                     <div>
                         <div style={{ fontSize: 25, fontWeight: 800, color: 'var(--ink-900)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                            {totalTargets.toLocaleString()} <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-400)' }}>/ {TOTAL_POOL.toLocaleString()} 콜</span>
+                            {totalTargets != null ? totalTargets.toLocaleString() : '—'} <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-400)' }}>/ {pool != null ? pool.toLocaleString() : '—'} 콜</span>
                         </div>
-                        <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 4 }}>오늘 검토 배치 예상 대상 · 전체의 {coverage}%</div>
+                        <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 4 }}>
+                            {preview == null ? '예상 대상 산출 중…' : `검토 배치 예상 대상 · 통화시간 범위 내 ${(preview.in_scope ?? 0).toLocaleString()}콜 중 ${coverage}%`}
+                        </div>
                     </div>
                 </div>
                 <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border-soft)' }}></div>
@@ -279,7 +352,7 @@ export default function BatchManage() {
                 </div>
 
                 {/* ① 저품질 검증 */}
-                <FilterCard idx={1} icon="trending-down" title="저품질 검증" tag="점수 필터링" est={est.quality}
+                <FilterCard idx={1} icon="trending-down" title="저품질 검증" tag="점수 필터링" est={cardEst('quality')}
                     desc="평균·필수항목 점수가 기준 이하인 콜을 재검토 대상으로 선별합니다."
                     on={on.quality} onToggle={() => toggle('quality')}>
                     <SubRule on={q.avgBelow} onToggle={() => setQk('avgBelow', !q.avgBelow)} label="평균 점수 미달" desc="콜 종합 점수가 기준 이하인 경우">
@@ -301,41 +374,40 @@ export default function BatchManage() {
                         <input type="number" value={q.essThreshold} onChange={(e) => setQk('essThreshold', +e.target.value)} style={{ ...bInput, width: 56 }} />
                         <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>점 미만</span>
                     </SubRule>
-                    <SubRule on={q.jobTest} onToggle={() => setQk('jobTest', !q.jobTest)} label="업무지식 테스트 미달" desc="업무평가(지식 테스트) 결과 연계 시 미달자 콜 포함">
-                        <span style={{ fontSize: 11, color: 'var(--ink-400)', fontStyle: 'italic' }}>연계 필요</span>
-                    </SubRule>
                 </FilterCard>
 
                 {/* ② AI 신뢰도 검증 */}
-                <FilterCard idx={2} icon="scan-search" title="AI 신뢰도 검증" tag="AI 오판 보정" est={est.confidence}
+                <FilterCard idx={2} icon="scan-search" title="AI 신뢰도 검증" tag="AI 오판 보정" est={cardEst('confidence')}
                     desc="AI 평가 근거가 불확실하거나 점수와 모순되는 콜을 선별합니다."
                     on={on.confidence} onToggle={() => toggle('confidence')}>
                     <SubRule on={c.uncertain} onToggle={() => setCk('uncertain', !c.uncertain)} label="불확실 표현 포함"
                         desc={'근거 문장에 "~같음", "애매", "판단 어려움" 등 불확실 표현이 있는 경우'} />
                     <SubRule on={c.contradiction} onToggle={() => setCk('contradiction', !c.contradiction)} label="근거–점수 모순"
                         desc="근거는 부정적인데 점수가 높게 부여된 경우" />
-                    <SubRule on={c.weak} onToggle={() => setCk('weak', !c.weak)} label="근거 빈약"
-                        desc="근거 문장이 지나치게 짧거나 일반 문구로만 구성된 경우" />
 
                     {/* 적용 평가 항목 선택 */}
                     <div style={{ marginTop: 4, padding: '12px 14px', borderRadius: 10, background: 'white', border: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                             <Icon name="list-checks" size={14} style={{ color: 'var(--ink-500)' }} />
                             <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-900)' }}>적용 평가 항목</span>
-                            <span style={{ fontSize: 11, color: 'var(--ink-400)' }}>· 체크 해제한 항목은 검사 제외 ({DIMENSIONS.length - excluded.size}/{DIMENSIONS.length})</span>
+                            <span style={{ fontSize: 11, color: 'var(--ink-400)' }}>· 체크 해제한 항목은 검사 제외 ({Math.max(0, evalItems.length - excluded.size)}/{evalItems.length})</span>
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--ink-400)', marginBottom: 10, lineHeight: 1.5, background: 'var(--warning-soft)', border: '1px solid var(--warning-border)', borderRadius: 8, padding: '8px 11px' }}>
                             <Icon name="info" size={12} style={{ verticalAlign: '-2px', marginRight: 4, color: 'var(--warning-ink)' }} />
                             조건에 따라 자동으로 <strong>‘해당 없음’</strong>으로 처리되는 항목은 신뢰도 검증에서 제외하는 것을 권장합니다.
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-                            {DIMENSIONS.map((d) => {
-                                const incl = !excluded.has(d.key);
+                            {evalItems.length === 0 && (
+                                <span style={{ fontSize: 12, color: 'var(--ink-400)' }}>평가된 콜이 없어 항목이 비어 있습니다.</span>
+                            )}
+                            {evalItems.map((it) => {
+                                const incl = !excluded.has(it.order_no);
                                 return (
                                     <button
-                                        key={d.key}
+                                        key={it.order_no}
                                         type="button"
-                                        onClick={() => toggleExcluded(d.key)}
+                                        onClick={() => toggleExcluded(it.order_no)}
+                                        title={`${it.calls}콜 평가됨`}
                                         style={{
                                             display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 9999,
                                             border: `1px solid ${incl ? 'var(--primary-soft-border)' : 'var(--border)'}`,
@@ -345,7 +417,7 @@ export default function BatchManage() {
                                             textDecoration: incl ? 'none' : 'line-through',
                                         }}
                                     >
-                                        <Icon name={incl ? 'check' : 'minus'} size={11} />{d.label}
+                                        <Icon name={incl ? 'check' : 'minus'} size={11} />{it.item}
                                     </button>
                                 );
                             })}
@@ -354,7 +426,7 @@ export default function BatchManage() {
                 </FilterCard>
 
                 {/* ③ 리스크 감지 */}
-                <FilterCard idx={3} icon="shield-alert" title="리스크 감지" tag="금칙어 · 고객 신호" est={est.risk}
+                <FilterCard idx={3} icon="shield-alert" title="리스크 감지" tag="금칙어 · 고객 신호" est={cardEst('risk')}
                     desc="금칙어·고객 리스크 신호가 감지된 콜을 우선 검토 대상으로 선별합니다."
                     on={on.risk} onToggle={() => toggle('risk')}>
                     <SubRule locked label="금칙어 감지" desc="응대 중 금칙어(비속어·부적절 표현)가 감지된 경우" />
@@ -365,7 +437,7 @@ export default function BatchManage() {
                 </FilterCard>
 
                 {/* ④ 대상자 특정 */}
-                <FilterCard idx={4} icon="user-round-search" title="대상자 특정" tag="근속 기간" est={est.tenure}
+                <FilterCard idx={4} icon="user-round-search" title="대상자 특정" tag="근속 기간" est={cardEst('tenure')}
                     desc="근속 기간에 따라 집중 모니터링이 필요한 상담사의 콜을 선별합니다."
                     on={on.tenure} onToggle={() => toggle('tenure')}>
                     <SubRule on={tenure.junior} onToggle={() => setTk('junior', !tenure.junior)} label="신입 상담사" desc="응대 미숙 가능성 — 입사 후 일정 기간 이내">
@@ -381,7 +453,7 @@ export default function BatchManage() {
                 </FilterCard>
 
                 {/* ⑤ AI 편향점검 */}
-                <FilterCard idx={5} icon="shuffle" title="AI 편향점검" tag="표본 · 과대평가" est={est.bias}
+                <FilterCard idx={5} icon="shuffle" title="AI 편향점검" tag="표본 · 과대평가" est={cardEst('bias')}
                     desc="무작위 표본과 비정상 고점 콜을 추출해 AI 평가의 편향을 점검합니다."
                     on={on.bias} onToggle={() => toggle('bias')}>
                     <SubRule on={bias.random} onToggle={() => setBk('random', !bias.random)} label="무작위 표본" desc="전체 콜 중 무작위 추출 — 평가 일관성 점검용">
@@ -396,9 +468,19 @@ export default function BatchManage() {
             </div>
 
             {/* 하단 액션 바 — 조건 설정을 마친 뒤 저장(상단에서 하단으로 이동, 자연스러운 흐름). */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}>
-                <button style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '11px 20px', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <Icon name="save" size={16} />배치 저장
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14, marginTop: 22 }}>
+                {savedAt && (
+                    <span style={{ fontSize: 12, color: 'var(--ink-400)' }}>
+                        {savedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 저장됨
+                    </span>
+                )}
+                <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '11px 20px', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: saving ? 'default' : 'pointer', fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}
+                >
+                    <Icon name="save" size={16} />{saving ? '저장 중…' : '배치 저장'}
                 </button>
             </div>
         </div>

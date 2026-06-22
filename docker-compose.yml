@@ -87,6 +87,12 @@ services:
       ICS_SSO_DEFAULT_ORG_ID: ${ICS_SSO_DEFAULT_ORG_ID:-}
       # 평가항목 공유(튜터 딥평가 0단계-A) — /api/svc/eval-items 서비스 토큰. 빈값이면 공유 비활성.
       EVAL_SHARE_TOKEN: ${EVAL_SHARE_TOKEN:-}
+      # AI 평가 배치 — ② 신뢰도 검증 LLM 판정기. .env 의 키를 컨테이너로 전달(빈값이면 판정 no-op).
+      #   근거 텍스트 맥락 판정 — 엔진 confidence 와 독립된 우리 자체 2차 AI 레이어.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      BATCH_JUDGE_PROVIDER: ${BATCH_JUDGE_PROVIDER:-gemini}
+      BATCH_JUDGE_MODEL: ${BATCH_JUDGE_MODEL:-gemini-2.5-flash-lite}
       # ICS(mtm30) → 09 QA 폴러 — 접속은 위 ICS_DB_* 재사용. 08과 동일: ICS 연결되면 폴링(스위치 없음).
       # 대상 PROJ_CD METAM → organizations.proj_cd 로 org 매핑(DB). 아래는 전부 선택적 튜닝값.
       ICS_QA_POLL_INTERVAL_MS: ${ICS_QA_POLL_INTERVAL_MS:-30000}

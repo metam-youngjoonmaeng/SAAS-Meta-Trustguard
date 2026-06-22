@@ -213,6 +213,54 @@ export async function fetchTranscript(uid) {
     return turns;
 }
 
+/**
+ * 두 ICS datetime 문자열('YYYY-MM-DD HH:mm:ss')에서 소요시간(초)을 산출.
+ * 폴러가 start/end 를 이미 손에 들고 있을 때(별도 쿼리 없이) 사용 — fetchDurationByUids 와 동일 의미.
+ * 시작/종료 누락·파싱불가 → null. 종료<시작(비정상) → 0 으로 가드(음수 방지).
+ * 두 시각이 같은 타임존(로컬)이라 차이는 tz 무관.
+ * @returns {number|null}
+ */
+export function durationSecFromDates(startStr, endStr) {
+    const s = String(startStr || '').trim();
+    const e = String(endStr || '').trim();
+    if (!s || !e) return null;
+    const ms = Date.parse(e.replace(' ', 'T')) - Date.parse(s.replace(' ', 'T'));
+    if (!Number.isFinite(ms)) return null;
+    return Math.max(0, Math.round(ms / 1000));
+}
+
+/**
+ * 여러 UID 의 통화 소요시간(초) 을 한 번에 조회. UID → 정수 초(또는 null).
+ * ICS 에 소요시간 전용 컬럼이 없어 CALL_END_DATE-CALL_START_DATE 차로 산출한다.
+ *   - 시작/종료시각이 비면 NULL (산출 불가).
+ *   - 음수 방지: 종료<시작인 비정상행은 NULL 처리(GREATEST 가드).
+ * 폴러 적재(forward) 와 backfillDuration(기존행) 양쪽에서 사용.
+ * @param {string[]} uids
+ * @param {string|null} projCd
+ * @returns {Promise<Map<string, number|null>>}
+ */
+export async function fetchDurationByUids(uids, projCd) {
+    const out = new Map();
+    const list = (uids || []).filter(Boolean);
+    if (!list.length) return out;
+    const placeholders = list.map(() => '?').join(',');
+    const proj = projCd || null;
+    const sql = `
+        SELECT UID AS uid,
+               CASE
+                 WHEN CALL_START_DATE IS NULL OR CALL_END_DATE IS NULL THEN NULL
+                 ELSE GREATEST(TIMESTAMPDIFF(SECOND, CALL_START_DATE, CALL_END_DATE), 0)
+               END AS dur_sec
+          FROM tb_stt_master
+         WHERE UID IN (${placeholders}) AND (? IS NULL OR PROJ_CD = ?)`;
+    const [rows] = await getPool().query(sql, [...list, proj, proj]);
+    for (const r of rows) {
+        const v = r.dur_sec;
+        out.set(String(r.uid), v === null || v === undefined ? null : Number(v));
+    }
+    return out;
+}
+
 /** 풀 종료(graceful shutdown 용). */
 export async function closeIcsPool() {
     if (_pool) {
