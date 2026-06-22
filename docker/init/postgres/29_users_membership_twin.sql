@@ -134,9 +134,11 @@ SELECT
 FROM public.admin_users a
 ON CONFLICT (user_id) DO NOTHING;
 
--- 시드 계정(admin1=super_admin, test1=admin)은 알려진 초기비번으로 로그인 가능하게
+-- 시드 계정(admin1=super_admin, test1=admin)은 알려진 초기비번으로 로그인 가능하게.
+-- ★ 로그인 코드가 sha256(password) 비교이므로 bcrypt 가 아니라 sha256('1234') 로 설정한다
+--   (bcrypt 로 두면 sha256 입력과 영원히 불일치 → admin1/test1 로그인 불가). 매 seeder 실행 시 재적용.
 UPDATE public.users u
-   SET password_hash = crypt('test1234!', gen_salt('bf', 10))
+   SET password_hash = '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4'  -- sha256('1234')
   FROM public.admin_users a
  WHERE a.user_id = u.id
    AND a.login_id IN ('admin1', 'test1');
