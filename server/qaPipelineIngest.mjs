@@ -523,6 +523,11 @@ const STANDARD_SKIP_ORDERS = new Set([3]);
 // order_no → 카탈로그 슬롯(category/item/max) 역참조 — 루브릭 트랙 환원 시 사용.
 const STANDARD_CATALOG_BY_ORDER = new Map(STANDARD_ITEM_CATALOG.map((slot) => [slot.order_no, slot]));
 
+// 코오롱 표준 3-페르소나 엔진은 레거시 브랜드(신한1/한화2/코오롱3)에만 적용.
+// 신규 브랜드(id≥4)는 항목이 코오롱 카탈로그와 우연히 일치해도(예: '첫인사' 단일 항목) 표준
+// 트랙으로 빠지지 않고 항상 full custom(rubric_inline) 전송 → qa-pipeline custom_rubric 트랙.
+const LEGACY_STANDARD_ORG_IDS = new Set([1, 2, 3]);
+
 /**
  * 루브릭 항목(rubric.items[i])이 코오롱 표준 카탈로그 슬롯과 일치하는지 — order_no 가 카탈로그에
  * 존재하고 항목명까지 동일해야 표준(#1~18) 으로 본다. 그 외(order_no≥19 등)는 additive 추가항목.
@@ -741,12 +746,17 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
             warnings.push(`루브릭 index ${index} → order_no ${orderNo}: score=null/skipped → 행 생략`);
             continue;
         }
-        // 항목 만점 = 응답 ev.max_score(루브릭) 우선, defs 만점은 폴백 — 평가-시점 만점 동결.
+        // 항목 표시 분모 = rowMeta(defs) 만점 우선 — '만점 폼 필드' 를 LLM 채점 스케일(ev.max_score)과
+        // 완전 분리해 표시한다(신규 브랜드 decouple, 사용자 결정 2026-06-22). 파이프라인엔 프롬프트
+        // 최상위 단계가 max_score 로 가서 채점이 깨끗이 snap 되고(ev.score=분자), 분모는 운영자가 편집한
+        // 만점(rowMeta.max_score)으로 표시 → "분자(프롬프트 점수) / 분모(만점 폼 필드)".
+        // 레거시·ecom·bank 는 buildRubricFromDefs 에서 slot.max_score==ev.max_score 라 동작 무변경.
+        // rowMeta 는 평가 시점 스냅샷이라 '평가-시점 만점 동결' 의미도 보존.
         const itemMax = (() => {
-            const m = asNumber(ev.max_score);
-            if (m !== null && m > 0) return m;
             const dm = asNumber(slot.max_score);
-            return dm !== null && dm > 0 ? dm : 5;
+            if (dm !== null && dm > 0) return dm;
+            const m = asNumber(ev.max_score);
+            return m !== null && m > 0 ? m : 5;
         })();
         const aiEval = round1(score);
         rawTotal += aiEval;
@@ -990,6 +1000,24 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
         const orgId = await resolveStandardOrgId(pool, call);
         const { rubric, rowMeta: meta } = await buildRubricFromDefs(pool, orgId);
         if (rubric?.items?.length) {
+            // [동작 불가 게이트] 신규 브랜드(id≥4) 한정 — 평가 기준(criterion/prompt) 미입력 활성
+            // 항목이 하나라도 있으면 평가 실행 자체를 차단한다(빈 항목을 LLM 이 항목명만 보고 임의
+            // 채점하는 사고 방지 — 2026-06-22 사용자 지시). 레거시(1~3)는 백엔드 정적 파일 프롬프트
+            // 기반이라 DB criterion/prompt 가 비어도 정상 평가되므로 제외(무회귀). 차단 에러는 아래
+            // catch 가 isUnconfiguredBlock 로 식별해 표준 폴백 없이 라우트로 재전파한다.
+            if (!LEGACY_STANDARD_ORG_IDS.has(Number(orgId))) {
+                const unconfigured = rubric.items.filter(
+                    (it) => !safeStr(it.prompt_template).trim() && !safeStr(it.criteria_full).trim()
+                );
+                if (unconfigured.length) {
+                    const names = unconfigured.map((it) => safeStr(it.name).trim() || '(이름없음)').join(', ');
+                    const e = new Error(
+                        `평가 기준이 입력되지 않은 항목이 있습니다: ${names}. 평가 기준을 입력한 뒤 다시 실행하세요.`
+                    );
+                    e.isUnconfiguredBlock = true;
+                    throw e;
+                }
+            }
             rowMeta = meta || [];
             const items = rubric.items || [];
             // 항목을 3분류: standard(카탈로그 #1~18 매칭) / extra(order_no≥19 추가항목) / divergent
@@ -1007,7 +1035,10 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
             // (= 기존 .every() 매칭 의미 보존). 추가항목(order_no≥19)이 섞여 있어도 표준 항목은
             // 코오롱 튜닝 노드 유지(rubric_inline 미사용 → flip 방지). divergent 가 있으면(순수 타
             // 테넌트 자체 루브릭) 기존대로 full custom(rubric_inline) — 무회귀.
-            const isKolonStandard = standardIdx.length > 0 && !hasDivergent;
+            // ★레거시(1~3)만 코오롱 표준 트랙 자격. 신규 브랜드(id≥4)는 항목이 카탈로그와
+            // 일치해도 표준 트랙 진입 차단 → 아래 else 의 full custom(rubric_inline) 경로로.
+            const isKolonStandard =
+                LEGACY_STANDARD_ORG_IDS.has(Number(orgId)) && standardIdx.length > 0 && !hasDivergent;
             if (isKolonStandard) {
                 // 표준 트랙: rubric_inline 은 빼되(custom_rubric full flip 미트리거 → 코오롱
                 // 3-페르소나 엔진 유지), 표준 항목의 DB 프롬프트를 prompt_overrides
@@ -1057,6 +1088,8 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
             warnings.push(`루브릭 항목 0건(org=${orgId}) — 표준 트랙 진행`);
         }
     } catch (err) {
+        // [동작 불가 게이트] 차단 에러는 표준 트랙으로 폴백하지 않고 그대로 전파(라우트가 사용자에게 표시).
+        if (err && err.isUnconfiguredBlock) throw err;
         warnings.push(`루브릭 빌드 건너뜀(표준 트랙 진행): ${String(err?.message || err)}`);
     }
 
@@ -1077,7 +1110,17 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
 
 export async function ingestStandardCallFromQaPipeline(pool, call, opts = {}) {
     const started = Date.now();
-    const mapped = await evaluateStandardCall(pool, call, opts);
+    let mapped;
+    try {
+        mapped = await evaluateStandardCall(pool, call, opts);
+    } catch (err) {
+        // [동작 불가 게이트] 평가 기준 미입력 항목 → 평가 실행 차단. 적재하지 않고 사유만 반환
+        // (라우트의 if(!result.ok) 분기가 result.message 를 사용자에게 표시). 그 외 에러는 전파.
+        if (err && err.isUnconfiguredBlock) {
+            return { ok: false, blocked: true, message: err.message, warnings: [] };
+        }
+        throw err;
+    }
     const result = await ingestStandardCallToDb(pool, call, mapped);
     const elapsedSec = round1((Date.now() - started) / 1000);
     return {

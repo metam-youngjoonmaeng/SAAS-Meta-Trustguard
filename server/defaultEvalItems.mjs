@@ -23,17 +23,24 @@ export const DEFAULT_EVAL_ITEMS = [
     { order_no: 18, category: '개인정보 보호',     item: '정보 보호 준수' },
 ];
 
+// 신규 브랜드(id≥4) 최소 시드 — '첫인사' 1항목만. 코오롱 표준 18항목 자동 상속 차단.
+// (요구: 신규 브랜드는 텅 빈 상태에서 첫인사만 — 나머지는 운영자가 UI 에서 추가)
+export const MINIMAL_EVAL_ITEMS = [
+    { order_no: 1, category: '인사 예절', item: '첫인사' },
+];
+
 // 07_eval_item_defs.sql 의 4-tuple UNIQUE (org_id, department, order_no, version) 키에 정합.
 // department 는 버전 스코프 marker — 신규 브랜드는 부서 구분 없이 '기본' 스코프 단일 트랙으로 시작.
 // (신한처럼 부서별 트랙이 필요하면 추후 별도 시드 또는 마이그로 분기)
 const SEED_DEPARTMENT = '기본';
 const SEED_VERSION = 1;
 
-export async function seedDefaultEvalItems(client, orgId) {
+// 항목 배열을 받아 eval_item_defs 에 시드하는 공통 구현 (criterion/prompt = NULL).
+async function seedEvalItems(client, orgId, items) {
     if (!Number.isFinite(Number(orgId))) {
-        throw new Error('seedDefaultEvalItems: orgId must be a number');
+        throw new Error('seedEvalItems: orgId must be a number');
     }
-    for (const row of DEFAULT_EVAL_ITEMS) {
+    for (const row of items) {
         await client.query(
             `INSERT INTO public.eval_item_defs
                  (org_id, order_no, category, item, criterion, prompt_template,
@@ -43,5 +50,15 @@ export async function seedDefaultEvalItems(client, orgId) {
             [orgId, row.order_no, row.category, row.item, SEED_DEPARTMENT, SEED_VERSION]
         );
     }
-    return DEFAULT_EVAL_ITEMS.length;
+    return items.length;
+}
+
+// 코오롱 표준 18항목 시드 (기존 호출 호환 — 현재 신규 생성 경로에서는 미사용).
+export async function seedDefaultEvalItems(client, orgId) {
+    return seedEvalItems(client, orgId, DEFAULT_EVAL_ITEMS);
+}
+
+// 신규 브랜드 시드 — 첫인사 1항목.
+export async function seedMinimalEvalItems(client, orgId) {
+    return seedEvalItems(client, orgId, MINIMAL_EVAL_ITEMS);
 }

@@ -25,6 +25,16 @@ export const DEFAULT_CHECKLIST_KEYS = [
     '설명력 및 전달력', '적극성', '개인정보 보호',
 ];
 
+// 고정 표준 루브릭 브랜드(신한 1 / 한화 2 / 코오롱 3) — 부서 고정 키셋·만점 동결 유지.
+// 그 외 모든 브랜드는 사용자 생성 평가 트랙으로 보고 콜 자체 카테고리 기반 동적 집계.
+// 백엔드 QA_FULL_GRAPH_ORG_IDS 와 동일 개념. MTG_STANDARD_ORG_IDS 로 override 가능.
+export const LEGACY_STANDARD_ORG_IDS = new Set(
+    String(process.env.MTG_STANDARD_ORG_IDS || '1,2,3')
+        .split(',')
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isFinite(n)),
+);
+
 // 콜의 department 로 적절한 대시보드 컬럼 키 선택. 미매칭 시 신한 4 카테고리(레거시 호환).
 export function checklistKeysForDepartment(department) {
     if (department === '고객센터') return HANWHA_CHECKLIST_KEYS;
@@ -33,23 +43,30 @@ export function checklistKeysForDepartment(department) {
 }
 
 /**
- * 부서 고정 키셋 vs 콜 자체 카테고리 중 유효한 쪽 선택.
+ * 표시 컬럼 키셋 선택 — 표준 브랜드(신한/한화/코오롱)는 부서 고정 키셋, 그 외
+ * 사용자 생성 평가 트랙은 콜 자체 카테고리로 완전 동적 집계.
  *
- * 동적 루브릭 콜(이커머스/은행 등 eval_item_defs 자체 항목)은 행 카테고리가 부서
- * 고정 키셋과 전혀 겹치지 않으므로 — 고정 키셋으로 집계 시 카테고리 합계 전부
- * 미산출('-') + 만점 합 0(프론트 80 폴백) — 행 카테고리를 키로 사용한다.
- * 코오롱 표준 콜은 일부라도 겹치므로 기존 키셋 유지 — #15/#16(업무 정확도) 행이
- * 키셋 밖이어도 합산에 더해지지 않아 만점 80 동결이 깨지지 않는다(회귀 방지).
+ * - 표준 브랜드(org 1/2/3): 부서별 고정 키셋 유지. #15/#16(업무 정확도) 등 키셋
+ *   밖 행은 합산에서 제외되어 만점 동결(코오롱 80 등)이 보존된다.
+ * - 사용자 생성 트랙(이커머스/은행/현대차/test/신규 브랜드): eval_item_defs 로
+ *   정의한 임의 카테고리를 그대로 컬럼·만점으로 사용. 부분 일치하는 표준명
+ *   (인사 예절 등)이 섞여 있어도 고정 키셋으로 흡수되지 않는다.
  */
-export function effectiveChecklistKeys(department, checklistRows) {
-    const deptKeys = checklistKeysForDepartment(department);
+export function effectiveChecklistKeys(department, checklistRows, orgId) {
     const rowCats = [];
     for (const r of checklistRows || []) {
         const c = String(r?.category || '').trim();
         if (c && !rowCats.includes(c)) rowCats.push(c);
     }
-    if (rowCats.length === 0) return deptKeys;
-    return rowCats.some((c) => deptKeys.includes(c)) ? deptKeys : rowCats;
+    const nOrg = Number(orgId);
+    const isStandard = Number.isFinite(nOrg) && LEGACY_STANDARD_ORG_IDS.has(nOrg);
+    if (isStandard) {
+        const deptKeys = checklistKeysForDepartment(department);
+        if (rowCats.length === 0) return deptKeys;
+        return rowCats.some((c) => deptKeys.includes(c)) ? deptKeys : rowCats;
+    }
+    // 사용자 생성 트랙 — 콜 카테고리로 동적 집계(없으면 부서 키셋 폴백).
+    return rowCats.length > 0 ? rowCats : checklistKeysForDepartment(department);
 }
 
 /**

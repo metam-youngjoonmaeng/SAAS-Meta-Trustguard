@@ -89,6 +89,32 @@ function parseAllowedStepsFromPrompt(promptTemplate, maxScore) {
     return steps.length >= 2 ? steps : null;
 }
 
+// 프롬프트의 '점수 단계: X / Y / Z' 줄에서 점수 단계 추출 — ★만점 제약 없음(프롬프트 권위).
+// parseAllowedStepsFromPrompt 와 달리 steps[0]===만점 일치를 요구하지 않고, 프롬프트에 적힌 단계를
+// 그대로 반환(내림차순·중복제거). 강제 0 추가 안 함 — 프롬프트가 0 을 안 적으면 최저 단계가 0 이
+// 아닐 수 있음(예: 30/20/10 → 최저 10). 신규 브랜드 prompt-authoritative 경로 전용.
+function parseStepsFromPromptLoose(promptTemplate) {
+    const text = safeStr(promptTemplate);
+    if (!text) return null;
+    let nums = [];
+    // ① '점수 단계:' 줄 우선 (가장 명확한 형식)
+    const stepLine = text.split('\n').find((ln) => ln.includes('점수 단계'));
+    if (stepLine) {
+        nums = (stepLine.match(/\d+/g) || []).map((n) => parseInt(n, 10));
+    } else {
+        // ② 폴백 — 'N점:' / '- **N점**:' 형태 배점 항목 줄에서 점수 추출.
+        //   ('N점 만점' 같은 만점 표기 줄은 제외 — 배점 단계가 아니라 총점 안내이므로)
+        for (const ln of text.split('\n')) {
+            if (ln.includes('만점')) continue;
+            const m = ln.match(/(\d+)\s*점\s*\*{0,2}\s*[:：]/);
+            if (m) nums.push(parseInt(m[1], 10));
+        }
+    }
+    nums = nums.filter((n) => Number.isFinite(n) && n >= 0);
+    const steps = Array.from(new Set(nums)).sort((a, b) => b - a);
+    return steps.length >= 2 ? steps : null;
+}
+
 function safeStr(value) {
     return value === null || value === undefined ? '' : String(value);
 }
@@ -103,9 +129,34 @@ function asNumber(value) {
 // 원문이 DB prompt_template 로 유입될 수 있다. 이 마커가 남아있으면 세부 기준 미입력
 // 원문이므로 빈 값으로 정화해 동봉 (백엔드 custom_rubric/prompt.py 가 동일 마커로 2중 가드).
 const PROMPT_PLACEHOLDER_MARKER = '(이 항목에 적용할 세부 기준을 입력하세요)';
+
+// 프롬프트에 '실제 평가 기준 내용' 이 있는지 판정 — 기본 템플릿 스캐폴드 + placeholder 만 있으면 false.
+// '평가 기준:' ~ '출력 형식:' 구간(헤더 없으면 전체)에서 placeholder 마커와 구조문자(•/-/:/공백/개행)를
+// 제거한 뒤 실 텍스트가 남으면 true. 사용자가 placeholder 줄을 지우지 않고 기준을 '추가'만 해도 인식한다
+// (예: "• (이 항목에 적용할 세부 기준을 입력하세요)\n상담사명 3점" → '상담사명3점' 잔존 → true).
+function hasCriterionContent(value) {
+    const s = safeStr(value);
+    if (!s.trim()) return false;
+    let section = s;
+    const a = s.indexOf('평가 기준');
+    if (a >= 0) {
+        section = s.slice(a + '평가 기준'.length);
+        const b = section.indexOf('출력 형식');
+        if (b >= 0) section = section.slice(0, b);
+    }
+    section = section.split(PROMPT_PLACEHOLDER_MARKER).join('');
+    section = section.replace(/[•\-:\s]/g, '');
+    return section.length > 0;
+}
+
+// placeholder 마커 처리: 마커가 있어도 실 기준 내용이 있으면 **마커만 제거하고 본문은 살린다**(전체 blank 금지).
+// 마커 + 스캐폴드만(기준 미입력)이면 '' → 호출부 미입력 게이트(evaluateStandardCall)가 평가 실행을 차단.
+// 마커가 아예 없으면(사용자 자유 작성 프롬프트) 원문 그대로.
 function sanitizePromptTemplate(value) {
     const s = safeStr(value);
-    return s.includes(PROMPT_PLACEHOLDER_MARKER) ? '' : s;
+    if (!s.includes(PROMPT_PLACEHOLDER_MARKER)) return s;
+    if (!hasCriterionContent(s)) return '';
+    return s.split(PROMPT_PLACEHOLDER_MARKER).join('').trim();
 }
 
 /**
@@ -138,20 +189,42 @@ export async function buildRubricFromDefs(pool, orgId) {
             continue;
         }
 
-        const dbMax = asNumber(row.max_score);
-        const maxScore = dbMax !== null && dbMax > 0 ? Math.round(dbMax) : catalogMaxScore(orderNo);
-        // 점수 단계 결정 (SSOT: db_source.py 와 동일 의미):
-        //   scoring_type==='yes_no' → 만점·0 의 2단계 고정([Math.round(max),0]). prompt 본문
-        //     '점수 단계' 줄보다 상위 우선순위 — Y/N 항목은 중간 단계가 의미 없으므로
-        //     prompt 파싱/카탈로그 스케일을 건너뛰고 이진으로 강제.
-        //   그 외(numeric / scoring_type 미지정) → 기존 동작 byte-identical 보존:
-        //     prompt_template '점수 단계: X / Y / 0' 우선, 실패 시 카탈로그 비례 스케일.
         const scoringType = safeStr(row.scoring_type).trim().toLowerCase();
-        const allowedSteps =
-            scoringType === 'yes_no'
-                ? [Math.round(maxScore), 0]
-                : parseAllowedStepsFromPrompt(row.prompt_template, maxScore) ||
-                  catalogAllowedSteps(orderNo, maxScore);
+        // ★ 채점 스케일(maxScore=파이프라인 max_score=allowed_steps[0]) 과 표시 분모(displayMax=만점 폼
+        //   필드) 를 분리 (신규 브랜드 id≥4, 사용자 결정 2026-06-22).
+        //   - 파이프라인 _normalize_allowed_steps(steps, max_score) 가 steps[0] 을 max_score 에 강제로
+        //     맞춰 보강하므로(만점==최상위 단계 결합), max_score 를 폼 만점(100)으로 보내면 단계가
+        //     [100,...] 으로 재작성돼 100/100 이 된다. 그래서 파이프라인엔 프롬프트 최상위 단계(예: 23)를
+        //     max_score 로 보내 채점이 [23,12,7] 로 깨끗이 snap 되게 한다.
+        //   - 표시 분모(displayMax)는 폼 만점 필드(100)로 따로 두고 rowMeta 에 실어 결과 매퍼
+        //     (mapEvaluateResponseRubric)가 분모로 쓴다 → "23 / 100"(분자=프롬프트 LLM 점수, 분모=폼 만점).
+        //   레거시(1~3)·yes_no·점수 미명시는 채점==표시 결합(기존 동작 byte-identical).
+        const isLegacyStandard = [1, 2, 3].includes(Number(orgId));
+        const promptSteps =
+            !isLegacyStandard && scoringType !== 'yes_no'
+                ? parseStepsFromPromptLoose(row.prompt_template)
+                : null;
+        let maxScore; // 파이프라인 채점 스케일 = allowed_steps[0]
+        let allowedSteps;
+        let displayMax; // 평가 결과 표시 분모
+        if (promptSteps) {
+            // 채점 = 프롬프트 단계(파이프라인 정규화가 steps[0]==max 를 강제하므로 max 도 최상위 단계로 일치).
+            allowedSteps = promptSteps;
+            maxScore = promptSteps[0];
+            // 표시 분모 = 폼 만점 필드. 미입력 시 채점 스케일로 폴백(결합).
+            const dbMax = asNumber(row.max_score);
+            displayMax = dbMax !== null && dbMax > 0 ? Math.round(dbMax) : maxScore;
+        } else {
+            // 점수 미명시(또는 레거시/yes_no) — 기존 동작: 폼 만점 + (점수단계 줄 || 카탈로그 스케일).
+            const dbMax = asNumber(row.max_score);
+            maxScore = dbMax !== null && dbMax > 0 ? Math.round(dbMax) : catalogMaxScore(orderNo);
+            allowedSteps =
+                scoringType === 'yes_no'
+                    ? [Math.round(maxScore), 0]
+                    : parseAllowedStepsFromPrompt(row.prompt_template, maxScore) ||
+                      catalogAllowedSteps(orderNo, maxScore);
+            displayMax = maxScore; // 결합 — 채점==표시
+        }
         const itemName = safeStr(row.item).trim() || `항목 ${orderNo}`;
         const categoryName = safeStr(row.category).trim();
 
@@ -176,7 +249,8 @@ export async function buildRubricFromDefs(pool, orgId) {
             is_bonus: false,
         });
         orderMap.push(orderNo);
-        rowMeta.push({ order_no: orderNo, category: categoryName, item: itemName, max_score: maxScore });
+        // rowMeta.max_score = 표시 분모(displayMax = 만점 폼 필드) — 채점 스케일(item.max_score=maxScore)과 분리.
+        rowMeta.push({ order_no: orderNo, category: categoryName, item: itemName, max_score: displayMax });
     }
 
     return {

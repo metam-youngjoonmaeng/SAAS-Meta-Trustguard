@@ -7,11 +7,8 @@ import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching,
 import { formatDateTime } from '../../utils/formatters';
 import { DEFAULT_TOTAL_MAX } from '../../constants';
 
-// 점수 구간(우수/보통/코칭) 임계값 — 만점 고정(100) 가정 대신 평가항목 만점(루브릭 배점 합)에 비례.
-//   만점은 평가항목관리에서 바뀔 수 있으므로 DEFAULT_TOTAL_MAX(활성 배점 합) 기준 90%/75% 로 자동 산출.
-const SCORE_MAX = Number(DEFAULT_TOTAL_MAX) > 0 ? Number(DEFAULT_TOTAL_MAX) : 100;
-const SCORE_HIGH = Math.round(SCORE_MAX * 0.9);   // 우수 기준(이상)
-const SCORE_LOW = Math.round(SCORE_MAX * 0.75);   // 코칭 기준(미만)
+// 점수 구간(우수/보통/코칭) 임계값은 활성 브랜드 만점(콜 total_max 최대값) 기준 90%/75% 로
+// AdminResults 내부에서 동적 산출. 사용자 생성 평가 트랙(임의 만점)도 자동 반영 — 고정 80 폴백 제거.
 
 // /api/calls(실데이터) 한 행 → 평가목록 행 모양으로 변환.
 //   평가 ID 개념이 없으므로 상담번호(UID)를 사용. 채널은 io_divi(I/O) → inbound/outbound.
@@ -49,6 +46,7 @@ function adaptCall(c) {
         team: c.department || '-',
         category: c.consultation_type || '-',
         score,
+        total_max: Number(c.total_max) > 0 ? Number(c.total_max) : null,
         scores: {},
         status: REVIEW_TO_STATUS[c.review_status] || 'pending',
         reviewStatus: c.review_status || 'pending',   // 원본 4단계값(승인 버튼 게이트용)
@@ -912,6 +910,15 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
         () => [...new Set(results.map((r) => r.team).filter((t) => t && t !== '-'))].sort(),
         [results]
     );
+
+    // 점수 구간 임계값 — 활성 브랜드 만점(콜 total_max 최대값) 기준 90%/75%. 사용자 생성 트랙 임의 만점 자동 반영.
+    const SCORE_MAX = React.useMemo(() => {
+        const maxes = (results || []).map((r) => Number(r.total_max)).filter((n) => Number.isFinite(n) && n > 0);
+        if (maxes.length) return Math.max(...maxes);
+        return Number(DEFAULT_TOTAL_MAX) > 0 ? Number(DEFAULT_TOTAL_MAX) : 100;
+    }, [results]);
+    const SCORE_HIGH = Math.round(SCORE_MAX * 0.9);
+    const SCORE_LOW = Math.round(SCORE_MAX * 0.75);
 
     // 헤더 엑셀식 컬럼 필터 — 현재 결과에 존재하는 값만 목록에. (상단 필터바와 AND 결합)
     const admColVal = {

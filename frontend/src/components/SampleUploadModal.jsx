@@ -144,7 +144,7 @@ export default function SampleUploadModal({ onUploaded }) {
     const [resultMsg, setResultMsg] = useState('');
     const [toast, setToast] = useState(null);
     const [orgNames, setOrgNames] = useState({});
-    // 평가 백엔드 대상 — EC2 고정 (2026-06-11 사용자 지시: 선택 UI 제거, 항상 원격 EC2).
+    // 평가 백엔드 대상 — EC2 고정 (2026-06-22 사용자 지시: prod qa-pipeline 54.235.200.151:8081 사용). 로컬 테스트 시 'local'.
     const pipelineTarget = 'ec2';
     // 진행 중 평가 — 창을 닫아도 유지 (컴포넌트는 버튼과 함께 상시 마운트)
     const [running, setRunning] = useState(null); // { qa_id, startedAt }
