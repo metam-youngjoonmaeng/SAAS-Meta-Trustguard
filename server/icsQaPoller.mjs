@@ -60,6 +60,13 @@ export async function ingestCallByUid(pool, cfg, uid, ingestStandardCallFromQaPi
     }
     const master = await getCallMaster(uid, projCd);
     if (!master || String(master.end_yn || '').toUpperCase() !== 'Y') return 'pending';
+    const durSec = durationSecFromDates(master.start_dt, master.end_dt);
+    // AI 1차 필터: 통화시간 범위 밖이면 평가 건너뜀(비용 절감).
+    const gate = await readDurationGate(pool, orgId);
+    if (outOfDurationGate(gate, durSec)) {
+        logger.info(`[ics-qa/mqtt] ${projCd}/${uid}: 통화시간 ${durSec}s — 범위 밖, AI 평가 제외`);
+        return 'gate_skip';
+    }
     const transcript = await fetchTranscript(uid);
     if (!transcript.length) {
         logger.warn(`[ics-qa/mqtt] ${projCd}/${uid}: 발화 0건 — 건너뜀`);
@@ -75,7 +82,7 @@ export async function ingestCallByUid(pool, cfg, uid, ingestStandardCallFromQaPi
         proj_cd: projCd,
         agent_code: master.agent_code ?? null, // 담당 상담사 업무키(user_m.USER_CD)
         io_divi: master.io_divi ?? null,        // 채널구분 'I'(인바운드)/'O'(아웃바운드)
-        duration_sec: durationSecFromDates(master.start_dt, master.end_dt), // 통화 소요시간(초) — 배치 선별용
+        duration_sec: durSec,                   // 통화 소요시간(초) — 게이트 판정에 쓴 값 재사용
         pipeline_target: 'ec2',
         transcript,
     };
@@ -116,6 +123,39 @@ async function writeWatermark(pool, { projCd, orgId, endDate, uid, added }) {
 }
 
 /**
+ * AI 1차 필터 — 배치 설정(qa_batch_configs)의 통화시간 범위를 평가 게이트로 읽는다.
+ * org 우선, 없으면 0(전체/기본). config 자체가 없거나 사실상 무제한(0~∞)이면 null
+ * → 게이트 없음(전수평가 유지, 안전 기본값 — 실수로 평가가 멈추지 않도록).
+ * @returns {Promise<{minSec:number, maxSec:number|null, freq:string}|null>}
+ */
+async function readDurationGate(pool, orgId) {
+    try {
+        const { rows } = await pool.query(
+            `SELECT config FROM public.qa_batch_configs
+              WHERE org_id = ANY($1) ORDER BY (org_id = $2) DESC LIMIT 1`,
+            [[orgId, 0], orgId]
+        );
+        const scope = rows[0]?.config?.scope;
+        if (!scope) return null;
+        const minMin = Number(scope.minMin);
+        const maxMin = Number(scope.maxMin);
+        const minSec = Number.isFinite(minMin) && minMin > 0 ? Math.round(minMin * 60) : 0;
+        const maxSec = Number.isFinite(maxMin) && maxMin > 0 ? Math.round(maxMin * 60) : null;
+        if (minSec === 0 && maxSec === null) return null; // 무제한 = 게이트 없음
+        return { minSec, maxSec, freq: scope.freq || 'realtime' };
+    } catch (e) {
+        logger.warn(`[ics-qa] 통화시간 게이트 조회 실패(${e?.message || e}) — 게이트 없이 진행`);
+        return null;
+    }
+}
+
+/** 통화시간(초)이 게이트 범위 밖인지. gate=null 이면 항상 false(전수평가). */
+function outOfDurationGate(gate, durSec) {
+    if (!gate || durSec == null) return false; // 미상(null)은 제외하지 않음 — 안전상 평가
+    return durSec < gate.minSec || (gate.maxSec != null && durSec >= gate.maxSec);
+}
+
+/**
  * 폴러 1회 실행 — 종료 콜을 워터마크 이후부터 순차 적재.
  * 실패한 콜에서 멈추고(워터마크는 직전 성공까지만) 다음 주기에 재시도한다.
  */
@@ -144,13 +184,27 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
 
     logger.info(`[ics-qa] ${projCd}: 종료 콜 ${calls.length}건 후보 (after=${wm.endDate ?? '처음'})`);
 
+    // AI 1차 필터: 배치 설정의 통화시간 범위(있으면). 주기마다 1회 읽어 이번 주기 전체에 적용.
+    const gate = await readDurationGate(pool, orgId);
+    if (gate) logger.info(`[ics-qa] ${projCd}: AI 1차 필터 통화시간 [${gate.minSec}, ${gate.maxSec ?? '∞'}]초 적용`);
+
     let added = 0;
+    let skippedByGate = 0;
     let cursorEnd = wm.endDate;
     let cursorUid = wm.uid;
 
     for (const c of calls) {
         const uid = String(c.uid);
         const endDt = c.end_dt; // dateStrings → 'YYYY-MM-DD HH:mm:ss'
+        const durSec = durationSecFromDates(c.start_dt, c.end_dt);
+        // AI 1차 필터: 통화시간 범위 밖이면 평가 자체를 건너뜀(비용 절감). 커서는 전진(재처리 방지).
+        if (outOfDurationGate(gate, durSec)) {
+            logger.info(`[ics-qa] ${projCd}/${uid}: 통화시간 ${durSec}s — 범위 밖, AI 평가 제외(전진)`);
+            cursorEnd = endDt;
+            cursorUid = uid;
+            skippedByGate += 1;
+            continue;
+        }
         try {
             const transcript = await fetchTranscript(uid);
             if (!transcript.length) {
@@ -172,7 +226,7 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
                 proj_cd: projCd,
                 agent_code: c.agent_code ?? null, // 담당 상담사 업무키(user_m.USER_CD) — 적재 시 agent_user_id 해석
                 io_divi: c.io_divi ?? null,        // 채널구분 'I'(인바운드)/'O'(아웃바운드)
-                duration_sec: durationSecFromDates(c.start_dt, c.end_dt), // 통화 소요시간(초) — 배치 선별용
+                duration_sec: durSec,              // 통화 소요시간(초) — 게이트 판정에 쓴 값 재사용
                 pipeline_target: 'ec2', // 운영 평가 백엔드 = EC2(54.235.200.151:8081), UI(SampleUpload)와 동일
                 transcript,
             };
@@ -195,6 +249,8 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
             break;
         }
     }
+
+    if (skippedByGate > 0) logger.info(`[ics-qa] ${projCd}: 통화시간 게이트로 ${skippedByGate}건 AI 평가 제외`);
 
     if (cursorEnd !== wm.endDate || cursorUid !== wm.uid || added > 0) {
         await writeWatermark(pool, { projCd, orgId, endDate: cursorEnd, uid: cursorUid, added });
