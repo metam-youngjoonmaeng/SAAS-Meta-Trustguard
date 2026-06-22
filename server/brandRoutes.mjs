@@ -439,6 +439,7 @@ export function createBrandRouter(pool) {
             const { rows } = await pool.query(
                 `SELECT u.user_id, u.login_id, u.display_name, u.role, u.is_active,
                         u.org_id, o.name AS org_name, u.department,
+                        u.email, u.hire_date, u.leave_date, u.extension, u.dup_login_yn,
                         u.profile_image_path, u.must_change_password,
                         u.created_at, u.updated_at,
                         (SELECT MAX(al.created_at) FROM public.qa_audit_logs al
@@ -535,8 +536,8 @@ export function createBrandRouter(pool) {
             values.push(String(req.body.display_name).trim());
         }
         if (typeof req.body?.role === 'string') {
-            if (!['admin', 'super_admin'].includes(req.body.role)) {
-                res.status(400).json({ message: '허용된 role: admin | super_admin' });
+            if (!['admin', 'super_admin', 'agent'].includes(req.body.role)) {
+                res.status(400).json({ message: '허용된 role: admin | super_admin | agent' });
                 return;
             }
             fields.push(`role = $${idx++}`);
@@ -555,6 +556,26 @@ export function createBrandRouter(pool) {
             const raw = req.body.department;
             values.push(raw == null ? null : String(raw).trim() || null);
         }
+        // 인사 필드 — 입사일/퇴사일(YYYY-MM-DD, 빈값 허용→NULL), 내선번호(빈값→NULL), 중복로그인(Y/N).
+        if ('hire_date' in (req.body || {})) {
+            fields.push(`hire_date = $${idx++}`);
+            const raw = req.body.hire_date;
+            values.push(raw == null ? null : String(raw).trim() || null);
+        }
+        if ('leave_date' in (req.body || {})) {
+            fields.push(`leave_date = $${idx++}`);
+            const raw = req.body.leave_date;
+            values.push(raw == null ? null : String(raw).trim() || null);
+        }
+        if ('extension' in (req.body || {})) {
+            fields.push(`extension = $${idx++}`);
+            const raw = req.body.extension;
+            values.push(raw == null ? null : String(raw).trim() || null);
+        }
+        if ('dup_login_yn' in (req.body || {})) {
+            fields.push(`dup_login_yn = $${idx++}`);
+            values.push(String(req.body.dup_login_yn).trim().toUpperCase() === 'Y' ? 'Y' : 'N');
+        }
         // 비밀번호는 관리자가 임의로 지정할 수 없음 — POST /api/admin/users/:id/reset-password 로만 초기화 가능.
         if (fields.length === 0) {
             res.status(400).json({ message: '수정 항목이 없습니다' });
@@ -567,7 +588,8 @@ export function createBrandRouter(pool) {
             const { rows } = await pool.query(
                 `WITH upd AS (
                      UPDATE public.admin_users SET ${fields.join(', ')} WHERE user_id = $${idx}
-                     RETURNING user_id, login_id, display_name, role, is_active, org_id, department, updated_at
+                     RETURNING user_id, login_id, display_name, role, is_active, org_id, department,
+                               email, hire_date, leave_date, extension, dup_login_yn, updated_at
                  )
                  SELECT upd.*, o.name AS org_name
                  FROM upd

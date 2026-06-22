@@ -59,11 +59,29 @@ function mapRole(authNms) {
     return best;
 }
 
+// ICS 날짜(JOIN_DATE/RETIRE_DATE) → 'YYYY-MM-DD' 정규화. 빈값/0 → null.
+export function normalizeIcsDate(v) {
+    if (v == null) return null;
+    if (v instanceof Date) {
+        if (Number.isNaN(v.getTime())) return null;
+        const p = (n) => String(n).padStart(2, '0');
+        return `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}`;
+    }
+    const s = String(v).trim();
+    if (!s || s === '0' || /^0+$/.test(s)) return null;
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const digits = s.replace(/\D/g, '');
+    if (digits.length >= 8) return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+    return null;
+}
+
 // USER_M 계정 1건 + AUTH_TYPE='S' 역할 한글명(AUTH_NM) 목록 조회. 미존재 시 null.
 async function fetchIcsUser(projCd, userCd) {
     const pool = getIcsPool();
     const [urows] = await pool.query(
-        'SELECT USER_ID, USER_CD, PROJ_CD, USER_PS, USER_STATUS FROM USER_M WHERE PROJ_CD = ? AND USER_CD = ?',
+        `SELECT USER_ID, USER_CD, PROJ_CD, USER_PS, USER_STATUS,
+                USER_NM, EMAIL, TEAM_CD, STATION, JOIN_DATE, RETIRE_DATE, DUP_LOGIN_YN
+           FROM USER_M WHERE PROJ_CD = ? AND USER_CD = ?`,
         [projCd, userCd]
     );
     if (!urows || urows.length === 0) return null;
@@ -83,6 +101,14 @@ async function fetchIcsUser(projCd, userCd) {
         proj_cd: u.PROJ_CD,
         user_status: u.USER_STATUS,
         auth_nms: (arows || []).map((r) => r.auth_nm).filter(Boolean),
+        // 인사 필드(우리 trainee_registrations 로 동기화)
+        user_nm: u.USER_NM || null,
+        email: u.EMAIL || null,
+        team_cd: u.TEAM_CD || null,
+        extension: u.STATION != null && String(u.STATION).trim() !== '' ? String(u.STATION).trim() : null,
+        hire_date: normalizeIcsDate(u.JOIN_DATE),
+        leave_date: normalizeIcsDate(u.RETIRE_DATE),
+        dup_login_yn: String(u.DUP_LOGIN_YN || '').trim().toUpperCase() === 'Y' ? 'Y' : 'N',
     };
 }
 
@@ -136,7 +162,8 @@ export function createIcsSsoRouter(pool, { createSession }) {
 
         const role = mapRole(icsUser.auth_nms);
         const loginId = `${userCd}@${projCd}`.toLowerCase();
-        const displayName = userCd; // ICS USER_M 표시명 컬럼 확정 후 교체 가능
+        // ICS USER_NM/EMAIL 은 암호화 저장(복호화 키 없음) → 표시명은 userCd 유지.
+        const displayName = userCd;
         const defaultOrgId = Number(process.env.ICS_SSO_DEFAULT_ORG_ID || 0) || null;
         // ICS 사용자는 SSO 전용 — 직접 로그인 불가하도록 랜덤(매칭 불가) 해시. 비번변경 팝업 없음(must_change=false).
         const randomHash = crypto.randomBytes(32).toString('hex');
@@ -174,6 +201,19 @@ export function createIcsSsoRouter(pool, { createSession }) {
             console.error('[ics-sso] admin_users JIT upsert 실패:', e?.message || e);
             res.status(500).json({ message: 'ICS 사용자 프로비저닝 실패' });
             return;
+        }
+
+        // 인사 필드(입사·퇴사·내선·중복로그인) ICS → 우리 테이블 동기화. 뷰 UPDATE 트리거가 trainee_registrations 로 라우팅.
+        // (INSERT 트리거는 인사 필드를 다루지 않으므로 upsert 직후 별도 UPDATE 로 일원화.)
+        try {
+            await pool.query(
+                `UPDATE public.admin_users
+                    SET hire_date = $2, leave_date = $3, extension = $4, dup_login_yn = $5, updated_at = now()
+                  WHERE login_id = $1`,
+                [loginId, icsUser.hire_date, icsUser.leave_date, icsUser.extension, icsUser.dup_login_yn]
+            );
+        } catch (e) {
+            console.error('[ics-sso] 인사 필드 동기화 실패(무시):', e?.message || e);
         }
 
         const sessionToken = createSession(row);

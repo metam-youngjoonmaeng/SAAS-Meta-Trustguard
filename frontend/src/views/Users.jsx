@@ -250,172 +250,150 @@ function RowMenu({ onEdit, onResetPw, onDelete, disabled }) {
 // 비밀번호 입력 필드는 의도적으로 제거됨 — 신규 계정은 서버가 초기 비밀번호를 자동 부여하고
 // (must_change_password=true), 본인이 첫 로그인 시 ProfileModal 에서 직접 변경하는 흐름.
 // "비번 재설정"은 별도 confirm 흐름(handleResetPw)에서 처리.
+// 라벨 + 입력 래퍼 (2열 그리드 셀)
+function Fld({ label, required, children }) {
+    return (
+        <div>
+            <label className="block text-[11.5px] font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
+                {label} {required && <span className="text-[#D92D20]">*</span>}
+            </label>
+            {children}
+        </div>
+    );
+}
+const FLD_INPUT = 'w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF] disabled:bg-[#F2F4F7] disabled:text-[#667085]';
+
 function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
     const isEdit = Boolean(initial.user_id);
     const [draft, setDraft] = useState({
         login_id: initial.login_id || '',
         display_name: initial.display_name || '',
+        email: initial.email || '',
         role: initial.role || 'admin',
         org_id: initial.org_id ?? (brands[0]?.id ?? null),
         department: initial.department || '',
         is_active: initial.is_active !== 0 && initial.is_active !== false,
+        hire_date: initial.hire_date || '',
+        leave_date: initial.leave_date || '',
+        extension: initial.extension || '',
+        dup_login_yn: initial.dup_login_yn === 'Y' ? 'Y' : 'N',
     });
     const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+    const ROLES = [
+        { key: 'super_admin', label: '슈퍼관리자', on: 'bg-purple-50 border-purple-200 text-purple-700' },
+        { key: 'admin', label: '관리자', on: 'bg-blue-50 border-blue-200 text-blue-700' },
+        { key: 'agent', label: '상담사', on: 'bg-teal-50 border-teal-200 text-teal-700' },
+    ];
 
-    return (
+    return createPortal(
         <div
-            className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+            className="fixed inset-0 z-[1000] flex items-center justify-center px-4"
             style={{ background: 'rgba(15,23,42,0.4)' }}
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
-                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[#E4E7EC]">
-                    <h3 className="text-base font-bold text-[#101828]">
-                        {isEdit ? '사용자 편집' : '새 사용자'}
-                    </h3>
-                    <button
-                        onClick={onClose}
-                        className="w-7 h-7 grid place-items-center rounded-md text-[#667085] hover:bg-[#F2F4F7] cursor-pointer"
-                    >
+            <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
+                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[#E4E7EC] shrink-0">
+                    <h3 className="text-base font-bold text-[#101828]">{isEdit ? '사용자 정보' : '새 사용자'}</h3>
+                    <button onClick={onClose} className="w-7 h-7 grid place-items-center rounded-md text-[#667085] hover:bg-[#F2F4F7] cursor-pointer">
                         <X size={14} />
                     </button>
                 </div>
 
-                <div className="px-6 py-5 space-y-4">
-                    <div>
-                        <label className="block text-[11.5px] font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
-                            로그인 ID <span className="text-[#D92D20]">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={draft.login_id}
-                            onChange={(e) => set('login_id', e.target.value)}
-                            disabled={isEdit}
-                            className="w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF] disabled:bg-[#F2F4F7] disabled:text-[#667085]"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-[11.5px] font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
-                            이름 <span className="text-[#D92D20]">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={draft.display_name}
-                            onChange={(e) => set('display_name', e.target.value)}
-                            className="w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF]"
-                        />
+                <div className="px-6 py-5 overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-x-5 gap-y-4">
+                        <Fld label="이름" required>
+                            <input type="text" value={draft.display_name} onChange={(e) => set('display_name', e.target.value)} className={FLD_INPUT} />
+                        </Fld>
+                        <Fld label="사용자 ID" required>
+                            <input type="text" value={draft.login_id} onChange={(e) => set('login_id', e.target.value)} disabled={isEdit} className={FLD_INPUT} />
+                        </Fld>
+
+                        {isEdit && (
+                            <Fld label="이메일">
+                                <input type="text" value={draft.email} disabled className={FLD_INPUT} />
+                            </Fld>
+                        )}
+                        <Fld label="팀(부서)">
+                            <input type="text" value={draft.department} onChange={(e) => set('department', e.target.value)} placeholder="예) 고객지원실" className={FLD_INPUT} />
+                        </Fld>
+
+                        <Fld label="사용자 권한" required>
+                            <div className="flex gap-1.5">
+                                {ROLES.map((r) => (
+                                    <button key={r.key} type="button" onClick={() => set('role', r.key)}
+                                        className={`flex-1 h-[40px] rounded-xl border text-[12.5px] font-semibold cursor-pointer ${draft.role === r.key ? r.on : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'}`}>
+                                        {r.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </Fld>
+                        <Fld label="계정상태" required>
+                            <div className="flex gap-2">
+                                {[true, false].map((v) => (
+                                    <button key={String(v)} type="button" onClick={() => set('is_active', v)}
+                                        className={`flex-1 h-[40px] rounded-xl border text-[13px] font-semibold cursor-pointer ${draft.is_active === v ? (v ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700') : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'}`}>
+                                        {v ? '활성' : '비활성'}
+                                    </button>
+                                ))}
+                            </div>
+                        </Fld>
+
+                        {isEdit && (
+                            <>
+                                <Fld label="입사일자" required>
+                                    <input type="date" value={draft.hire_date || ''} onChange={(e) => set('hire_date', e.target.value)} className={FLD_INPUT} />
+                                </Fld>
+                                <Fld label="퇴사일자">
+                                    <input type="date" value={draft.leave_date || ''} onChange={(e) => set('leave_date', e.target.value)} className={FLD_INPUT} />
+                                </Fld>
+
+                                <Fld label="내선번호">
+                                    <input type="text" value={draft.extension || ''} onChange={(e) => set('extension', e.target.value)} placeholder="예) 5012" className={FLD_INPUT} />
+                                </Fld>
+                                <Fld label="중복로그인여부" required>
+                                    <div className="flex gap-2">
+                                        {['Y', 'N'].map((v) => (
+                                            <button key={v} type="button" onClick={() => set('dup_login_yn', v)}
+                                                className={`flex-1 h-[40px] rounded-xl border text-[13px] font-semibold cursor-pointer ${draft.dup_login_yn === v ? (v === 'Y' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-[#F2F4F7] border-[#D0D5DD] text-[#475467]') : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'}`}>
+                                                {v === 'Y' ? '허용 (Y)' : '불가 (N)'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </Fld>
+                            </>
+                        )}
+
+                        <div className="col-span-2">
+                            <Fld label="소속 브랜드">
+                                <select value={draft.org_id ?? ''} onChange={(e) => set('org_id', e.target.value === '' ? null : Number(e.target.value))}
+                                    disabled={!isSuperAdmin} className={FLD_INPUT}>
+                                    <option value="">미지정</option>
+                                    {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                </select>
+                            </Fld>
+                        </div>
                     </div>
 
                     {!isEdit && (
-                        <div className="rounded-xl bg-[#F0F7FF] border border-[#CFE3FA] px-3.5 py-2.5 text-[12px] text-[#1E40AF] leading-relaxed">
+                        <div className="mt-4 rounded-xl bg-[#F0F7FF] border border-[#CFE3FA] px-3.5 py-2.5 text-[12px] text-[#1E40AF] leading-relaxed">
                             <strong className="font-bold">초기 비밀번호가 자동 발급됩니다.</strong>{' '}
                             계정 생성 직후 안내되며, 사용자가 첫 로그인 시 본인이 직접 변경하도록 강제됩니다.
+                            (입사일·내선 등 인사정보는 생성 후 편집에서 입력)
                         </div>
                     )}
-
-                    <div>
-                        <label className="block text-[11.5px] font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
-                            부서
-                        </label>
-                        <input
-                            type="text"
-                            value={draft.department}
-                            onChange={(e) => set('department', e.target.value)}
-                            placeholder="예) AICC 플랫폼실"
-                            className="w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF]"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-[11.5px] font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
-                            소속 브랜드
-                        </label>
-                        <select
-                            value={draft.org_id ?? ''}
-                            onChange={(e) =>
-                                set('org_id', e.target.value === '' ? null : Number(e.target.value))
-                            }
-                            disabled={!isSuperAdmin}
-                            className="w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF] disabled:bg-[#F2F4F7]"
-                        >
-                            <option value="">미지정</option>
-                            {brands.map((b) => (
-                                <option key={b.id} value={b.id}>
-                                    {b.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-[11.5px] font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
-                            역할
-                        </label>
-                        <div className="flex gap-2">
-                            {['admin', 'super_admin'].map((r) => (
-                                <button
-                                    key={r}
-                                    type="button"
-                                    onClick={() => set('role', r)}
-                                    className={`flex-1 h-[38px] rounded-xl border text-[13px] font-semibold cursor-pointer ${
-                                        draft.role === r
-                                            ? r === 'super_admin'
-                                                ? 'bg-purple-50 border-purple-200 text-purple-700'
-                                                : 'bg-blue-50 border-blue-200 text-blue-700'
-                                            : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'
-                                    }`}
-                                >
-                                    {r === 'super_admin' ? '최고관리자' : '관리자'}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-[11.5px] font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
-                            상태
-                        </label>
-                        <div className="flex gap-2">
-                            {[true, false].map((v) => (
-                                <button
-                                    key={String(v)}
-                                    type="button"
-                                    onClick={() => set('is_active', v)}
-                                    className={`flex-1 h-[38px] rounded-xl border text-[13px] font-semibold cursor-pointer ${
-                                        draft.is_active === v
-                                            ? v
-                                                ? 'bg-green-50 border-green-200 text-green-700'
-                                                : 'bg-amber-50 border-amber-200 text-amber-700'
-                                            : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'
-                                    }`}
-                                >
-                                    {v ? '활성' : '비활성'}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
                 </div>
 
-                <div className="px-6 pb-5 flex gap-2 justify-end">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="h-[38px] px-5 rounded-xl border border-[#E4E7EC] bg-white text-[13px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer"
-                    >
-                        취소
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => onSave(draft)}
-                        disabled={
-                            !draft.login_id.trim() || !draft.display_name.trim() || saving
-                        }
-                        className="h-[38px] px-5 rounded-xl bg-[#055AAF] text-white text-[13px] font-semibold hover:bg-[#1E70E0] shadow-sm disabled:opacity-50 cursor-pointer"
-                    >
+                <div className="px-6 pb-5 pt-3 flex gap-2 justify-end border-t border-[#F2F4F7] shrink-0">
+                    <button type="button" onClick={onClose} className="h-[38px] px-5 rounded-xl border border-[#E4E7EC] bg-white text-[13px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer">취소</button>
+                    <button type="button" onClick={() => onSave(draft)}
+                        disabled={!draft.login_id.trim() || !draft.display_name.trim() || saving}
+                        className="h-[38px] px-5 rounded-xl bg-[#055AAF] text-white text-[13px] font-semibold hover:bg-[#1E70E0] shadow-sm disabled:opacity-50 cursor-pointer">
                         {saving ? <Loader2 size={14} className="animate-spin inline" /> : '저장'}
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
@@ -789,6 +767,10 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                     is_active: draft.is_active,
                     org_id: draft.org_id,
                     department: draft.department.trim() || null,
+                    hire_date: draft.hire_date ? String(draft.hire_date).trim() : null,
+                    leave_date: draft.leave_date ? String(draft.leave_date).trim() : null,
+                    extension: draft.extension ? String(draft.extension).trim() : null,
+                    dup_login_yn: draft.dup_login_yn === 'Y' ? 'Y' : 'N',
                 };
                 const updated = await updateUser(modalState.target.user_id, body);
                 setItems((prev) =>
@@ -1132,8 +1114,12 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                                 ? fmtDateTime(u.last_login_at)
                                                 : `${fmtDateTime(u.created_at)} (등록일)`;
                                             return (
-                                                <tr key={u.user_id} className="hover:bg-[#F9FAFB]">
-                                                    <td className="px-4 py-3">
+                                                <tr
+                                                    key={u.user_id}
+                                                    className={`hover:bg-[#F9FAFB] ${isSuperAdmin ? 'cursor-pointer' : ''}`}
+                                                    onClick={isSuperAdmin ? () => setModalState({ open: true, target: u }) : undefined}
+                                                >
+                                                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                                         <input
                                                             type="checkbox"
                                                             checked={selected.has(u.user_id)}
@@ -1180,7 +1166,7 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                                     <td className="px-4 py-3 text-right tabular-nums text-[13px] font-semibold text-[#101828] pr-6">
                                                         {Number(u.login_count || 0).toLocaleString('ko-KR')}
                                                     </td>
-                                                    <td className="px-4 py-3 text-right">
+                                                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                                                         <RowMenu
                                                             disabled={!isSuperAdmin}
                                                             onEdit={() => setModalState({ open: true, target: u })}
@@ -1209,10 +1195,15 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                   user_id: modalState.target.user_id,
                                   login_id: modalState.target.login_id,
                                   display_name: modalState.target.display_name,
+                                  email: modalState.target.email,
                                   role: modalState.target.role,
                                   org_id: modalState.target.org_id,
                                   department: modalState.target.department,
                                   is_active: modalState.target.is_active,
+                                  hire_date: modalState.target.hire_date,
+                                  leave_date: modalState.target.leave_date,
+                                  extension: modalState.target.extension,
+                                  dup_login_yn: modalState.target.dup_login_yn,
                               }
                             : {}
                     }
