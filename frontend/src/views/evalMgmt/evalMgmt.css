@@ -44,6 +44,13 @@
   --call-green:        #16a34a;
   --call-green-hover:  #15803d;
 
+  /* AI 평가 배치관리 페이지 토큰 */
+  --border-soft:         #f2f4f7;          /* hairline divider */
+  --primary-soft-border: #bfd4f2;          /* soft blue border (카드/배너) */
+  --warning-soft:        #fffaeb;          /* warning banner bg */
+  --warning-border:      #fedf89;          /* warning banner border */
+  --warning-ink:         #b54708;          /* warning ink */
+
   /* Emotion (real-time customer affect during call) */
   --emotion-angry:      #ef4444;          /* 분노 */
   --emotion-frustrated: #eab308;          /* 좌절 */

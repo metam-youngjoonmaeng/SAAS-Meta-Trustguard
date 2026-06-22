@@ -26,6 +26,7 @@ const ROLE_META = {
 const TAB_LABELS = {
     dashboard: '평가 리스트',
     'eval-items': 'AI QA 항목관리',
+    'admin-batch': 'AI 평가 배치관리',
     users: '사용자 관리',
     brands: '브랜드 관리',
     stats: '전체 통계',

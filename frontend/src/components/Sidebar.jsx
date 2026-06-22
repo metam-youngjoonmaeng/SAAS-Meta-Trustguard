@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Building2, Users, Terminal, Bell, Bot, BarChart3, ClipboardCheck, Star } from 'lucide-react';
+import { Home, Building2, Users, Terminal, Bell, Bot, BarChart3, ClipboardCheck, Star, Filter } from 'lucide-react';
 import { PRODUCT_NAME } from '../branding';
 import BrandSelector from './BrandSelector';
 
@@ -33,6 +33,7 @@ const ADMIN_NAV_GROUPS = [
         items: [
             { label: '상담사 평가관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
             { label: 'AI QA 항목관리', tab: 'eval-items', Icon: Bot },
+            { label: 'AI 평가 배치관리', tab: 'admin-batch', Icon: Filter },
             { label: '사용자 관리', tab: 'users', Icon: Users },
         ],
     },
@@ -57,6 +58,7 @@ const SUPER_ADMIN_NAV_GROUPS = [
         items: [
             { label: '상담사 평가관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
             { label: 'AI QA 항목관리', tab: 'eval-items', Icon: Bot },
+            { label: 'AI 평가 배치관리', tab: 'admin-batch', Icon: Filter },
             { label: '사용자 관리', tab: 'users', Icon: Users },
             { label: '브랜드 관리', tab: 'brands', Icon: Building2 },
         ],
