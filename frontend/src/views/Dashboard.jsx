@@ -6,6 +6,7 @@ import {
     CONSUMER_TOTAL_MAX,
     DEFAULT_TOTAL_MAX,
     getBrandConfig,
+    isDynamicChecklistBrand,
 } from '../constants';
 import { formatDateTime, formatDuration } from '../utils/formatters';
 import { fetchEvalItemVersions } from '../services/api';
@@ -86,13 +87,22 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
     const brandConfig = useMemo(() => getBrandConfig(activeBrandId), [activeBrandId]);
     const DEPARTMENT_OPTIONS = brandConfig.departments;
     const ROLE_OPTIONS_BY_DEPT = brandConfig.roleOptionsByDept;
-    const CHECKLIST_KEYS = brandConfig.checklistKeys;
+    // 레거시(신한1/한화2/코오롱3)=정적 체크리스트, 신규 브랜드(id≥4)=DB 기반 동적.
+    const dynamic = isDynamicChecklistBrand(activeBrandId);
     // 기본 브랜드: 만점(분모)을 EvalItems 탭 편집 DB(eval_item_defs '기본')에서 라이브 조회.
     // 신한/한화 등은 enabled=false → 정적 checklistTemplate 폴백.
-    const { categoryMaxPoints: CATEGORY_MAX_POINTS } = useDefaultRubricMax({
-        enabled: brandConfig.key === 'default',
+    const { categoryMaxPoints: CATEGORY_MAX_POINTS, effectiveTemplate, totalMax: rubricTotalMax } = useDefaultRubricMax({
+        enabled: brandConfig.key === 'default' || dynamic,
         fallbackTemplate: brandConfig.checklistTemplate,
+        dynamicList: dynamic,
     });
+    // 카테고리 키: 신규 브랜드는 DB 항목 카테고리에서 도출(중복 제거·순서 보존), 레거시는 정적.
+    const CHECKLIST_KEYS = useMemo(
+        () => (dynamic
+            ? [...new Set((effectiveTemplate || []).map((t) => t.category).filter(Boolean))]
+            : brandConfig.checklistKeys),
+        [dynamic, effectiveTemplate, brandConfig]
+    );
     // 상세페이지 → 뒤로가기 복귀 시 직전에 보던 부서 탭을 유지.
     // 같은 탭(sessionStorage)에서만 살아남도록 함 — 새 탭/새 창은 기본 부서로 시작.
     const [department, setDepartment] = useState(() => {
@@ -527,8 +537,8 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{row.role || '-'}</td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDuration(row.duration_sec)}</td>
                                             <td className="px-2 py-3 text-right text-[14px] font-semibold text-[#101828] tabular-nums">
-                                                {department === '고객지원실'
-                                                    ? labelEarnedOverDefaultMax(row.total_score, row.total_max || DEFAULT_TOTAL_MAX)
+                                                {(department === '고객지원실' || dynamic)
+                                                    ? labelEarnedOverDefaultMax(row.total_score, row.total_max || rubricTotalMax || DEFAULT_TOTAL_MAX)
                                                     : labelEarnedOverMax(row.total_score)}
                                             </td>
                                             {CHECKLIST_KEYS.map((key) => {
