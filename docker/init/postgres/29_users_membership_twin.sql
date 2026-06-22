@@ -135,13 +135,16 @@ FROM public.admin_users a
 ON CONFLICT (user_id) DO NOTHING;
 
 -- 시드 계정(admin1=super_admin, test1=admin)은 알려진 초기비번으로 로그인 가능하게.
--- ★ 로그인 코드가 sha256(password) 비교이므로 bcrypt 가 아니라 sha256('1234') 로 설정한다
---   (bcrypt 로 두면 sha256 입력과 영원히 불일치 → admin1/test1 로그인 불가). 매 seeder 실행 시 재적용.
+-- ★ 로그인은 sha256(password) 동등비교(server/index.js)라 bcrypt 가 아니라 sha256('test1234!') 로 둔다
+--   (bcrypt 로 두면 sha256 입력과 영원히 불일치 → admin1/test1 로그인 불가).
+-- length(hash)<>64 가드: 깨진 bcrypt(60자)·빈 값만 1회 복구하고, 이미 sha256(64자)로 바꾼 비번은
+--   보존 → seeder 가 매 기동 재실행해도 운영자가 변경한 비번이 1234/초기값으로 리셋되지 않는다.
 UPDATE public.users u
-   SET password_hash = '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4'  -- sha256('1234')
+   SET password_hash = 'd27c5b2db7dc392a0cfeb18b9782f34709d1dea7bdb8dd7209f6d4c7387c7910'  -- sha256('test1234!')
   FROM public.admin_users a
  WHERE a.user_id = u.id
-   AND a.login_id IN ('admin1', 'test1');
+   AND a.login_id IN ('admin1', 'test1')
+   AND (u.password_hash IS NULL OR length(u.password_hash) <> 64);
 
 -- users.id 시퀀스를 admin_users 시퀀스와 맞춤(신규 INSERT 충돌 방지)
 SELECT setval(
