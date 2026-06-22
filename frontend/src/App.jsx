@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Dashboard from './views/Dashboard';
 import Detail from './views/Detail';
 import Brands from './views/Brands';
@@ -396,6 +396,14 @@ function App() {
         return () => window.removeEventListener('hashchange', applyRoute);
     }, []);
 
+    // 상세(detail) 진입 시 직전 탭을 기억 — 브레드크럼 부모 / "목록으로" 복귀 대상.
+    // (평가 리스트에서 왔으면 dashboard, 상담사 평가관리에서 왔으면 eval-mgmt …)
+    const detailOriginRef = useRef('dashboard');
+    useEffect(() => {
+        if (activeTab !== 'detail') detailOriginRef.current = activeTab;
+    }, [activeTab]);
+    const detailOrigin = activeTab === 'detail' ? detailOriginRef.current : null;
+
     useEffect(() => {
         if (!isAuthenticated || !sessionExpiresAt) return;
 
@@ -484,6 +492,9 @@ function App() {
         else if (tab === 'eval-mgmt') navigateHash(EVAL_MGMT_HASH);
     };
 
+    // 상세에서 "목록으로" / 브레드크럼 부모 클릭 → 진입했던 탭으로 복귀(없으면 평가 리스트).
+    const handleBackFromDetail = () => handleSidebarTabClick(detailOriginRef.current || 'dashboard');
+
     const handleBrandChange = useCallback(
         async (brandId) => {
             if (brandId === selectedBrandId) return;
@@ -521,6 +532,8 @@ function App() {
                 isDev={process.env.NODE_ENV !== 'production' || Boolean(process.env.NEXT_PUBLIC_DEV_BADGE)}
                 user={currentUser}
                 activeTab={activeTab}
+                detailOrigin={detailOrigin}
+                onNavTab={handleSidebarTabClick}
             />
             <div className="app-shell-body">
                 <Sidebar
@@ -545,7 +558,7 @@ function App() {
                 {activeTab === 'detail' && (
                     <Detail
                         qaId={selectedQaId}
-                        onBack={handleBackToDashboard}
+                        onBack={handleBackFromDetail}
                         calls={calls}
                         onEvaluationsSaved={refreshCalls}
                         activeBrandId={selectedBrandId}

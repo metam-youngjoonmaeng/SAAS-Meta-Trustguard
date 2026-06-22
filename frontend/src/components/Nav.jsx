@@ -25,7 +25,7 @@ const ROLE_META = {
 // 탭 → 라벨 (사이드바와 동일). 상단바 브레드크럼 표시용.
 const TAB_LABELS = {
     dashboard: '평가 리스트',
-    'eval-items': 'AI 평가항목 관리',
+    'eval-items': 'AI QA 항목관리',
     users: '사용자 관리',
     brands: '브랜드 관리',
     stats: '전체 통계',
@@ -33,21 +33,26 @@ const TAB_LABELS = {
     logs: '실시간 로그',
 };
 
-// 현재 위치 브레드크럼 세그먼트 — 상세는 부모(평가 리스트)→현재, 그 외는 역할→탭명.
-// onClick 있는 세그먼트만 클릭 가능(평가 리스트로 복귀).
-function buildCrumbs(activeTab, role, onHome) {
+// 탭 → 표시 라벨. eval-mgmt 는 역할별, detail 은 페이지명.
+function tabLabelOf(tab, role) {
+    if (tab === 'eval-mgmt') return role === 'agent' ? '내 평가 결과' : '상담사 평가관리';
+    if (tab === 'detail') return '상담 QA 분석 결과';
+    return TAB_LABELS[tab] || '';
+}
+
+// 현재 위치 브레드크럼. 상세(detail)는 "어디서 진입했는지(detailOrigin)"를 부모로 두고
+// 그 탭으로 복귀 가능 — 평가 리스트에서 왔으면 평가 리스트, 상담사 평가관리에서 왔으면 그쪽.
+function buildCrumbs(activeTab, role, detailOrigin, onNavTab) {
     if (!activeTab) return [];
     if (activeTab === 'detail') {
+        const origin = detailOrigin || 'dashboard';
         return [
-            { label: '평가 리스트', onClick: onHome },
+            { label: tabLabelOf(origin, role), onClick: () => onNavTab && onNavTab(origin) },
             { label: '상담 QA 분석 결과' },
         ];
     }
-    // 페이지 정보만 표시 — 역할(관리자/상담사 등)은 브레드크럼에 넣지 않음.
-    const tabLabel = activeTab === 'eval-mgmt'
-        ? (role === 'agent' ? '내 평가 결과' : '평가 관리')
-        : (TAB_LABELS[activeTab] || '');
-    return tabLabel ? [{ label: tabLabel }] : [];
+    const label = tabLabelOf(activeTab, role);
+    return label ? [{ label }] : [];
 }
 
 function initialsOf(user) {
@@ -62,11 +67,11 @@ function initialsOf(user) {
     return src.slice(0, 2).toUpperCase();
 }
 
-const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, activeTab }) => {
+const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, activeTab, detailOrigin, onNavTab }) => {
     const roleMeta = user?.role ? ROLE_META[user.role] : null;
     const displayName = user?.display_name || user?.login_id || '';
     const avatarUrl = user?.profile_image_url;
-    const crumbs = buildCrumbs(activeTab, user?.role, onHomeClick);
+    const crumbs = buildCrumbs(activeTab, user?.role, detailOrigin, onNavTab);
     return (
         <nav className="app-nav">
             <div className="app-nav-inner">
