@@ -184,6 +184,72 @@ const taStyle = {
     boxSizing: 'border-box',
 };
 
+// ── 단어 단위 diff(LCS) — AI QA 항목관리 변경이력(EvalItems)과 동일 로직. 공백/개행 토큰 보존. ──
+function diffTokenize(s) {
+    return String(s ?? '').split(/(\s+)/).filter((t) => t.length > 0);
+}
+// 초대형 입력용 줄 단위 폴백 — 토큰² 폭주 방지.
+function diffOpsByLine(aStr, bStr) {
+    const a = String(aStr ?? '').split(/(\n)/).filter((t) => t.length > 0);
+    const b = String(bStr ?? '').split(/(\n)/).filter((t) => t.length > 0);
+    const n = a.length, m = b.length;
+    const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+        dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+    const ops = []; let i = 0, j = 0;
+    while (i < n && j < m) {
+        if (a[i] === b[j]) { ops.push({ t: 'eq', v: a[i] }); i++; j++; }
+        else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ t: 'del', v: a[i] }); i++; }
+        else { ops.push({ t: 'ins', v: b[j] }); j++; }
+    }
+    while (i < n) { ops.push({ t: 'del', v: a[i] }); i++; }
+    while (j < m) { ops.push({ t: 'ins', v: b[j] }); j++; }
+    return ops;
+}
+function diffOps(aStr, bStr) {
+    const a = diffTokenize(aStr), b = diffTokenize(bStr);
+    const n = a.length, m = b.length;
+    if (n * m > 9000000) return diffOpsByLine(aStr, bStr); // 성능 가드
+    const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+        dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+    const ops = []; let i = 0, j = 0;
+    while (i < n && j < m) {
+        if (a[i] === b[j]) { ops.push({ t: 'eq', v: a[i] }); i++; j++; }
+        else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ t: 'del', v: a[i] }); i++; }
+        else { ops.push({ t: 'ins', v: b[j] }); j++; }
+    }
+    while (i < n) { ops.push({ t: 'del', v: a[i] }); i++; }
+    while (j < m) { ops.push({ t: 'ins', v: b[j] }); j++; }
+    return ops;
+}
+// 변경 강조: mode='before' → 삭제분 빨강, 'after' → 추가분 초록. 반대편 변경분은 숨김.
+function DiffText({ value, other, mode }) {
+    const cur = value === null || value === undefined ? '' : String(value);
+    if (cur === '') return <span style={{ fontStyle: 'italic', color: 'var(--ink-300)' }}>(없음)</span>;
+    const oth = other === null || other === undefined ? '' : String(other);
+    const before = mode === 'before' ? cur : oth;
+    const after = mode === 'before' ? oth : cur;
+    const ops = diffOps(before, after);
+    return (
+        <>
+            {ops.map((op, idx) => {
+                if (op.t === 'eq') return <span key={idx}>{op.v}</span>;
+                if (mode === 'before' && op.t === 'del') return <mark key={idx} style={{ background: '#FEE4E2', color: '#B42318', borderRadius: 3, padding: '0 2px' }}>{op.v}</mark>;
+                if (mode === 'after' && op.t === 'ins') return <mark key={idx} style={{ background: '#DCFAE6', color: '#067647', borderRadius: 3, padding: '0 2px' }}>{op.v}</mark>;
+                return null;
+            })}
+        </>
+    );
+}
+
+const DIFF_FIELDS = [
+    { key: 'uncertain_def', label: '불확실 표현' },
+    { key: 'contradiction_def', label: '근거–점수 모순' },
+];
+
 // ② 판정 프롬프트 편집 — 두 정의문(불확실/모순)을 한 모달에서 편집. 저장 시 변경되면 재판정 트리거.
 // focus='uncertain'|'contradiction' — 클릭한 섹션을 강조/자동포커스.
 function PromptEditModal({ focus, onClose, onChanged }) {
@@ -335,7 +401,7 @@ function PromptEditModal({ focus, onClose, onChanged }) {
     return (
         <Modal
             title={isHistory ? '판정 기준 변경 이력' : `${critLabel} — 판정 기준 수정`}
-            width={620}
+            width={isHistory ? 880 : 620}
             onClose={busy ? undefined : onClose}
             foot={isHistory ? historyFoot : editFoot}
         >
@@ -445,15 +511,38 @@ function HistoryView({ history, expanded, onToggle, fmtTs }) {
                             <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} style={{ color: 'var(--ink-400)' }} />
                         </button>
                         {open && (
-                            <div style={{ borderTop: '1px solid var(--border-soft)', background: 'var(--background-soft)', padding: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                <div>
-                                    <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 4 }}>불확실 표현</div>
-                                    <div style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{h.uncertain_def || '—'}</div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 4 }}>근거–점수 모순</div>
-                                    <div style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{h.contradiction_def || '—'}</div>
-                                </div>
+                            <div style={{ borderTop: '1px solid var(--border-soft)', background: 'var(--background-soft)', padding: 13, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                {(() => {
+                                    const prev = history[idx + 1]; // 더 오래된 버전
+                                    if (!prev) {
+                                        // 최초 저장 — 전/후 없음, 현재 내용만.
+                                        return DIFF_FIELDS.map((f) => (
+                                            <div key={f.key}>
+                                                <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 5 }}>{f.label}</div>
+                                                <div style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{h[f.key] || '—'}</div>
+                                            </div>
+                                        ));
+                                    }
+                                    const changed = DIFF_FIELDS.filter((f) => (h[f.key] || '') !== (prev[f.key] || ''));
+                                    if (changed.length === 0) {
+                                        return <div style={{ fontSize: 11.5, fontStyle: 'italic', color: 'var(--ink-400)' }}>이 버전에서 바뀐 기준이 없습니다.</div>;
+                                    }
+                                    return changed.map((f) => (
+                                        <div key={f.key}>
+                                            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 5 }}>{f.label}</div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'white' }}>
+                                                <div style={{ padding: '6px 10px', background: 'var(--background-soft)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border-soft)', fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--ink-500)' }}>이전 (v{prev.version})</div>
+                                                <div style={{ padding: '6px 10px', background: '#EEF4FB', borderBottom: '1px solid var(--border-soft)', fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', color: '#055AAF' }}>현재 (v{h.version})</div>
+                                                <div style={{ padding: '9px 10px', borderRight: '1px solid var(--border)', fontSize: 12, color: 'var(--ink-600)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
+                                                    <DiffText value={prev[f.key]} other={h[f.key]} mode="before" />
+                                                </div>
+                                                <div style={{ padding: '9px 10px', fontSize: 12, color: 'var(--ink-900)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
+                                                    <DiffText value={h[f.key]} other={prev[f.key]} mode="after" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ));
+                                })()}
                             </div>
                         )}
                     </div>
