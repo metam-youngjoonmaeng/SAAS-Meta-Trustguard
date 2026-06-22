@@ -270,7 +270,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
     }, [baseFilteredCalls, versionFilterInfo.effectiveVersion, matchCallToVersion]);
 
     return (
-        <div className="animate-fade-in w-full">
+        <div className="w-full">
             <Header
                 title={PRODUCT_NAME}
                 subtitle={PLATFORM_TITLE}

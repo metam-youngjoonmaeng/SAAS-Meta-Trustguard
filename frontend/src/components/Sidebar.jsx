@@ -33,13 +33,13 @@ const ADMIN_NAV_GROUPS = [
         items: [
             { label: '상담사 평가관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
             { label: 'AI QA 항목관리', tab: 'eval-items', Icon: Bot },
-            { label: 'AI 평가 배치관리', tab: 'admin-batch', Icon: Filter },
             { label: '사용자 관리', tab: 'users', Icon: Users },
         ],
     },
     {
         section: '시스템',
         items: [
+            { label: 'AI 평가 배치', tab: 'admin-batch', Icon: Filter },
             { label: '알림', tab: 'notifications', Icon: Bell },
         ],
     },
@@ -58,7 +58,6 @@ const SUPER_ADMIN_NAV_GROUPS = [
         items: [
             { label: '상담사 평가관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
             { label: 'AI QA 항목관리', tab: 'eval-items', Icon: Bot },
-            { label: 'AI 평가 배치관리', tab: 'admin-batch', Icon: Filter },
             { label: '사용자 관리', tab: 'users', Icon: Users },
             { label: '브랜드 관리', tab: 'brands', Icon: Building2 },
         ],
@@ -66,6 +65,7 @@ const SUPER_ADMIN_NAV_GROUPS = [
     {
         section: '시스템',
         items: [
+            { label: 'AI 평가 배치', tab: 'admin-batch', Icon: Filter },
             { label: '알림', tab: 'notifications', Icon: Bell },
             { label: '실시간 로그', tab: 'logs', Icon: Terminal },
         ],

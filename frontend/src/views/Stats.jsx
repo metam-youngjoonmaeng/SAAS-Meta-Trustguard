@@ -140,7 +140,7 @@ export default function Stats({ activeBrandId, role }) {
     const dailyMax = Math.max(1, ...daily.map((d) => d.avg || 0));
 
     return (
-        <div className="animate-fade-in pb-10 w-full">
+        <div className="pb-10 w-full">
             <Header
                 title="조직 평가 대시보드"
                 subtitle="기간별 · 부서별 · 항목별 평가 결과를 비교 분석합니다."

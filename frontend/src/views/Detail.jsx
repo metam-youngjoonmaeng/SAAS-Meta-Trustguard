@@ -751,7 +751,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
 
     return (
         <>
-            <div className="animate-fade-in pb-10 w-full">
+            <div className="pb-10 w-full">
                 {/* 상단 제목 제거(상단바 브레드크럼이 대체) — 상담사/상담번호 + 목록으로만 컴팩트하게 */}
                 <div className="flex items-center justify-between gap-4 mb-5">
                     <p className="text-sm text-[#667085] truncate">

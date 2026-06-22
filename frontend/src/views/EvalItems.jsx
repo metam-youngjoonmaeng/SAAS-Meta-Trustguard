@@ -144,7 +144,7 @@ const EvalItems = ({ activeBrandId }) => {
         : null;
 
     return (
-        <div className="animate-fade-in pb-10 w-full">
+        <div className="pb-10 w-full">
             <Header
                 title={`${PRODUCT_NAME} · AI 평가항목 관리`}
                 subtitle="체크리스트 항목과 Pentagon 5축의 라벨·기준·프롬프트를 한 곳에서 관리합니다."
@@ -171,8 +171,9 @@ const EvalItems = ({ activeBrandId }) => {
                 {/* ── 좌측 ── */}
                 <div className="bg-white border border-[#E4E7EC] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
                     {/* 섹션 1: 체크리스트 */}
-                    {/* 두 섹션이 카드 높이를 60:40 으로 꽉 채움(flex-grow 비율) — 하단 빈 박스 제거. */}
-                    <div className="flex flex-col min-h-0" style={{ flex: '3 1 0%' }}>
+                    {/* 체크리스트는 남는 공간을 모두 차지하고(많으면 내부 스크롤),
+                        Pentagon 은 내용 높이에 맞춰(5축+추가 항상 노출, 스크롤 없음). */}
+                    <div className="flex flex-col min-h-0" style={{ flex: '1 1 0%' }}>
                         <SectionHeader
                             title="체크리스트 평가항목"
                             count={`${items.length}개`}
@@ -202,8 +203,8 @@ const EvalItems = ({ activeBrandId }) => {
                         </div>
                     </div>
 
-                    {/* 섹션 2: Pentagon */}
-                    <div className="flex flex-col min-h-0 border-t-[6px] border-[#F2F4F7]" style={{ flex: '2 1 0%' }}>
+                    {/* 섹션 2: Pentagon — 내용 높이에 맞춰 고정(축이 적어도 스크롤 없이 전부 노출) */}
+                    <div className="flex flex-col shrink-0 border-t-[6px] border-[#F2F4F7]" style={{ flex: '0 0 auto' }}>
                         <SectionHeader
                             title="Pentagon 평가항목"
                             count={`${effectiveAxes.length}축`}
@@ -211,7 +212,7 @@ const EvalItems = ({ activeBrandId }) => {
                             editDisabled={!selectedAxis}
                             editTitle={selectedAxis ? `${selectedAxis.label} 편집` : '편집할 축을 먼저 선택하세요'}
                         />
-                        <div className="flex-1 overflow-y-auto p-2 min-h-0">
+                        <div className="p-2">
                             {effectiveAxes.map((label, idx) => {
                                 const on = selection.kind === 'axis' && selection.idx === idx;
                                 return (
@@ -997,10 +998,10 @@ function HistoryModal({ departments = [], onClose }) {
                                                             {f.label} · 현재 ({afterAt}~)
                                                         </div>
                                                         <div className="px-3 py-2.5 text-[12px] text-[#475467] leading-relaxed whitespace-pre-wrap border-r border-[#E4E7EC] bg-white">
-                                                            {renderValue(f.before)}
+                                                            <DiffText value={f.before} other={f.after} mode="before" />
                                                         </div>
                                                         <div className="px-3 py-2.5 text-[12px] text-[#101828] leading-relaxed whitespace-pre-wrap bg-white">
-                                                            {renderValue(f.after)}
+                                                            <DiffText value={f.after} other={f.before} mode="after" />
                                                         </div>
                                                     </div>
                                                 ))
@@ -1026,11 +1027,80 @@ function collectChangedFields(beforeJson, afterJson) {
         .map((k) => ({ key: k, label: FIELD_LABEL[k], before: before[k], after: after[k] }));
 }
 
-function renderValue(v) {
-    if (v === null || v === undefined || v === '') {
-        return <span className="italic text-[#98A2B3]">(없음)</span>;
+// 단어 단위 diff(LCS) — 공백/개행 토큰을 보존해 원문 서식 유지.
+function diffTokenize(s) {
+    return String(s ?? '').split(/(\s+)/).filter((t) => t.length > 0);
+}
+// 초대형 입력용 줄 단위 폴백 — 토큰² 폭주 방지.
+function diffOpsByLine(aStr, bStr) {
+    const a = String(aStr ?? '').split(/(\n)/).filter((t) => t.length > 0);
+    const b = String(bStr ?? '').split(/(\n)/).filter((t) => t.length > 0);
+    const n = a.length, m = b.length;
+    const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+        for (let j = m - 1; j >= 0; j--) {
+            dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+        }
     }
-    return String(v);
+    const ops = [];
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+        if (a[i] === b[j]) { ops.push({ t: 'eq', v: a[i] }); i++; j++; }
+        else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ t: 'del', v: a[i] }); i++; }
+        else { ops.push({ t: 'ins', v: b[j] }); j++; }
+    }
+    while (i < n) { ops.push({ t: 'del', v: a[i] }); i++; }
+    while (j < m) { ops.push({ t: 'ins', v: b[j] }); j++; }
+    return ops;
+}
+function diffOps(aStr, bStr) {
+    const a = diffTokenize(aStr);
+    const b = diffTokenize(bStr);
+    const n = a.length, m = b.length;
+    // 성능 가드: 매우 큰 입력(약 3000토큰² 초과)만 줄 단위로 폴백 — 일반 프롬프트는 단어 단위 diff.
+    if (n * m > 9000000) {
+        return diffOpsByLine(aStr, bStr);
+    }
+    const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+        for (let j = m - 1; j >= 0; j--) {
+            dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+        }
+    }
+    const ops = [];
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+        if (a[i] === b[j]) { ops.push({ t: 'eq', v: a[i] }); i++; j++; }
+        else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ t: 'del', v: a[i] }); i++; }
+        else { ops.push({ t: 'ins', v: b[j] }); j++; }
+    }
+    while (i < n) { ops.push({ t: 'del', v: a[i] }); i++; }
+    while (j < m) { ops.push({ t: 'ins', v: b[j] }); j++; }
+    return ops;
+}
+
+// 변경 강조 텍스트. mode='before' → 삭제분 빨강, mode='after' → 추가분 초록. 반대편 변경분은 숨김.
+function DiffText({ value, other, mode }) {
+    const cur = value === null || value === undefined ? '' : String(value);
+    if (cur === '') return <span className="italic text-[#98A2B3]">(없음)</span>;
+    const oth = other === null || other === undefined ? '' : String(other);
+    const before = mode === 'before' ? cur : oth;
+    const after = mode === 'before' ? oth : cur;
+    const ops = diffOps(before, after);
+    return (
+        <>
+            {ops.map((op, idx) => {
+                if (op.t === 'eq') return <span key={idx}>{op.v}</span>;
+                if (mode === 'before' && op.t === 'del') {
+                    return <mark key={idx} className="bg-[#FEE4E2] text-[#B42318] rounded-[3px] px-0.5">{op.v}</mark>;
+                }
+                if (mode === 'after' && op.t === 'ins') {
+                    return <mark key={idx} className="bg-[#DCFAE6] text-[#067647] rounded-[3px] px-0.5">{op.v}</mark>;
+                }
+                return null; // before 칸의 ins / after 칸의 del 은 숨김
+            })}
+        </>
+    );
 }
 
 /* ── 체크리스트 항목 모달 (신규 / 편집) ───────────────────────── */
