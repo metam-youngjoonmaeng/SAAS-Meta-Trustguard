@@ -2,6 +2,7 @@
 // 원본은 CDN Lucide(전역 Icon)를 썼으나, 본 앱은 lucide-react 를 쓰므로
 // kebab-case 아이콘명을 PascalCase 컴포넌트로 매핑하는 Icon 래퍼로 대체했다.
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import * as Lucide from 'lucide-react';
 
 // ─────────────────────────────────────────────────────
@@ -308,23 +309,29 @@ export function Modal({ title, onClose, children, foot, width }) {
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [onClose]);
-    return (
-        <div className="modal-scrim" onClick={onClose}>
-            <div
-                className="modal"
-                onClick={(e) => e.stopPropagation()}
-                style={width ? { width: `min(${width}px, calc(100vw - 32px))` } : undefined}
-            >
-                <div className="modal-head">
-                    <h2>{title}</h2>
-                    <button className="icon-btn" onClick={onClose}>
-                        <Icon name="x" />
-                    </button>
+    if (typeof document === 'undefined') return null;
+    // document.body 포털 — 상위 레이아웃에 갇히지 않게 전체 화면을 덮는다.
+    // 스타일이 .tg-eval 하위로 스코프돼 있어 래퍼를 .tg-eval 로 감싼다(스타일/CSS변수 유지).
+    return createPortal(
+        <div className="tg-eval">
+            <div className="modal-scrim" onClick={onClose}>
+                <div
+                    className="modal"
+                    onClick={(e) => e.stopPropagation()}
+                    style={width ? { width: `min(${width}px, calc(100vw - 32px))` } : undefined}
+                >
+                    <div className="modal-head">
+                        <h2>{title}</h2>
+                        <button className="icon-btn" onClick={onClose}>
+                            <Icon name="x" />
+                        </button>
+                    </div>
+                    <div className="modal-body">{children}</div>
+                    {foot && <div className="modal-foot">{foot}</div>}
                 </div>
-                <div className="modal-body">{children}</div>
-                {foot && <div className="modal-foot">{foot}</div>}
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 

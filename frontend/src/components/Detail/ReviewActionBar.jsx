@@ -2,6 +2,7 @@
 //   스텝퍼(6단계) + 역할별 상태 메시지/액션 버튼 + 반려·이의제기 사유 팝업 + 검수 이력 타임라인.
 //   내부 상태값(review_done=검토요청, admin_revised=반려, objection=이의제기, approved=확정)을 그대로 사용.
 import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, CornerUpLeft, Flag, Send, RotateCcw, History, Info, Clock, CheckCircle2, X } from 'lucide-react';
 
 // 토큰(전역 CSS var 미정의 → 디자인의 hex 로 직접 매핑, 팔레트는 동일).
@@ -61,10 +62,11 @@ function wfBtn(label, kind, onClick, { icon: IconC, disabled } = {}) {
     );
 }
 
-// 간단 모달(전역 Modal 없음).
+// 간단 모달(전역 Modal 없음) — document.body 포털로 상위 zoom/transform 에 갇히지 않게 전체 화면을 덮는다.
 function Modal({ title, width = 480, onClose, children }) {
-    return (
-        <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 250, background: 'rgba(16,24,40,0.45)', display: 'grid', placeItems: 'center', padding: 16 }}>
+    if (typeof document === 'undefined') return null;
+    return createPortal(
+        <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(16,24,40,0.45)', display: 'grid', placeItems: 'center', padding: 16 }}>
             <div onClick={(e) => e.stopPropagation()} style={{ width, maxWidth: '94vw', maxHeight: '88vh', overflowY: 'auto', background: 'white', borderRadius: 14, boxShadow: '0 20px 48px rgba(28,36,64,0.16)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', padding: '15px 20px', borderBottom: `1px solid ${C.border}` }}>
                     <span style={{ fontSize: 15, fontWeight: 700, color: C.ink900 }}>{title}</span>
@@ -72,7 +74,8 @@ function Modal({ title, width = 480, onClose, children }) {
                 </div>
                 <div style={{ padding: 20 }}>{children}</div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 

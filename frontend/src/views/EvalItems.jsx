@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Header from '../components/Header';
 import { PRODUCT_NAME } from '../branding';
 import { getBrandConfig } from '../constants';
@@ -1547,9 +1548,11 @@ function AxisModal({ mode, axisNo, nextAxisNo, label, dbAxis, onSaved, onClose }
 /* ── 공용 모달 셸/푸터 ────────────────────────────────────────── */
 
 function ModalShell({ title, onClose, widthClass = 'max-w-md', children }) {
-    return (
+    // document.body 로 포털 — 상위 레이아웃(transform/overflow 등)에 갇히지 않고 전체 화면을 덮는다.
+    if (typeof document === 'undefined') return null;
+    return createPortal(
         <div
-            className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+            className="fixed inset-0 z-[1000] flex items-center justify-center px-4"
             style={{ background: 'rgba(15,23,42,0.4)' }}
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
@@ -1565,7 +1568,8 @@ function ModalShell({ title, onClose, widthClass = 'max-w-md', children }) {
                 </div>
                 <div className="overflow-y-auto flex-1">{children}</div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
