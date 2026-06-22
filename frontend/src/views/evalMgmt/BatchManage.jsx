@@ -167,13 +167,13 @@ function PencilBtn({ onClick, title }) {
             onClick={onClick}
             title={title}
             style={{
-                width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0,
-                background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-500)', transition: 'color .12s, border-color .12s',
+                width: 28, height: 28, borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0,
+                background: 'transparent', border: 0, color: 'var(--ink-400)', transition: 'color .12s',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; e.currentTarget.style.borderColor = 'var(--primary-soft-border)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-500)'; e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-400)'; }}
         >
-            <Icon name="pencil" size={14} />
+            <Icon name="pencil" size={15} />
         </button>
     );
 }
@@ -187,8 +187,10 @@ const taStyle = {
 // ② 판정 프롬프트 편집 — 두 정의문(불확실/모순)을 한 모달에서 편집. 저장 시 변경되면 재판정 트리거.
 // focus='uncertain'|'contradiction' — 클릭한 섹션을 강조/자동포커스.
 function PromptEditModal({ focus, onClose, onChanged }) {
+    const isUnc = focus === 'uncertain';
+    const critLabel = isUnc ? '불확실 표현' : '근거–점수 모순';
     const [loading, setLoading] = useState(true);
-    const [u, setU] = useState('');
+    const [u, setU] = useState('');   // 두 정의문 모두 로드 — 화면엔 focus 하나만 보이지만 저장 시 둘 다 전송(미편집분 보존).
     const [c, setC] = useState('');
     const [meta, setMeta] = useState(null);
     const [busy, setBusy] = useState(false);
@@ -211,8 +213,8 @@ function PromptEditModal({ focus, onClose, onChanged }) {
 
     const restoreDefaults = () => {
         if (!meta) return;
-        setU(meta.default_uncertain_def || '');
-        setC(meta.default_contradiction_def || '');
+        if (isUnc) setU(meta.default_uncertain_def || '');
+        else setC(meta.default_contradiction_def || '');
         setMsg({ type: 'info', text: '기본값으로 되돌렸습니다. 저장해야 적용됩니다.' });
     };
 
@@ -255,20 +257,14 @@ function PromptEditModal({ focus, onClose, onChanged }) {
         }
     };
 
-    const sectionStyle = (key) => ({
-        padding: 14, borderRadius: 12, background: 'var(--background-soft)',
-        border: `1.5px solid ${focus === key ? 'var(--primary-soft-border)' : 'var(--border-soft)'}`,
-        boxShadow: focus === key ? '0 0 0 3px var(--primary-soft-flat)' : 'none',
-    });
-
     const msgColor = msg?.type === 'error' ? 'var(--danger, #d04443)'
         : msg?.type === 'warn' ? 'var(--warning-ink, #b45309)'
         : msg?.type === 'done' ? 'var(--success-ink, #15803d)' : 'var(--primary)';
 
     return (
         <Modal
-            title="AI 신뢰도 검증 — 판정 기준 수정"
-            width={680}
+            title={`${critLabel} — 판정 기준 수정`}
+            width={620}
             onClose={busy ? undefined : onClose}
             foot={
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
@@ -300,24 +296,20 @@ function PromptEditModal({ focus, onClose, onChanged }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <div style={{ fontSize: 12, color: 'var(--ink-500)', lineHeight: 1.55, background: 'var(--warning-soft)', border: '1px solid var(--warning-border)', borderRadius: 8, padding: '9px 12px' }}>
                         <Icon name="info" size={13} style={{ verticalAlign: '-2px', marginRight: 5, color: 'var(--warning-ink)' }} />
-                        AI가 매긴 점수·근거를 LLM이 읽고 두 기준으로 판정합니다. 출력 형식 같은 골격은 시스템이 고정하고, 아래 <strong>판단 기준</strong>만 수정합니다. 저장하면 변경분이 자동 재판정됩니다.
+                        AI가 매긴 점수·근거를 LLM이 읽고 판정합니다. 출력 형식 같은 골격은 시스템이 고정하고, 아래 <strong>판단 기준</strong>만 수정합니다. 저장하면 변경분이 자동 재판정됩니다.
                     </div>
 
-                    <div style={sectionStyle('uncertain')}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)', marginBottom: 6 }}>① 불확실 표현 — 판정 기준</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--ink-500)', marginBottom: 8, lineHeight: 1.5 }}>근거 문장이 단정하지 못하고 추측·인상에 기댄 경우를 무엇으로 볼지 적습니다.</div>
+                    <div style={{ padding: 14, borderRadius: 12, background: 'var(--background-soft)', border: '1px solid var(--border-soft)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)', marginBottom: 6 }}>{critLabel}로 판정할 기준</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-500)', marginBottom: 8, lineHeight: 1.5 }}>
+                            {isUnc
+                                ? '근거 문장이 단정하지 못하고 추측·인상에 기댄 경우를 무엇으로 볼지 적습니다.'
+                                : '근거 내용과 부여된 점수의 방향이 어긋나는 경우를 무엇으로 볼지 적습니다.'}
+                        </div>
                         <textarea
-                            value={u} onChange={(e) => setU(e.target.value)} disabled={busy}
-                            autoFocus={focus === 'uncertain'} style={taStyle}
-                        />
-                    </div>
-
-                    <div style={sectionStyle('contradiction')}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)', marginBottom: 6 }}>② 근거–점수 모순 — 판정 기준</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--ink-500)', marginBottom: 8, lineHeight: 1.5 }}>근거 내용과 부여된 점수의 방향이 어긋나는 경우를 무엇으로 볼지 적습니다.</div>
-                        <textarea
-                            value={c} onChange={(e) => setC(e.target.value)} disabled={busy}
-                            autoFocus={focus === 'contradiction'} style={taStyle}
+                            value={isUnc ? u : c}
+                            onChange={(e) => (isUnc ? setU : setC)(e.target.value)}
+                            disabled={busy} autoFocus style={{ ...taStyle, minHeight: 200 }}
                         />
                     </div>
 
