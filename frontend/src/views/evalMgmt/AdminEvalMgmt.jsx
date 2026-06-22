@@ -164,11 +164,8 @@ export default function AdminEvalMgmt() {
 
     return (
         <div>
-            <PageHead eyebrow="관리자 · 평가 관리" title="평가 관리" sub="조직 전체 평가 데이터를 분석하고, 취약 상담사에게 코칭을 배정합니다.">
-                <button className="btn-mini primary" onClick={() => setModalOpen(true)}>
-                    <Icon name="plus" />코칭 배정
-                </button>
-            </PageHead>
+            <PageHead eyebrow="관리자 · 평가 관리" title="평가 관리" sub="조직 전체 평가 데이터를 분석하고, 취약 상담사에게 코칭을 배정합니다." />
+            {/* 상단 '코칭 배정' 중복 버튼 제거 — 아래 코칭 패널의 '새 코칭 배정' 버튼으로 일원화 */}
 
             <AdminResults
                 embedded
