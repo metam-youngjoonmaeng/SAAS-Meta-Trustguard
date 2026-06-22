@@ -171,6 +171,29 @@ export async function fetchBatchEvalItems() {
     return request('/api/batch/eval-items');
 }
 
+// ② AI 신뢰도 검증 판정 프롬프트(불확실 표현·근거-점수 모순 두 정의문) 조회/저장/재판정.
+// 응답: { uncertain_def, contradiction_def, default_*, version, is_default, judge_enabled, model }.
+export async function fetchBatchPrompt() {
+    return request('/api/batch/prompt');
+}
+// 저장 시 변경되면 version 증가 → 기존 판정 stale. 응답: { version, unchanged, stale_count }.
+export async function saveBatchPrompt({ uncertain_def, contradiction_def } = {}) {
+    return request('/api/batch/prompt', {
+        method: 'PUT',
+        body: JSON.stringify({
+            uncertain_def: String(uncertain_def ?? ''),
+            contradiction_def: String(contradiction_def ?? ''),
+        }),
+    });
+}
+// 현재 프롬프트 버전으로 미판정 콜 재판정(백그라운드 시작). 진행상황은 fetchRejudgeStatus 로 폴링.
+export async function rejudgeConfidence() {
+    return request('/api/batch/rejudge', { method: 'POST' });
+}
+export async function fetchRejudgeStatus() {
+    return request('/api/batch/rejudge/status');
+}
+
 export async function saveAdminComments(qaId, adminComments) {
     if (!qaId) throw new Error('qaId is required');
     return request(`/api/evaluations/${encodeURIComponent(qaId)}/admin-comments`, {

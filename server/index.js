@@ -23,6 +23,11 @@ import { startIcsQaPoller } from './icsQaPoller.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
 import { taEnabled, fetchTaMetricsByUids, fetchSegmentSentimentsByUids } from './taSource.mjs';
+import {
+    buildSystemPrompt, resolvePromptParts, judgeEnabled, judgeModel,
+    DEFAULT_UNCERTAIN_DEF, DEFAULT_CONTRADICTION_DEF,
+} from './geminiJudge.mjs';
+import { runJudgeBackfill } from './judgeConfidence.mjs';
 import { randomUUID } from 'node:crypto';
 import { createBrandRouter } from './brandRoutes.mjs';
 import { createUserProfileRouter } from './userProfile.mjs';
@@ -4302,6 +4307,119 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
         console.error('POST /api/batch/preview error:', e?.message || e);
         res.status(500).json({ ok: false, message: '배치 미리보기 산출 실패' });
     }
+});
+
+// ── AI 신뢰도 검증 ② 판정 프롬프트(B안) — 두 정의문 편집 + 재판정 ──────────────
+// v1: 단일 전역 판정 프롬프트(org 0). 브랜드별 프롬프트는 후속(runJudgeBackfill orgId 인자화 동반).
+const PROMPT_ORG = 0;
+
+// 재판정 잡 상태(인프로세스 1개). 프롬프트가 전역(org 0)이라 잡도 전역 1개로 충분.
+// API 재기동 시 중단돼도 멱등(재실행이 남은 콜만 다시 처리).
+let rejudgeJob = { running: false, started_at: null, finished_at: null, done: 0, total: null, result: null, error: null };
+
+// GET /api/batch/prompt — 편집 UI 용. 두 정의문(불확실/모순) + 메타 + 판정 가용 여부.
+app.get('/api/batch/prompt', requireAdmin, async (req, res) => {
+    try {
+        const p = await resolvePromptParts(pool, PROMPT_ORG);
+        res.json({
+            ok: true,
+            uncertain_def: p.uncertainDef,
+            contradiction_def: p.contradictionDef,
+            default_uncertain_def: DEFAULT_UNCERTAIN_DEF,
+            default_contradiction_def: DEFAULT_CONTRADICTION_DEF,
+            version: p.version,
+            is_default: p.isDefault,
+            updated_at: p.updatedAt,
+            judge_enabled: judgeEnabled(),
+            model: judgeModel(),
+        });
+    } catch (e) {
+        console.error('GET /api/batch/prompt error:', e?.message || e);
+        res.status(500).json({ ok: false, message: '판정 프롬프트 조회 실패' });
+    }
+});
+
+// PUT /api/batch/prompt — 두 정의문 저장(변경 시 version 증가 → 기존 판정 stale → 재판정 대상).
+// body: { uncertain_def, contradiction_def }. 빈 값/기본값과 동일하면 NULL 저장(기본값 폴백).
+app.put('/api/batch/prompt', requireAdmin, async (req, res) => {
+    const inU = String(req.body?.uncertain_def ?? '').trim();
+    const inC = String(req.body?.contradiction_def ?? '').trim();
+    try {
+        const cur = await resolvePromptParts(pool, PROMPT_ORG);
+        const newU = inU || DEFAULT_UNCERTAIN_DEF;
+        const newC = inC || DEFAULT_CONTRADICTION_DEF;
+        // 변경 없음 → 불필요한 version 증가/재판정 방지.
+        if (newU === cur.uncertainDef.trim() && newC === cur.contradictionDef.trim()) {
+            return res.json({ ok: true, version: cur.version, unchanged: true, stale_count: 0 });
+        }
+        const storeU = newU === DEFAULT_UNCERTAIN_DEF ? null : newU;
+        const storeC = newC === DEFAULT_CONTRADICTION_DEF ? null : newC;
+        const systemPrompt = buildSystemPrompt({ uncertainDef: newU, contradictionDef: newC });
+        const updatedBy = req.session?.user_id ?? null;
+        const { rows } = await pool.query(
+            `INSERT INTO public.qa_batch_prompts
+                 (org_id, version, system_prompt, uncertain_def, contradiction_def, updated_at, updated_by)
+             VALUES ($1, 1, $2, $3, $4, now(), $5)
+             ON CONFLICT (org_id) DO UPDATE SET
+                 version = qa_batch_prompts.version + 1,
+                 system_prompt = EXCLUDED.system_prompt,
+                 uncertain_def = EXCLUDED.uncertain_def,
+                 contradiction_def = EXCLUDED.contradiction_def,
+                 updated_at = now(), updated_by = EXCLUDED.updated_by
+             RETURNING version`,
+            [PROMPT_ORG, systemPrompt, storeU, storeC, updatedBy]
+        );
+        const version = rows[0]?.version ?? 1;
+        const { rows: sc } = await pool.query(
+            `SELECT count(*)::int AS n FROM qa_calls c
+              WHERE c.is_sandbox = false
+                AND EXISTS (SELECT 1 FROM qa_evaluation_rows er WHERE er."ID" = c."ID")
+                AND NOT EXISTS (SELECT 1 FROM qa_confidence_judgments j
+                                 WHERE j.qa_id = c."ID" AND j.prompt_version = $1)`,
+            [version]
+        );
+        res.json({ ok: true, version, unchanged: false, stale_count: sc[0]?.n ?? 0 });
+    } catch (e) {
+        console.error('PUT /api/batch/prompt error:', e?.message || e);
+        res.status(500).json({ ok: false, message: '판정 프롬프트 저장 실패' });
+    }
+});
+
+// POST /api/batch/rejudge — 현재 프롬프트 버전으로 미판정 콜 재판정(백그라운드 비동기).
+// 즉시 반환하고 진행상황은 GET /api/batch/rejudge/status 로 폴링.
+app.post('/api/batch/rejudge', requireAdmin, async (req, res) => {
+    if (!judgeEnabled()) {
+        return res.status(400).json({ ok: false, message: 'GEMINI_API_KEY 미설정 — 재판정 불가' });
+    }
+    if (rejudgeJob.running) {
+        return res.json({ ok: true, running: true, already: true, done: rejudgeJob.done, total: rejudgeJob.total });
+    }
+    rejudgeJob = { running: true, started_at: new Date().toISOString(), finished_at: null, done: 0, total: null, result: null, error: null };
+    // fire-and-forget. 예외는 잡 상태에 기록(프로세스 안 죽게).
+    runJudgeBackfill(pool, {
+        limit: 1000,
+        orgId: PROMPT_ORG,
+        onProgress: ({ done, total }) => { rejudgeJob.done = done; rejudgeJob.total = total; },
+    })
+        .then((r) => {
+            rejudgeJob.running = false;
+            rejudgeJob.finished_at = new Date().toISOString();
+            rejudgeJob.total = r.total;
+            rejudgeJob.done = r.done;
+            rejudgeJob.result = r;
+        })
+        .catch((e) => {
+            rejudgeJob.running = false;
+            rejudgeJob.finished_at = new Date().toISOString();
+            rejudgeJob.error = e?.message || String(e);
+            logger.warn(`[rejudge] 실패: ${rejudgeJob.error}`);
+        });
+    res.json({ ok: true, started: true });
+});
+
+// GET /api/batch/rejudge/status — 재판정 진행상황 폴링.
+app.get('/api/batch/rejudge/status', requireAdmin, (req, res) => {
+    res.json({ ok: true, ...rejudgeJob });
 });
 
 bootstrap()

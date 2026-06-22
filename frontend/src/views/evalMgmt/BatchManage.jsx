@@ -3,8 +3,11 @@
 // 5개 검사 조건(on/off) + 공통 범위(통화시간·기간) + 배치 스케줄.
 // 디자인 원본: etc/pages-batch.jsx (디자인 시스템은 evalMgmt 토큰 .tg-eval 스코프 재사용).
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Icon, PageHead } from './ui';
-import { fetchBatchConfig, saveBatchConfig, previewBatch, fetchBatchEvalItems } from '../../services/api';
+import { Icon, PageHead, Modal } from './ui';
+import {
+    fetchBatchConfig, saveBatchConfig, previewBatch, fetchBatchEvalItems,
+    fetchBatchPrompt, saveBatchPrompt, rejudgeConfidence, fetchRejudgeStatus,
+} from '../../services/api';
 
 // 작은 입력 컨트롤 공통 스타일
 const bInput = {
@@ -156,6 +159,189 @@ function FilterCard({ idx, icon, title, tag, desc, on, onToggle, est, children }
     );
 }
 
+// 판정 기준 수정(연필) 버튼 — 서브룰 우측. 클릭 시 프롬프트 편집 모달 오픈(해당 섹션 포커스).
+function PencilBtn({ onClick, title }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            title={title}
+            style={{
+                width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0,
+                background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-500)', transition: 'color .12s, border-color .12s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; e.currentTarget.style.borderColor = 'var(--primary-soft-border)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-500)'; e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
+        >
+            <Icon name="pencil" size={14} />
+        </button>
+    );
+}
+
+const taStyle = {
+    width: '100%', minHeight: 132, padding: '10px 12px', background: 'white', border: '1px solid var(--border-strong)',
+    borderRadius: 10, fontSize: 13, fontFamily: 'inherit', color: 'var(--ink-900)', outline: 'none', lineHeight: 1.6, resize: 'vertical',
+    boxSizing: 'border-box',
+};
+
+// ② 판정 프롬프트 편집 — 두 정의문(불확실/모순)을 한 모달에서 편집. 저장 시 변경되면 재판정 트리거.
+// focus='uncertain'|'contradiction' — 클릭한 섹션을 강조/자동포커스.
+function PromptEditModal({ focus, onClose, onChanged }) {
+    const [loading, setLoading] = useState(true);
+    const [u, setU] = useState('');
+    const [c, setC] = useState('');
+    const [meta, setMeta] = useState(null);
+    const [busy, setBusy] = useState(false);
+    const [status, setStatus] = useState(null); // 재판정 진행상황
+    const [msg, setMsg] = useState(null);        // { type, text }
+
+    useEffect(() => {
+        let alive = true;
+        fetchBatchPrompt()
+            .then((r) => {
+                if (!alive || !r?.ok) return;
+                setU(r.uncertain_def || '');
+                setC(r.contradiction_def || '');
+                setMeta(r);
+            })
+            .catch(() => setMsg({ type: 'error', text: '프롬프트 조회 실패' }))
+            .finally(() => { if (alive) setLoading(false); });
+        return () => { alive = false; };
+    }, []);
+
+    const restoreDefaults = () => {
+        if (!meta) return;
+        setU(meta.default_uncertain_def || '');
+        setC(meta.default_contradiction_def || '');
+        setMsg({ type: 'info', text: '기본값으로 되돌렸습니다. 저장해야 적용됩니다.' });
+    };
+
+    const pollUntilDone = useCallback(async () => {
+        // running 이 false 가 될 때까지 1.5s 간격 폴링.
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            await new Promise((r) => setTimeout(r, 1500));
+            let s;
+            try { s = await fetchRejudgeStatus(); } catch { return; }
+            setStatus(s);
+            if (!s.running) return s;
+        }
+    }, []);
+
+    const handleSave = async () => {
+        setBusy(true); setMsg(null); setStatus(null);
+        try {
+            const saved = await saveBatchPrompt({ uncertain_def: u, contradiction_def: c });
+            if (saved.unchanged) {
+                setMsg({ type: 'info', text: '변경 사항이 없어 재판정은 생략됐습니다.' });
+                return;
+            }
+            if (!meta?.judge_enabled) {
+                setMsg({ type: 'warn', text: `저장 완료 (v${saved.version}). 단, GEMINI_API_KEY 미설정이라 재판정은 키 설정 후 실행됩니다.` });
+                onChanged?.();
+                return;
+            }
+            setStatus({ running: true, done: 0, total: saved.stale_count });
+            setMsg({ type: 'info', text: `저장 완료 (v${saved.version}). 재판정 대상 ${saved.stale_count}콜 — 잠시만요…` });
+            await rejudgeConfidence();
+            const fin = await pollUntilDone();
+            const n = fin?.result?.done ?? fin?.done ?? saved.stale_count;
+            setMsg({ type: 'done', text: `재판정 완료 — ${n}콜 반영. 미리보기·평가 리스트에 적용됩니다.` });
+            onChanged?.();
+        } catch (e) {
+            setMsg({ type: 'error', text: '저장/재판정 실패: ' + (e?.message || '오류') });
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const sectionStyle = (key) => ({
+        padding: 14, borderRadius: 12, background: 'var(--background-soft)',
+        border: `1.5px solid ${focus === key ? 'var(--primary-soft-border)' : 'var(--border-soft)'}`,
+        boxShadow: focus === key ? '0 0 0 3px var(--primary-soft-flat)' : 'none',
+    });
+
+    const msgColor = msg?.type === 'error' ? 'var(--danger, #d04443)'
+        : msg?.type === 'warn' ? 'var(--warning-ink, #b45309)'
+        : msg?.type === 'done' ? 'var(--success-ink, #15803d)' : 'var(--primary)';
+
+    return (
+        <Modal
+            title="AI 신뢰도 검증 — 판정 기준 수정"
+            width={680}
+            onClose={busy ? undefined : onClose}
+            foot={
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+                    <button
+                        type="button" onClick={restoreDefaults} disabled={busy || loading}
+                        style={{ background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit' }}
+                    >
+                        기본값 복원
+                    </button>
+                    <div style={{ flex: 1 }} />
+                    <button
+                        type="button" onClick={busy ? undefined : onClose} disabled={busy}
+                        style={{ background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit' }}
+                    >
+                        닫기
+                    </button>
+                    <button
+                        type="button" onClick={handleSave} disabled={busy || loading}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '9px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: busy || loading ? 'default' : 'pointer', fontFamily: 'inherit', opacity: busy || loading ? 0.6 : 1 }}
+                    >
+                        <Icon name="save" size={15} />{busy ? '처리 중…' : '저장 + 재판정'}
+                    </button>
+                </div>
+            }
+        >
+            {loading ? (
+                <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>불러오는 중…</div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div style={{ fontSize: 12, color: 'var(--ink-500)', lineHeight: 1.55, background: 'var(--warning-soft)', border: '1px solid var(--warning-border)', borderRadius: 8, padding: '9px 12px' }}>
+                        <Icon name="info" size={13} style={{ verticalAlign: '-2px', marginRight: 5, color: 'var(--warning-ink)' }} />
+                        AI가 매긴 점수·근거를 LLM이 읽고 두 기준으로 판정합니다. 출력 형식 같은 골격은 시스템이 고정하고, 아래 <strong>판단 기준</strong>만 수정합니다. 저장하면 변경분이 자동 재판정됩니다.
+                    </div>
+
+                    <div style={sectionStyle('uncertain')}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)', marginBottom: 6 }}>① 불확실 표현 — 판정 기준</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-500)', marginBottom: 8, lineHeight: 1.5 }}>근거 문장이 단정하지 못하고 추측·인상에 기댄 경우를 무엇으로 볼지 적습니다.</div>
+                        <textarea
+                            value={u} onChange={(e) => setU(e.target.value)} disabled={busy}
+                            autoFocus={focus === 'uncertain'} style={taStyle}
+                        />
+                    </div>
+
+                    <div style={sectionStyle('contradiction')}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)', marginBottom: 6 }}>② 근거–점수 모순 — 판정 기준</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-500)', marginBottom: 8, lineHeight: 1.5 }}>근거 내용과 부여된 점수의 방향이 어긋나는 경우를 무엇으로 볼지 적습니다.</div>
+                        <textarea
+                            value={c} onChange={(e) => setC(e.target.value)} disabled={busy}
+                            autoFocus={focus === 'contradiction'} style={taStyle}
+                        />
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, color: 'var(--ink-400)' }}>
+                        <span>모델 {meta?.model || '—'}</span>
+                        <span>·</span>
+                        <span>현재 버전 v{meta?.version ?? 0}{meta?.is_default ? ' (기본값)' : ''}</span>
+                        {!meta?.judge_enabled && <span style={{ color: 'var(--warning-ink)' }}>· 판정 키 미설정</span>}
+                    </div>
+
+                    {status && status.running && (
+                        <div style={{ fontSize: 12.5, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Icon name="loader" size={14} />재판정 중… {status.done ?? 0}/{status.total ?? '—'}콜
+                        </div>
+                    )}
+                    {msg && (
+                        <div style={{ fontSize: 12.5, color: msgColor, fontWeight: 600, lineHeight: 1.5 }}>{msg.text}</div>
+                    )}
+                </div>
+            )}
+        </Modal>
+    );
+}
+
 export default function BatchManage() {
     // 조건 on/off
     const [on, setOn] = useState({ quality: true, confidence: true, risk: true, tenure: false, bias: false });
@@ -189,6 +375,8 @@ export default function BatchManage() {
     const [loaded, setLoaded] = useState(false);
     const [saving, setSaving] = useState(false);
     const [savedAt, setSavedAt] = useState(null);
+    const [promptModal, setPromptModal] = useState(null);  // null | 'uncertain' | 'contradiction'
+    const [previewNonce, setPreviewNonce] = useState(0);    // 재판정 후 미리보기 강제 갱신
 
     // 현재 화면 state → 서버 config 직렬화(Set→배열).
     const config = useMemo(() => ({
@@ -234,7 +422,7 @@ export default function BatchManage() {
             previewBatch(config).then((res) => { if (res?.ok) setPreview(res); }).catch(() => {});
         }, 350);
         return () => clearTimeout(t);
-    }, [config, loaded]);
+    }, [config, loaded, previewNonce]);
 
     const handleSave = useCallback(async () => {
         setSaving(true);
@@ -381,9 +569,13 @@ export default function BatchManage() {
                     desc="AI 평가 근거가 불확실하거나 점수와 모순되는 콜을 선별합니다."
                     on={on.confidence} onToggle={() => toggle('confidence')}>
                     <SubRule on={c.uncertain} onToggle={() => setCk('uncertain', !c.uncertain)} label="불확실 표현 포함"
-                        desc={'근거 문장에 "~같음", "애매", "판단 어려움" 등 불확실 표현이 있는 경우'} />
+                        desc={'근거 문장에 "~같음", "애매", "판단 어려움" 등 불확실 표현이 있는 경우'}>
+                        <PencilBtn title="불확실 표현 판정 기준 수정" onClick={() => setPromptModal('uncertain')} />
+                    </SubRule>
                     <SubRule on={c.contradiction} onToggle={() => setCk('contradiction', !c.contradiction)} label="근거–점수 모순"
-                        desc="근거는 부정적인데 점수가 높게 부여된 경우" />
+                        desc="근거는 부정적인데 점수가 높게 부여된 경우">
+                        <PencilBtn title="근거-점수 모순 판정 기준 수정" onClick={() => setPromptModal('contradiction')} />
+                    </SubRule>
 
                     {/* 적용 평가 항목 선택 */}
                     <div style={{ marginTop: 4, padding: '12px 14px', borderRadius: 10, background: 'white', border: '1px solid var(--border)' }}>
@@ -483,6 +675,14 @@ export default function BatchManage() {
                     <Icon name="save" size={16} />{saving ? '저장 중…' : '배치 저장'}
                 </button>
             </div>
+
+            {promptModal && (
+                <PromptEditModal
+                    focus={promptModal}
+                    onClose={() => setPromptModal(null)}
+                    onChanged={() => setPreviewNonce((n) => n + 1)}
+                />
+            )}
         </div>
     );
 }

@@ -16,16 +16,20 @@ import { stampByQaIds } from './manualReview.mjs';
 
 const { Pool } = pg;
 
-async function main() {
-    if (!judgeEnabled()) {
-        console.error('[judge-bf] GEMINI_API_KEY 미설정 — 판정 불가. 중단.');
-        process.exit(1);
-    }
-    const limit = Number(process.argv[2]) > 0 ? Number(process.argv[2]) : 500;
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+/**
+ * 신뢰도 판정 백필/재판정 — CLI(main)와 API(POST /api/batch/rejudge) 공용.
+ * 현재 프롬프트 버전으로 아직 판정 안 된 콜만 처리(멱등). 프롬프트 편집 시 version 증가 →
+ * 기존 판정이 stale 되어 자동으로 재판정 대상이 된다.
+ *
+ * @param {import('pg').Pool} pool  외부에서 주입(API 는 자기 pool 재사용, CLI 는 새로 생성).
+ * @param {{limit?:number, orgId?:number, onProgress?:(p:{done:number,total:number})=>void}} opts
+ * @returns {Promise<{total:number, done:number, failed:number, flagged:number, stamped:number, version:number, model:string}>}
+ */
+export async function runJudgeBackfill(pool, { limit = 500, orgId = 0, onProgress } = {}) {
+    if (!judgeEnabled()) throw new Error('GEMINI_API_KEY 미설정 — 판정 불가');
     const model = judgeModel();
     // v1: 전체/기본(org 0) 프롬프트로 판정. (브랜드별 프롬프트는 후속 — orgId 인자화.)
-    const { systemPrompt, version } = await resolvePrompt(pool, 0);
+    const { systemPrompt, version } = await resolvePrompt(pool, orgId);
 
     // 판정 대상: 평가행이 있고(non-sandbox), 현재 프롬프트 버전으로 아직 판정 안 된 콜.
     const { rows: targets } = await pool.query(
@@ -40,8 +44,8 @@ async function main() {
           LIMIT $2`,
         [version, limit]
     );
-    console.log(`[judge-bf] 대상 콜 ${targets.length}건 (model=${model}, prompt_v=${version})`);
-    if (!targets.length) { await pool.end(); return; }
+    logger.info(`[judge-bf] 대상 콜 ${targets.length}건 (model=${model}, prompt_v=${version})`);
+    if (!targets.length) return { total: 0, done: 0, failed: 0, flagged: 0, stamped: 0, version, model };
 
     let done = 0, failed = 0, flagged = 0;
     const judgedIds = [];
@@ -74,21 +78,42 @@ async function main() {
             );
             done += 1;
             judgedIds.push(t.id);
-            if (done % 10 === 0) console.log(`[judge-bf] ${done}/${targets.length} …`);
+            if (done % 10 === 0) logger.info(`[judge-bf] ${done}/${targets.length} …`);
+            onProgress?.({ done, total: targets.length });
         } catch (e) {
             failed += 1;
             logger.warn(`[judge-bf] ${t.id} 판정 실패: ${e?.message || e}`);
         }
     }
-    console.log(`[judge-bf] 완료 — 판정 ${done}, 실패 ${failed}, 신뢰도이슈 ${flagged}건`);
+    logger.info(`[judge-bf] 완료 — 판정 ${done}, 실패 ${failed}, 신뢰도이슈 ${flagged}건`);
 
     // 판정 결과를 수기평가 대상 도장에 반영(신뢰도 사유 갱신).
+    let stamped = 0;
     try {
-        const stamped = await stampByQaIds(pool, judgedIds);
-        console.log(`[judge-bf] 수기평가 대상 도장 갱신 — ${stamped}건`);
-    } catch (e) { console.error('[judge-bf] 도장 갱신 실패:', e?.message || e); }
+        stamped = await stampByQaIds(pool, judgedIds);
+        logger.info(`[judge-bf] 수기평가 대상 도장 갱신 — ${stamped}건`);
+    } catch (e) { logger.warn(`[judge-bf] 도장 갱신 실패: ${e?.message || e}`); }
 
-    await pool.end();
+    return { total: targets.length, done, failed, flagged, stamped, version, model };
 }
 
-main().catch((e) => { console.error('[judge-bf] 실패:', e); process.exit(1); });
+// CLI 진입점: docker exec ... node /app/server/judgeConfidence.mjs [limit]
+async function main() {
+    if (!judgeEnabled()) {
+        console.error('[judge-bf] GEMINI_API_KEY 미설정 — 판정 불가. 중단.');
+        process.exit(1);
+    }
+    const limit = Number(process.argv[2]) > 0 ? Number(process.argv[2]) : 500;
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    try {
+        const r = await runJudgeBackfill(pool, { limit });
+        console.log(`[judge-bf] 완료 — 판정 ${r.done}, 실패 ${r.failed}, 신뢰도이슈 ${r.flagged}, 도장 ${r.stamped}건`);
+    } finally {
+        await pool.end();
+    }
+}
+
+// 직접 실행(CLI)일 때만 main(). import 되면 실행하지 않음.
+if (import.meta.url === `file://${process.argv[1]}`) {
+    main().catch((e) => { console.error('[judge-bf] 실패:', e); process.exit(1); });
+}
