@@ -406,9 +406,10 @@ export function createBrandRouter(pool) {
 
     // GET /api/admin/users
     // 브랜드별 가시성 규칙:
-    //   - admin       : 본인 org_id 소속 admin + 전체 super_admin (super_admin 은 모든 브랜드에 노출)
-    //   - super_admin : 활성 브랜드(X-Active-Brand-Id 헤더, 없으면 ?brand_id 쿼리, 없으면 본인 org_id) 소속 admin + 전체 super_admin
+    //   - admin       : 본인 org_id 소속 사용자 + 전역(org_id NULL) super_admin
+    //   - super_admin : 활성 브랜드(X-Active-Brand-Id 헤더, 없으면 ?brand_id 쿼리, 없으면 본인 org_id) 소속 사용자 + 전역(org_id NULL) super_admin
     //                   특수값 'all' 을 헤더/쿼리로 보내면 브랜드 무관 전체 사용자 반환.
+    //   ※ 브랜드에 소속된 super_admin 은 해당 브랜드에서만 노출(타 브랜드 화면에 더 이상 끼지 않음).
     router.get('/admin/users', async (req, res) => {
         try {
             const isSuper = req.session?.role === 'super_admin';
@@ -431,11 +432,12 @@ export function createBrandRouter(pool) {
             let where = '';
             if (scopeOrgId != null) {
                 params.push(scopeOrgId);
-                where = `WHERE (u.org_id = $${params.length} OR u.role = 'super_admin')`;
+                // 선택한 브랜드 소속만 노출. 단 브랜드 미지정(org_id NULL) super_admin 은 전역 관리자로 간주해 항상 노출.
+                where = `WHERE (u.org_id = $${params.length} OR (u.role = 'super_admin' AND u.org_id IS NULL))`;
             }
             if (!isSuper && scopeOrgId == null) {
-                // admin 인데 org_id 가 비어있으면 super_admin 만 노출 (자기 자신 브랜드 정보가 없어 admin 목록 보장 불가).
-                where = `WHERE u.role = 'super_admin'`;
+                // admin 인데 org_id 가 비어있으면 전역(org_id NULL) super_admin 만 노출 (자기 브랜드 정보가 없어 admin 목록 보장 불가).
+                where = `WHERE u.role = 'super_admin' AND u.org_id IS NULL`;
             }
             const { rows } = await pool.query(
                 `SELECT u.user_id, u.login_id, u.display_name, u.role, u.is_active,
