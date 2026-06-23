@@ -28,6 +28,7 @@ import {
     DEFAULT_UNCERTAIN_DEF, DEFAULT_CONTRADICTION_DEF,
 } from './geminiJudge.mjs';
 import { runJudgeBackfill } from './judgeConfidence.mjs';
+import { applyManualReviewStamps } from './manualReview.mjs';
 import { randomUUID } from 'node:crypto';
 import { createBrandRouter } from './brandRoutes.mjs';
 import { createUserProfileRouter } from './userProfile.mjs';
@@ -4407,6 +4408,19 @@ app.put('/api/batch/prompt', requireAdmin, async (req, res) => {
     } catch (e) {
         console.error('PUT /api/batch/prompt error:', e?.message || e);
         res.status(500).json({ ok: false, message: '판정 프롬프트 저장 실패' });
+    }
+});
+
+// POST /api/batch/run — 수기평가 대상 도장 즉시 실행(수동 트리거). 배치주기 '수동'/'매일'/'매시간'에서
+//   '지금 실행' 버튼이 호출. in-scope 전체 미도장 대상에 도장(멱등·누적). body 없음.
+app.post('/api/batch/run', requireAdmin, async (req, res) => {
+    try {
+        const orgId = batchOrgKey(req);
+        const stamped = await applyManualReviewStamps(pool, orgId, { qaIds: null });
+        res.json({ ok: true, org_id: orgId, stamped });
+    } catch (e) {
+        console.error('POST /api/batch/run error:', e?.message || e);
+        res.status(500).json({ ok: false, message: '배치 실행 실패' });
     }
 });
 

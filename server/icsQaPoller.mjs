@@ -157,6 +157,68 @@ function outOfDurationGate(gate, durSec) {
 }
 
 /**
+ * 배치 '주기' 설정(freq/time) — 수기평가 도장을 언제 찍을지. org 우선, 없으면 0.
+ * 미설정/실패 시 realtime/02:00 기본. (통화시간 게이트와 별개 — 게이트 없어도 freq 는 유효)
+ * @returns {Promise<{freq:string, time:string}>}
+ */
+async function readSchedule(pool, orgId) {
+    try {
+        const { rows } = await pool.query(
+            `SELECT config FROM public.qa_batch_configs
+              WHERE org_id = ANY($1) ORDER BY (org_id = $2) DESC LIMIT 1`,
+            [[orgId, 0], orgId]
+        );
+        const scope = rows[0]?.config?.scope || {};
+        return { freq: scope.freq || 'realtime', time: scope.time || '02:00' };
+    } catch (e) {
+        logger.warn(`[ics-qa] 배치주기 조회 실패(${e?.message || e}) — realtime 기본`);
+        return { freq: 'realtime', time: '02:00' };
+    }
+}
+
+// 정기 도장(매시간/매일) 실행 시점 판정 — 30초 틱을 스케줄러로 재사용. 시각은 KST(UTC+9, 한국 무 DST).
+// 인메모리 마커(구간키)로 같은 구간 1회만 실행. 재기동으로 마커가 리셋돼도 도장은 멱등이라 중복 무해.
+const _lastStampKey = new Map(); // projCd → 마지막 실행 구간키
+function dueForScheduledStamp(projCd, freq, time) {
+    const kst = new Date(Date.now() + 9 * 3600 * 1000);
+    const dateKey = kst.toISOString().slice(0, 10); // YYYY-MM-DD (KST)
+    const hour = kst.getUTCHours();
+    const min = kst.getUTCMinutes();
+    let key;
+    if (freq === 'hourly') {
+        key = `${dateKey} ${String(hour).padStart(2, '0')}`; // 시간 버킷 — 매시간 정각 직후 1회
+    } else if (freq === 'daily') {
+        const [th, tm] = String(time || '02:00').split(':').map((n) => Number(n) || 0);
+        if (hour < th || (hour === th && min < tm)) return false; // 아직 지정시각 전
+        key = dateKey; // 일 버킷 — 지정시각 이후 첫 틱 1회
+    } else {
+        return false; // realtime/manual 은 정기 패스 대상 아님
+    }
+    if (_lastStampKey.get(projCd) === key) return false;
+    _lastStampKey.set(projCd, key);
+    return true;
+}
+
+/**
+ * 정기 도장 패스 — tick 레벨에서 매 주기 호출(runOnce 조기 return 과 무관).
+ * 매시간/매일 주기이고 실행 시점이면 in-scope 전체 미도장 대상에 도장(멱등·누적).
+ */
+async function scheduledStampTick(pool, cfg) {
+    try {
+        const orgId = await resolveOrgId(pool, cfg.projCd, cfg.orgIdOverride);
+        if (!orgId) return;
+        const sched = await readSchedule(pool, orgId);
+        if ((sched.freq === 'hourly' || sched.freq === 'daily') && dueForScheduledStamp(cfg.projCd, sched.freq, sched.time)) {
+            const stamped = await applyManualReviewStamps(pool, orgId, { qaIds: null });
+            const label = sched.freq === 'daily' ? `매일 ${sched.time}` : '매시간';
+            logger.info(`[ics-qa] ${cfg.projCd}: [${label}] 정기 도장 패스 실행 — ${stamped}건`);
+        }
+    } catch (e) {
+        logger.warn(`[ics-qa] 정기 도장 패스 실패: ${e?.message || e}`);
+    }
+}
+
+/**
  * 폴러 1회 실행 — 종료 콜을 워터마크 이후부터 순차 적재.
  * 실패한 콜에서 멈추고(워터마크는 직전 성공까지만) 다음 주기에 재시도한다.
  */
@@ -255,11 +317,15 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
 
     if (skippedByGate > 0) logger.info(`[ics-qa] ${projCd}: 통화시간 게이트로 ${skippedByGate}건 AI 평가 제외`);
 
-    // 수기평가 대상 도장 — 이번에 평가된 콜을 카드 조건으로 즉시 표식(실시간 누적).
+    // 수기평가 대상 도장 — '실시간' 주기일 때만 이번에 평가된 콜을 즉시 표식(누적).
+    //   매시간/매일은 tick 의 scheduledStampTick(정기 패스)이, 수동은 '지금 실행'(POST /api/batch/run)이 담당.
     if (evaluatedIds.length) {
         try {
-            const stamped = await applyManualReviewStamps(pool, orgId, { qaIds: evaluatedIds });
-            if (stamped > 0) logger.info(`[ics-qa] ${projCd}: 수기평가 대상 ${stamped}건 도장`);
+            const sched = await readSchedule(pool, orgId);
+            if (sched.freq === 'realtime') {
+                const stamped = await applyManualReviewStamps(pool, orgId, { qaIds: evaluatedIds });
+                if (stamped > 0) logger.info(`[ics-qa] ${projCd}: [실시간] 수기평가 대상 ${stamped}건 도장`);
+            }
         } catch (e) { logger.warn(`[ics-qa] 수기평가 도장 실패: ${e?.message || e}`); }
     }
 
@@ -299,6 +365,8 @@ export function startIcsQaPoller(pool, { ingestStandardCallFromQaPipeline }) {
         running = true;
         try {
             await runOnce(pool, cfg, ingestStandardCallFromQaPipeline);
+            // 정기 도장(매시간/매일)은 신규 콜 유무와 무관하게 매 틱 시점 확인.
+            await scheduledStampTick(pool, cfg);
         } catch (err) {
             logger.error(`[ics-qa] 폴링 주기 오류: ${String(err?.message || err)}`);
         } finally {

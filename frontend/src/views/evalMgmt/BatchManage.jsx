@@ -7,6 +7,7 @@ import { Icon, PageHead, Modal } from './ui';
 import {
     fetchBatchConfig, saveBatchConfig, previewBatch, fetchBatchEvalItems,
     fetchBatchPrompt, saveBatchPrompt, rejudgeConfidence, fetchRejudgeStatus, fetchBatchPromptHistory,
+    runBatchNow,
 } from '../../services/api';
 
 // 작은 입력 컨트롤 공통 스타일
@@ -644,6 +645,24 @@ export default function BatchManage() {
         }
     }, [config]);
 
+    // '지금 실행' — 수기평가 대상 도장 즉시 1회 패스(수동/정기 주기에서 강제 실행).
+    // 변경한 설정이 반영되도록 저장 후 실행.
+    const [running, setRunning] = useState(false);
+    const [runMsg, setRunMsg] = useState(null);
+    const handleRunNow = useCallback(async () => {
+        setRunning(true); setRunMsg(null);
+        try {
+            await saveBatchConfig(config);
+            const r = await runBatchNow();
+            setRunMsg(`방금 실행 — 수기평가 대상 ${r?.stamped ?? 0}건 도장`);
+            setPreviewNonce((n) => n + 1);
+        } catch (e) {
+            setRunMsg('실행 실패: ' + (e?.message || '오류'));
+        } finally {
+            setRunning(false);
+        }
+    }, [config]);
+
     // 카드별 예상 대상 — 지원 조건은 실수치(number), 미지원은 사유 라벨(string).
     const cardEst = (key) => {
         const cc = preview?.conditions?.[key];
@@ -661,16 +680,20 @@ export default function BatchManage() {
     return (
         <div>
             <PageHead title="AI 평가 배치 관리" sub="AI가 평가한 콜 중 사람이 재청취·검토할 대상을 조건으로 선별합니다. AI 오판 보정과 평가 신뢰성 확보를 위한 표본 추출 규칙을 설정하세요.">
-                {/* '지금 실행'은 수동 주기일 때만 노출 — 스케줄(실시간/매시간/매일)은 자동 실행이라 수동 트리거 불필요. */}
-                {scope.freq === 'manual' && (
-                    <button
-                        type="button"
-                        onClick={() => alert('수동 실행은 배치 실행 로직 연동 후 활성화됩니다. (현재는 조건 저장만 지원)')}
-                        title="배치 실행 로직 연동 예정"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '9px 16px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', opacity: 0.6 }}
-                    >
-                        <Icon name="play" size={15} />지금 실행
-                    </button>
+                {/* '지금 실행' — 실시간은 자동 도장이라 불필요, 그 외(매시간/매일/수동)는 강제 1회 실행 제공. */}
+                {scope.freq !== 'realtime' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {runMsg && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{runMsg}</span>}
+                        <button
+                            type="button"
+                            onClick={handleRunNow}
+                            disabled={running}
+                            title="현재 설정을 저장하고 수기평가 대상 도장을 즉시 1회 실행"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '9px 16px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: running ? 'default' : 'pointer', fontFamily: 'inherit', opacity: running ? 0.6 : 1 }}
+                        >
+                            <Icon name="play" size={15} />{running ? '실행 중…' : '지금 실행'}
+                        </button>
+                    </div>
                 )}
             </PageHead>
 
@@ -741,7 +764,7 @@ export default function BatchManage() {
                                 )}
                             </div>
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
-                                {scope.freq === 'daily' ? `매일 ${scope.time}에 전일 콜을 대상으로 배치를 실행합니다.` : scope.freq === 'realtime' ? 'AI 평가 완료 즉시 조건에 맞는 콜을 배치합니다.' : scope.freq === 'hourly' ? '매시간 정각에 직전 1시간 콜을 배치합니다.' : '관리자가 수동으로 실행할 때만 배치합니다.'}
+                                {scope.freq === 'daily' ? `매일 ${scope.time}(KST)에 조건에 맞는 미선별 콜을 일괄 수기평가 대상으로 도장합니다.` : scope.freq === 'realtime' ? 'AI 평가가 끝나는 즉시 조건에 맞는 콜을 수기평가 대상으로 도장합니다.' : scope.freq === 'hourly' ? '매시간 정각에 조건에 맞는 미선별 콜을 일괄 도장합니다.' : "자동 도장 없이, 관리자가 '지금 실행'을 누를 때만 도장합니다."}
                             </div>
                         </div>
                     </div>

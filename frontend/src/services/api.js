@@ -166,6 +166,10 @@ export async function previewBatch(config) {
         body: JSON.stringify({ config: config || {} }),
     });
 }
+// 수기평가 대상 도장 즉시 실행(수동/정기 주기의 '지금 실행'). 응답: { ok, stamped }.
+export async function runBatchNow() {
+    return request('/api/batch/run', { method: 'POST' });
+}
 // ② '적용 평가 항목' 칩 — 실제 평가된 항목(order_no+item). 제외 order_no 로 ② 검사 스코프.
 export async function fetchBatchEvalItems() {
     return request('/api/batch/eval-items');
