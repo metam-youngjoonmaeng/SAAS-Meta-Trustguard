@@ -380,7 +380,14 @@ function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
 
                         <div className="col-span-2">
                             <Fld label="소속 브랜드">
-                                <select value={draft.org_id ?? ''} onChange={(e) => set('org_id', e.target.value === '' ? null : Number(e.target.value))}
+                                <select value={draft.org_id ?? ''} onChange={(e) => {
+                                        const nextOrg = e.target.value === '' ? null : Number(e.target.value);
+                                        setDraft((d) => {
+                                            const opts = getBrandConfig(nextOrg).departments || [];
+                                            // 브랜드 변경 시, 새 브랜드에 없는 부서는 비움(타 브랜드 부서 유입 방지).
+                                            return { ...d, org_id: nextOrg, department: opts.includes(d.department) ? d.department : '' };
+                                        });
+                                    }}
                                     disabled={!isSuperAdmin} className={FLD_INPUT}>
                                     <option value="">미지정</option>
                                     {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -511,9 +518,13 @@ function BulkEditModal({ targets, currentUserId, brands, onSave, onClose, saving
                         <select
                             value={draft.org_id ?? ''}
                             disabled={!enable.org_id}
-                            onChange={(e) =>
-                                set('org_id', e.target.value === '' ? null : Number(e.target.value))
-                            }
+                            onChange={(e) => {
+                                const nextOrg = e.target.value === '' ? null : Number(e.target.value);
+                                setDraft((d) => {
+                                    const opts = getBrandConfig(nextOrg).departments || [];
+                                    return { ...d, org_id: nextOrg, department: opts.includes(d.department) ? d.department : '' };
+                                });
+                            }}
                             className="w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF] disabled:bg-[#F2F4F7]"
                         >
                             <option value="">미지정</option>
