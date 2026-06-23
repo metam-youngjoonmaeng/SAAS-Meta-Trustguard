@@ -4316,18 +4316,23 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
             ? conf.excluded.map((x) => Number(x)).filter((n) => Number.isInteger(n))
             : [];
 
-        const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, confOn, uncOn, conOn, excluded];
+        // ⑤ 무작위 표본 — 결정적 해시 샘플링(콜별 고정)으로 in-scope 의 약 pct% 를 표본화.
+        //   추정치가 아니라 manualReview 도장과 동일한 식으로 실제 카운트 → preview = 실제.
+        const randomOn = !!(on.bias && bias.random);
+        const randomPct = num(bias.randomPct, 0);
+
+        const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, confOn, uncOn, conOn, excluded, randomOn, randomPct];
         let orgClause = '';
         if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
 
         const sql = `
             WITH scoped AS (
-                SELECT c."TOTAL_SCORE"::numeric AS score, c.duration_sec, cj.judgments
+                SELECT c."ID" AS id, c."TOTAL_SCORE"::numeric AS score, c.duration_sec, cj.judgments
                   FROM qa_calls c
                   LEFT JOIN qa_confidence_judgments cj ON cj.qa_id = c."ID"
                  WHERE c.is_sandbox = false ${orgClause}
             ), in_scope AS (
-                SELECT score, duration_sec, judgments FROM scoped
+                SELECT id, score, duration_sec, judgments FROM scoped
                  WHERE duration_sec IS NOT NULL AND duration_sec >= $1 AND duration_sec < $2
             ), agg AS (
                 SELECT avg(score) AS org_avg FROM in_scope
@@ -4340,6 +4345,7 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
                          WHERE NOT ((e->>'order_no')::int = ANY($12::int[]))
                            AND ( ($10 AND (e->>'uncertain')::boolean) OR ($11 AND (e->>'contradiction')::boolean) )
                     )) AS c_match,
+                    ($13 AND (((hashtext(i.id) % 100) + 100) % 100) < $14) AS r_match,
                     (i.judgments IS NOT NULL) AS judged
                   FROM in_scope i CROSS JOIN agg a
             )
@@ -4349,20 +4355,17 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
                 (SELECT round(org_avg, 1) FROM agg)  AS org_avg,
                 count(*) FILTER (WHERE q_match)::int  AS quality_cnt,
                 count(*) FILTER (WHERE b_match)::int  AS bias_high_cnt,
+                count(*) FILTER (WHERE r_match)::int  AS bias_random_cnt,
+                count(*) FILTER (WHERE b_match OR r_match)::int AS bias_cnt,
                 count(*) FILTER (WHERE c_match)::int  AS confidence_cnt,
                 count(*) FILTER (WHERE judged)::int   AS judged_cnt,
-                count(*) FILTER (WHERE q_match OR b_match OR c_match)::int AS union_cnt
+                count(*) FILTER (WHERE q_match OR b_match OR c_match OR r_match)::int AS union_cnt
             FROM flagged`;
 
         const { rows } = await pool.query(sql, params);
-        const r = rows[0] || { pool: 0, in_scope_cnt: 0, org_avg: null, quality_cnt: 0, bias_high_cnt: 0, confidence_cnt: 0, judged_cnt: 0, union_cnt: 0 };
+        const r = rows[0] || { pool: 0, in_scope_cnt: 0, org_avg: null, quality_cnt: 0, bias_high_cnt: 0, bias_random_cnt: 0, bias_cnt: 0, confidence_cnt: 0, judged_cnt: 0, union_cnt: 0 };
 
-        // ⑤ 무작위 표본 — 필터가 아닌 표본 추출이라 추정(범위 내 콜 × %).
-        const randomOn = !!(on.bias && bias.random);
-        const randomPct = num(bias.randomPct, 0);
-        const biasRandomEst = randomOn ? Math.round((r.in_scope_cnt * randomPct) / 100) : 0;
-
-        const totalTargets = Math.min(r.in_scope_cnt, (r.union_cnt || 0) + biasRandomEst);
+        const totalTargets = r.union_cnt || 0; // union 은 in_scope 부분집합 — 실제 도장 대상 수와 일치
 
         res.json({
             ok: true,
@@ -4384,9 +4387,9 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
                 risk:       { supported: false, count: 0, note: '리스크 기준(금칙어·고객신호) 정의 대기' },
                 tenure:     { supported: false, count: 0, note: '상담사 입사일 데이터 보강 대기' },
                 bias: on.bias
-                    ? { supported: true, count: (r.bias_high_cnt || 0) + biasRandomEst,
-                        high_count: r.bias_high_cnt, random_est: biasRandomEst,
-                        note: randomOn ? '무작위 표본은 추정치' : null }
+                    ? { supported: true, count: r.bias_cnt,
+                        high_count: r.bias_high_cnt, random_count: r.bias_random_cnt,
+                        note: randomOn ? `무작위 표본 ${r.bias_random_cnt}건(약 ${randomPct}%) + 고점 ${r.bias_high_cnt}건` : null }
                     : { supported: true, count: 0, note: '비활성' },
             },
         });

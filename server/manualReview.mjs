@@ -6,7 +6,8 @@
  *   - 사유는 카드·세부규칙 수준 한글 라벨(상세 배지용): "저품질 검증 · 평균점수 미달" 등
  *   - 누적: 한 번 찍히면 유지(manual_review_at 은 최초 시각), 재실행은 사유만 갱신, 해제 안 함
  *   - qaIds 주면 그 콜들만 재계산(실시간/판정직후), 없으면 in-scope 전체
- * 무작위 표본(편향)·필수항목·근속·리스크는 v1 도장 대상 아님(데이터/정의 대기).
+ * 지원 조건: 저품질(평균점수 미달)·신뢰도(불확실/모순)·편향(비정상 고점·무작위 표본).
+ * 필수항목·근속·리스크는 아직 도장 대상 아님(데이터/정의 대기).
  */
 import { logger } from './logger.mjs';
 
@@ -46,10 +47,13 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
     const uncOn = !!(on.confidence && conf.uncertain);
     const conOn = !!(on.confidence && conf.contradiction);
     const excluded = Array.isArray(conf.excluded) ? conf.excluded.map(Number).filter(Number.isInteger) : [];
+    // ⑤ 무작위 표본(편향점검) — 결정적 해시 샘플링: 콜별 고정이라 멱등(재실행해도 같은 집합, 누적 없음).
+    const rOn = !!(on.bias && bias.random);
+    const rPct = num(bias.randomPct, 0);
 
-    if (!qOn && !bHighOn && !uncOn && !conOn) return 0; // 활성(지원) 조건 없음
+    if (!qOn && !bHighOn && !uncOn && !conOn && !rOn) return 0; // 활성(지원) 조건 없음
 
-    const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, uncOn, conOn, excluded];
+    const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, uncOn, conOn, excluded, rOn, rPct];
     let orgClause = '';
     if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
     let idClause = '';
@@ -67,7 +71,8 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
           ($9 AND EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(cj.judgments,'[]'::jsonb)) e
                    WHERE NOT ((e->>'order_no')::int = ANY($11::int[])) AND (e->>'uncertain')::boolean)) AS cf_unc,
           ($10 AND EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(cj.judgments,'[]'::jsonb)) e
-                   WHERE NOT ((e->>'order_no')::int = ANY($11::int[])) AND (e->>'contradiction')::boolean)) AS cf_con
+                   WHERE NOT ((e->>'order_no')::int = ANY($11::int[])) AND (e->>'contradiction')::boolean)) AS cf_con,
+          ($12 AND (((hashtext(c."ID") % 100) + 100) % 100) < $13) AS r
         FROM qa_calls c
         LEFT JOIN qa_confidence_judgments cj ON cj.qa_id = c."ID"
         CROSS JOIN agg a
@@ -81,10 +86,11 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
             (CASE WHEN m.q      THEN jsonb_build_array('저품질 검증 · 평균점수 미달') ELSE '[]'::jsonb END)
          || (CASE WHEN m.cf_unc THEN jsonb_build_array('AI 신뢰도 검증 · 불확실 표현') ELSE '[]'::jsonb END)
          || (CASE WHEN m.cf_con THEN jsonb_build_array('AI 신뢰도 검증 · 근거-점수 모순') ELSE '[]'::jsonb END)
-         || (CASE WHEN m.b      THEN jsonb_build_array('AI 편향점검 · 비정상 고점') ELSE '[]'::jsonb END),
+         || (CASE WHEN m.b      THEN jsonb_build_array('AI 편향점검 · 비정상 고점') ELSE '[]'::jsonb END)
+         || (CASE WHEN m.r      THEN jsonb_build_array('AI 편향점검 · 무작위 표본') ELSE '[]'::jsonb END),
         manual_review_at = COALESCE(t.manual_review_at, now())
       FROM matched m
-      WHERE t."ID" = m.id AND (m.q OR m.b OR m.cf_unc OR m.cf_con)
+      WHERE t."ID" = m.id AND (m.q OR m.b OR m.cf_unc OR m.cf_con OR m.r)
       RETURNING t."ID"`;
 
     try {
