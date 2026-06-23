@@ -272,23 +272,31 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         [evaluation]
     );
 
+    // 펜타곤 값 조회: 영문 radarKey 우선(코오롱·한화 빌더 = 영문 키),
+    // 미스 시 같은 인덱스의 한글 라벨로 폴백(동적 브랜드 buildPentagonByAxisDefs = 한글 축 라벨 키).
+    const pickPentagonValue = (src, key, idx) => {
+        if (!src || typeof src !== 'object') return 0;
+        const byKey = src[key];
+        if (byKey !== undefined && byKey !== null) return Number(byKey) || 0;
+        const byLabel = src[PENTAGON_LABELS[idx]];
+        if (byLabel !== undefined && byLabel !== null) return Number(byLabel) || 0;
+        return 0;
+    };
+
     const teamData = useMemo(() => {
         const td = analysis?.pentagon?.team_avg || {};
-        return PENTAGON_KEYS.map(k => Number(td[k] || 0));
-    }, [analysis, PENTAGON_KEYS]);
+        return PENTAGON_KEYS.map((k, i) => pickPentagonValue(td, k, i));
+    }, [analysis, PENTAGON_KEYS, PENTAGON_LABELS]);
 
     const agentData = useMemo(() => {
         const ad = analysis?.pentagon?.agent_score || {};
-        return PENTAGON_KEYS.map(k => Number(ad[k] || 0));
-    }, [analysis, PENTAGON_KEYS]);
+        return PENTAGON_KEYS.map((k, i) => pickPentagonValue(ad, k, i));
+    }, [analysis, PENTAGON_KEYS, PENTAGON_LABELS]);
 
     const overallData = useMemo(() => {
         const od = analysis?.pentagon?.overall_avg || {};
-        if (od && typeof od === 'object') {
-            return PENTAGON_KEYS.map(k => Number(od[k] || 0));
-        }
-        return PENTAGON_KEYS.map(() => 0);
-    }, [analysis, PENTAGON_KEYS]);
+        return PENTAGON_KEYS.map((k, i) => pickPentagonValue(od, k, i));
+    }, [analysis, PENTAGON_KEYS, PENTAGON_LABELS]);
 
     const reportMap = useMemo(() => {
         const src = analysis?.report;
@@ -348,16 +356,31 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                 .replace(/[^\p{L}\p{N}]/gu, '')
                 .toLowerCase();
 
+        // order_no 1:1 Map (SSOT: 백엔드 ingest 가 order_no 키로 정합 적재 — qaPipelineIngest.mjs).
+        // 동적 브랜드(test 트랙 포함)에서 category·item 명 fuzzy 매칭이 폴백하면 다른 항목의 reason/evidence
+        // 가 누수되던 버그(2026-06-23 RCA) 차단. base.order_no 가 있으면 우선 직접 lookup.
+        const evaluationByOrderNo = new Map();
+        const checklistByOrderNo = new Map();
         const evaluationByCategory = new Map();
         const checklistByCategory = new Map();
 
         evaluationRowsRaw.forEach((row) => {
+            const ordRaw = row.order_no;
+            if (ordRaw !== undefined && ordRaw !== null && ordRaw !== '') {
+                const ord = Number(ordRaw);
+                if (Number.isFinite(ord)) evaluationByOrderNo.set(ord, row);
+            }
             const key = row.category || '';
             if (!evaluationByCategory.has(key)) evaluationByCategory.set(key, []);
             evaluationByCategory.get(key).push(row);
         });
 
         checklistRowsRaw.forEach((row) => {
+            const ordRaw = row.order_no;
+            if (ordRaw !== undefined && ordRaw !== null && ordRaw !== '') {
+                const ord = Number(ordRaw);
+                if (Number.isFinite(ord)) checklistByOrderNo.set(ord, row);
+            }
             const key = row.category || '';
             if (!checklistByCategory.has(key)) checklistByCategory.set(key, []);
             checklistByCategory.get(key).push(row);
@@ -375,6 +398,28 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
             return contains || rows.find((r) => r.category === category) || rows[0];
         };
 
+        // base.order_no SSOT 매칭. 미스 시에만 기존 fuzzy(findBestRow) 폴백 — 무회귀.
+        const resolveEvalRow = (base) => {
+            const ordRaw = base?.order_no;
+            if (ordRaw !== undefined && ordRaw !== null && ordRaw !== '') {
+                const ord = Number(ordRaw);
+                if (Number.isFinite(ord) && evaluationByOrderNo.has(ord)) {
+                    return evaluationByOrderNo.get(ord);
+                }
+            }
+            return findBestRow(evaluationByCategory.get(base.category), base.category, base.item);
+        };
+        const resolveChecklistRow = (base) => {
+            const ordRaw = base?.order_no;
+            if (ordRaw !== undefined && ordRaw !== null && ordRaw !== '') {
+                const ord = Number(ordRaw);
+                if (Number.isFinite(ord) && checklistByOrderNo.has(ord)) {
+                    return checklistByOrderNo.get(ord);
+                }
+            }
+            return findBestRow(checklistByCategory.get(base.category), base.category, base.item);
+        };
+
         const formatPercent = (value) => {
             if (value === null || value === undefined || value === '') return '-';
             const num = Number(value);
@@ -382,10 +427,51 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
             return `${num}%`;
         };
 
-        return checklistTemplate.map((base) => {
-            const evalRow = findBestRow(evaluationByCategory.get(base.category), base.category, base.item) || {};
-            const checklistRow = findBestRow(checklistByCategory.get(base.category), base.category, base.item) || {};
-            const templateIdx = checklistTemplate.findIndex(
+        // 과거 결과 보존 — 평가 당시 채점됐으나 이후 항목이 삭제(소프트삭제)돼
+        // 현재 활성 템플릿(checklistTemplate)에 없는 항목도 저장된 행(qa_checklist_rows /
+        // qa_evaluation_rows)으로 그대로 표시한다. 활성 항목은 변동 없음.
+        //  - 템플릿에 이미 있는 order_no 는 건너뜀(중복/거동 변화 방지).
+        //  - 누락 항목은 저장된 category/item/validation_time(평가-시점 만점 동결)으로 부활.
+        const templateOrderNos = new Set(
+            checklistTemplate
+                .map((t) => Number(t.order_no))
+                .filter((n) => Number.isFinite(n) && n > 0)
+        );
+        const orphanByOrderNo = new Map();
+        const collectOrphan = (row, validationTime) => {
+            const orderNo = Number(row?.order_no);
+            if (!Number.isFinite(orderNo) || orderNo <= 0) return;
+            if (templateOrderNos.has(orderNo)) return;
+            if (orphanByOrderNo.has(orderNo)) {
+                // checklist_rows 의 validation_time(만점 동결)을 우선 채운다.
+                if (validationTime && !orphanByOrderNo.get(orderNo).validation_time) {
+                    orphanByOrderNo.get(orderNo).validation_time = validationTime;
+                }
+                return;
+            }
+            orphanByOrderNo.set(orderNo, {
+                order_no: orderNo,
+                category: row.category || '',
+                item: row.item || '',
+                validation_time: validationTime || '',
+            });
+        };
+        // checklist_rows 가 만점(validation_time)을 보유 → 우선 수집, 이어서 evaluation_rows.
+        checklistRowsRaw.forEach((row) => collectOrphan(row, row.validation_time));
+        evaluationRowsRaw.forEach((row) => collectOrphan(row, undefined));
+        const orphanTemplate = [...orphanByOrderNo.values()]
+            .sort((a, b) => a.order_no - b.order_no)
+            .map((o) => ({
+                ...o,
+                // 만점 미상(checklist_rows 없음) → 5점 기본 폴백.
+                validation_time: o.validation_time || '배점 5',
+            }));
+        const displayTemplate = [...checklistTemplate, ...orphanTemplate];
+
+        return displayTemplate.map((base) => {
+            const evalRow = resolveEvalRow(base) || {};
+            const checklistRow = resolveChecklistRow(base) || {};
+            const templateIdx = displayTemplate.findIndex(
                 (t) => t.category === base.category && t.item === base.item
             );
             const orderNoRaw = checklistRow.order_no;
@@ -959,22 +1045,30 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                     </thead>
                                     <tbody className="divide-y divide-[#F2F4F7]">
                                         {(() => {
-                                            const categorySpans = new Map();
-                                            checklistRows.forEach(r => {
-                                                categorySpans.set(r.category, (categorySpans.get(r.category) || 0) + 1);
-                                            });
-
-                                            const categoryRendered = new Set();
+                                            // 카테고리 rowSpan 은 '연속된 같은 카테고리' run 단위로 계산한다.
+                                            // 전체 개수로 합치면 order_no 재정렬로 같은 카테고리가
+                                            // 떨어진 위치에 다시 나타날 때 rowSpan 이 어긋난다.
+                                            const isFirstInRun = (i) =>
+                                                i === 0 || checklistRows[i - 1].category !== checklistRows[i].category;
+                                            const runLength = (i) => {
+                                                let len = 1;
+                                                while (
+                                                    i + len < checklistRows.length &&
+                                                    checklistRows[i + len].category === checklistRows[i].category
+                                                ) {
+                                                    len += 1;
+                                                }
+                                                return len;
+                                            };
 
                                             return checklistRows.map((r, i) => {
-                                                const showCategory = !categoryRendered.has(r.category);
-                                                if (showCategory) categoryRendered.add(r.category);
+                                                const showCategory = isFirstInRun(i);
 
                                                 return (
                                                     <tr key={i} className="hover:bg-[#FAFBFC] transition-colors group">
                                                         {showCategory && (
                                                             <td
-                                                                rowSpan={categorySpans.get(r.category)}
+                                                                rowSpan={runLength(i)}
                                                                 className="px-2.5 py-2.5 align-top text-[12px] font-semibold text-[#101828] border-r border-[#F2F4F7] bg-[#FAFBFC]/40"
                                                             >
                                                                 {r.category}

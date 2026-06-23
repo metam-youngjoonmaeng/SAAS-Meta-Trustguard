@@ -295,8 +295,10 @@ export const DEFAULT_RADAR_LABELS = [
 
 export const DEFAULT_BRAND_CONFIG = {
     key: 'default',
-    departments: ['고객지원실'],
-    roleOptionsByDept: { 고객지원실: ['전체'] },
+    // 평가(qa-pipeline + rubricSync)가 항상 department='기본' 항목만 채점하므로 신규 브랜드도 '기본'으로 통일.
+    // (과거 '고객지원실' → UI/추가 부서가 평가 부서와 불일치 → 추가 항목이 채점 안 되고, 기본부서 시드만 평가되던 문제)
+    departments: ['기본'],
+    roleOptionsByDept: { 기본: ['전체'] },
     checklistKeys: DEFAULT_CHECKLIST_KEYS,
     checklistTemplate: DEFAULT_CHECKLIST_TEMPLATE,
     radarKeys: DEFAULT_RADAR_KEYS,

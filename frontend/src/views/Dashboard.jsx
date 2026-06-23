@@ -97,12 +97,25 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
         dynamicList: dynamic,
     });
     // 카테고리 키: 신규 브랜드는 DB 항목 카테고리에서 도출(중복 제거·순서 보존), 레거시는 정적.
-    const CHECKLIST_KEYS = useMemo(
-        () => (dynamic
-            ? [...new Set((effectiveTemplate || []).map((t) => t.category).filter(Boolean))]
-            : brandConfig.checklistKeys),
-        [dynamic, effectiveTemplate, brandConfig]
-    );
+    // 과거 결과 보존 — 항목이 삭제(소프트삭제)돼 현재 활성 템플릿(effectiveTemplate)에는 없으나
+    // 저장된 콜(checklist_yn_kor)에 점수가 남아 있는 카테고리도 컬럼으로 유지한다(활성 뒤에 추가).
+    // 서버는 저장행 기준으로 checklist_yn_kor 를 내려주므로 그 키를 그대로 흡수하면 점수가 살아난다.
+    const CHECKLIST_KEYS = useMemo(() => {
+        if (!dynamic) return brandConfig.checklistKeys;
+        const keys = [...new Set((effectiveTemplate || []).map((t) => t.category).filter(Boolean))];
+        const seen = new Set(keys);
+        for (const c of calls) {
+            const yn = c?.checklist_yn_kor;
+            if (!yn || typeof yn !== 'object') continue;
+            for (const k of Object.keys(yn)) {
+                if (k && !seen.has(k)) {
+                    seen.add(k);
+                    keys.push(k);
+                }
+            }
+        }
+        return keys;
+    }, [dynamic, effectiveTemplate, brandConfig, calls]);
     // 상세페이지 → 뒤로가기 복귀 시 직전에 보던 부서 탭을 유지.
     // 같은 탭(sessionStorage)에서만 살아남도록 함 — 새 탭/새 창은 기본 부서로 시작.
     const [department, setDepartment] = useState(() => {
@@ -198,8 +211,11 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
     const departmentCounts = useMemo(() => {
         const m = Object.fromEntries(DEPARTMENT_OPTIONS.map((d) => [d, 0]));
         const defaultDept = DEPARTMENT_OPTIONS[0];
+        // 부서가 1개인 브랜드(신규/코오롱 등 default-config '기본')는 부서 구분이 없으므로
+        // 콜이 과거 '고객지원실' 로 적재돼 있어도 모두 단일 버킷에 집계.
+        const singleDept = DEPARTMENT_OPTIONS.length <= 1;
         for (const c of calls) {
-            const d = c.department || defaultDept;
+            const d = singleDept ? defaultDept : (c.department || defaultDept);
             if (m[d] !== undefined) m[d] += 1;
         }
         return m;
@@ -224,10 +240,13 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
         const startDate = filters.startDate ? new Date(`${filters.startDate}T00:00:00`) : null;
         const endDate = filters.endDate ? new Date(`${filters.endDate}T23:59:59.999`) : null;
         const defaultDept = DEPARTMENT_OPTIONS[0];
+        // 부서가 1개인 브랜드는 부서 분할이 없으므로 부서 필터를 적용하지 않는다.
+        // (콜이 과거 '고객지원실' 등으로 적재돼 있어도 '기본' 탭에서 모두 노출 — /api/calls 는 org 스코프라 안전)
+        const singleDept = DEPARTMENT_OPTIONS.length <= 1;
 
         return calls.filter(row => {
             const rowDept = row.department || defaultDept;
-            if (rowDept !== department) return false;
+            if (!singleDept && rowDept !== department) return false;
             if (startDate || endDate) {
                 const callDate = parseCallDate(row.call_datetime);
                 if (!callDate) return false;
@@ -537,7 +556,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{row.role || '-'}</td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDuration(row.duration_sec)}</td>
                                             <td className="px-2 py-3 text-right text-[14px] font-semibold text-[#101828] tabular-nums">
-                                                {(department === '고객지원실' || dynamic)
+                                                {(department === '고객지원실' || dynamic || brandConfig.key === 'default')
                                                     ? labelEarnedOverDefaultMax(row.total_score, row.total_max || rubricTotalMax || DEFAULT_TOTAL_MAX)
                                                     : labelEarnedOverMax(row.total_score)}
                                             </td>

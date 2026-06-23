@@ -491,6 +491,9 @@ export async function ingestCallFromQaPipeline(pool, call, opts = {}) {
 // 위 collection 함수/상수(mapEvaluateResponse/DASHBOARD_ITEM_MAPPING/JOB_MAX_SCORES)는 무변경.
 // ============================================================
 
+// qa_calls.department 는 CHECK 제약(컬렉션관리부·소비자보호부·고객센터·고객지원실)으로 '기본' 적재 불가.
+// 표준 트랙(코오롱·신규 브랜드)은 평가 루브릭이 '기본'이지만 콜 부서는 CHECK-유효한 '고객지원실'로 적재한다.
+// (Dashboard 는 단일 부서 브랜드를 부서로 분할하지 않으므로 '기본' 탭에서 모두 노출됨)
 const STANDARD_DEPARTMENT = '고객지원실';
 const STANDARD_ROLE = '전체';
 

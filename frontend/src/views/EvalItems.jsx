@@ -5,7 +5,7 @@ import { PRODUCT_NAME } from '../branding';
 import { getBrandConfig, isDynamicChecklistBrand, buildChecklistTemplateFromDefs } from '../constants';
 import {
     fetchGoldenCasesByItem, removeGoldenSet,
-    fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, fetchEvalItemHistory,
+    fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, deleteEvalItemDef, fetchEvalItemHistory,
     fetchPentagonAxes, savePentagonAxis, createPentagonAxis,
 } from '../services/api';
 import {
@@ -58,6 +58,9 @@ const EvalItems = ({ activeBrandId }) => {
     const dynamic = isDynamicChecklistBrand(activeBrandId);
     const axes = brandConfig.radarLabels;
     const departments = brandConfig.departments || [];
+    // 평가(qa-pipeline + rubricSync)가 항상 department='기본' 항목만 채점하므로, 체크리스트 조회·신규추가 모두 '기본'으로 고정.
+    // UI 부서와 평가 부서를 일치시켜 추가 항목이 즉시 평가/표시되도록 — 부서 불일치 회귀 방지.
+    const checklistDept = '기본';
 
     const [selection, setSelection] = useState({ kind: 'item', idx: 0 });
     const [modal, setModal] = useState(null);
@@ -90,14 +93,14 @@ const EvalItems = ({ activeBrandId }) => {
     }, [rubricSyncToast]);
 
     // 평가항목 정의(criterion + prompt_template + 메타)는 (org_id, department, order_no, version) 키로 DB 에 저장.
-    // 체크리스트는 '기본' 스코프 한정으로 fetch — KSQI(department='KSQI') 등 동일 org_id 의
-    // 타 부서 행이 order_no 1~9 로 섞여 들어와 미리보기 오염·편집 시 cross-scope 오변경되는 것을 차단.
+    // 체크리스트는 checklistDept(레거시='기본', 신규=브랜드 기본 부서) 스코프로 fetch — KSQI(department='KSQI')
+    // 등 동일 org_id 타 부서 행이 order_no 1~9 로 섞여 미리보기 오염·cross-scope 오변경되는 것을 차단.
     // 한 번 fetch 해서 order_no → def 매핑으로 보관. 신규 항목 추가/편집 시 갱신.
     const [evalDefsByOrderNo, setEvalDefsByOrderNo] = useState({});
     const [defsReloadKey, setDefsReloadKey] = useState(0);
     useEffect(() => {
         let cancelled = false;
-        fetchEvalItemDefs({ department: '기본' })
+        fetchEvalItemDefs({ department: checklistDept })
             .then((res) => {
                 if (cancelled) return;
                 const list = Array.isArray(res?.items) ? res.items : [];
@@ -563,17 +566,11 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
 
                         <div className="flex flex-col flex-1 min-h-0">
                             <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2">평가 프롬프트</div>
-                            <pre className="flex-1 min-h-0 text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3 overflow-auto">{def?.prompt_template ? def.prompt_template : `당신은 콜센터 상담 품질을 평가하는 AI입니다.
-아래 상담 전사를 읽고 "${item.item}" 항목을 평가하세요.
+                            <pre className="flex-1 min-h-0 text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3 overflow-auto">{def?.prompt_template ? def.prompt_template : `"${item.item}" 항목을 어떻게 평가할지 그 기준만 작성하세요.
 
-평가 기준:
-• (이 항목에 적용할 세부 기준을 입력하세요)
+점수 단계별(예: ${maxPoints}점 / 부분 점수 / 0점) 판정 조건과 감점·만점 사유를 구체적으로 기술합니다.
 
-출력 형식:
-{
-  "score": <0-${maxPoints}>,
-  "reasoning": "<2-3문장 근거>"
-}`}</pre>
+※ 출력 형식(JSON)·점수 산술 규칙·자기 검증·공통 정책은 백엔드가 자동 부착합니다. 평가 기준에만 집중하세요.`}</pre>
                         </div>
                     </div>
                 ) : (
@@ -1128,7 +1125,11 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
     );
     const [pentagonAxis, setPentagonAxis] = useState(existingDef?.pentagon_axis ?? '');
     const [isActive, setIsActive] = useState(existingDef?.is_active ?? true);
-    const [selectedDepts, setSelectedDepts] = useState([]);
+    // 신규 추가는 평가 부서('기본')에 생성 → 체크리스트·평가와 일치해 추가 즉시 반영.
+    // '기본'이 부서 옵션에 있으면 그것을, 없으면(레거시 등) 첫 부서를 기본 선택.
+    const [selectedDepts, setSelectedDepts] = useState(
+        mode === 'edit' ? [] : (Array.isArray(departments) && departments.includes('기본') ? ['기본'] : (departments[0] ? [departments[0]] : []))
+    );
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState(null);
 
@@ -1343,9 +1344,21 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                     isEdit && (
                         <button
                             type="button"
-                            onClick={() => {
-                                // 삭제는 별도 PR (deactivate 패턴) — 본 PR 범위 밖.
-                                window.alert('삭제 기능은 별도 작업 예정입니다. "비활성" 으로 설정하세요.');
+                            onClick={async () => {
+                                if (saving) return;
+                                if (!window.confirm(`"${name || item?.item || ''}" 항목을 삭제하시겠습니까?\n체크리스트에서 제거됩니다. (변경 이력은 보존됩니다)`)) return;
+                                setSaving(true);
+                                setSaveError(null);
+                                try {
+                                    const res = await deleteEvalItemDef(item.order_no, '기본');
+                                    onSaved?.(null);            // 삭제 — order_no 목록 변동이므로 전체 reload
+                                    onRubricSync?.(res?.rubric_sync);
+                                    onClose();
+                                } catch (err) {
+                                    setSaveError(err?.message || '삭제에 실패했습니다.');
+                                } finally {
+                                    setSaving(false);
+                                }
                             }}
                             disabled={saving}
                             className="h-[38px] px-4 rounded-xl border border-[#FCA5A5] bg-white text-[13px] font-semibold text-[#D92D20] hover:bg-red-50 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
@@ -1363,17 +1376,11 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
 
 function PromptEditModal({ item, existingDef, onSaved, onRubricSync, onClose }) {
     const maxPoints = parsePoints(item.validation_time);
-    const defaultPrompt = `당신은 콜센터 상담 품질을 평가하는 AI입니다.
-아래 상담 전사를 읽고 "${item.item}" 항목을 평가하세요.
+    const defaultPrompt = `"${item.item}" 항목을 어떻게 평가할지 그 기준만 작성하세요.
 
-평가 기준:
-• (이 항목에 적용할 세부 기준을 입력하세요)
+점수 단계별(예: ${maxPoints}점 / 부분 점수 / 0점) 판정 조건과 감점·만점 사유를 구체적으로 기술합니다.
 
-출력 형식:
-{
-  "score": <0-${maxPoints}>,
-  "reasoning": "<2-3문장 근거>"
-}`;
+※ 출력 형식(JSON)·점수 산술 규칙·자기 검증·공통 정책(STT·마스킹·평가모드 등)은 백엔드가 자동 부착하므로 여기에 작성하지 않습니다. 평가 기준(무엇을 어떻게 평가하는가)에만 집중하세요.`;
     const [criterion, setCriterion] = useState(existingDef?.criterion ?? '');
     const [prompt, setPrompt] = useState(existingDef?.prompt_template ?? defaultPrompt);
     // 평가 기준·프롬프트 수정은 항상 in-place — 항목 자체가 바뀌는 게 아니라 설명을 다듬는 영역이라
@@ -1395,7 +1402,14 @@ function PromptEditModal({ item, existingDef, onSaved, onRubricSync, onClose }) 
                     />
                 </FormGroup>
 
-                <FormGroup label="평가 프롬프트">
+                <FormGroup label="평가 프롬프트 (평가 기준)">
+                    <div className="text-[12px] text-[#055AAF] bg-[#EEF4FB] border border-[#BFD4F2] rounded-md px-3 py-2 mb-2.5 flex items-start gap-2">
+                        <Info size={12} className="mt-0.5 shrink-0" />
+                        <span>
+                            <strong>어떻게 평가할지(평가 기준)만</strong> 작성하세요. 출력 형식(JSON)·점수 산술 규칙·자기 검증·공통
+                            정책(STT·마스킹·평가모드 등)은 <strong>백엔드가 자동으로 부착</strong>합니다.
+                        </span>
+                    </div>
                     <textarea
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}

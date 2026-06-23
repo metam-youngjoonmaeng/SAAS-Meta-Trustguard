@@ -363,7 +363,7 @@ function DomainsPanel({ domains, onDomainsChange }) {
     );
 }
 
-const Brands = () => {
+const Brands = ({ onBrandsChanged } = {}) => {
     const [items, setItems] = useState([]);
     const [domains, setDomains] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -408,6 +408,8 @@ const Brands = () => {
                 await load();
             }
             setModalState({ open: false, target: null });
+            // App canonical brands(사이드바 선택기) 즉시 반영 — 새로고침 불필요
+            if (onBrandsChanged) onBrandsChanged();
         } catch (e) {
             setError(e?.message || '저장 실패');
         } finally {
@@ -419,6 +421,7 @@ const Brands = () => {
         try {
             await updateBrand(b.id, { active: !b.active });
             setItems((prev) => prev.map((x) => (x.id === b.id ? { ...x, active: !b.active } : x)));
+            if (onBrandsChanged) onBrandsChanged();
         } catch (e) {
             setError(e?.message || '상태 변경 실패');
         }
@@ -429,6 +432,7 @@ const Brands = () => {
         try {
             await deleteBrand(b.id);
             setItems((prev) => prev.filter((x) => x.id !== b.id));
+            if (onBrandsChanged) onBrandsChanged();
         } catch (e) {
             setError(e?.message || '삭제 실패');
         }

@@ -46,7 +46,14 @@ async function request(path, options = {}) {
     }
     if (!res.ok) {
         const text = await res.text().catch(() => '');
-        const message = text || `Request failed: ${res.status}`;
+        let message = text || `Request failed: ${res.status}`;
+        // 서버 오류는 {message} JSON 으로 내려오므로 message 만 추출 (실패 시 원문 유지).
+        try {
+            const j = JSON.parse(text);
+            if (j && j.message) message = j.message;
+        } catch {
+            /* non-JSON 본문은 원문 그대로 */
+        }
         throw new Error(message);
     }
     return res.json();
@@ -337,6 +344,16 @@ export async function createEvalItemDef({
             pentagon_axis, scoring_type, max_score, is_active,
             departments,
         }),
+    });
+}
+
+// 평가항목 삭제 (소프트 삭제). 해당 order_no 의 활성 행을 비활성화 → 목록/평가에서 제외, 이력 보존.
+// department 지정 시 해당 부서 행만 삭제(타 부서 동일 order_no 항목 보존). 미지정 시 전 부서.
+export async function deleteEvalItemDef(orderNo, department) {
+    if (orderNo === undefined || orderNo === null) throw new Error('orderNo is required');
+    const qs = department ? `?department=${encodeURIComponent(department)}` : '';
+    return request(`/api/admin/eval-items/${encodeURIComponent(orderNo)}${qs}`, {
+        method: 'DELETE',
     });
 }
 

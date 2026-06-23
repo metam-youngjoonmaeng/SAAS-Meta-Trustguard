@@ -226,6 +226,82 @@ function buildDynamicPentagonFromChecklistRows(checklistRows) {
     return { team_avg: teamAvg, agent_score: agent, overall_avg: overallAvg };
 }
 
+// 정본 Pentagon 5축 SSOT — EvalItems AxisModal 추천 셋(HANWHA_RADAR_REPORT_ITEMS.item_type)과 일치.
+// 운영자가 eval_item_defs.pentagon_axis 로 항목을 이 5축에 배치한다.
+const CANONICAL_PENTAGON_AXES = HANWHA_RADAR_REPORT_ITEMS.map((r) => r.item_type);
+// 축 라벨 정규화 — 공백/구두점 차이를 흡수해 DB 값을 정본 라벨에 매칭("발화안정성"→"발화 안정성",
+// "준수 고지 품질"→"준수·고지 품질"). 모든 공백 제거 + 중점(·)/가운뎃점류 통일 후 소문자.
+function normalizeAxisLabel(value) {
+    return String(value ?? '')
+        .replace(/[\s·•・·]/g, '') // 공백 + 중점류 전부 제거
+        .toLowerCase();
+}
+// 정규화 키 → 정본 라벨 역참조(정본 5축 중 매칭되면 정본 표기로 환원).
+const CANONICAL_AXIS_BY_NORM = new Map(
+    CANONICAL_PENTAGON_AXES.map((label) => [normalizeAxisLabel(label), label])
+);
+/** DB axis 값을 정본 5축 라벨로 환원(매칭 시), 아니면 원본 trim 값 유지(커스텀 축). 빈 값은 ''. */
+function canonicalizeAxis(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    return CANONICAL_AXIS_BY_NORM.get(normalizeAxisLabel(raw)) || raw;
+}
+
+// Pentagon 다이어그램 — 코오롱 방식(축 고정 + 항목 자동 합산)을 전 브랜드에 동일 적용.
+//   축 집합(definedAxes) = 운영자가 프론트(pentagon_axes 테이블, AxisModal CRUD)에서 정의한 축.
+//   비어 있으면 정본 5축(한화 라벨: 오프닝/설명/준수/대화/발화)으로 폴백.
+//   ★평가항목이 늘어나도 축 개수 불변 — 축은 definedAxes 로 고정, 항목은 그 축에 합산될 뿐.
+//   ★프론트에서 축 추가/변경/삭제하면 definedAxes 가 바뀌어 다이어그램에 즉시 반영(연동).
+// 축 라벨 정규화(canonicalizeAxis): DB 값의 공백/중점 차이를 정의 라벨에 매칭("발화안정성"→"발화 안정성").
+//   항목의 pentagon_axis 가 정의된 축에 매칭되면 그 축에 합산, 매칭 안 되거나 미지정이면 어느 축에도 안 붙음
+//   (category 폴백 없음 — 잡탕 N축 회피). 미평가/미매핑 축은 0 으로 항상 표시(축 증발 방지).
+// 반환 shape 은 다른 builder 와 동일({team_avg, agent_score, overall_avg}: {축명: 백분율}) — FE 어댑터 불필요.
+function buildPentagonByAxisDefs(checklistRows, axisByOrderNo, definedAxes) {
+    const rows = Array.isArray(checklistRows) ? checklistRows : [];
+    // 축 집합 = 운영자 정의 축(프론트 편집) > 정본 5축 폴백. 중복/빈값 제거 후 순서 보존.
+    const axisSource =
+        Array.isArray(definedAxes) && definedAxes.some((a) => String(a ?? '').trim())
+            ? definedAxes
+            : CANONICAL_PENTAGON_AXES;
+    const keyOrder = [];
+    const seen = new Set();
+    for (const a of axisSource) {
+        const label = String(a ?? '').trim();
+        if (!label || seen.has(label)) continue;
+        seen.add(label);
+        keyOrder.push(label);
+    }
+    const orderNosByKey = new Map(keyOrder.map((label) => [label, new Set()]));
+    // 정의된 축 라벨의 정규화 키 → 정의 라벨 역참조(항목 axis 값을 정의 축에 매칭).
+    const definedByNorm = new Map(keyOrder.map((label) => [normalizeAxisLabel(label), label]));
+    // 항목 axis 값을 정의된 축 중 하나로 매칭(정규화 흡수). 매칭 안 되면 null → 무시.
+    const toDefinedOrNull = (value) => {
+        const raw = String(value ?? '').trim();
+        if (!raw) return null;
+        return definedByNorm.get(normalizeAxisLabel(raw)) || null;
+    };
+    // 체크리스트 행을 정의된 축에 귀속. 미매핑/미지정 행은 어느 축에도 안 붙음(폴백 OFF).
+    for (const r of rows) {
+        const orderNo = Number(r?.order_no);
+        const axis = axisByOrderNo ? toDefinedOrNull(axisByOrderNo[orderNo]) : null;
+        if (!axis) continue;
+        orderNosByKey.get(axis).add(orderNo);
+    }
+    const agent = {};
+    for (const key of keyOrder) {
+        // 행이 없는 축(미지정/미평가)은 orderNoPct 가 0 반환 → 0 표시(증발 방지).
+        agent[key] = clamp0to100(orderNoPct([...orderNosByKey.get(key)], rows));
+    }
+    const teamAvg = {};
+    const overallAvg = {};
+    for (const key of keyOrder) {
+        const base = agent[key] || 0;
+        teamAvg[key] = clamp0to100(round1(base + Math.min(12, 100 - base)));
+        overallAvg[key] = clamp0to100(round1(base + Math.min(18, 100 - base)));
+    }
+    return { team_avg: teamAvg, agent_score: agent, overall_avg: overallAvg };
+}
+
 function buildDynamicFallbackReportRows(pentagon, aiScore) {
     const agentScore = pentagon?.agent_score || {};
     const rows = Object.keys(agentScore).map((cat, i) => {
@@ -523,7 +599,7 @@ app.use('/api', createIcsSsoRouter(pool, { createSession }));
 // 현재 요청의 활성 브랜드(org_id) 컨텍스트 결정.
 // - super_admin: X-Active-Brand-Id 헤더(없으면 본인 org_id, 그것도 없으면 null=전체)
 // - 그 외 (admin): 세션 org_id 고정 (header 무시 — 다른 브랜드 데이터 접근 차단)
-function resolveActiveOrgId(req) {
+function resolveActiveOrgId(req, { strict = false } = {}) {
     if (!req.session) return null;
     if (req.session.role === 'super_admin') {
         const raw = String(req.headers['x-active-brand-id'] || '').trim();
@@ -532,6 +608,9 @@ function resolveActiveOrgId(req) {
             if (Number.isFinite(parsed)) return parsed;
         }
         if (raw.toLowerCase() === 'all') return null; // 전체 조회
+        // strict(쓰기 라우트): 헤더 없으면 본인 홈 org 자동 폴백 금지 → null 반환 → 핸들러 가드가 400.
+        // (super_admin 이 활성 브랜드 미선택 상태로 쓰면 홈 브랜드 org1(신한카드)을 무단 변조하던 문제 방지)
+        if (strict) return null;
         return req.session.org_id ?? null;
     }
     return req.session.org_id ?? null;
@@ -1341,7 +1420,7 @@ app.get('/api/analysis/:qaId', async (req, res) => {
     }
     try {
         const { rows } = await pool.query(
-            'SELECT "ID" AS qa_id, "AI_SCORE" AS ai_score, "TOTAL_SCORE" AS total_score, department FROM qa_calls WHERE "ID" = $1 LIMIT 1',
+            'SELECT "ID" AS qa_id, "AI_SCORE" AS ai_score, "TOTAL_SCORE" AS total_score, department, org_id FROM qa_calls WHERE "ID" = $1 LIMIT 1',
             [qaId]
         );
         if (!rows[0]) {
@@ -1369,19 +1448,69 @@ app.get('/api/analysis/:qaId', async (req, res) => {
             ...r,
             result: String(r.ai_eval ?? ''),
         }));
-        // 동적 루브릭 콜(이커머스/은행 등): 행 카테고리가 코오롱 표준 8 카테고리와 전혀 안 겹침 —
-        // 코오롱 매핑으로는 5축 전부 0 이 되므로 행 카테고리 축으로 레이더 구성.
-        const rowCategorySet = new Set(
-            checklistAugmented.map((r) => String(r.category || '').trim()).filter(Boolean)
-        );
-        const isDynamicRubric =
-            isDefault &&
-            rowCategorySet.size > 0 &&
-            ![...rowCategorySet].some((c) => DEFAULT_PENTAGON_CATEGORIES.has(c));
+        // 펜타곤 빌더 선택은 ★브랜드(org_id) 기준★ — 신규 브랜드는 코오롱과 완전 독립.
+        // 신규 브랜드(비레거시 org_id>=4)는 항상 pentagon_axis 기반(buildPentagonByAxisDefs):
+        // 운영자가 평가항목관리에서 지정한 축(eval_item_defs.pentagon_axis)이 유일 SSOT 다.
+        // 콜 category 가 코오롱 표준(인사 예절 등)과 겹쳐도 코오롱 category 자동매핑
+        // (buildDefaultPentagonFromChecklistRows)으로 빠지지 않는다 — 안 그러면 첫인사(인사 예절)가
+        // 오프닝에 자동연동되고 운영자가 직접 지정한 pentagon_axis(예: 발화 안정성)는 무시되는 문제 발생.
+        // 레거시 신한(1)/한화(2)/코오롱(3)만 기존 category·카탈로그 빌더 유지(거동 byte-identical).
+        const orgIdNum = Number(rows[0].org_id);
+        const isLegacyPentagonOrg = [1, 2, 3].includes(orgIdNum);
+        const isDynamicRubric = !isLegacyPentagonOrg;
+        // 동적 루브릭 콜 — 코오롱 방식(축 고정 + 항목 자동 합산)을 적용.
+        //  (1) definedAxes = 운영자가 프론트(pentagon_axes 테이블)에서 정의한 축 라벨. 비면 정본 5축 폴백.
+        //  (2) axisByOrderNo = eval_item_defs.pentagon_axis ({ order_no: 축 }). 항목→축 매핑.
+        //  축은 definedAxes 로 고정(평가항목 늘어도 불변), 항목은 그 축에 자동 합산.
+        let axisByOrderNo = null;
+        let definedAxes = null;
+        if (isDynamicRubric && rows[0].org_id !== null && rows[0].org_id !== undefined) {
+            try {
+                const { rows: axisRows } = await pool.query(
+                    `SELECT DISTINCT ON (order_no) order_no, pentagon_axis
+                       FROM public.eval_item_defs
+                      WHERE org_id = $1
+                        AND is_active = true
+                        AND deactivated_at IS NULL
+                        AND pentagon_axis IS NOT NULL
+                        AND btrim(pentagon_axis) <> ''
+                      ORDER BY order_no ASC, version DESC`,
+                    [rows[0].org_id]
+                );
+                if (axisRows.length) {
+                    axisByOrderNo = {};
+                    for (const r of axisRows) axisByOrderNo[Number(r.order_no)] = String(r.pentagon_axis).trim();
+                }
+            } catch (axisErr) {
+                console.error('GET /api/analysis pentagon_axis lookup failed:', axisErr);
+                axisByOrderNo = null;
+            }
+            try {
+                // 운영자 정의 축(프론트 AxisModal CRUD) — 활성 행만. 비면 빌더가 정본 5축으로 폴백.
+                const { rows: defAxisRows } = await pool.query(
+                    `SELECT label
+                       FROM public.pentagon_axes
+                      WHERE org_id = $1
+                        AND is_active = true
+                        AND deactivated_at IS NULL
+                        AND effective_from <= now()
+                        AND label IS NOT NULL
+                        AND btrim(label) <> ''
+                      ORDER BY axis_no ASC`,
+                    [rows[0].org_id]
+                );
+                if (defAxisRows.length) definedAxes = defAxisRows.map((r) => String(r.label).trim());
+            } catch (defErr) {
+                console.error('GET /api/analysis pentagon_axes lookup failed:', defErr);
+                definedAxes = null;
+            }
+        }
+        // 동적 루브릭은 항상 정의-축 기반(코오롱식 고정 축). category 폴백 빌더 미사용 — 축이 항목수에 따라
+        // 늘어나던 현상 제거. axisByOrderNo 미지정이어도 definedAxes(또는 정본 5축)로 빈 다이어그램 표시.
         const pentagon = isHanwha
             ? buildHanwhaPentagonFromChecklistRows(checklistAugmented)
             : isDynamicRubric
-                ? buildDynamicPentagonFromChecklistRows(checklistAugmented)
+                ? buildPentagonByAxisDefs(checklistAugmented, axisByOrderNo, definedAxes)
                 : isDefault
                     ? buildDefaultPentagonFromChecklistRows(checklistAugmented)
                     : buildPentagonFromChecklistRows(checklistAugmented);
@@ -2527,8 +2656,8 @@ app.get('/api/admin/eval-item-versions', async (req, res) => {
 // }
 // - is_meaning_change=false (기본): 활성 행 in-place UPDATE
 // - is_meaning_change=true: 활성 행 deactivated_at=now() + 새 버전 행 INSERT
-app.put('/api/admin/eval-items/:orderNo', async (req, res) => {
-    const orgId = resolveActiveOrgId(req);
+app.put('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
     const orderNo = Number(req.params.orderNo);
     if (orgId === null || orgId === undefined) {
         res.status(400).json({ message: 'active brand context required' });
@@ -2805,6 +2934,87 @@ app.put('/api/admin/eval-items/:orderNo', async (req, res) => {
     }
 });
 
+// DELETE /api/admin/eval-items/:orderNo
+// 소프트 삭제: 해당 order_no 의 활성 행(전 부서)을 deactivated_at=now() + is_active=false 로 비활성화.
+// GET(deactivated_at IS NULL 필터)·평가에서 즉시 제외 → 목록에서 "삭제"로 보이며, 버전/변경 이력은 보존(감사 추적).
+// 하드 삭제(row 제거) 아님 — 이력·과거 평가 무결성 유지를 위해 의도적으로 soft-delete.
+app.delete('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
+    const orderNo = Number(req.params.orderNo);
+    // 부서 스코프(선택): 지정 시 해당 부서 행만 비활성화, 미지정 시 전 부서(하위호환).
+    // 같은 order_no 가 부서별로 다른 항목인 경우(예: org3 '기본' 첫인사 vs 'KSQI' 맞이인사)
+    // 한 부서 삭제가 타 부서 항목까지 소리 없이 비활성화하던 문제 방지.
+    const deptRaw = req.query?.department ?? req.body?.department;
+    const department = typeof deptRaw === 'string' && deptRaw.trim() ? deptRaw.trim() : null;
+    if (orgId === null || orgId === undefined) {
+        res.status(400).json({ message: 'active brand context required' });
+        return;
+    }
+    if (!Number.isFinite(orderNo)) {
+        res.status(400).json({ message: 'orderNo must be a number' });
+        return;
+    }
+    const actor = req.session || {};
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 활성 행 스냅샷 (부서별 1행씩) — 변경 이력 before 용
+        const { rows: activeRows } = await client.query(
+            `SELECT id, department, version, category, item, criterion, prompt_template,
+                    pentagon_axis, scoring_type, max_score, is_active
+               FROM public.eval_item_defs
+              WHERE org_id = $1 AND order_no = $2 AND deactivated_at IS NULL${department ? ' AND department = $3' : ''}`,
+            department ? [orgId, orderNo, department] : [orgId, orderNo]
+        );
+        if (activeRows.length === 0) {
+            await client.query('ROLLBACK').catch(() => {});
+            res.status(404).json({ message: 'eval item not found or already deleted' });
+            return;
+        }
+
+        // 활성 행 비활성화 (department 지정 시 해당 부서만, 미지정 시 전 부서)
+        await client.query(
+            `UPDATE public.eval_item_defs
+                SET deactivated_at = now(), is_active = false, updated_at = now()
+              WHERE org_id = $1 AND order_no = $2 AND deactivated_at IS NULL${department ? ' AND department = $3' : ''}`,
+            department ? [orgId, orderNo, department] : [orgId, orderNo]
+        );
+
+        // 부서별 삭제 이력 (change_type='delete')
+        for (const row of activeRows) {
+            const beforeJson = {
+                category: row.category, item: row.item,
+                criterion: row.criterion, prompt_template: row.prompt_template,
+                pentagon_axis: row.pentagon_axis, scoring_type: row.scoring_type,
+                max_score: row.max_score, is_active: row.is_active, version: row.version,
+            };
+            await client.query(
+                `INSERT INTO public.eval_item_change_log
+                   (org_id, department, order_no, item_name, category_name,
+                    version, change_type, before_json, after_json,
+                    user_id, login_id, display_name)
+                 VALUES ($1, $2, $3, $4, $5, $6, 'delete', $7::jsonb, NULL, $8, $9, $10)`,
+                [
+                    orgId, row.department, orderNo,
+                    row.item, row.category, row.version,
+                    JSON.stringify(beforeJson),
+                    actor.user_id ?? null, actor.login_id ?? null, actor.display_name ?? null,
+                ]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({ ok: true, order_no: orderNo, deleted: activeRows.length });
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('DELETE /api/admin/eval-items/:orderNo error:', error);
+        res.status(500).json({ message: 'Failed to delete eval item.' });
+    } finally {
+        client.release();
+    }
+});
+
 // POST /api/admin/eval-items
 // body: {
 //   category, item, criterion?, prompt_template?,
@@ -2814,8 +3024,8 @@ app.put('/api/admin/eval-items/:orderNo', async (req, res) => {
 // - order_no 는 활성 브랜드 전체에서 max(order_no)+1 로 자동 발급.
 // - 동일 order_no 를 모든 부서에 INSERT (브랜드 내에서 같은 항목 = 같은 order_no 패턴 유지).
 // - change_type='create' 로 부서별로 변경 이력 적재.
-app.post('/api/admin/eval-items', async (req, res) => {
-    const orgId = resolveActiveOrgId(req);
+app.post('/api/admin/eval-items', requireAdmin, async (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
     if (orgId === null || orgId === undefined) {
         res.status(400).json({ message: 'active brand context required' });
         return;
@@ -2858,14 +3068,19 @@ app.post('/api/admin/eval-items', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // order_no 발급: 활성 브랜드 전체 (부서 무관) max + 1
-        const { rows: maxRows } = await client.query(
-            `SELECT COALESCE(MAX(order_no), 0) AS max_order
+        // order_no 발급: 활성 행 기준 사용 안 된 최소 양의 정수 (gap-fill).
+        // soft-delete(deactivated_at) 로 비운 슬롯은 재사용 가능 — 전부 삭제 후 추가하면 #1 부터,
+        // 부분 삭제 후 추가하면 빈 자리를 채운다. (version 카운터는 org+department 전역 단조라
+        // 같은 order_no 재발급 시에도 versioned_uk 충돌 없음.)
+        const { rows: usedRows } = await client.query(
+            `SELECT DISTINCT order_no
                FROM public.eval_item_defs
-              WHERE org_id = $1`,
+              WHERE org_id = $1 AND deactivated_at IS NULL`,
             [orgId]
         );
-        const nextOrderNo = (maxRows[0]?.max_order || 0) + 1;
+        const usedSet = new Set(usedRows.map((r) => Number(r.order_no)));
+        let nextOrderNo = 1;
+        while (usedSet.has(nextOrderNo)) nextOrderNo++;
 
         const inserted = [];
         for (const dept of normalizedDepts) {
@@ -2971,8 +3186,8 @@ app.get('/api/admin/pentagon-axes', async (req, res) => {
 // POST /api/admin/pentagon-axes  — 신규 축 추가
 // body: { label, description?, prompt_template?, is_active?, department? }
 // axis_no = 활성 브랜드 내 max+1.
-app.post('/api/admin/pentagon-axes', async (req, res) => {
-    const orgId = resolveActiveOrgId(req);
+app.post('/api/admin/pentagon-axes', requireAdmin, async (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
     if (orgId === null || orgId === undefined) {
         res.status(400).json({ message: 'active brand context required' });
         return;
@@ -3042,8 +3257,8 @@ app.post('/api/admin/pentagon-axes', async (req, res) => {
 // PUT /api/admin/pentagon-axes/:axisNo
 // body: { label?, description?, prompt_template?, is_active?, department? }
 // 활성 행 in-place UPDATE + 변경 이력 적재. is_meaning_change 옵션 없음 (PoC 단순화).
-app.put('/api/admin/pentagon-axes/:axisNo', async (req, res) => {
-    const orgId = resolveActiveOrgId(req);
+app.put('/api/admin/pentagon-axes/:axisNo', requireAdmin, async (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
     const axisNo = Number(req.params.axisNo);
     if (orgId === null || orgId === undefined) {
         res.status(400).json({ message: 'active brand context required' });

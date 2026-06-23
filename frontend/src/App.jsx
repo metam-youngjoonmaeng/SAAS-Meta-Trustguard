@@ -439,6 +439,17 @@ function App() {
         }
     }, []);
 
+    // 브랜드 추가/수정/활성토글 직후 사이드바 선택기·관리 목록이 새로고침 없이 반영되도록
+    // App 의 canonical brands state 를 재로드 (Brands.jsx 로컬 state 와 분리돼 있던 문제 보정).
+    const refreshBrands = useCallback(async () => {
+        try {
+            const data = await fetchOrganizations();
+            setBrands(data);
+        } catch (error) {
+            console.error('브랜드 목록 새로고침 오류:', error);
+        }
+    }, []);
+
     const handleBackToDashboard = () => {
         navigateHash(DASHBOARD_HASH);
     };
@@ -572,7 +583,7 @@ function App() {
                     />
                 )}
                 {activeTab === 'eval-mgmt' && <EvalMgmt role={currentUser?.role} />}
-                {activeTab === 'brands' && currentUser?.role === 'super_admin' && <Brands />}
+                {activeTab === 'brands' && currentUser?.role === 'super_admin' && <Brands onBrandsChanged={refreshBrands} />}
                 {activeTab === 'brands' && currentUser?.role !== 'super_admin' && (
                     <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
                         <p className="text-sm text-[#667085]">super_admin 권한이 필요합니다.</p>
