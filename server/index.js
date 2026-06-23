@@ -4321,18 +4321,27 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
         const randomOn = !!(on.bias && bias.random);
         const randomPct = num(bias.randomPct, 0);
 
-        const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, confOn, uncOn, conOn, excluded, randomOn, randomPct];
+        // ④ 근속(대상자 특정) — 상담사 입사일(trainee_registrations.hire_date) 기준. 도장 로직과 동일 식.
+        const tenure = cfg.tenure || {};
+        const tjOn = !!(on.tenure && tenure.junior);
+        const tjM = Math.max(0, Math.round(num(tenure.juniorMonths, 6)));
+        const tsOn = !!(on.tenure && tenure.senior);
+        const tsY = Math.max(0, Math.round(num(tenure.seniorYears, 5)));
+
+        const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, confOn, uncOn, conOn, excluded, randomOn, randomPct, tjOn, tjM, tsOn, tsY];
         let orgClause = '';
         if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
 
         const sql = `
             WITH scoped AS (
-                SELECT c."ID" AS id, c."TOTAL_SCORE"::numeric AS score, c.duration_sec, cj.judgments
+                SELECT c."ID" AS id, c."TOTAL_SCORE"::numeric AS score, c.duration_sec, cj.judgments,
+                       tr.hire_date AS hire_date
                   FROM qa_calls c
                   LEFT JOIN qa_confidence_judgments cj ON cj.qa_id = c."ID"
+                  LEFT JOIN trainee_registrations tr ON tr.user_id = c.agent_user_id
                  WHERE c.is_sandbox = false ${orgClause}
             ), in_scope AS (
-                SELECT id, score, duration_sec, judgments FROM scoped
+                SELECT id, score, duration_sec, judgments, hire_date FROM scoped
                  WHERE duration_sec IS NOT NULL AND duration_sec >= $1 AND duration_sec < $2
             ), agg AS (
                 SELECT avg(score) AS org_avg FROM in_scope
@@ -4346,6 +4355,8 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
                            AND ( ($10 AND (e->>'uncertain')::boolean) OR ($11 AND (e->>'contradiction')::boolean) )
                     )) AS c_match,
                     ($13 AND (((hashtext(i.id) % 100) + 100) % 100) < $14) AS r_match,
+                    ($15 AND i.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND i.hire_date::date >= (CURRENT_DATE - make_interval(months => $16))) AS te_j_match,
+                    ($17 AND i.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND i.hire_date::date <= (CURRENT_DATE - make_interval(years  => $18))) AS te_s_match,
                     (i.judgments IS NOT NULL) AS judged
                   FROM in_scope i CROSS JOIN agg a
             )
@@ -4358,12 +4369,15 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
                 count(*) FILTER (WHERE r_match)::int  AS bias_random_cnt,
                 count(*) FILTER (WHERE b_match OR r_match)::int AS bias_cnt,
                 count(*) FILTER (WHERE c_match)::int  AS confidence_cnt,
+                count(*) FILTER (WHERE te_j_match)::int AS tenure_junior_cnt,
+                count(*) FILTER (WHERE te_s_match)::int AS tenure_senior_cnt,
+                count(*) FILTER (WHERE te_j_match OR te_s_match)::int AS tenure_cnt,
                 count(*) FILTER (WHERE judged)::int   AS judged_cnt,
-                count(*) FILTER (WHERE q_match OR b_match OR c_match OR r_match)::int AS union_cnt
+                count(*) FILTER (WHERE q_match OR b_match OR c_match OR r_match OR te_j_match OR te_s_match)::int AS union_cnt
             FROM flagged`;
 
         const { rows } = await pool.query(sql, params);
-        const r = rows[0] || { pool: 0, in_scope_cnt: 0, org_avg: null, quality_cnt: 0, bias_high_cnt: 0, bias_random_cnt: 0, bias_cnt: 0, confidence_cnt: 0, judged_cnt: 0, union_cnt: 0 };
+        const r = rows[0] || { pool: 0, in_scope_cnt: 0, org_avg: null, quality_cnt: 0, bias_high_cnt: 0, bias_random_cnt: 0, bias_cnt: 0, confidence_cnt: 0, tenure_junior_cnt: 0, tenure_senior_cnt: 0, tenure_cnt: 0, judged_cnt: 0, union_cnt: 0 };
 
         const totalTargets = r.union_cnt || 0; // union 은 in_scope 부분집합 — 실제 도장 대상 수와 일치
 
@@ -4385,7 +4399,11 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
                         note: r.judged_cnt < r.in_scope_cnt ? `LLM 판정 ${r.judged_cnt}/${r.in_scope_cnt}콜 (미판정분 재판정 필요)` : null }
                     : { supported: true, count: 0, note: '비활성' },
                 risk:       { supported: false, count: 0, note: '리스크 기준(금칙어·고객신호) 정의 대기' },
-                tenure:     { supported: false, count: 0, note: '상담사 입사일 데이터 보강 대기' },
+                tenure: on.tenure
+                    ? { supported: true, count: r.tenure_cnt,
+                        junior_count: r.tenure_junior_cnt, senior_count: r.tenure_senior_cnt,
+                        note: `신입 ${r.tenure_junior_cnt}건 + 장기근속 ${r.tenure_senior_cnt}건 (입사일 기준)` }
+                    : { supported: true, count: 0, note: '비활성' },
                 bias: on.bias
                     ? { supported: true, count: r.bias_cnt,
                         high_count: r.bias_high_cnt, random_count: r.bias_random_cnt,

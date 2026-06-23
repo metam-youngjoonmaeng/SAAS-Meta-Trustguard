@@ -6,8 +6,8 @@
  *   - 사유는 카드·세부규칙 수준 한글 라벨(상세 배지용): "저품질 검증 · 평균점수 미달" 등
  *   - 누적: 한 번 찍히면 유지(manual_review_at 은 최초 시각), 재실행은 사유만 갱신, 해제 안 함
  *   - qaIds 주면 그 콜들만 재계산(실시간/판정직후), 없으면 in-scope 전체
- * 지원 조건: 저품질(평균점수 미달)·신뢰도(불확실/모순)·편향(비정상 고점·무작위 표본).
- * 필수항목·근속·리스크는 아직 도장 대상 아님(데이터/정의 대기).
+ * 지원 조건: 저품질(평균점수 미달)·신뢰도(불확실/모순)·편향(비정상 고점·무작위 표본)·근속(신입/장기근속).
+ * 필수항목·리스크(금칙어·고객신호)는 아직 도장 대상 아님(데이터/정의 대기).
  */
 import { logger } from './logger.mjs';
 
@@ -32,7 +32,7 @@ export async function readBatchConfig(pool, orgId) {
 export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}) {
     const cfg = await readBatchConfig(pool, orgId);
     if (!cfg) return 0;
-    const on = cfg.on || {}, q = cfg.quality || {}, bias = cfg.bias || {}, conf = cfg.confidence || {}, scope = cfg.scope || {};
+    const on = cfg.on || {}, q = cfg.quality || {}, bias = cfg.bias || {}, conf = cfg.confidence || {}, scope = cfg.scope || {}, tenure = cfg.tenure || {};
 
     const minSec = Math.max(0, Math.round(num(scope.minMin, 0) * 60));
     const maxMinV = num(scope.maxMin, 0);
@@ -50,10 +50,16 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
     // ⑤ 무작위 표본(편향점검) — 결정적 해시 샘플링: 콜별 고정이라 멱등(재실행해도 같은 집합, 누적 없음).
     const rOn = !!(on.bias && bias.random);
     const rPct = num(bias.randomPct, 0);
+    // ④ 근속(대상자 특정) — 상담사 입사일(trainee_registrations.hire_date) 기준.
+    //   신입=입사 N개월 이내, 장기근속=N년차↑. agent_user_id→trainee_registrations.user_id 조인.
+    const tjOn = !!(on.tenure && tenure.junior);
+    const tjM = Math.max(0, Math.round(num(tenure.juniorMonths, 6)));
+    const tsOn = !!(on.tenure && tenure.senior);
+    const tsY = Math.max(0, Math.round(num(tenure.seniorYears, 5)));
 
-    if (!qOn && !bHighOn && !uncOn && !conOn && !rOn) return 0; // 활성(지원) 조건 없음
+    if (!qOn && !bHighOn && !uncOn && !conOn && !rOn && !tjOn && !tsOn) return 0; // 활성(지원) 조건 없음
 
-    const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, uncOn, conOn, excluded, rOn, rPct];
+    const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, uncOn, conOn, excluded, rOn, rPct, tjOn, tjM, tsOn, tsY];
     let orgClause = '';
     if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
     let idClause = '';
@@ -72,9 +78,12 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
                    WHERE NOT ((e->>'order_no')::int = ANY($11::int[])) AND (e->>'uncertain')::boolean)) AS cf_unc,
           ($10 AND EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(cj.judgments,'[]'::jsonb)) e
                    WHERE NOT ((e->>'order_no')::int = ANY($11::int[])) AND (e->>'contradiction')::boolean)) AS cf_con,
-          ($12 AND (((hashtext(c."ID") % 100) + 100) % 100) < $13) AS r
+          ($12 AND (((hashtext(c."ID") % 100) + 100) % 100) < $13) AS r,
+          ($14 AND tr.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND tr.hire_date::date >= (CURRENT_DATE - make_interval(months => $15))) AS te_j,
+          ($16 AND tr.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND tr.hire_date::date <= (CURRENT_DATE - make_interval(years  => $17))) AS te_s
         FROM qa_calls c
         LEFT JOIN qa_confidence_judgments cj ON cj.qa_id = c."ID"
+        LEFT JOIN trainee_registrations tr ON tr.user_id = c.agent_user_id
         CROSS JOIN agg a
         WHERE c.is_sandbox = false ${orgClause}
           AND c.duration_sec IS NOT NULL AND c.duration_sec >= $1 AND c.duration_sec < $2
@@ -87,10 +96,12 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
          || (CASE WHEN m.cf_unc THEN jsonb_build_array('AI 신뢰도 검증 · 불확실 표현') ELSE '[]'::jsonb END)
          || (CASE WHEN m.cf_con THEN jsonb_build_array('AI 신뢰도 검증 · 근거-점수 모순') ELSE '[]'::jsonb END)
          || (CASE WHEN m.b      THEN jsonb_build_array('AI 편향점검 · 비정상 고점') ELSE '[]'::jsonb END)
-         || (CASE WHEN m.r      THEN jsonb_build_array('AI 편향점검 · 무작위 표본') ELSE '[]'::jsonb END),
+         || (CASE WHEN m.r      THEN jsonb_build_array('AI 편향점검 · 무작위 표본') ELSE '[]'::jsonb END)
+         || (CASE WHEN m.te_j   THEN jsonb_build_array('대상자 특정 · 신입 상담사') ELSE '[]'::jsonb END)
+         || (CASE WHEN m.te_s   THEN jsonb_build_array('대상자 특정 · 장기 근속') ELSE '[]'::jsonb END),
         manual_review_at = COALESCE(t.manual_review_at, now())
       FROM matched m
-      WHERE t."ID" = m.id AND (m.q OR m.b OR m.cf_unc OR m.cf_con OR m.r)
+      WHERE t."ID" = m.id AND (m.q OR m.b OR m.cf_unc OR m.cf_con OR m.r OR m.te_j OR m.te_s)
       RETURNING t."ID"`;
 
     try {
