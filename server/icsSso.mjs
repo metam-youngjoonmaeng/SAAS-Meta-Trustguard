@@ -68,9 +68,10 @@ export function normalizeIcsDate(v) {
         return `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}`;
     }
     const s = String(v).trim();
-    if (!s || s === '0' || /^0+$/.test(s)) return null;
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    if (!s) return null;
     const digits = s.replace(/\D/g, '');
+    if (!digits || /^0+$/.test(digits)) return null; // 0값(0000-00-00, 00000000 등) → 미설정
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
     if (digits.length >= 8) return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
     return null;
 }
