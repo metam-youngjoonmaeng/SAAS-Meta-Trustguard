@@ -10,6 +10,16 @@ import {
     fetchUsers, createUser, updateUser, deleteUser, resetUserPassword,
     fetchOrganizations, fetchAuditLogs,
 } from '../services/api';
+import { getBrandConfig } from '../constants';
+
+// 소속 브랜드(org_id)별 팀(부서) 후보 목록. constants.js BRAND_CONFIG 와 연동.
+// 현재 값(legacy 자유텍스트 포함)이 목록에 없으면 유실 방지를 위해 맨 앞에 추가.
+function deptOptionsFor(orgId, current) {
+    const base = getBrandConfig(orgId).departments || [];
+    const cur = String(current || '').trim();
+    return cur && !base.includes(cur) ? [cur, ...base] : base;
+}
+const FLD_SELECT = 'w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF] disabled:bg-[#F2F4F7] disabled:text-[#667085] cursor-pointer';
 
 // ── 색 팔레트 (원본 BrandsSection AVATAR_PALETTE 동일) ────────────
 const AVATAR_PALETTE = [
@@ -314,7 +324,12 @@ function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
                             </Fld>
                         )}
                         <Fld label="팀(부서)">
-                            <input type="text" value={draft.department} onChange={(e) => set('department', e.target.value)} placeholder="예) 고객지원실" className={FLD_INPUT} />
+                            <select value={draft.department || ''} onChange={(e) => set('department', e.target.value)} className={FLD_SELECT}>
+                                <option value="">미지정</option>
+                                {deptOptionsFor(draft.org_id, draft.department).map((d) => (
+                                    <option key={d} value={d}>{d}</option>
+                                ))}
+                            </select>
                         </Fld>
 
                         <Fld label="사용자 권한" required>
@@ -475,14 +490,17 @@ function BulkEditModal({ targets, currentUserId, brands, onSave, onClose, saving
                         onToggle={() => toggle('department')}
                         label="부서"
                     >
-                        <input
-                            type="text"
-                            value={draft.department}
+                        <select
+                            value={draft.department || ''}
                             disabled={!enable.department}
                             onChange={(e) => set('department', e.target.value)}
-                            placeholder="예) AICC 플랫폼실 (비우면 미지정)"
-                            className="w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF] disabled:bg-[#F2F4F7] disabled:text-[#98A2B3]"
-                        />
+                            className="w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF] disabled:bg-[#F2F4F7] disabled:text-[#98A2B3] cursor-pointer disabled:cursor-not-allowed"
+                        >
+                            <option value="">미지정</option>
+                            {deptOptionsFor(draft.org_id, draft.department).map((d) => (
+                                <option key={d} value={d}>{d}</option>
+                            ))}
+                        </select>
                     </BulkField>
 
                     <BulkField
