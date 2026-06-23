@@ -1113,6 +1113,17 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
         mapped = mapEvaluateResponseStandard(resp, standardMaxByOrder);
     }
     mapped.warnings = [...warnings, ...(mapped.warnings || [])];
+
+    // 파이프라인 크래시 vs 포기호 구분: 평가 산출물이 0건인데 응답에 error 필드가 있으면
+    // 이는 '포기호/미응대'가 아니라 평가 자체의 실패다(예: report_generator_v2 의 ItemResult
+    // 검증 'score out of bounds' — 만점 override 와 채점 스케일 불일치로 report 생성 크래시).
+    // 포기호 게이트로 흘려보내 무음 미적재하지 말고 라우트로 에러를 전파해 사용자에게 실패
+    // 사유를 노출한다. 정상 평가(항목 1건 이상)면 비치명 error 는 무시(무회귀).
+    const pipelineError = safeStr(resp?.error).trim();
+    const noRows = !(mapped.evaluations?.length > 0) && !(mapped.checklist?.length > 0);
+    if (pipelineError && noRows) {
+        throw new Error(`파이프라인 평가 실패: ${pipelineError}`);
+    }
     return mapped;
 }
 
