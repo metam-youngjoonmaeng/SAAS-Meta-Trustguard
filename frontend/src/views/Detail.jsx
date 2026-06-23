@@ -20,7 +20,7 @@ import ReviewStatusBadge, {
     REVIEW_STATUS,
     deriveReviewStatus,
 } from '../components/ReviewStatusBadge';
-import { DEFAULT_TOTAL_MAX, getBrandConfig } from '../constants';
+import { DEFAULT_TOTAL_MAX, getBrandConfig, isDynamicChecklistBrand } from '../constants';
 import useDefaultRubricMax from '../hooks/useDefaultRubricMax';
 import { formatDateTime, formatDuration, formatTime } from '../utils/formatters';
 import {
@@ -46,9 +46,8 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     // 골드셋 등록/해제는 관리자(admin/super_admin)만. 상담사는 버튼 미노출(서버도 403).
     const canManageGold = role === 'admin' || role === 'super_admin';
     // 브랜드별 Pentagon 라벨/키 lookup. 신한=컬렉션 5축, 한화=고객센터 5축.
+    // (사용자 생성 트랙 축은 analysis 로드 후 아래에서 카테고리명으로 재도출 — PENTAGON_KEYS/LABELS)
     const brandConfig = useMemo(() => getBrandConfig(activeBrandId), [activeBrandId]);
-    const PENTAGON_KEYS = brandConfig.radarKeys;
-    const PENTAGON_LABELS = brandConfig.radarLabels;
     const [analysis, setAnalysis] = useState(null);
     const [evaluation, setEvaluation] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -80,11 +79,19 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     const isConsumer = department === '소비자보호부';
     // 고객지원실(코오롱 등 기본 브랜드) 콜은 합계를 원점수 "X / 80" 으로 표기. 그 외 부서는 기존 100점 만점 유지.
     const isDefaultDept = department === '고객지원실';
+    // 레거시(신한1/한화2/코오롱3)=정적 체크리스트, 신규 브랜드(id≥4)=DB 기반 동적.
+    const dynamic = isDynamicChecklistBrand(activeBrandId);
     // 만점(분모)을 EvalItems 탭 편집 DB(eval_item_defs '기본')에서 라이브 조회 — 미적재 시 정적 폴백.
-    const { maxByOrderNo: rubricMaxByOrderNo } = useDefaultRubricMax({
-        enabled: isDefaultDept,
+    const { maxByOrderNo: rubricMaxByOrderNo, effectiveTemplate, totalMax: rubricTotalMax } = useDefaultRubricMax({
+        enabled: isDefaultDept || dynamic,
         fallbackTemplate: brandConfig.checklistTemplate,
+        dynamicList: dynamic,
     });
+    // 표시용 체크리스트: 신규 브랜드는 DB 기반(effectiveTemplate), 레거시는 정적 템플릿.
+    const checklistTemplate = dynamic ? (effectiveTemplate || []) : brandConfig.checklistTemplate;
+    // Pentagon 축은 브랜드 설정의 정적 5축 고정 (동적 N축 미사용).
+    const PENTAGON_KEYS = brandConfig.radarKeys;
+    const PENTAGON_LABELS = brandConfig.radarLabels;
 
     // 뒤로가기 시 Dashboard 가 이 콜의 부서 탭을 복원할 수 있도록 sessionStorage 에 기록.
     // (Dashboard.jsx 의 DASHBOARD_DEPT_STORAGE_KEY 와 동일 키.)
@@ -375,10 +382,10 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
             return `${num}%`;
         };
 
-        return brandConfig.checklistTemplate.map((base) => {
+        return checklistTemplate.map((base) => {
             const evalRow = findBestRow(evaluationByCategory.get(base.category), base.category, base.item) || {};
             const checklistRow = findBestRow(checklistByCategory.get(base.category), base.category, base.item) || {};
-            const templateIdx = brandConfig.checklistTemplate.findIndex(
+            const templateIdx = checklistTemplate.findIndex(
                 (t) => t.category === base.category && t.item === base.item
             );
             const orderNoRaw = checklistRow.order_no;
@@ -433,7 +440,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                 team_avg: formatPercent(evalRow.team_avg),
             };
         });
-    }, [evaluation, brandConfig, rubricMaxByOrderNo]);
+    }, [evaluation, brandConfig, checklistTemplate, rubricMaxByOrderNo]);
 
     // 점수 헤더 표기 — 고객지원실은 원점수 "X / N점", 그 외는 기존 "X점 / 100점".
     // 분모 = 이 콜의 checklistRows.rubric_max_pts 합(평가-시점 만점 동결) — 0이면 DEFAULT_TOTAL_MAX 폴백.
@@ -441,16 +448,19 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     // NOTE: 반드시 checklistRows 선언 뒤에 위치 — 앞에 두면 const TDZ ReferenceError 로
     // Detail 전체가 흰 화면 (2026-06-11 수정).
     const callTotalMax = useMemo(
-        () => checklistRows.reduce((s, r) => s + (Number(r.rubric_max_pts) || 0), 0) || DEFAULT_TOTAL_MAX,
-        [checklistRows]
+        () => checklistRows.reduce((s, r) => s + (Number(r.rubric_max_pts) || 0), 0)
+            || (dynamic ? Number(rubricTotalMax) || 0 : 0)
+            || DEFAULT_TOTAL_MAX,
+        [checklistRows, dynamic, rubricTotalMax]
     );
     const reportScoreLabel = useMemo(() => {
         // 저장값 = 획득점 합계 원점수 — 환산 없이 "X / 만점" 그대로 표기.
-        if (isDefaultDept) {
+        // 고객지원실(코오롱) + 사용자 생성 트랙(동적)은 원점수 표기, 표준 신한/한화만 100점 환산.
+        if (isDefaultDept || dynamic) {
             return `${reportScore} / ${callTotalMax}점`;
         }
         return `${reportScore}점 / 100점`;
-    }, [isDefaultDept, reportScore, callTotalMax]);
+    }, [isDefaultDept, dynamic, reportScore, callTotalMax]);
 
     // 새 수기평가 모델(낮음/동일/높음 + 골드셋)을 위한 setter.
     // 판단이 '동일' 에서 벗어나면 골드셋은 자동 해제 + DB 에서도 즉시 삭제.

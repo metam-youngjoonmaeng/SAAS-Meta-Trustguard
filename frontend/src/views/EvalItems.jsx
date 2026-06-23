@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Header from '../components/Header';
 import { PRODUCT_NAME } from '../branding';
-import { getBrandConfig } from '../constants';
+import { getBrandConfig, isDynamicChecklistBrand, buildChecklistTemplateFromDefs } from '../constants';
 import {
     fetchGoldenCasesByItem, removeGoldenSet,
     fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, fetchEvalItemHistory,
@@ -54,7 +54,8 @@ const PENTAGON_MOCK_DESC = {
 
 const EvalItems = ({ activeBrandId }) => {
     const brandConfig = useMemo(() => getBrandConfig(activeBrandId), [activeBrandId]);
-    const items = brandConfig.checklistTemplate;
+    // 레거시(신한1/한화2/코오롱3)=정적 체크리스트, 신규 브랜드(id≥4)=DB(eval_item_defs '기본') 기반 동적.
+    const dynamic = isDynamicChecklistBrand(activeBrandId);
     const axes = brandConfig.radarLabels;
     const departments = brandConfig.departments || [];
 
@@ -107,6 +108,13 @@ const EvalItems = ({ activeBrandId }) => {
             .catch(() => { if (!cancelled) setEvalDefsByOrderNo({}); });
         return () => { cancelled = true; };
     }, [activeBrandId, defsReloadKey]);
+
+    // 체크리스트 항목 리스트: 레거시=정적 템플릿, 신규 브랜드=DB(eval_item_defs '기본') 동적 구성.
+    // 신규 브랜드는 server 시드로 '첫인사' 1항목만 → 코오롱 18항목 미상속.
+    const items = useMemo(
+        () => (dynamic ? buildChecklistTemplateFromDefs(Object.values(evalDefsByOrderNo)) : brandConfig.checklistTemplate),
+        [dynamic, evalDefsByOrderNo, brandConfig]
+    );
 
     const upsertEvalDef = (def) => {
         setEvalDefsByOrderNo((prev) => ({ ...prev, [def.order_no]: def }));
@@ -192,6 +200,7 @@ const EvalItems = ({ activeBrandId }) => {
                                         category={it.category}
                                         label={it.item}
                                         selected={on}
+                                        inactive={it.is_active === false}
                                         onSelect={() => setSelection({ kind: 'item', idx })}
                                         onEdit={() => setModal({ type: 'edit-item', item: it })}
                                     />

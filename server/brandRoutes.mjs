@@ -13,7 +13,7 @@ import fs from 'fs';
 import express from 'express';
 import { AUDIT_ACTION, AUDIT_VIEW_WINDOW_DAYS, insertQaAuditLog } from './auditLog.mjs';
 import { logger, todayLogPath } from './logger.mjs';
-import { seedDefaultEvalItems } from './defaultEvalItems.mjs';
+import { seedMinimalEvalItems } from './defaultEvalItems.mjs';
 
 function sha256Hex(s) {
     return crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -283,7 +283,8 @@ export function createBrandRouter(pool) {
                 [name, short, color, domainId]
             );
             out = rows[0];
-            seededItemCount = await seedDefaultEvalItems(client, out.id);
+            // 신규 브랜드 = '첫인사' 1항목만 시드(코오롱 18항목 자동 상속 차단). 기존 1~3 은 영향 없음.
+            seededItemCount = await seedMinimalEvalItems(client, out.id);
             await client.query('COMMIT');
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});

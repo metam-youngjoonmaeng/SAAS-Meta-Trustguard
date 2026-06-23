@@ -330,3 +330,31 @@ export const BRAND_CONFIG = {
 export function getBrandConfig(brandId) {
     return BRAND_CONFIG[Number(brandId)] || DEFAULT_BRAND_CONFIG;
 }
+
+// ── 신규 브랜드 동적 체크리스트 ─────────────────────────────────────
+// 레거시 브랜드(신한1 / 한화2 / 코오롱3)는 정적 체크리스트(BRAND_CONFIG / DEFAULT)를 그대로 보존.
+// 그 외 신규 브랜드(id≥4)는 평가항목 리스트를 DB(eval_item_defs '기본')에서 동적 구성 →
+// 코오롱 18항목 폴백 차단(신규는 server 시드 '첫인사' 1항목만).
+export const LEGACY_STATIC_BRAND_IDS = new Set([1, 2, 3]);
+
+export function isDynamicChecklistBrand(brandId) {
+    const n = Number(brandId);
+    return Number.isFinite(n) && n > 0 && !LEGACY_STATIC_BRAND_IDS.has(n);
+}
+
+// DB eval_item_defs 행 배열 → 정적 checklistTemplate 과 동일 shape 로 매핑.
+// (order_no 오름차순, validation_time='배점 N' 으로 만점 표현 — yes_no=1)
+export function buildChecklistTemplateFromDefs(defs) {
+    const rows = Array.isArray(defs) ? defs : Object.values(defs || {});
+    return rows
+        .filter((d) => d && d.order_no !== undefined && d.order_no !== null && d.order_no !== '')
+        .slice()
+        .sort((a, b) => Number(a.order_no) - Number(b.order_no))
+        .map((d) => ({
+            order_no: Number(d.order_no),
+            category: d.category || '',
+            item: d.item || '',
+            validation_time: `배점 ${d.scoring_type === 'yes_no' ? 1 : (d.max_score ?? 5)}`,
+            is_active: d.is_active ?? true,
+        }));
+}

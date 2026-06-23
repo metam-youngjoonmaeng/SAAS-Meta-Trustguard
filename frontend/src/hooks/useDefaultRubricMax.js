@@ -5,6 +5,7 @@ import {
     buildCategoryMaxPoints,
     sumTemplateMaxPoints,
     parseTemplateMaxPoints,
+    buildChecklistTemplateFromDefs,
 } from '../constants';
 
 // 기본 브랜드(코오롱/기본) 표준 루브릭의 만점(분모)을 EvalItems 탭이 편집하는
@@ -21,7 +22,7 @@ import {
 //
 // enabled=false(신한/한화 등) 이거나 DB 미적재면 fallbackTemplate(정적 합계)로 폴백.
 
-export default function useDefaultRubricMax({ enabled, fallbackTemplate } = {}) {
+export default function useDefaultRubricMax({ enabled, fallbackTemplate, dynamicList = false } = {}) {
     // DB eval_item_defs(department='기본') 를 order_no → def 맵으로 보관. null=미적재.
     const [defsByOrderNo, setDefsByOrderNo] = useState(null);
     const [loaded, setLoaded] = useState(false);
@@ -56,11 +57,17 @@ export default function useDefaultRubricMax({ enabled, fallbackTemplate } = {}) 
     }, [enabled]);
 
     return useMemo(() => {
-        const template = Array.isArray(fallbackTemplate) ? fallbackTemplate : [];
+        const staticTemplate = Array.isArray(fallbackTemplate) ? fallbackTemplate : [];
+        // 신규 브랜드(dynamicList): DB 행으로 체크리스트 리스트 자체를 구성. 그 외: 정적 템플릿.
+        const effectiveTemplate =
+            dynamicList && defsByOrderNo
+                ? buildChecklistTemplateFromDefs(Object.values(defsByOrderNo))
+                : staticTemplate;
         const fallback = {
-            totalMax: sumTemplateMaxPoints(template) || DEFAULT_TOTAL_MAX,
-            categoryMaxPoints: buildCategoryMaxPoints(template),
+            totalMax: sumTemplateMaxPoints(staticTemplate) || DEFAULT_TOTAL_MAX,
+            categoryMaxPoints: buildCategoryMaxPoints(staticTemplate),
             maxByOrderNo: {},
+            effectiveTemplate,
             loaded,
         };
         // 비기본 브랜드(enabled=false) 또는 DB 미적재 → 정적 폴백.
@@ -69,7 +76,7 @@ export default function useDefaultRubricMax({ enabled, fallbackTemplate } = {}) 
         let totalMax = 0;
         const categoryMaxPoints = {};
         const maxByOrderNo = {};
-        for (const t of template) {
+        for (const t of effectiveTemplate) {
             const orderNo = Number(t.order_no);
             const def = defsByOrderNo[orderNo];
             const active = def ? (def.is_active ?? true) : true;
@@ -86,8 +93,8 @@ export default function useDefaultRubricMax({ enabled, fallbackTemplate } = {}) 
             categoryMaxPoints[cat] = (categoryMaxPoints[cat] || 0) + max;
             if (Number.isFinite(orderNo)) maxByOrderNo[orderNo] = max;
         }
-        // 템플릿이 비었거나 합계 0 이면 폴백(오표시 방지).
+        // 합계 0 (신규 브랜드 항목 0 등) → 만점은 정적 폴백, effectiveTemplate 은 보존.
         if (totalMax <= 0) return fallback;
-        return { totalMax, categoryMaxPoints, maxByOrderNo, loaded };
-    }, [enabled, defsByOrderNo, fallbackTemplate, loaded]);
+        return { totalMax, categoryMaxPoints, maxByOrderNo, effectiveTemplate, loaded };
+    }, [enabled, defsByOrderNo, fallbackTemplate, dynamicList, loaded]);
 }

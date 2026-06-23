@@ -14,7 +14,7 @@ import {
 } from './rubricManual.mjs';
 import { AUDIT_ACTION, insertQaAuditLog, pruneOldAuditLogs } from './auditLog.mjs';
 import { logger, requestLogger } from './logger.mjs';
-import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChecklistKeys } from './checklistCategorySummary.mjs';
+import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChecklistKeys, LEGACY_STANDARD_ORG_IDS } from './checklistCategorySummary.mjs';
 /* SAMPLE_UPLOAD_FEATURE */ import { ingestSampleToDb, clearSamplesFromDb } from './sampleIngest.mjs';
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
@@ -1005,8 +1005,8 @@ app.get('/api/calls', async (req, res) => {
         }
         const payload = (callRows || []).map((row) => {
             const chRows = chByQa.get(row.qa_id) || [];
-            // 동적 루브릭 콜(이커머스/은행 등)은 행 자체 카테고리로 집계 — 부서 고정 키셋은 불일치.
-            const keys = effectiveChecklistKeys(row.department, chRows);
+            // 사용자 생성 평가 트랙(표준 1/2/3 외)은 콜 자체 카테고리로 동적 집계 — 부서 고정 키셋 미적용.
+            const keys = effectiveChecklistKeys(row.department, chRows, row.org_id);
             const yn = buildChecklistYnKorFromDbRows(chRows, evByQa.get(row.qa_id) || [], keys);
             // 평가-시점 만점 합산 — 표시 컬럼(keys) 에 해당하는 행만 집계(builder 와 동일 필터).
             // 체크리스트 없으면 null → FE DEFAULT_TOTAL_MAX 폴백.
@@ -1123,6 +1123,22 @@ app.get('/api/stats', async (req, res) => {
             return sql.replace(/\$A/g, a).replace(/\$D/g, d);
         };
 
+        // 코칭대상 임계값 — 표준 org(1/2/3) 또는 전체뷰는 레거시 80점 절대값,
+        // 사용자 생성 트랙(그 외 org)은 콜별 만점(체크리스트 배점합)의 75% 미만으로 상대화.
+        const useRelativeCoaching =
+            orgId != null && Number.isFinite(Number(orgId)) && !LEGACY_STANDARD_ORG_IDS.has(Number(orgId));
+        const coachingCond = useRelativeCoaching
+            ? `(tm.total_max > 0 AND c."TOTAL_SCORE" < tm.total_max * 0.75)`
+            : `c."TOTAL_SCORE" < 80`;
+        const coachingJoin = useRelativeCoaching
+            ? `LEFT JOIN LATERAL (
+                   SELECT COALESCE(SUM(CASE WHEN ch.validation_time LIKE '배점%'
+                       THEN COALESCE(NULLIF(regexp_replace(ch.validation_time, '[^0-9.]', '', 'g'), '')::numeric, 5)
+                       ELSE 5 END), 0) AS total_max
+                     FROM qa_checklist_rows ch WHERE ch."ID" = c."ID"
+               ) tm ON true`
+            : '';
+
         // 2) 부서 카드(현재창, 모든 부서)
         const sc2 = buildScope();
         const deptRows = (await pool.query(
@@ -1130,8 +1146,8 @@ app.get('/api/stats', async (req, res) => {
                     ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS avg,
                     COUNT(*) AS count,
                     COUNT(DISTINCT COALESCE(c.agent_user_id::text, c.agent_code)) AS agent_count,
-                    COUNT(*) FILTER (WHERE c."TOTAL_SCORE" < 80) AS coaching
-               FROM qa_calls c ${sc2.where} AND ${bind(winCur, sc2.params)}
+                    COUNT(*) FILTER (WHERE ${coachingCond}) AS coaching
+               FROM qa_calls c ${coachingJoin} ${sc2.where} AND ${bind(winCur, sc2.params)}
               GROUP BY c.department
               ORDER BY count DESC`,
             sc2.params
@@ -1144,9 +1160,9 @@ app.get('/api/stats', async (req, res) => {
                     COUNT(*) FILTER (WHERE ${bind(winCur, sc3.params)}) AS count,
                     COUNT(DISTINCT COALESCE(c.agent_user_id::text, c.agent_code))
                       FILTER (WHERE ${bind(winCur, sc3.params)}) AS agent_count,
-                    COUNT(*) FILTER (WHERE ${bind(winCur, sc3.params)} AND c."TOTAL_SCORE" < 80) AS coaching,
+                    COUNT(*) FILTER (WHERE ${bind(winCur, sc3.params)} AND ${coachingCond}) AS coaching,
                     ROUND(AVG(c."TOTAL_SCORE") FILTER (WHERE ${bind(winPrev, sc3.params)})::numeric,1) AS prev_avg
-               FROM qa_calls c ${sc3.where}`,
+               FROM qa_calls c ${coachingJoin} ${sc3.where}`,
             sc3.params
         )).rows[0];
         const kpi = {
