@@ -924,8 +924,6 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
         if (roleFilter !== 'all') arr = arr.filter((u) => u.role === roleFilter);
 
         if (sortBy === 'name') arr.sort((a, b) => (a.display_name || '').localeCompare(b.display_name || '', 'ko-KR'));
-        else if (sortBy === 'created')
-            arr.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         else
             arr.sort((a, b) => {
                 const ta = a.last_login_at ? new Date(a.last_login_at).getTime() : 0;
@@ -1050,7 +1048,6 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                     options={[
                                         { value: 'last_login', label: '최근 로그인' },
                                         { value: 'name', label: '이름순' },
-                                        { value: 'created', label: '가입일순' },
                                     ]}
                                 />
                                 <div className="ml-auto flex items-center gap-2">
@@ -1141,7 +1138,7 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                             const rel = relativeTime(u.last_login_at);
                                             const abs = u.last_login_at
                                                 ? fmtDateTime(u.last_login_at)
-                                                : `${fmtDateTime(u.created_at)} (등록일)`;
+                                                : '미접속';
                                             return (
                                                 <tr
                                                     key={u.user_id}
