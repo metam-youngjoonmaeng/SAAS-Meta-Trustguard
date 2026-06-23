@@ -423,7 +423,7 @@ function toCallRow(row) {
 // 메모리 기반 세션 — 프로세스 재기동 시 전 사용자 재로그인. PoC 규모에선 충분.
 const sessionStore = new Map();
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
-const PUBLIC_API_PATHS = new Set(['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/ics-sso', '/api/svc/eval-items', '/api/svc/deep-eval']);
+const PUBLIC_API_PATHS = new Set(['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/ics-sso', '/api/svc/eval-items', '/api/svc/deep-eval', '/api/svc/brand-qa-scores']);
 
 function createSession(user) {
     const token = crypto.randomBytes(32).toString('hex');
@@ -638,6 +638,76 @@ app.get('/api/svc/eval-items', async (req, res) => {
     } catch (error) {
         console.error('GET /api/svc/eval-items error:', error);
         res.status(500).json({ message: 'Failed to load eval items.' });
+    }
+});
+
+/* ── 서비스 간 브랜드 평균 QA 점수 (03-Meta_Summary SLA 'QA 평가' 행 연동) ──
+ * GET /api/svc/brand-qa-scores?proj_cd=<code>&start=<YYYY-MM-DD>&end=<YYYY-MM-DD>
+ * 인증: X-Service-Token === env EVAL_SHARE_TOKEN (세션 아님). 토큰 미설정 시 비활성(503).
+ *
+ * 브랜드 매칭키 = organizations.proj_cd (03 도 동일 키 보유 — 사용자 테이블은 비통일이라
+ *   브랜드 평균만 끌어가는 구조). start/end 미지정 시 전체 기간.
+ * 점수 환산(avg_score) = 콜별 만점(체크리스트 배점합) 대비 비율의 평균을 100점 환산 —
+ *   AVG(TOTAL_SCORE / total_max) * 100. Trustguard 콜은 80/100 만점이 혼재하므로 100점
+ *   기준으로 통일해 03 SLA 목표(85~90점)와 직접 비교 가능하게 한다. avg_raw 는 원점수 평균(참고).
+ */
+app.get('/api/svc/brand-qa-scores', async (req, res) => {
+    const expected = String(process.env.EVAL_SHARE_TOKEN || '').trim();
+    if (!expected) {
+        res.status(503).json({ message: 'QA 점수 공유 비활성 (EVAL_SHARE_TOKEN 미설정)' });
+        return;
+    }
+    const provided = String(req.headers['x-service-token'] || '').trim();
+    if (provided !== expected) {
+        res.status(401).json({ message: 'invalid service token' });
+        return;
+    }
+    const projCd = String(req.query.proj_cd || '').trim();
+    if (!projCd) {
+        res.status(400).json({ message: 'proj_cd required' });
+        return;
+    }
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const start = String(req.query.start || '').trim();
+    const end = String(req.query.end || '').trim();
+    try {
+        const params = [projCd];
+        const where = ['o.proj_cd = $1', 'c.is_sandbox = false', 'c."TOTAL_SCORE" IS NOT NULL'];
+        if (dateRe.test(start)) { params.push(start); where.push(`c."CDATE"::date >= $${params.length}::date`); }
+        if (dateRe.test(end)) { params.push(end); where.push(`c."CDATE"::date <= $${params.length}::date`); }
+        const { rows } = await pool.query(
+            `SELECT o.id AS org_id, o.name AS brand_name, o.proj_cd,
+                    COUNT(*) AS call_count,
+                    ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS avg_raw,
+                    ROUND(AVG(CASE WHEN tm.total_max > 0 THEN c."TOTAL_SCORE" / tm.total_max * 100 END)::numeric, 1) AS avg_score_100
+               FROM qa_calls c
+               JOIN organizations o ON c.org_id = o.id
+               LEFT JOIN LATERAL (
+                   SELECT COALESCE(SUM(CASE WHEN ch.validation_time LIKE '배점%'
+                       THEN COALESCE(NULLIF(regexp_replace(ch.validation_time, '[^0-9.]', '', 'g'), '')::numeric, 5)
+                       ELSE 5 END), 0) AS total_max
+                     FROM qa_checklist_rows ch WHERE ch."ID" = c."ID"
+               ) tm ON true
+              WHERE ${where.join(' AND ')}
+              GROUP BY o.id, o.name, o.proj_cd`,
+            params
+        );
+        const row = rows[0] || null;
+        res.json({
+            ok: true,
+            proj_cd: projCd,
+            start: dateRe.test(start) ? start : null,
+            end: dateRe.test(end) ? end : null,
+            found: !!row,
+            org_id: row ? row.org_id : null,
+            brand_name: row ? row.brand_name : null,
+            call_count: row ? Number(row.call_count) : 0,
+            avg_score: row && row.avg_score_100 != null ? Number(row.avg_score_100) : null,  // 100점 환산
+            avg_raw: row && row.avg_raw != null ? Number(row.avg_raw) : null,                // 원점수 평균(참고)
+        });
+    } catch (error) {
+        console.error('GET /api/svc/brand-qa-scores error:', error);
+        res.status(500).json({ message: 'Failed to load brand QA scores.' });
     }
 });
 
