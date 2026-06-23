@@ -191,17 +191,16 @@ export async function buildRubricFromDefs(pool, orgId) {
 
         const scoringType = safeStr(row.scoring_type).trim().toLowerCase();
         // ★ 채점 스케일(maxScore=파이프라인 max_score=allowed_steps[0]) 과 표시 분모(displayMax=만점 폼
-        //   필드) 를 분리 (신규 브랜드 id≥4, 사용자 결정 2026-06-22).
-        //   - 파이프라인 _normalize_allowed_steps(steps, max_score) 가 steps[0] 을 max_score 에 강제로
-        //     맞춰 보강하므로(만점==최상위 단계 결합), max_score 를 폼 만점(100)으로 보내면 단계가
-        //     [100,...] 으로 재작성돼 100/100 이 된다. 그래서 파이프라인엔 프롬프트 최상위 단계(예: 23)를
-        //     max_score 로 보내 채점이 [23,12,7] 로 깨끗이 snap 되게 한다.
-        //   - 표시 분모(displayMax)는 폼 만점 필드(100)로 따로 두고 rowMeta 에 실어 결과 매퍼
-        //     (mapEvaluateResponseRubric)가 분모로 쓴다 → "23 / 100"(분자=프롬프트 LLM 점수, 분모=폼 만점).
-        //   레거시(1~3)·yes_no·점수 미명시는 채점==표시 결합(기존 동작 byte-identical).
-        const isLegacyStandard = [1, 2, 3].includes(Number(orgId));
+        //   필드) 를 분리 — 전 브랜드 통일(2026-06-24 사용자 결정: 레거시·신규 무관 완전 독립).
+        //   - 프롬프트 '점수 단계'가 파싱되면(점수제) 그게 곧 채점 척도(파이프라인 max_score/allowed_steps).
+        //     파이프라인 _normalize_allowed_steps 가 steps[0]==max_score 를 강제하므로 max_score 도 프롬프트
+        //     최상위 단계로 보낸다(채점이 그 단계들로 깨끗이 snap). 만점 폼 필드는 표시 분모(displayMax)로만
+        //     분리 → 만점만 바꿔도 채점 불변(완전 독립).
+        //   - displayMax 는 rowMeta 에 실려 결과 매퍼(신규=mapEvaluateResponseRubric / 코오롱 표준 트랙=
+        //     standardMaxByOrder)가 분모로 사용 → "LLM점수(채점) / 만점필드(표시)".
+        //   yes_no / 점수 단계 미파싱(default 코오롱 80점 등)은 채점==표시 결합 유지(byte-identical 무회귀).
         const promptSteps =
-            !isLegacyStandard && scoringType !== 'yes_no'
+            scoringType !== 'yes_no'
                 ? parseStepsFromPromptLoose(row.prompt_template)
                 : null;
         let maxScore; // 파이프라인 채점 스케일 = allowed_steps[0]

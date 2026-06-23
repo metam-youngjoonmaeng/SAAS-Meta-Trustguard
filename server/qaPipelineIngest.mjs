@@ -1059,6 +1059,10 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                 // 같아도 동봉(일관). 빈 dict 면 미동봉 → 순수 코오롱 경로와 byte-identical(무회귀).
                 const maxOverrides = {};
                 const stepOverrides = {};
+                // 표시 분모(displayMax = 만점 폼 필드) — 채점 척도(max_overrides = 프롬프트 점수 단계)와 분리.
+                // 전 브랜드 완전 독립(2026-06-24): 만점만 바꿔도 채점 불변, 표시 분모만 동적. default 코오롱은
+                // displayMax==채점 max(결합)라 byte-identical(무회귀).
+                const displayMaxByOrder = {};
                 for (const i of standardIdx) {
                     const m = rowMeta[i];
                     const tpl = items[i]?.prompt_template;
@@ -1067,6 +1071,8 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                     if (maxScore !== null && maxScore > 0) maxOverrides[m.order_no] = Math.round(maxScore);
                     const steps = items[i]?.allowed_steps;
                     if (Array.isArray(steps) && steps.length) stepOverrides[m.order_no] = steps;
+                    const dispMax = asNumber(m?.max_score);
+                    if (dispMax !== null && dispMax > 0) displayMaxByOrder[m.order_no] = Math.round(dispMax);
                 }
                 // 추가항목(order_no≥19, 카탈로그 비매칭) → additive_items 로 별도 동봉.
                 // rubric_inline 과 달리 custom_rubric full flip 미유발. 추가항목 0개면
@@ -1081,10 +1087,11 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                     additive: additiveItems.length ? true : undefined,
                     additive_items: additiveItems.length ? additiveItems : undefined,
                 };
-                // 폴백 매퍼(mapEvaluateResponseStandard)가 분모/만점표기를 DB 루브릭 max 로 동적
-                // 산출하도록 만점 맵 보존(운영자 만점 편집 반영). 명시 max 없는 항목은 매퍼가
-                // 카탈로그로 폴백 → 코오롱 80 보존, 편집 항목만 분모 동적. 맵 비면 null(무회귀).
-                standardMaxByOrder = Object.keys(maxOverrides).length ? { ...maxOverrides } : null;
+                // 폴백 매퍼(mapEvaluateResponseStandard)의 표시 분모 = displayMax(만점 폼 필드).
+                // 채점 척도(max_overrides = 프롬프트 점수 단계)와 분리 → "LLM점수(채점) / 만점필드(표시)"로
+                // 완전 독립 표기(만점만 바꾸면 분모만 변경, 채점 불변). default 코오롱은 displayMax==채점 max
+                // 라 분모 동일(byte-identical). 맵 비면 null → 매퍼가 카탈로그 폴백(무회귀).
+                standardMaxByOrder = Object.keys(displayMaxByOrder).length ? { ...displayMaxByOrder } : null;
                 // 표준 매핑 폴백 강제: rowMeta 를 비워 mapEvaluateResponseRubric 가 5000번대
                 // 미존재로 null 반환 → mapEvaluateResponseStandard(1:1) 사용. 추가항목 결과는
                 // aggregator(파이프라인)에서 병합되어 응답에 포함됨(impl-agg 담당).
