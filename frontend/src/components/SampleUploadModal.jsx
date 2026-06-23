@@ -309,12 +309,21 @@ export default function SampleUploadModal({ onUploaded }) {
                 stop();
                 if (job.status === 'done') {
                     const d = job.result || {};
-                    const warn = (d.warnings || []).join(' / ');
                     if (onUploaded) await onUploaded();
-                    setToast({
-                        kind: 'success',
-                        text: `[${targetLabel}] qa_id: ${d.qa_id ?? qaId}, AI 점수: ${d.ai_score ?? '-'}${d.elapsed_sec ? `, 소요 ${d.elapsed_sec}초` : ''}${warn ? ` (경고: ${warn})` : ''}`,
-                    });
+                    if (d.skipped) {
+                        // 포기호/미응대 등 평가 산출물이 없어 적재되지 않은 경우 — 성공 토스트로
+                        // 보이면 "완료됐는데 결과가 없다"는 혼란을 주므로 사유를 명확히 안내.
+                        setToast({
+                            kind: 'warn',
+                            text: `[${targetLabel}] qa_id: ${d.qa_id ?? qaId} — ${d.reason || '포기호/미응대(평가 산출물 없음)'}. 평가 결과로 적재되지 않았습니다.`,
+                        });
+                    } else {
+                        const warn = (d.warnings || []).join(' / ');
+                        setToast({
+                            kind: 'success',
+                            text: `[${targetLabel}] qa_id: ${d.qa_id ?? qaId}, AI 점수: ${d.ai_score ?? '-'}${d.elapsed_sec ? `, 소요 ${d.elapsed_sec}초` : ''}${warn ? ` (경고: ${warn})` : ''}`,
+                        });
+                    }
                 } else {
                     setToast({ kind: 'error', text: `[${targetLabel}] ${qaId}: ${job.error || 'AI 평가 실패'}` });
                 }
@@ -478,17 +487,25 @@ export default function SampleUploadModal({ onUploaded }) {
                         className={`flex items-start gap-2.5 px-4 py-3 rounded-lg shadow-2xl border max-w-md ${
                             toast.kind === 'success'
                                 ? 'bg-white border-[#055AAF]/20 text-[#101828]'
-                                : 'bg-white border-[#FECDCA] text-[#D92D20]'
+                                : toast.kind === 'warn'
+                                    ? 'bg-white border-[#FEC84B] text-[#B54708]'
+                                    : 'bg-white border-[#FECDCA] text-[#D92D20]'
                         }`}
                     >
                         {toast.kind === 'success' ? (
                             <CheckCircle2 size={18} className="text-[#055AAF] mt-0.5 flex-shrink-0" />
+                        ) : toast.kind === 'warn' ? (
+                            <AlertCircle size={18} className="text-[#B54708] mt-0.5 flex-shrink-0" />
                         ) : (
                             <AlertCircle size={18} className="text-[#D92D20] mt-0.5 flex-shrink-0" />
                         )}
                         <div className="text-sm leading-snug">
                             <div className="font-bold mb-0.5">
-                                {toast.kind === 'success' ? 'AI 평가 완료' : 'AI 평가 실패'}
+                                {toast.kind === 'success'
+                                    ? 'AI 평가 완료'
+                                    : toast.kind === 'warn'
+                                        ? '평가 제외 (미적재)'
+                                        : 'AI 평가 실패'}
                             </div>
                             <div className="text-xs text-[#667085] break-words">{toast.text}</div>
                         </div>
