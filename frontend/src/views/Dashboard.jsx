@@ -249,6 +249,13 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
         [departmentVersions, versionsWithData]
     );
 
+    // 실제 내부 버전 → 화면 연번(1,2,3…) 매핑. 드롭다운·배너 라벨을 일관되게.
+    const versionLabelOf = useMemo(() => {
+        const m = new Map();
+        dropdownVersions.forEach((v, i) => m.set(Number(v.version), i + 1));
+        return (realVersion) => m.get(Number(realVersion)) ?? realVersion;
+    }, [dropdownVersions]);
+
     // 평가체계 필터 값 해석: 'all'=전체(모든 버전), ''=기본(데이터 있는 최신 버전), 그 외=해당 버전.
     //   selectedVersion === '' 는 다운스트림에서 '전체'를 의미(기존 로직 유지).
     const selectedVersion =
@@ -413,18 +420,19 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                             title={dropdownVersions.length === 0 ? '이 부서에 평가 데이터가 있는 평가체계 버전이 없습니다' : undefined}
                         >
                             <option value="all">전체</option>
-                            {[...dropdownVersions].reverse().map((v, idx) => {
-                                const isLatest = idx === 0;
-                                const dateStr = v.effectiveFromDate
-                                    ? v.effectiveFromDate.toISOString().slice(0, 10)
-                                    : '';
-                                const futureMarker = v.effectiveFromDate && v.effectiveFromDate > new Date() ? ' (예정)' : (isLatest ? ' (현재)' : '');
-                                return (
+                            {/* 데이터 있는 버전만 1,2,3… 연번 표기(중간 빈 버전 없음). 라벨='v연번 · 처음 반영일', value=실제 내부 버전 유지. */}
+                            {dropdownVersions
+                                .map((v, i) => ({
+                                    v,
+                                    displayNo: i + 1, // dropdownVersions 는 효력일 ASC → 가장 오래된 게 v1
+                                    dateStr: v.effectiveFromDate ? v.effectiveFromDate.toISOString().slice(0, 10) : '',
+                                }))
+                                .reverse() // 최신을 위로
+                                .map(({ v, displayNo, dateStr }) => (
                                     <option key={`${v.department}-${v.version}`} value={String(v.version)}>
-                                        v{v.version} · {dateStr}~{futureMarker}
+                                        v{displayNo} · {dateStr}
                                     </option>
-                                );
-                            })}
+                                ))}
                         </select>
                     </div>
                     <div className="space-y-1.5">
@@ -512,10 +520,10 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                     <Info size={14} className="mt-0.5 shrink-0" />
                     <div className="flex-1">
                         <div className="font-semibold">
-                            선택한 v{selectedVersion} 의 데이터가 현재 조건에 없어 v{versionFilterInfo.effectiveVersion} 으로 자동 전환되었습니다.
+                            선택한 v{versionLabelOf(selectedVersion)} 의 데이터가 현재 조건에 없어 v{versionLabelOf(versionFilterInfo.effectiveVersion)} 으로 자동 전환되었습니다.
                         </div>
                         <div className="text-[11.5px] text-[#1E70E0] mt-0.5">
-                            날짜 범위를 v{selectedVersion} 효력 기간으로 조정하거나 전체 보기로 돌아갈 수 있습니다.
+                            날짜 범위를 v{versionLabelOf(selectedVersion)} 효력 기간으로 조정하거나 전체 보기로 돌아갈 수 있습니다.
                         </div>
                     </div>
                     <button
