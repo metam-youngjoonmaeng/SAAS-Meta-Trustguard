@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -413,6 +414,33 @@ function normalizePasswordHash(value) {
         return value.toString('utf8').trim().toLowerCase();
     }
     return String(value).trim().toLowerCase();
+}
+
+/** 저장 해시를 소문자화 없이 원본 문자열로만 추출(bcrypt 는 대소문자 유의 — Base64). */
+function rawPasswordHash(value) {
+    if (value === null || value === undefined) return '';
+    if (Buffer.isBuffer(value)) {
+        if (value.length === 32) return value.toString('hex'); // 32바이트면 sha256 바이너리 → hex
+        return value.toString('utf8').trim();
+    }
+    return String(value).trim();
+}
+
+/** 비밀번호 검증 — 저장 해시 방식 자동 판별.
+ *  - bcrypt($2a/$2b/$2y$…, 60자): 쌍둥이 스키마(users) 적재분. bcrypt.compare.
+ *  - 그 외(64자 hex): 레거시 SHA-256. sha256Hex 일치.
+ *  두 방식 혼재(계정별로 다름) → 한쪽만 보면 한쪽 계정군이 영원히 로그인 불가. */
+function verifyPassword(password, storedRaw) {
+    const raw = rawPasswordHash(storedRaw);
+    if (!raw) return false;
+    if (/^\$2[aby]\$/.test(raw)) {
+        try {
+            return bcrypt.compareSync(String(password), raw);
+        } catch {
+            return false;
+        }
+    }
+    return sha256Hex(password).toLowerCase() === raw.toLowerCase();
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -921,9 +949,7 @@ app.post('/api/auth/login', async (req, res) => {
             res.status(401).json({ message: 'invalid credentials', reason: 'inactive' });
             return;
         }
-        const storedHash = normalizePasswordHash(row.password_hash);
-        const inputHash = sha256Hex(password).toLowerCase();
-        if (!storedHash || storedHash !== inputHash) {
+        if (!verifyPassword(password, row.password_hash)) {
             await insertQaAuditLog(pool, {
                 req,
                 actor: {
