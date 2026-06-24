@@ -42,7 +42,9 @@ export function parseStoredEarned(raw, maxPts, item) {
     const t = rawS.replace(/점$/u, '');
     if (t === '평가제외') return null;
     const n = parseFloat(t);
-    if (Number.isFinite(n)) return Math.max(0, Math.min(maxPts, n));
+    // 표시 분모 분리: 수기 획득점도 분모 초과 시 그대로 보존(분자>분모 허용). 하한 0 만 유지.
+    // 레거시·ecom·bank 는 score<=maxPts 라 무회귀.
+    if (Number.isFinite(n)) return Math.max(0, n);
     const r = t.toLowerCase();
     const tiers = rubricTierOptions(item, maxPts).filter((v) => v !== '평가제외');
     const top = Number(tiers[0] || 0);
