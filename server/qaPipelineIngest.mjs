@@ -552,6 +552,10 @@ function buildAdditiveItem(item, meta) {
         name: safeStr(item?.name).trim() || safeStr(meta?.item).trim() || `항목 ${meta?.order_no}`,
         category: safeStr(item?.category).trim(),
         max_score: asNumber(item?.max_score),
+        // 표시 분모(만점 폼 필드) — 채점 척도(max_score=프롬프트 점수단계 top)와 분리. rowMeta(meta)
+        // 의 max_score 가 운영자 만점 폼 필드. 백엔드가 패스스루로 ItemResult.display_max 노출 →
+        // additive 결과행을 "LLM점수(채점) / 만점필드(표시)" 로 표기. 미동봉/표준 결합 시 무회귀.
+        display_max: asNumber(meta?.max_score),
         allowed_steps: Array.isArray(item?.allowed_steps) ? item.allowed_steps : undefined,
         criteria_full: safeStr(item?.criteria_full),
         prompt_template: safeStr(item?.prompt_template),
@@ -624,7 +628,7 @@ function reasonTextOf(ev) {
  *   #3 / score null / 응답 미존재 항목은 생략 + warnings. 백분율은 존재 행 기준.
  * @returns {{ checklist, evaluations, ai_score, warnings, source }}
  */
-export function mapEvaluateResponseStandard(resp, maxByOrder = null) {
+export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMeta = null) {
     const warnings = [];
     const { byItem, source } = indexEvaluations(resp);
     if (byItem.size === 0) {
@@ -676,6 +680,57 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null) {
             ai_eval: aiEval,
             manual_eval: aiEval, // 기존 ingest 관행: manual_eval = ai_eval 복사 (NOT NULL)
         });
+    }
+
+    // 추가항목(order_no≥19, 코오롱 표준+추가항목 트랙) 행 추가 — 표준 카탈로그(#1~18) 미포함이라
+    // 기존엔 행 통째 누락(점수·표시 증발). additiveMeta(MTG 가 동봉한 추가항목 메타)에 한해서만
+    // 렌더 → KMS(1001~)/Layer4(2001~)/KSQI(6001~) 가상항목 오출력 방지. 표시 분모 = displayMax
+    // (만점 폼 필드) 우선 → ev.display_max(백엔드 에코) → ev.max_score(채점 척도) → 5 폴백.
+    // 점수(분자)=ev.score(프롬프트 척도 snap값) 그대로 → "LLM점수 / 만점필드(표시)" 표기.
+    if (additiveMeta && typeof additiveMeta === 'object') {
+        const addOrders = Object.keys(additiveMeta)
+            .map((k) => asNumber(k))
+            .filter((n) => n !== null)
+            .sort((a, b) => a - b);
+        for (const ono of addOrders) {
+            const ev = byItem.get(ono);
+            if (!ev) {
+                warnings.push(`additive order ${ono}: 응답에 없음 → 행 생략`);
+                continue;
+            }
+            const score = asNumber(ev.score);
+            if (score === null) {
+                warnings.push(`additive order ${ono}: score=null/skipped → 행 생략`);
+                continue;
+            }
+            const slot = additiveMeta[ono] || {};
+            const aiEval = round1(score);
+            const itemMax = (() => {
+                const dm = asNumber(slot.display_max);
+                if (dm !== null && dm > 0) return dm;
+                const be = asNumber(ev.display_max);
+                if (be !== null && be > 0) return be;
+                const ms = asNumber(ev.max_score);
+                return ms !== null && ms > 0 ? ms : 5;
+            })();
+            sumEarned += aiEval;
+            sumMax += itemMax;
+            checklist.push({
+                order_no: ono,
+                category: safeStr(slot.category).trim(),
+                item: safeStr(slot.item).trim() || itemNameOf(ev),
+                agent_utterance: agentQuoteOf(ev),
+                validation_time: `배점 ${itemMax}`,
+            });
+            evaluations.push({
+                order_no: ono,
+                category: safeStr(slot.category).trim(),
+                item: safeStr(slot.item).trim() || itemNameOf(ev),
+                reason_text: reasonTextOf(ev),
+                ai_eval: aiEval,
+                manual_eval: aiEval,
+            });
+        }
     }
 
     const aiScore = sumMax > 0 ? round1((100 * sumEarned) / sumMax) : 0;
@@ -1004,6 +1059,7 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
     let rowMeta = [];
     let rubricCall = call;
     let standardMaxByOrder = null; // 코오롱 표준 폴백 매퍼 분모용 DB 루브릭 만점 맵({order_no:max})
+    let additiveDisplayMeta = null; // 추가항목(order_no≥19) 표시 메타 맵({order_no:{category,item,display_max}})
     try {
         const orgId = await resolveStandardOrgId(pool, call);
         const { rubric, rowMeta: meta } = await buildRubricFromDefs(pool, orgId);
@@ -1074,6 +1130,22 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                     const dispMax = asNumber(m?.max_score);
                     if (dispMax !== null && dispMax > 0) displayMaxByOrder[m.order_no] = Math.round(dispMax);
                 }
+                // 추가항목(extraIdx, order_no≥19) 표시 메타 — 표준 폴백 매퍼가 additive 결과행을
+                // "LLM점수(채점) / 만점필드(표시)" 로 렌더하도록 category/item/displayMax 동봉.
+                // order_no 집합으로 KMS(1001~)/Layer4(2001~)/KSQI(6001~) 가상항목과 구분 → 이 항목만 렌더.
+                const _addMeta = {};
+                for (const i of extraIdx) {
+                    const m = rowMeta[i];
+                    const ono = asNumber(m?.order_no);
+                    if (ono === null) continue;
+                    const dm = asNumber(m?.max_score);
+                    _addMeta[ono] = {
+                        category: safeStr(m?.category).trim(),
+                        item: safeStr(m?.item).trim(),
+                        display_max: dm !== null && dm > 0 ? Math.round(dm) : null,
+                    };
+                }
+                additiveDisplayMeta = Object.keys(_addMeta).length ? _addMeta : null;
                 // 추가항목(order_no≥19, 카탈로그 비매칭) → additive_items 로 별도 동봉.
                 // rubric_inline 과 달리 custom_rubric full flip 미유발. 추가항목 0개면
                 // additive 미동봉 → 순수 코오롱 경로와 byte-identical(무회귀).
@@ -1117,7 +1189,7 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
     // 루브릭 매핑 우선, 5000번대 없으면 표준 매핑 폴백.
     let mapped = mapEvaluateResponseRubric(resp, rowMeta);
     if (!mapped) {
-        mapped = mapEvaluateResponseStandard(resp, standardMaxByOrder);
+        mapped = mapEvaluateResponseStandard(resp, standardMaxByOrder, additiveDisplayMeta);
     }
     mapped.warnings = [...warnings, ...(mapped.warnings || [])];
 
