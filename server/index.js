@@ -227,9 +227,16 @@ function buildDynamicPentagonFromChecklistRows(checklistRows) {
     return { team_avg: teamAvg, agent_score: agent, overall_avg: overallAvg };
 }
 
-// 정본 Pentagon 5축 SSOT — EvalItems AxisModal 추천 셋(HANWHA_RADAR_REPORT_ITEMS.item_type)과 일치.
-// 운영자가 eval_item_defs.pentagon_axis 로 항목을 이 5축에 배치한다.
-const CANONICAL_PENTAGON_AXES = HANWHA_RADAR_REPORT_ITEMS.map((r) => r.item_type);
+// 표준 Pentagon 5축 SSOT (QA 미팅 2026-06 결정 — 업종 무관 통일).
+// 신규/동적 브랜드(org_id>=4)의 정의-축 폴백 + 프론트 DEFAULT_RADAR_LABELS 와 동일하게 유지할 것.
+// 운영자가 eval_item_defs.pentagon_axis 로 항목을 이 5축에 배치한다. (레거시 한화/신한 빌더는 불변)
+const CANONICAL_PENTAGON_AXES = [
+    '응대·표현',
+    '니즈파악·경청',
+    '설명·전달력',
+    '정확성·해결력',
+    '컴플라이언스',
+];
 // 축 라벨 정규화 — 공백/구두점 차이를 흡수해 DB 값을 정본 라벨에 매칭("발화안정성"→"발화 안정성",
 // "준수 고지 품질"→"준수·고지 품질"). 모든 공백 제거 + 중점(·)/가운뎃점류 통일 후 소문자.
 function normalizeAxisLabel(value) {

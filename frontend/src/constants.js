@@ -285,12 +285,14 @@ export function buildCategoryMaxPoints(template) {
 // #3/#15/#16 을 TEMPLATE 에서 제거했으므로 합은 자동으로 그 배점을 제외 — 항목 추가/제거 시 자동 반영(하드코딩 금지).
 export const DEFAULT_TOTAL_MAX = sumTemplateMaxPoints(DEFAULT_CHECKLIST_TEMPLATE);
 
+// 표준 Pentagon 5축 (QA 미팅 2026-06 결정 — 업종 무관 통일). 동적 브랜드(org_id>=4) 공통.
+// 라벨은 backend CANONICAL_PENTAGON_AXES 와 동일해야 점수 매칭됨(동적 브랜드는 한글 라벨로 키잉).
 export const DEFAULT_RADAR_KEYS = [
-    'intro_quality', 'product_clarity', 'compliance', 'communication', 'speech_stability',
+    'manner_expression', 'needs_listening', 'explanation_delivery', 'accuracy_resolution', 'compliance',
 ];
 
 export const DEFAULT_RADAR_LABELS = [
-    '오프닝 및 목적 안내', '설명 명확성', '준수·고지 품질', '대화·경청 품질', '발화 안정성',
+    '응대·표현', '니즈파악·경청', '설명·전달력', '정확성·해결력', '컴플라이언스',
 ];
 
 export const DEFAULT_BRAND_CONFIG = {
