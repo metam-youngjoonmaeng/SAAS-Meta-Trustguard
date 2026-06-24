@@ -472,6 +472,32 @@ export async function deleteDomainEvalDefault(itemId) {
     });
 }
 
+/* ── 도메인별 기본 펜타곤 축 (domain_default_pentagon_axes, super_admin) ── */
+
+export async function fetchDomainPentagonDefaults(domainId) {
+    return request(`/api/admin/domains/${encodeURIComponent(domainId)}/pentagon-defaults`);
+}
+
+export async function createDomainPentagonDefault(domainId, body) {
+    return request(`/api/admin/domains/${encodeURIComponent(domainId)}/pentagon-defaults`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+    });
+}
+
+export async function updateDomainPentagonDefault(itemId, body) {
+    return request(`/api/admin/domain-pentagon-defaults/${encodeURIComponent(itemId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+    });
+}
+
+export async function deleteDomainPentagonDefault(itemId) {
+    return request(`/api/admin/domain-pentagon-defaults/${encodeURIComponent(itemId)}`, {
+        method: 'DELETE',
+    });
+}
+
 /* ── 사용자(admin_users) ────────────────────────────────────── */
 
 export async function fetchUsers(brandId) {

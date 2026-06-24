@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Plus, Pencil, Trash2, Loader2, Settings2, Check, X,
     Building2, Activity, Users, MessageCircle, ListChecks,
 } from 'lucide-react';
 import Header from '../components/Header';
-import DomainEvalItemsModal from './DomainEvalItemsModal';
+import DomainEvalPage from './DomainEvalPage';
 import {
     fetchBrands, fetchDomains,
     createBrand, updateBrand, deleteBrand,
@@ -60,7 +61,9 @@ function BrandModal({ initial, domains, onSave, onClose, saving }) {
     const [draft, setDraft] = useState(initial);
     const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
 
-    return (
+    if (typeof document === 'undefined') return null;
+    // document.body 포털 — 본문 컨테이너에 갇히지 않고 화면 전체를 덮는다.
+    return createPortal(
         <div
             className="fixed inset-0 z-[100] flex items-center justify-center px-4"
             style={{ background: 'rgba(15,23,42,0.4)' }}
@@ -220,11 +223,12 @@ function BrandModal({ initial, domains, onSave, onClose, saving }) {
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
-function DomainsPanel({ domains, onDomainsChange }) {
+function DomainsPanel({ domains, onDomainsChange, onOpenEvalPage }) {
     const [adding, setAdding] = useState(false);
     const [newName, setNewName] = useState('');
     const [newKey, setNewKey] = useState('');
@@ -232,7 +236,6 @@ function DomainsPanel({ domains, onDomainsChange }) {
     const [editId, setEditId] = useState(null);
     const [editName, setEditName] = useState('');
     const [editKey, setEditKey] = useState('');
-    const [evalDomain, setEvalDomain] = useState(null); // 기본 평가항목 모달 대상 도메인
 
     async function handleAdd() {
         if (!newName.trim()) return;
@@ -330,11 +333,11 @@ function DomainsPanel({ domains, onDomainsChange }) {
                                 <span className="flex-1 text-[13px] font-medium text-[#101828]">{d.name}</span>
                                 <span className="text-[11px] font-mono text-[#98A2B3]">{d.key || '—'}</span>
                                 <button
-                                    onClick={() => setEvalDomain(d)}
+                                    onClick={() => onOpenEvalPage(d)}
                                     className="inline-flex items-center gap-1 h-[26px] px-2.5 rounded-lg border border-[#E4E7EC] bg-white text-[11.5px] font-semibold text-[#055AAF] hover:bg-[#EFF6FF] cursor-pointer"
-                                    title="이 도메인의 기본 평가항목 설정"
+                                    title="이 도메인의 기본 평가체계(평가항목·펜타곤) 설정"
                                 >
-                                    <ListChecks size={12} /> 평가항목
+                                    <ListChecks size={12} /> 평가체계
                                 </button>
                                 <button
                                     onClick={() => {
@@ -390,10 +393,6 @@ function DomainsPanel({ domains, onDomainsChange }) {
                     <div className="px-4 py-6 text-center text-sm text-[#667085]">도메인이 없습니다</div>
                 )}
             </div>
-
-            {evalDomain && (
-                <DomainEvalItemsModal domain={evalDomain} onClose={() => setEvalDomain(null)} />
-            )}
         </div>
     );
 }
@@ -408,6 +407,7 @@ const Brands = ({ onBrandsChanged } = {}) => {
     const [showDomains, setShowDomains] = useState(false);
     const [modalState, setModalState] = useState({ open: false, target: null });
     const [saving, setSaving] = useState(false);
+    const [evalPageDomain, setEvalPageDomain] = useState(null); // 도메인 기본 평가체계 편집 페이지 대상
 
     async function load() {
         setLoading(true);
@@ -488,6 +488,11 @@ const Brands = ({ onBrandsChanged } = {}) => {
     const activeBrands = items.filter((b) => b.active).length;
     const totalMembers = items.reduce((s, b) => s + (b.members || 0), 0);
     const totalSessions = items.reduce((s, b) => s + (b.sessions || 0), 0);
+
+    // 도메인 평가체계 편집 — 전체 페이지로 전환(AI QA 항목관리와 동일한 풀페이지 UX).
+    if (evalPageDomain) {
+        return <DomainEvalPage domain={evalPageDomain} onBack={() => setEvalPageDomain(null)} />;
+    }
 
     return (
         <div className="w-full">
@@ -574,7 +579,7 @@ const Brands = ({ onBrandsChanged } = {}) => {
                         </div>
                     </div>
 
-                    {showDomains && <DomainsPanel domains={domains} onDomainsChange={setDomains} />}
+                    {showDomains && <DomainsPanel domains={domains} onDomainsChange={setDomains} onOpenEvalPage={setEvalPageDomain} />}
 
                     <div className="bg-white border border-[#E4E7EC] rounded-xl overflow-hidden">
                         <table className="w-full text-sm">

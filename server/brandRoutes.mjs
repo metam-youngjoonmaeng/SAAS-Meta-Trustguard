@@ -13,7 +13,13 @@ import fs from 'fs';
 import express from 'express';
 import { AUDIT_ACTION, AUDIT_VIEW_WINDOW_DAYS, insertQaAuditLog } from './auditLog.mjs';
 import { logger, todayLogPath } from './logger.mjs';
-import { seedMinimalEvalItems, seedEvalItemsFromDomain, applyDomainEvalItems } from './defaultEvalItems.mjs';
+import {
+    seedMinimalEvalItems,
+    seedEvalItemsFromDomain,
+    seedPentagonAxesFromDomain,
+    applyDomainEvalItems,
+    applyDomainPentagonAxes,
+} from './defaultEvalItems.mjs';
 
 // 레거시 표준 브랜드(신한1 / 한화2 / 코오롱3) — 도메인 변경 시 평가항목 교체 대상에서 제외(기존 항목 보존).
 // canonical 정의: server/qaPipelineIngest.mjs 의 동명 상수.
@@ -394,6 +400,173 @@ export function createBrandRouter(pool) {
         }
     });
 
+    // ── 도메인별 기본 펜타곤 축 (domain_default_pentagon_axes) ──────
+    // 신규 브랜드 생성 시 pentagon_axes 로 복제되는 템플릿. super_admin 만 편집.
+
+    router.get('/admin/domains/:id/pentagon-defaults', requireSuperAdmin, async (req, res) => {
+        const domainId = Number(req.params.id);
+        if (!Number.isFinite(domainId)) {
+            res.status(400).json({ message: 'invalid domain id' });
+            return;
+        }
+        try {
+            const { rows } = await pool.query(
+                `SELECT id, domain_id, axis_no, label, description, prompt_template, is_active
+                 FROM public.domain_default_pentagon_axes
+                 WHERE domain_id = $1
+                 ORDER BY axis_no ASC, id ASC`,
+                [domainId]
+            );
+            res.json(rows);
+        } catch (err) {
+            console.error('GET /api/admin/domains/:id/pentagon-defaults error:', err);
+            res.status(500).json({ message: 'Failed to list domain pentagon defaults.' });
+        }
+    });
+
+    router.post('/admin/domains/:id/pentagon-defaults', requireSuperAdmin, async (req, res) => {
+        const domainId = Number(req.params.id);
+        if (!Number.isFinite(domainId)) {
+            res.status(400).json({ message: 'invalid domain id' });
+            return;
+        }
+        const label = String(req.body?.label || '').trim();
+        if (!label) { res.status(400).json({ message: 'label 필수' }); return; }
+        const description = typeof req.body?.description === 'string' ? req.body.description : null;
+        const promptTemplate = typeof req.body?.prompt_template === 'string' ? req.body.prompt_template : null;
+        const isActive = req.body?.is_active === false ? false : true;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            // axis_no 발급: 해당 도메인에서 사용 안 된 최소 양의 정수.
+            const { rows: usedRows } = await client.query(
+                `SELECT axis_no FROM public.domain_default_pentagon_axes WHERE domain_id = $1`,
+                [domainId]
+            );
+            const usedSet = new Set(usedRows.map((r) => Number(r.axis_no)));
+            let nextAxisNo = 1;
+            while (usedSet.has(nextAxisNo)) nextAxisNo++;
+            const { rows } = await client.query(
+                `INSERT INTO public.domain_default_pentagon_axes
+                   (domain_id, axis_no, label, description, prompt_template, is_active)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 RETURNING id, domain_id, axis_no, label, description, prompt_template, is_active`,
+                [domainId, nextAxisNo, label, description, promptTemplate, isActive]
+            );
+            await client.query('COMMIT');
+            await insertQaAuditLog(pool, {
+                req,
+                action: AUDIT_ACTION.DOMAIN_PENTAGON_DEFAULT_CREATE,
+                resource_type: 'domain_pentagon_default',
+                resource_id: String(rows[0]?.id ?? ''),
+                http_method: 'POST',
+                http_path: `/api/admin/domains/${domainId}/pentagon-defaults`,
+                detail_json: JSON.stringify({ domain_id: domainId, label, axis_no: nextAxisNo }),
+                success: true,
+            });
+            res.json(rows[0]);
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            console.error('POST /api/admin/domains/:id/pentagon-defaults error:', err);
+            res.status(500).json({ message: 'Failed to create domain pentagon default.' });
+        } finally {
+            client.release();
+        }
+    });
+
+    router.patch('/admin/domain-pentagon-defaults/:itemId', requireSuperAdmin, async (req, res) => {
+        const itemId = Number(req.params.itemId);
+        if (!Number.isFinite(itemId)) {
+            res.status(400).json({ message: 'invalid id' });
+            return;
+        }
+        const fields = [];
+        const values = [];
+        let idx = 1;
+        if (typeof req.body?.label === 'string') {
+            const v = String(req.body.label).trim();
+            if (!v) { res.status(400).json({ message: 'label 은 비울 수 없습니다' }); return; }
+            fields.push(`label = $${idx++}`);
+            values.push(v);
+        }
+        for (const k of ['description', 'prompt_template']) {
+            if (k in (req.body || {})) {
+                fields.push(`${k} = $${idx++}`);
+                values.push(typeof req.body[k] === 'string' ? req.body[k] : null);
+            }
+        }
+        if (typeof req.body?.is_active === 'boolean') {
+            fields.push(`is_active = $${idx++}`);
+            values.push(Boolean(req.body.is_active));
+        }
+        if (typeof req.body?.axis_no === 'number' && Number.isFinite(req.body.axis_no)) {
+            fields.push(`axis_no = $${idx++}`);
+            values.push(Math.round(req.body.axis_no));
+        }
+        if (fields.length === 0) {
+            res.status(400).json({ message: '수정 항목이 없습니다' });
+            return;
+        }
+        fields.push(`updated_at = now()`);
+        values.push(itemId);
+        try {
+            const { rows } = await pool.query(
+                `UPDATE public.domain_default_pentagon_axes SET ${fields.join(', ')} WHERE id = $${idx}
+                 RETURNING id, domain_id, axis_no, label, description, prompt_template, is_active`,
+                values
+            );
+            if (rows.length === 0) {
+                res.status(404).json({ message: '축을 찾을 수 없습니다' });
+                return;
+            }
+            await insertQaAuditLog(pool, {
+                req,
+                action: AUDIT_ACTION.DOMAIN_PENTAGON_DEFAULT_UPDATE,
+                resource_type: 'domain_pentagon_default',
+                resource_id: String(itemId),
+                http_method: 'PATCH',
+                http_path: `/api/admin/domain-pentagon-defaults/${itemId}`,
+                detail_json: JSON.stringify(req.body || {}).slice(0, 8000),
+                success: true,
+            });
+            res.json(rows[0]);
+        } catch (err) {
+            console.error('PATCH /api/admin/domain-pentagon-defaults/:itemId error:', err);
+            res.status(500).json({ message: 'Failed to update domain pentagon default.' });
+        }
+    });
+
+    router.delete('/admin/domain-pentagon-defaults/:itemId', requireSuperAdmin, async (req, res) => {
+        const itemId = Number(req.params.itemId);
+        if (!Number.isFinite(itemId)) {
+            res.status(400).json({ message: 'invalid id' });
+            return;
+        }
+        try {
+            const { rowCount } = await pool.query(
+                'DELETE FROM public.domain_default_pentagon_axes WHERE id = $1',
+                [itemId]
+            );
+            if (rowCount === 0) {
+                res.status(404).json({ message: '축을 찾을 수 없습니다' });
+                return;
+            }
+            await insertQaAuditLog(pool, {
+                req,
+                action: AUDIT_ACTION.DOMAIN_PENTAGON_DEFAULT_DELETE,
+                resource_type: 'domain_pentagon_default',
+                resource_id: String(itemId),
+                http_method: 'DELETE',
+                http_path: `/api/admin/domain-pentagon-defaults/${itemId}`,
+                success: true,
+            });
+            res.json({ ok: true });
+        } catch (err) {
+            console.error('DELETE /api/admin/domain-pentagon-defaults/:itemId error:', err);
+            res.status(500).json({ message: 'Failed to delete domain pentagon default.' });
+        }
+    });
+
     // ── 조직(브랜드) ────────────────────────────────────────
 
     // 사이드바 셀렉터용 — admin: 본인 소속 브랜드(들), super_admin: 활성 전체
@@ -491,6 +664,7 @@ export function createBrandRouter(pool) {
         const client = await pool.connect();
         let out;
         let seededItemCount = 0;
+        let seededAxisCount = 0;
         try {
             await client.query('BEGIN');
             const { rows } = await client.query(
@@ -509,6 +683,8 @@ export function createBrandRouter(pool) {
                 if (seededItemCount === 0) {
                     seededItemCount = await seedMinimalEvalItems(client, out.id);
                 }
+                // 도메인 기본 펜타곤 축도 복제(0건이면 프론트가 코드 기본 라벨로 폴백).
+                seededAxisCount = await seedPentagonAxesFromDomain(client, out.id, domainId);
             } else {
                 seededItemCount = await seedMinimalEvalItems(client, out.id);
             }
@@ -530,7 +706,7 @@ export function createBrandRouter(pool) {
             resource_id: String(out?.id ?? ''),
             http_method: 'POST',
             http_path: '/api/admin/organizations',
-            detail_json: JSON.stringify({ name, short, color, domain_id: domainId, seeded_eval_items: seededItemCount }),
+            detail_json: JSON.stringify({ name, short, color, domain_id: domainId, seeded_eval_items: seededItemCount, seeded_pentagon_axes: seededAxisCount }),
             success: true,
         });
         res.json({ ...out, domain_name: await domainNameById(pool, out.domain_id) });
@@ -574,6 +750,7 @@ export function createBrandRouter(pool) {
         const client = await pool.connect();
         let out;
         let reseed = null;
+        let reseedAxes = null;
         try {
             await client.query('BEGIN');
             // 도메인 변경 감지용 현재 값
@@ -591,11 +768,12 @@ export function createBrandRouter(pool) {
                 values
             );
             out = rows[0];
-            // 도메인이 실제로 바뀐 경우에만 '기본' 평가항목 교체. 레거시 표준(1/2/3)은 보존.
+            // 도메인이 실제로 바뀐 경우에만 '기본' 평가항목 + 펜타곤 축 교체. 레거시 표준(1/2/3)은 보존.
             const domainChanged =
                 hasDomainInBody && Number(prevDomainId ?? -1) !== Number(newDomainId ?? -1);
             if (domainChanged && !LEGACY_STANDARD_ORG_IDS.has(id)) {
                 reseed = await applyDomainEvalItems(client, id, newDomainId, applyDefaults);
+                reseedAxes = await applyDomainPentagonAxes(client, id, newDomainId, applyDefaults);
             }
             await client.query('COMMIT');
         } catch (err) {
@@ -617,6 +795,7 @@ export function createBrandRouter(pool) {
                 ...(req.body || {}),
                 reseeded_eval_items: reseed?.count ?? null,
                 reseed_mode: reseed?.mode ?? null,
+                reseeded_pentagon_axes: reseedAxes ?? null,
             }).slice(0, 8000),
             success: true,
         });
@@ -625,6 +804,7 @@ export function createBrandRouter(pool) {
             domain_name: await domainNameById(pool, out.domain_id),
             reseeded_eval_items: reseed?.count ?? null,
             reseed_mode: reseed?.mode ?? null,
+            reseeded_pentagon_axes: reseedAxes ?? null,
         });
     });
 

@@ -178,3 +178,89 @@ export async function applyDomainEvalItems(client, orgId, domainId, applyDefault
     }
     return { count: rows.length, mode };
 }
+
+// 신규 브랜드 시드 — 도메인(업종)별 기본 펜타곤 축(domain_default_pentagon_axes)을 복제.
+// 활성 축을 pentagon_axes 로 옮긴다(department='기본', version=1). 도메인 없거나 0건이면 0 반환
+// → pentagon_axes 행이 없으면 프론트가 brandConfig.radarLabels 코드 기본값으로 폴백(기존 동작).
+export async function seedPentagonAxesFromDomain(client, orgId, domainId) {
+    if (!Number.isFinite(Number(orgId))) {
+        throw new Error('seedPentagonAxesFromDomain: orgId must be a number');
+    }
+    if (domainId == null || !Number.isFinite(Number(domainId))) return 0;
+    const { rows } = await client.query(
+        `SELECT axis_no, label, description, prompt_template, is_active
+           FROM public.domain_default_pentagon_axes
+          WHERE domain_id = $1 AND is_active = true
+          ORDER BY axis_no ASC, id ASC`,
+        [domainId]
+    );
+    if (rows.length === 0) return 0;
+    for (const r of rows) {
+        await client.query(
+            `INSERT INTO public.pentagon_axes
+                 (org_id, department, axis_no, label, description, prompt_template,
+                  is_active, version, effective_from, deactivated_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), NULL, now())
+             ON CONFLICT (org_id, department, axis_no, version) DO NOTHING`,
+            [
+                orgId, SEED_DEPARTMENT, r.axis_no, r.label, r.description ?? null,
+                r.prompt_template ?? null, r.is_active === false ? false : true,
+                SEED_VERSION,
+            ]
+        );
+    }
+    return rows.length;
+}
+
+// 브랜드 편집에서 도메인 변경 시 '기본' 펜타곤 축을 교체(재시드).
+//   - 기존 활성 '기본' pentagon_axes 행 soft-delete + 새 version 으로 INSERT(이력 보존).
+//   - applyDefaults=true & 도메인 축 존재 시 복제, 아니면 INSERT 없음(프론트 코드 기본 라벨 폴백).
+//   호출부(트랜잭션)가 client 를 넘긴다. 반환 복제 건수.
+export async function applyDomainPentagonAxes(client, orgId, domainId, applyDefaults) {
+    if (!Number.isFinite(Number(orgId))) {
+        throw new Error('applyDomainPentagonAxes: orgId must be a number');
+    }
+    // 1) 기존 활성 '기본' 축 soft-delete (이력 보존)
+    await client.query(
+        `UPDATE public.pentagon_axes
+            SET deactivated_at = now(), is_active = false, updated_at = now()
+          WHERE org_id = $1 AND department = $2 AND deactivated_at IS NULL`,
+        [orgId, SEED_DEPARTMENT]
+    );
+    // 2) 도메인 기본 축(applyDefaults일 때만). 없으면 코드 기본 라벨 폴백(INSERT 없음).
+    let rows = [];
+    if (applyDefaults && domainId != null && Number.isFinite(Number(domainId))) {
+        const r = await client.query(
+            `SELECT axis_no, label, description, prompt_template, is_active
+               FROM public.domain_default_pentagon_axes
+              WHERE domain_id = $1 AND is_active = true
+              ORDER BY axis_no ASC, id ASC`,
+            [domainId]
+        );
+        rows = r.rows;
+    }
+    if (rows.length === 0) return 0;
+    // 3) 새 version (org+department 전역 단조)
+    const { rows: vRows } = await client.query(
+        `SELECT COALESCE(MAX(version), 0) AS mv
+           FROM public.pentagon_axes
+          WHERE org_id = $1 AND department = $2`,
+        [orgId, SEED_DEPARTMENT]
+    );
+    const nextVersion = (vRows[0]?.mv || 0) + 1;
+    // 4) INSERT (department='기본', 새 version)
+    for (const r of rows) {
+        await client.query(
+            `INSERT INTO public.pentagon_axes
+                 (org_id, department, axis_no, label, description, prompt_template,
+                  is_active, version, effective_from, deactivated_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), NULL, now())`,
+            [
+                orgId, SEED_DEPARTMENT, r.axis_no, r.label, r.description ?? null,
+                r.prompt_template ?? null, r.is_active === false ? false : true,
+                nextVersion,
+            ]
+        );
+    }
+    return rows.length;
+}
