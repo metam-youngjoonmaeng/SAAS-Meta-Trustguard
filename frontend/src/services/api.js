@@ -445,6 +445,33 @@ export async function deleteDomain(id) {
     });
 }
 
+/* ── 도메인별 기본 평가항목 (domain_default_eval_items, super_admin) ── */
+// 신규 브랜드 생성 시 eval_item_defs 로 복제되는 도메인(업종) 템플릿.
+
+export async function fetchDomainEvalDefaults(domainId) {
+    return request(`/api/admin/domains/${encodeURIComponent(domainId)}/eval-defaults`);
+}
+
+export async function createDomainEvalDefault(domainId, body) {
+    return request(`/api/admin/domains/${encodeURIComponent(domainId)}/eval-defaults`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+    });
+}
+
+export async function updateDomainEvalDefault(itemId, body) {
+    return request(`/api/admin/domain-eval-defaults/${encodeURIComponent(itemId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+    });
+}
+
+export async function deleteDomainEvalDefault(itemId) {
+    return request(`/api/admin/domain-eval-defaults/${encodeURIComponent(itemId)}`, {
+        method: 'DELETE',
+    });
+}
+
 /* ── 사용자(admin_users) ────────────────────────────────────── */
 
 export async function fetchUsers(brandId) {
