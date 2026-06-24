@@ -674,20 +674,13 @@ export function createBrandRouter(pool) {
                 [name, short, color, domainId]
             );
             out = rows[0];
-            // 신규 브랜드 평가항목 시드 — 체크박스(apply_domain_defaults, 기본 true):
-            //   true  → 선택 도메인(업종) 기본 평가항목 복제(도메인 미지정/0건이면 '첫인사' 폴백)
-            //   false → '첫인사' 1항목만
-            const applyDefaults = req.body?.apply_domain_defaults !== false;
-            if (applyDefaults) {
-                seededItemCount = await seedEvalItemsFromDomain(client, out.id, domainId);
-                if (seededItemCount === 0) {
-                    seededItemCount = await seedMinimalEvalItems(client, out.id);
-                }
-                // 도메인 기본 펜타곤 축도 복제(0건이면 프론트가 코드 기본 라벨로 폴백).
-                seededAxisCount = await seedPentagonAxesFromDomain(client, out.id, domainId);
-            } else {
+            // 신규 브랜드 = 선택한 도메인(업종) 기본 평가항목 + 펜타곤 축 복제.
+            //   도메인 미지정/디폴트 0건이면 '첫인사' 1항목 폴백. 펜타곤 0건이면 프론트 코드 기본 라벨 폴백.
+            seededItemCount = await seedEvalItemsFromDomain(client, out.id, domainId);
+            if (seededItemCount === 0) {
                 seededItemCount = await seedMinimalEvalItems(client, out.id);
             }
+            seededAxisCount = await seedPentagonAxesFromDomain(client, out.id, domainId);
             await client.query('COMMIT');
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});
@@ -745,8 +738,6 @@ export function createBrandRouter(pool) {
             return;
         }
         values.push(id);
-        // 체크박스: 도메인 변경 시 '기본' 평가항목 교체 여부(기본 true). false=첫인사만.
-        const applyDefaults = req.body?.apply_domain_defaults !== false;
         const client = await pool.connect();
         let out;
         let reseed = null;
@@ -768,12 +759,12 @@ export function createBrandRouter(pool) {
                 values
             );
             out = rows[0];
-            // 도메인이 실제로 바뀐 경우에만 '기본' 평가항목 + 펜타곤 축 교체. 레거시 표준(1/2/3)은 보존.
+            // 도메인이 실제로 바뀌면 '기본' 평가항목 + 펜타곤 축을 새 도메인 기본값으로 교체. 레거시 표준(1/2/3)은 보존.
             const domainChanged =
                 hasDomainInBody && Number(prevDomainId ?? -1) !== Number(newDomainId ?? -1);
             if (domainChanged && !LEGACY_STANDARD_ORG_IDS.has(id)) {
-                reseed = await applyDomainEvalItems(client, id, newDomainId, applyDefaults);
-                reseedAxes = await applyDomainPentagonAxes(client, id, newDomainId, applyDefaults);
+                reseed = await applyDomainEvalItems(client, id, newDomainId, true);
+                reseedAxes = await applyDomainPentagonAxes(client, id, newDomainId, true);
             }
             await client.query('COMMIT');
         } catch (err) {
