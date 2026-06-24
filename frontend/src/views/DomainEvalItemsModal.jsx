@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Pencil, Trash2, X, Loader2, Check, ListChecks } from 'lucide-react';
 import {
     fetchDomainEvalDefaults,
@@ -247,7 +248,9 @@ export default function DomainEvalItemsModal({ domain, onClose }) {
         }
     }
 
-    return (
+    if (typeof document === 'undefined') return null;
+    // document.body 포털 — 본문 컨테이너에 갇히지 않고 화면 전체를 덮는다(사이드바·상단바 포함).
+    return createPortal(
         <div
             className="fixed inset-0 z-[110] flex items-center justify-center px-4"
             style={{ background: 'rgba(15,23,42,0.45)' }}
@@ -405,6 +408,7 @@ export default function DomainEvalItemsModal({ domain, onClose }) {
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

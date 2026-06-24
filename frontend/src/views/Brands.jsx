@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Plus, Pencil, Trash2, Loader2, Settings2, Check, X,
     Building2, Activity, Users, MessageCircle, ListChecks,
@@ -60,7 +61,9 @@ function BrandModal({ initial, domains, onSave, onClose, saving }) {
     const [draft, setDraft] = useState(initial);
     const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
 
-    return (
+    if (typeof document === 'undefined') return null;
+    // document.body 포털 — 본문 컨테이너에 갇히지 않고 화면 전체를 덮는다.
+    return createPortal(
         <div
             className="fixed inset-0 z-[100] flex items-center justify-center px-4"
             style={{ background: 'rgba(15,23,42,0.4)' }}
@@ -198,7 +201,8 @@ function BrandModal({ initial, domains, onSave, onClose, saving }) {
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
