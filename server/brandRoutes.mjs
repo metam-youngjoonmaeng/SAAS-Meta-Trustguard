@@ -13,7 +13,7 @@ import fs from 'fs';
 import express from 'express';
 import { AUDIT_ACTION, AUDIT_VIEW_WINDOW_DAYS, insertQaAuditLog } from './auditLog.mjs';
 import { logger, todayLogPath } from './logger.mjs';
-import { seedMinimalEvalItems } from './defaultEvalItems.mjs';
+import { seedMinimalEvalItems, seedDomainEvalItems } from './defaultEvalItems.mjs';
 
 function sha256Hex(s) {
     return crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -283,8 +283,14 @@ export function createBrandRouter(pool) {
                 [name, short, color, domainId]
             );
             out = rows[0];
-            // 신규 브랜드 = '첫인사' 1항목만 시드(코오롱 18항목 자동 상속 차단). 기존 1~3 은 영향 없음.
-            seededItemCount = await seedMinimalEvalItems(client, out.id);
+            // 도메인별 표준 평가항목 프리셋 자동 시드 — 도메인 key(예: 'ecommerce') 보유 시
+            // 그 도메인의 표준 평가표 전체를, 없으면 '첫인사' 1항목만(코오롱 18항목 자동 상속 차단).
+            let domainKey = null;
+            if (domainId != null) {
+                const dk = await client.query('SELECT key FROM public.domains WHERE id = $1', [domainId]);
+                domainKey = dk.rows[0]?.key || null;
+            }
+            seededItemCount = await seedDomainEvalItems(client, out.id, domainKey);
             await client.query('COMMIT');
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});

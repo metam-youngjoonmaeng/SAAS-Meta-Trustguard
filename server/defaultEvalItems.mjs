@@ -62,3 +62,56 @@ export async function seedDefaultEvalItems(client, orgId) {
 export async function seedMinimalEvalItems(client, orgId) {
     return seedEvalItems(client, orgId, MINIMAL_EVAL_ITEMS);
 }
+
+// ============================================================
+// 도메인(업종)별 기본 평가항목 — DB의 '템플릿(원본) 브랜드' eval_item_defs 가 단일 원본(SSOT).
+//   신규 브랜드 생성 시, 선택한 도메인의 템플릿 브랜드 활성 평가항목을 그대로 복사한다.
+//   ★원본은 100% DB에 있고(템플릿 브랜드의 AI QA 항목관리 UI에서 직접 편집·증감),
+//    코드엔 '도메인 key ↔ 템플릿 브랜드 이름' 매핑만 둔다 — DB 스키마 변경 0, dev/prod 공통,
+//    환경별 org_id 비의존. 신규 브랜드 항목은 실제 eval_item_defs 행이라 항목관리에 자동 연동
+//    (신규 org 는 동적 빌드). 템플릿 편집은 다음 신규 브랜드부터 반영(이미 생성분엔 소급 안 함).
+//   템플릿 브랜드: '이커머스' = 유통/이커머스(ecommerce) 13항목(100점). 금융 등은 키만 추가.
+// ============================================================
+
+// 도메인 key(domains.key) → 템플릿(원본) 브랜드 이름(organizations.name).
+export const DOMAIN_TEMPLATE_BRAND = {
+    ecommerce: '이커머스',
+};
+
+// 도메인 템플릿 브랜드의 org_id 해석 — 이름 일치(가장 낮은 id). 매핑/브랜드 없으면 null.
+async function resolveTemplateOrgId(client, domainKey) {
+    const name = domainKey ? DOMAIN_TEMPLATE_BRAND[domainKey] : null;
+    if (!name) return null;
+    const { rows } = await client.query(
+        'SELECT id FROM public.organizations WHERE name = $1 ORDER BY id ASC LIMIT 1',
+        [name]
+    );
+    return rows[0]?.id ?? null;
+}
+
+// 템플릿 브랜드의 활성 평가항목을 신규 브랜드로 복사(DB→DB). version/department 는 신규 스코프로 정규화.
+async function copyEvalItemsFromTemplate(client, targetOrgId, templateOrgId) {
+    const { rowCount } = await client.query(
+        `INSERT INTO public.eval_item_defs
+             (org_id, order_no, category, item, criterion, prompt_template,
+              max_score, scoring_type, department, version, effective_from, deactivated_at, updated_at)
+         SELECT $1, order_no, category, item, criterion, prompt_template,
+                max_score, scoring_type, $2, $3, now(), NULL, now()
+           FROM public.eval_item_defs
+          WHERE org_id = $4 AND deactivated_at IS NULL
+         ON CONFLICT (org_id, department, order_no, version) DO NOTHING`,
+        [targetOrgId, SEED_DEPARTMENT, SEED_VERSION, templateOrgId]
+    );
+    return rowCount;
+}
+
+// 신규 브랜드 시드 — 도메인 템플릿 브랜드의 기본 평가항목 복사 우선, 없으면 첫인사 1항목 폴백.
+//   domainKey: domains.key (예: 'ecommerce'). 템플릿 미존재 / 자기참조 / 복사 0건이면 minimal 폴백.
+export async function seedDomainEvalItems(client, orgId, domainKey) {
+    const templateOrgId = await resolveTemplateOrgId(client, domainKey);
+    if (templateOrgId && templateOrgId !== orgId) {
+        const copied = await copyEvalItemsFromTemplate(client, orgId, templateOrgId);
+        if (copied > 0) return copied;
+    }
+    return seedMinimalEvalItems(client, orgId);
+}
