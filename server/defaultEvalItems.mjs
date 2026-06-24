@@ -62,3 +62,42 @@ export async function seedDefaultEvalItems(client, orgId) {
 export async function seedMinimalEvalItems(client, orgId) {
     return seedEvalItems(client, orgId, MINIMAL_EVAL_ITEMS);
 }
+
+// 신규 브랜드 시드 — 도메인(업종)별 기본 평가항목(domain_default_eval_items)을 복제.
+// domain_default_eval_items 의 활성 행을 eval_item_defs 로 그대로 옮긴다
+// (department='기본', version=1; 메타 컬럼 pentagon_axis/scoring_type/max_score/is_active 포함).
+// 도메인이 없거나(domainId=null) 해당 도메인에 디폴트가 0건이면 0 을 반환 →
+// 호출부가 seedMinimalEvalItems('첫인사') 로 폴백한다.
+export async function seedEvalItemsFromDomain(client, orgId, domainId) {
+    if (!Number.isFinite(Number(orgId))) {
+        throw new Error('seedEvalItemsFromDomain: orgId must be a number');
+    }
+    if (domainId == null || !Number.isFinite(Number(domainId))) return 0;
+    const { rows } = await client.query(
+        `SELECT order_no, category, item, criterion, prompt_template,
+                pentagon_axis, scoring_type, max_score, is_active
+           FROM public.domain_default_eval_items
+          WHERE domain_id = $1 AND is_active = true
+          ORDER BY order_no ASC, id ASC`,
+        [domainId]
+    );
+    if (rows.length === 0) return 0;
+    for (const r of rows) {
+        await client.query(
+            `INSERT INTO public.eval_item_defs
+                 (org_id, order_no, category, item, criterion, prompt_template,
+                  pentagon_axis, scoring_type, max_score, is_active,
+                  department, version, effective_from, deactivated_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), NULL, now())
+             ON CONFLICT (org_id, department, order_no, version) DO NOTHING`,
+            [
+                orgId, r.order_no, r.category, r.item, r.criterion ?? null,
+                r.prompt_template ?? null, r.pentagon_axis ?? null,
+                r.scoring_type || 'numeric', r.max_score ?? null,
+                r.is_active === false ? false : true,
+                SEED_DEPARTMENT, SEED_VERSION,
+            ]
+        );
+    }
+    return rows.length;
+}
