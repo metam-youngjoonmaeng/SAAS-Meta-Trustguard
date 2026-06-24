@@ -411,7 +411,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                         </div>
                     </div>
                     <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">평가체계</label>
+                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">QA 항목버전</label>
                         <select
                             className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 outline-none cursor-pointer disabled:bg-[#F2F4F7] disabled:text-[#98A2B3] disabled:cursor-not-allowed"
                             value={filters.eval === '' ? (defaultVersion === '' ? 'all' : String(defaultVersion)) : filters.eval}
