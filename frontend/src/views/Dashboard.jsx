@@ -221,11 +221,39 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
         return null;
     };
 
-    // 평가체계 필터 값 해석: 'all'=전체(모든 버전), ''=기본(최신 버전), 그 외=해당 버전.
+    // 데이터(콜)가 실제로 매칭되는 버전만 추림 — 콜 0건 버전(항목 편집마다 발번된 빈 버전)은
+    // 드롭다운/기본값에서 제외(변경이력 eval_item_change_log 에는 남으므로 기록 손실 없음). 부서 스코프 적용.
+    const versionsWithData = useMemo(() => {
+        const defaultDept = DEPARTMENT_OPTIONS[0];
+        const singleDept = DEPARTMENT_OPTIONS.length <= 1;
+        const s = new Set();
+        for (const c of calls) {
+            if (!singleDept && (c.department || defaultDept) !== department) continue;
+            const v = matchCallToVersion(parseCallDate(c.call_datetime));
+            if (v !== null && v !== undefined) s.add(Number(v));
+        }
+        return s;
+    }, [calls, department, DEPARTMENT_OPTIONS, matchCallToVersion]);
+
+    // 기본 선택 = 데이터 있는 버전 중 최신.
+    const defaultVersion = useMemo(() => {
+        const withData = departmentVersions
+            .map((v) => Number(v.version))
+            .filter((n) => versionsWithData.has(n));
+        return withData.length ? Math.max(...withData) : '';
+    }, [departmentVersions, versionsWithData]);
+
+    // 드롭다운 노출 버전 = 데이터 있는 버전만 (콜 0건 버전 숨김).
+    const dropdownVersions = useMemo(
+        () => departmentVersions.filter((v) => versionsWithData.has(Number(v.version))),
+        [departmentVersions, versionsWithData]
+    );
+
+    // 평가체계 필터 값 해석: 'all'=전체(모든 버전), ''=기본(데이터 있는 최신 버전), 그 외=해당 버전.
     //   selectedVersion === '' 는 다운스트림에서 '전체'를 의미(기존 로직 유지).
     const selectedVersion =
         filters.eval === 'all' ? ''
-            : filters.eval === '' ? latestVersion
+            : filters.eval === '' ? defaultVersion
                 : Number(filters.eval);
 
     // 기본 필터 (버전 제외) 적용 후 콜 셋. 자동 전환 판정용.
@@ -379,13 +407,13 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                         <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">평가체계</label>
                         <select
                             className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 outline-none cursor-pointer disabled:bg-[#F2F4F7] disabled:text-[#98A2B3] disabled:cursor-not-allowed"
-                            value={filters.eval === '' ? (latestVersion === '' ? 'all' : String(latestVersion)) : filters.eval}
+                            value={filters.eval === '' ? (defaultVersion === '' ? 'all' : String(defaultVersion)) : filters.eval}
                             onChange={(e) => setFilters(prev => ({ ...prev, eval: e.target.value }))}
-                            disabled={departmentVersions.length === 0}
-                            title={departmentVersions.length === 0 ? '이 부서에 발행된 평가체계 버전이 없습니다' : undefined}
+                            disabled={dropdownVersions.length === 0}
+                            title={dropdownVersions.length === 0 ? '이 부서에 평가 데이터가 있는 평가체계 버전이 없습니다' : undefined}
                         >
                             <option value="all">전체</option>
-                            {[...departmentVersions].reverse().map((v, idx) => {
+                            {[...dropdownVersions].reverse().map((v, idx) => {
                                 const isLatest = idx === 0;
                                 const dateStr = v.effectiveFromDate
                                     ? v.effectiveFromDate.toISOString().slice(0, 10)
