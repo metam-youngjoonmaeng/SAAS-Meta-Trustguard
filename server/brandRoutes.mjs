@@ -13,7 +13,7 @@ import fs from 'fs';
 import express from 'express';
 import { AUDIT_ACTION, AUDIT_VIEW_WINDOW_DAYS, insertQaAuditLog } from './auditLog.mjs';
 import { logger, todayLogPath } from './logger.mjs';
-import { seedMinimalEvalItems, seedDomainEvalItems } from './defaultEvalItems.mjs';
+import { seedMinimalEvalItems, seedEvalItemsFromDomain } from './defaultEvalItems.mjs';
 
 function sha256Hex(s) {
     return crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -177,6 +177,219 @@ export function createBrandRouter(pool) {
         }
     });
 
+    // ── 도메인별 기본 평가항목 (domain_default_eval_items) ──────
+    // 신규 브랜드 생성 시 eval_item_defs 로 복제되는 템플릿. super_admin 만 편집.
+    // (브랜드 관리 → 도메인 편집 화면에서 도메인 클릭 시 노출)
+
+    // 특정 도메인의 기본 평가항목 목록 (super_admin 전용 — 전역 템플릿 설정).
+    router.get('/admin/domains/:id/eval-defaults', requireSuperAdmin, async (req, res) => {
+        const domainId = Number(req.params.id);
+        if (!Number.isFinite(domainId)) {
+            res.status(400).json({ message: 'invalid domain id' });
+            return;
+        }
+        try {
+            const { rows } = await pool.query(
+                `SELECT id, domain_id, order_no, category, item, criterion, prompt_template,
+                        pentagon_axis, scoring_type, max_score, is_active
+                 FROM public.domain_default_eval_items
+                 WHERE domain_id = $1
+                 ORDER BY order_no ASC, id ASC`,
+                [domainId]
+            );
+            res.json(rows);
+        } catch (err) {
+            console.error('GET /api/admin/domains/:id/eval-defaults error:', err);
+            res.status(500).json({ message: 'Failed to list domain eval defaults.' });
+        }
+    });
+
+    // 도메인 기본 평가항목 추가. order_no 는 미사용 최소 양의 정수로 자동 발급.
+    router.post('/admin/domains/:id/eval-defaults', requireSuperAdmin, async (req, res) => {
+        const domainId = Number(req.params.id);
+        if (!Number.isFinite(domainId)) {
+            res.status(400).json({ message: 'invalid domain id' });
+            return;
+        }
+        const category = String(req.body?.category || '').trim();
+        const item = String(req.body?.item || '').trim();
+        if (!category) { res.status(400).json({ message: 'category 필수' }); return; }
+        if (!item) { res.status(400).json({ message: 'item 필수' }); return; }
+        const criterion = typeof req.body?.criterion === 'string' ? req.body.criterion : null;
+        const promptTemplate = typeof req.body?.prompt_template === 'string' ? req.body.prompt_template : null;
+        const pentagonAxis =
+            req.body?.pentagon_axis == null || req.body?.pentagon_axis === ''
+                ? null : String(req.body.pentagon_axis).trim();
+        const scoringType = req.body?.scoring_type === 'yes_no' ? 'yes_no' : 'numeric';
+        let maxScore = null;
+        if (scoringType === 'numeric') {
+            const n = Number(req.body?.max_score);
+            if (!Number.isFinite(n) || n <= 0) {
+                res.status(400).json({ message: 'numeric 항목은 max_score > 0 필요' });
+                return;
+            }
+            maxScore = Math.round(n);
+        }
+        const isActive = req.body?.is_active === false ? false : true;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            // order_no 발급: 해당 도메인에서 사용 안 된 최소 양의 정수.
+            const { rows: usedRows } = await client.query(
+                `SELECT order_no FROM public.domain_default_eval_items WHERE domain_id = $1`,
+                [domainId]
+            );
+            const usedSet = new Set(usedRows.map((r) => Number(r.order_no)));
+            let nextOrderNo = 1;
+            while (usedSet.has(nextOrderNo)) nextOrderNo++;
+            const { rows } = await client.query(
+                `INSERT INTO public.domain_default_eval_items
+                   (domain_id, order_no, category, item, criterion, prompt_template,
+                    pentagon_axis, scoring_type, max_score, is_active)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 RETURNING id, domain_id, order_no, category, item, criterion, prompt_template,
+                           pentagon_axis, scoring_type, max_score, is_active`,
+                [domainId, nextOrderNo, category, item, criterion, promptTemplate,
+                 pentagonAxis, scoringType, maxScore, isActive]
+            );
+            await client.query('COMMIT');
+            await insertQaAuditLog(pool, {
+                req,
+                action: AUDIT_ACTION.DOMAIN_EVAL_DEFAULT_CREATE,
+                resource_type: 'domain_eval_default',
+                resource_id: String(rows[0]?.id ?? ''),
+                http_method: 'POST',
+                http_path: `/api/admin/domains/${domainId}/eval-defaults`,
+                detail_json: JSON.stringify({ domain_id: domainId, category, item, order_no: nextOrderNo }),
+                success: true,
+            });
+            res.json(rows[0]);
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            console.error('POST /api/admin/domains/:id/eval-defaults error:', err);
+            res.status(500).json({ message: 'Failed to create domain eval default.' });
+        } finally {
+            client.release();
+        }
+    });
+
+    // 도메인 기본 평가항목 수정.
+    router.patch('/admin/domain-eval-defaults/:itemId', requireSuperAdmin, async (req, res) => {
+        const itemId = Number(req.params.itemId);
+        if (!Number.isFinite(itemId)) {
+            res.status(400).json({ message: 'invalid id' });
+            return;
+        }
+        const fields = [];
+        const values = [];
+        let idx = 1;
+        for (const k of ['category', 'item']) {
+            if (typeof req.body?.[k] === 'string') {
+                const v = String(req.body[k]).trim();
+                if (!v) { res.status(400).json({ message: `${k} 는 비울 수 없습니다` }); return; }
+                fields.push(`${k} = $${idx++}`);
+                values.push(v);
+            }
+        }
+        for (const k of ['criterion', 'prompt_template']) {
+            if (k in (req.body || {})) {
+                fields.push(`${k} = $${idx++}`);
+                values.push(typeof req.body[k] === 'string' ? req.body[k] : null);
+            }
+        }
+        if ('pentagon_axis' in (req.body || {})) {
+            fields.push(`pentagon_axis = $${idx++}`);
+            values.push(req.body.pentagon_axis == null || req.body.pentagon_axis === '' ? null : String(req.body.pentagon_axis).trim());
+        }
+        if (typeof req.body?.scoring_type === 'string') {
+            const st = req.body.scoring_type === 'yes_no' ? 'yes_no' : 'numeric';
+            fields.push(`scoring_type = $${idx++}`);
+            values.push(st);
+            // yes_no 면 max_score 무효화, numeric 이면 본문 max_score 따름(아래 분기에서 처리).
+            if (st === 'yes_no') {
+                fields.push(`max_score = $${idx++}`);
+                values.push(null);
+            }
+        }
+        if ('max_score' in (req.body || {}) && req.body?.scoring_type !== 'yes_no') {
+            const n = Number(req.body.max_score);
+            fields.push(`max_score = $${idx++}`);
+            values.push(Number.isFinite(n) && n > 0 ? Math.round(n) : null);
+        }
+        if (typeof req.body?.is_active === 'boolean') {
+            fields.push(`is_active = $${idx++}`);
+            values.push(Boolean(req.body.is_active));
+        }
+        if (typeof req.body?.order_no === 'number' && Number.isFinite(req.body.order_no)) {
+            fields.push(`order_no = $${idx++}`);
+            values.push(Math.round(req.body.order_no));
+        }
+        if (fields.length === 0) {
+            res.status(400).json({ message: '수정 항목이 없습니다' });
+            return;
+        }
+        fields.push(`updated_at = now()`);
+        values.push(itemId);
+        try {
+            const { rows } = await pool.query(
+                `UPDATE public.domain_default_eval_items SET ${fields.join(', ')} WHERE id = $${idx}
+                 RETURNING id, domain_id, order_no, category, item, criterion, prompt_template,
+                           pentagon_axis, scoring_type, max_score, is_active`,
+                values
+            );
+            if (rows.length === 0) {
+                res.status(404).json({ message: '항목을 찾을 수 없습니다' });
+                return;
+            }
+            await insertQaAuditLog(pool, {
+                req,
+                action: AUDIT_ACTION.DOMAIN_EVAL_DEFAULT_UPDATE,
+                resource_type: 'domain_eval_default',
+                resource_id: String(itemId),
+                http_method: 'PATCH',
+                http_path: `/api/admin/domain-eval-defaults/${itemId}`,
+                detail_json: JSON.stringify(req.body || {}).slice(0, 8000),
+                success: true,
+            });
+            res.json(rows[0]);
+        } catch (err) {
+            console.error('PATCH /api/admin/domain-eval-defaults/:itemId error:', err);
+            res.status(500).json({ message: 'Failed to update domain eval default.' });
+        }
+    });
+
+    // 도메인 기본 평가항목 삭제 (하드 삭제 — 템플릿이라 이력 불필요).
+    router.delete('/admin/domain-eval-defaults/:itemId', requireSuperAdmin, async (req, res) => {
+        const itemId = Number(req.params.itemId);
+        if (!Number.isFinite(itemId)) {
+            res.status(400).json({ message: 'invalid id' });
+            return;
+        }
+        try {
+            const { rowCount } = await pool.query(
+                'DELETE FROM public.domain_default_eval_items WHERE id = $1',
+                [itemId]
+            );
+            if (rowCount === 0) {
+                res.status(404).json({ message: '항목을 찾을 수 없습니다' });
+                return;
+            }
+            await insertQaAuditLog(pool, {
+                req,
+                action: AUDIT_ACTION.DOMAIN_EVAL_DEFAULT_DELETE,
+                resource_type: 'domain_eval_default',
+                resource_id: String(itemId),
+                http_method: 'DELETE',
+                http_path: `/api/admin/domain-eval-defaults/${itemId}`,
+                success: true,
+            });
+            res.json({ ok: true });
+        } catch (err) {
+            console.error('DELETE /api/admin/domain-eval-defaults/:itemId error:', err);
+            res.status(500).json({ message: 'Failed to delete domain eval default.' });
+        }
+    });
+
     // ── 조직(브랜드) ────────────────────────────────────────
 
     // 사이드바 셀렉터용 — admin: 본인 소속 브랜드(들), super_admin: 활성 전체
@@ -283,14 +496,12 @@ export function createBrandRouter(pool) {
                 [name, short, color, domainId]
             );
             out = rows[0];
-            // 도메인별 표준 평가항목 프리셋 자동 시드 — 도메인 key(예: 'ecommerce') 보유 시
-            // 그 도메인의 표준 평가표 전체를, 없으면 '첫인사' 1항목만(코오롱 18항목 자동 상속 차단).
-            let domainKey = null;
-            if (domainId != null) {
-                const dk = await client.query('SELECT key FROM public.domains WHERE id = $1', [domainId]);
-                domainKey = dk.rows[0]?.key || null;
+            // 신규 브랜드 = 선택한 도메인(업종)의 기본 평가항목을 복제.
+            // 도메인 미지정/디폴트 0건이면 '첫인사' 1항목으로 폴백(기존 동작 유지).
+            seededItemCount = await seedEvalItemsFromDomain(client, out.id, domainId);
+            if (seededItemCount === 0) {
+                seededItemCount = await seedMinimalEvalItems(client, out.id);
             }
-            seededItemCount = await seedDomainEvalItems(client, out.id, domainKey);
             await client.query('COMMIT');
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});

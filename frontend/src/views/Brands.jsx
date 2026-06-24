@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     Plus, Pencil, Trash2, Loader2, Settings2, Check, X,
-    Building2, Activity, Users, MessageCircle,
+    Building2, Activity, Users, MessageCircle, ListChecks,
 } from 'lucide-react';
 import Header from '../components/Header';
+import DomainEvalItemsModal from './DomainEvalItemsModal';
 import {
     fetchBrands, fetchDomains,
     createBrand, updateBrand, deleteBrand,
@@ -209,6 +210,7 @@ function DomainsPanel({ domains, onDomainsChange }) {
     const [editId, setEditId] = useState(null);
     const [editName, setEditName] = useState('');
     const [editKey, setEditKey] = useState('');
+    const [evalDomain, setEvalDomain] = useState(null); // 기본 평가항목 모달 대상 도메인
 
     async function handleAdd() {
         if (!newName.trim()) return;
@@ -306,6 +308,13 @@ function DomainsPanel({ domains, onDomainsChange }) {
                                 <span className="flex-1 text-[13px] font-medium text-[#101828]">{d.name}</span>
                                 <span className="text-[11px] font-mono text-[#98A2B3]">{d.key || '—'}</span>
                                 <button
+                                    onClick={() => setEvalDomain(d)}
+                                    className="inline-flex items-center gap-1 h-[26px] px-2.5 rounded-lg border border-[#E4E7EC] bg-white text-[11.5px] font-semibold text-[#055AAF] hover:bg-[#EFF6FF] cursor-pointer"
+                                    title="이 도메인의 기본 평가항목 설정"
+                                >
+                                    <ListChecks size={12} /> 평가항목
+                                </button>
+                                <button
                                     onClick={() => {
                                         setEditId(d.id);
                                         setEditName(d.name);
@@ -359,6 +368,10 @@ function DomainsPanel({ domains, onDomainsChange }) {
                     <div className="px-4 py-6 text-center text-sm text-[#667085]">도메인이 없습니다</div>
                 )}
             </div>
+
+            {evalDomain && (
+                <DomainEvalItemsModal domain={evalDomain} onClose={() => setEvalDomain(null)} />
+            )}
         </div>
     );
 }

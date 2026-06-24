@@ -8,6 +8,7 @@
     "dev:api": "node server/index.js"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "express": "^5.1.0",
     "multer": "^2.0.1",
     "mysql2": "^3.11.5",
