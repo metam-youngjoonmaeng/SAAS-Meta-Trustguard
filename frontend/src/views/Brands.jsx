@@ -103,6 +103,28 @@ function BrandModal({ initial, domains, onSave, onClose, saving }) {
                     </div>
 
                     <div>
+                        <label className="flex items-start gap-2 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={draft.apply_domain_defaults !== false}
+                                onChange={(e) => set('apply_domain_defaults', e.target.checked)}
+                                className="mt-0.5 w-4 h-4 accent-[#055AAF] cursor-pointer flex-shrink-0"
+                            />
+                            <span className="text-[13px] text-[#344054]">
+                                <span className="font-semibold">선택한 도메인의 기본 평가항목 적용</span>
+                                <span className="block text-xs text-[#667085] mt-0.5">
+                                    {draft.apply_domain_defaults !== false
+                                        ? '체크: 도메인에 설정된 기본 평가항목으로 채웁니다.'
+                                        : "해제: '첫인사' 1개 항목만 생성합니다."}
+                                    {initial.name
+                                        ? ' 도메인을 변경하면 이 설정으로 교체됩니다(기존 항목은 비활성·이력 보존).'
+                                        : ''}
+                                </span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div>
                         <label className="block text-xs font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
                             브랜드명 <span className="text-[#D92D20]">*</span>
                         </label>
@@ -417,6 +439,7 @@ const Brands = ({ onBrandsChanged } = {}) => {
                     short: draft.short,
                     color: draft.color,
                     domain_id: draft.domain_id,
+                    apply_domain_defaults: draft.apply_domain_defaults,
                 });
                 await load();
             }
@@ -683,8 +706,9 @@ const Brands = ({ onBrandsChanged } = {}) => {
                                   color: modalState.target.color,
                                   active: modalState.target.active,
                                   domain_id: modalState.target.domain_id,
+                                  apply_domain_defaults: true,
                               }
-                            : { name: '', short: '', color: '#055AAF', active: true, domain_id: null }
+                            : { name: '', short: '', color: '#055AAF', active: true, domain_id: null, apply_domain_defaults: true }
                     }
                     onSave={handleSave}
                     onClose={() => setModalState({ open: false, target: null })}

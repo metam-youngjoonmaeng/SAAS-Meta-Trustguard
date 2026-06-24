@@ -13,7 +13,11 @@ import fs from 'fs';
 import express from 'express';
 import { AUDIT_ACTION, AUDIT_VIEW_WINDOW_DAYS, insertQaAuditLog } from './auditLog.mjs';
 import { logger, todayLogPath } from './logger.mjs';
-import { seedMinimalEvalItems, seedEvalItemsFromDomain } from './defaultEvalItems.mjs';
+import { seedMinimalEvalItems, seedEvalItemsFromDomain, applyDomainEvalItems } from './defaultEvalItems.mjs';
+
+// 레거시 표준 브랜드(신한1 / 한화2 / 코오롱3) — 도메인 변경 시 평가항목 교체 대상에서 제외(기존 항목 보존).
+// canonical 정의: server/qaPipelineIngest.mjs 의 동명 상수.
+const LEGACY_STANDARD_ORG_IDS = new Set([1, 2, 3]);
 
 function sha256Hex(s) {
     return crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -496,10 +500,16 @@ export function createBrandRouter(pool) {
                 [name, short, color, domainId]
             );
             out = rows[0];
-            // 신규 브랜드 = 선택한 도메인(업종)의 기본 평가항목을 복제.
-            // 도메인 미지정/디폴트 0건이면 '첫인사' 1항목으로 폴백(기존 동작 유지).
-            seededItemCount = await seedEvalItemsFromDomain(client, out.id, domainId);
-            if (seededItemCount === 0) {
+            // 신규 브랜드 평가항목 시드 — 체크박스(apply_domain_defaults, 기본 true):
+            //   true  → 선택 도메인(업종) 기본 평가항목 복제(도메인 미지정/0건이면 '첫인사' 폴백)
+            //   false → '첫인사' 1항목만
+            const applyDefaults = req.body?.apply_domain_defaults !== false;
+            if (applyDefaults) {
+                seededItemCount = await seedEvalItemsFromDomain(client, out.id, domainId);
+                if (seededItemCount === 0) {
+                    seededItemCount = await seedMinimalEvalItems(client, out.id);
+                }
+            } else {
                 seededItemCount = await seedMinimalEvalItems(client, out.id);
             }
             await client.query('COMMIT');
@@ -547,41 +557,75 @@ export function createBrandRouter(pool) {
             fields.push(`active = $${idx++}`);
             values.push(Boolean(req.body.active));
         }
-        if ('domain_id' in (req.body || {})) {
+        const hasDomainInBody = 'domain_id' in (req.body || {});
+        let newDomainId = null;
+        if (hasDomainInBody) {
+            newDomainId = req.body.domain_id == null || req.body.domain_id === '' ? null : Number(req.body.domain_id);
             fields.push(`domain_id = $${idx++}`);
-            values.push(req.body.domain_id == null || req.body.domain_id === '' ? null : Number(req.body.domain_id));
+            values.push(newDomainId);
         }
         if (fields.length === 0) {
             res.status(400).json({ message: '수정 항목이 없습니다' });
             return;
         }
         values.push(id);
+        // 체크박스: 도메인 변경 시 '기본' 평가항목 교체 여부(기본 true). false=첫인사만.
+        const applyDefaults = req.body?.apply_domain_defaults !== false;
+        const client = await pool.connect();
+        let out;
+        let reseed = null;
         try {
-            const { rows } = await pool.query(
+            await client.query('BEGIN');
+            // 도메인 변경 감지용 현재 값
+            const cur = await client.query('SELECT domain_id FROM public.organizations WHERE id = $1', [id]);
+            if (cur.rows.length === 0) {
+                await client.query('ROLLBACK').catch(() => {});
+                client.release();
+                res.status(404).json({ message: '브랜드를 찾을 수 없습니다' });
+                return;
+            }
+            const prevDomainId = cur.rows[0].domain_id;
+            const { rows } = await client.query(
                 `UPDATE public.organizations SET ${fields.join(', ')} WHERE id = $${idx}
                  RETURNING id, name, short, color, active, domain_id`,
                 values
             );
-            if (rows.length === 0) {
-                res.status(404).json({ message: '브랜드를 찾을 수 없습니다' });
-                return;
+            out = rows[0];
+            // 도메인이 실제로 바뀐 경우에만 '기본' 평가항목 교체. 레거시 표준(1/2/3)은 보존.
+            const domainChanged =
+                hasDomainInBody && Number(prevDomainId ?? -1) !== Number(newDomainId ?? -1);
+            if (domainChanged && !LEGACY_STANDARD_ORG_IDS.has(id)) {
+                reseed = await applyDomainEvalItems(client, id, newDomainId, applyDefaults);
             }
-            const out = rows[0];
-            await insertQaAuditLog(pool, {
-                req,
-                action: AUDIT_ACTION.BRAND_UPDATE,
-                resource_type: 'brand',
-                resource_id: String(id),
-                http_method: 'PATCH',
-                http_path: `/api/admin/brands/${id}`,
-                detail_json: JSON.stringify(req.body || {}).slice(0, 8000),
-                success: true,
-            });
-            res.json({ ...out, domain_name: await domainNameById(pool, out.domain_id) });
+            await client.query('COMMIT');
         } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            client.release();
             console.error('PATCH /api/admin/brands/:id error:', err);
             res.status(500).json({ message: 'Failed to update brand.' });
+            return;
         }
+        client.release();
+        await insertQaAuditLog(pool, {
+            req,
+            action: AUDIT_ACTION.BRAND_UPDATE,
+            resource_type: 'brand',
+            resource_id: String(id),
+            http_method: 'PATCH',
+            http_path: `/api/admin/brands/${id}`,
+            detail_json: JSON.stringify({
+                ...(req.body || {}),
+                reseeded_eval_items: reseed?.count ?? null,
+                reseed_mode: reseed?.mode ?? null,
+            }).slice(0, 8000),
+            success: true,
+        });
+        res.json({
+            ...out,
+            domain_name: await domainNameById(pool, out.domain_id),
+            reseeded_eval_items: reseed?.count ?? null,
+            reseed_mode: reseed?.mode ?? null,
+        });
     });
 
     router.delete('/admin/brands/:id', requireSuperAdmin, async (req, res) => {

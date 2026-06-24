@@ -101,3 +101,80 @@ export async function seedEvalItemsFromDomain(client, orgId, domainId) {
     }
     return rows.length;
 }
+
+// 브랜드 편집에서 도메인 변경 시 '기본' 트랙 평가항목을 교체(재시드).
+//   - 기존 활성 '기본' 행은 soft-delete(deactivated_at=now, is_active=false) — 이력 보존(eval_item_defs FK 참조 0개라 안전).
+//   - 새 항목은 version=MAX(version)+1 로 INSERT → buildRubricFromDefs(active 필터, version 미고정)가 즉시 새 셋 사용.
+//     versioned_uk(org,department,order_no,version) 는 새 version 으로 충돌 회피(같은 order_no 재사용 가능).
+//   - applyDefaults=true: 도메인 기본 평가항목(domain_default_eval_items) 복제(0건이면 '첫인사' 폴백).
+//   - applyDefaults=false: '첫인사' 1항목만.
+//   호출부(트랜잭션)가 client 를 넘긴다. 반환 { count, mode: 'domain' | 'minimal' }.
+export async function applyDomainEvalItems(client, orgId, domainId, applyDefaults) {
+    if (!Number.isFinite(Number(orgId))) {
+        throw new Error('applyDomainEvalItems: orgId must be a number');
+    }
+    // 1) 기존 활성 '기본' 행 soft-delete (목록·평가에서 즉시 제외, 버전 이력 보존)
+    await client.query(
+        `UPDATE public.eval_item_defs
+            SET deactivated_at = now(), is_active = false, updated_at = now()
+          WHERE org_id = $1 AND department = $2 AND deactivated_at IS NULL`,
+        [orgId, SEED_DEPARTMENT]
+    );
+    // 2) 삽입 소스 결정 — 도메인 기본 우선, 없거나 미적용이면 '첫인사' 폴백
+    let rows = [];
+    let mode = 'minimal';
+    if (applyDefaults && domainId != null && Number.isFinite(Number(domainId))) {
+        const r = await client.query(
+            `SELECT order_no, category, item, criterion, prompt_template,
+                    pentagon_axis, scoring_type, max_score, is_active
+               FROM public.domain_default_eval_items
+              WHERE domain_id = $1 AND is_active = true
+              ORDER BY order_no ASC, id ASC`,
+            [domainId]
+        );
+        if (r.rows.length > 0) {
+            rows = r.rows;
+            mode = 'domain';
+        }
+    }
+    if (rows.length === 0) {
+        rows = MINIMAL_EVAL_ITEMS.map((m) => ({
+            order_no: m.order_no,
+            category: m.category,
+            item: m.item,
+            criterion: null,
+            prompt_template: null,
+            pentagon_axis: null,
+            scoring_type: 'numeric',
+            max_score: null,
+            is_active: true,
+        }));
+        mode = 'minimal';
+    }
+    // 3) 새 version (org+department 전역 단조)
+    const { rows: vRows } = await client.query(
+        `SELECT COALESCE(MAX(version), 0) AS mv
+           FROM public.eval_item_defs
+          WHERE org_id = $1 AND department = $2`,
+        [orgId, SEED_DEPARTMENT]
+    );
+    const nextVersion = (vRows[0]?.mv || 0) + 1;
+    // 4) INSERT (department='기본', 새 version)
+    for (const r of rows) {
+        await client.query(
+            `INSERT INTO public.eval_item_defs
+                 (org_id, order_no, category, item, criterion, prompt_template,
+                  pentagon_axis, scoring_type, max_score, is_active,
+                  department, version, effective_from, deactivated_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), NULL, now())`,
+            [
+                orgId, r.order_no, r.category, r.item, r.criterion ?? null,
+                r.prompt_template ?? null, r.pentagon_axis ?? null,
+                r.scoring_type || 'numeric', r.max_score ?? null,
+                r.is_active === false ? false : true,
+                SEED_DEPARTMENT, nextVersion,
+            ]
+        );
+    }
+    return { count: rows.length, mode };
+}
