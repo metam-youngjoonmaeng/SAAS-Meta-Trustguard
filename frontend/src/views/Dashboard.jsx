@@ -96,26 +96,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
         fallbackTemplate: brandConfig.checklistTemplate,
         dynamicList: dynamic,
     });
-    // 카테고리 키: 신규 브랜드는 DB 항목 카테고리에서 도출(중복 제거·순서 보존), 레거시는 정적.
-    // 과거 결과 보존 — 항목이 삭제(소프트삭제)돼 현재 활성 템플릿(effectiveTemplate)에는 없으나
-    // 저장된 콜(checklist_yn_kor)에 점수가 남아 있는 카테고리도 컬럼으로 유지한다(활성 뒤에 추가).
-    // 서버는 저장행 기준으로 checklist_yn_kor 를 내려주므로 그 키를 그대로 흡수하면 점수가 살아난다.
-    const CHECKLIST_KEYS = useMemo(() => {
-        if (!dynamic) return brandConfig.checklistKeys;
-        const keys = [...new Set((effectiveTemplate || []).map((t) => t.category).filter(Boolean))];
-        const seen = new Set(keys);
-        for (const c of calls) {
-            const yn = c?.checklist_yn_kor;
-            if (!yn || typeof yn !== 'object') continue;
-            for (const k of Object.keys(yn)) {
-                if (k && !seen.has(k)) {
-                    seen.add(k);
-                    keys.push(k);
-                }
-            }
-        }
-        return keys;
-    }, [dynamic, effectiveTemplate, brandConfig, calls]);
+    // 표 컬럼(CHECKLIST_KEYS)은 평가체계 버전 필터에 의존하므로 버전 계산 뒤(아래)에서 정의한다.
     // 상세페이지 → 뒤로가기 복귀 시 직전에 보던 부서 탭을 유지.
     // 같은 탭(sessionStorage)에서만 살아남도록 함 — 새 탭/새 창은 기본 부서로 시작.
     const [department, setDepartment] = useState(() => {
@@ -186,6 +167,13 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
             });
     }, [evalVersions, department]);
 
+    // 현재 부서의 최신 평가체계 버전 번호 (없으면 '').
+    const latestVersion = useMemo(() => (
+        departmentVersions.length
+            ? Math.max(...departmentVersions.map((v) => Number(v.version)))
+            : ''
+    ), [departmentVersions]);
+
     // 콜 → 버전 매칭: 콜 call_datetime <= effective_from 인 버전 중 가장 최근
     const matchCallToVersion = useMemo(() => {
         const sortedDesc = [...departmentVersions].reverse(); // 최신부터
@@ -233,7 +221,12 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
         return null;
     };
 
-    const selectedVersion = filters.eval === '' ? '' : Number(filters.eval);
+    // 평가체계 필터 값 해석: 'all'=전체(모든 버전), ''=기본(최신 버전), 그 외=해당 버전.
+    //   selectedVersion === '' 는 다운스트림에서 '전체'를 의미(기존 로직 유지).
+    const selectedVersion =
+        filters.eval === 'all' ? ''
+            : filters.eval === '' ? latestVersion
+                : Number(filters.eval);
 
     // 기본 필터 (버전 제외) 적용 후 콜 셋. 자동 전환 판정용.
     const baseFilteredCalls = useMemo(() => {
@@ -300,6 +293,39 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
         });
     }, [baseFilteredCalls, versionFilterInfo.effectiveVersion, matchCallToVersion]);
 
+    // 표 컬럼(평가 항목) = 선택된 평가체계 버전의 항목만. (전 기간 합집합 나열 금지 — UX)
+    //   - 최신 버전(기본): 현재 활성 항목만(effectiveTemplate) → 삭제(소프트삭제) 항목 제외, 콜 0건 신규 항목도 표시.
+    //   - 옛 버전: 그 버전에 매칭되는 콜에 실제 채점된 카테고리만(과거 결과 보존 — 버전 전환으로 열람).
+    //   - 전체('all'): 활성 + 전 기간 콜 카테고리 합집합(정말 다 볼 때만).
+    const CHECKLIST_KEYS = useMemo(() => {
+        if (!dynamic) return brandConfig.checklistKeys;
+        const activeCats = [...new Set((effectiveTemplate || []).map((t) => t.category).filter(Boolean))];
+        const catsOf = (rows) => {
+            const out = [];
+            const seen = new Set();
+            for (const c of rows) {
+                const yn = c?.checklist_yn_kor;
+                if (!yn || typeof yn !== 'object') continue;
+                for (const k of Object.keys(yn)) {
+                    if (k && !seen.has(k)) { seen.add(k); out.push(k); }
+                }
+            }
+            return out;
+        };
+        const eff = versionFilterInfo.effectiveVersion;
+        if (eff === '') {
+            // 전체 — 활성 + 전 기간 콜 합집합
+            const keys = [...activeCats];
+            const seen = new Set(keys);
+            for (const k of catsOf(calls)) if (!seen.has(k)) { seen.add(k); keys.push(k); }
+            return keys;
+        }
+        if (eff === latestVersion) return activeCats; // 최신 = 현재 활성 항목만(깔끔)
+        // 옛 버전 — 그 버전에 매칭되는 콜의 카테고리(날짜 등 타 필터와 무관, 버전 기준).
+        const versionCalls = calls.filter((c) => matchCallToVersion(parseCallDate(c.call_datetime)) === eff);
+        return catsOf(versionCalls);
+    }, [dynamic, brandConfig, effectiveTemplate, calls, versionFilterInfo.effectiveVersion, latestVersion, matchCallToVersion]);
+
     return (
         <div className="w-full">
             <Header
@@ -353,12 +379,12 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                         <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">평가체계</label>
                         <select
                             className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 outline-none cursor-pointer disabled:bg-[#F2F4F7] disabled:text-[#98A2B3] disabled:cursor-not-allowed"
-                            value={filters.eval}
+                            value={filters.eval === '' ? (latestVersion === '' ? 'all' : String(latestVersion)) : filters.eval}
                             onChange={(e) => setFilters(prev => ({ ...prev, eval: e.target.value }))}
                             disabled={departmentVersions.length === 0}
                             title={departmentVersions.length === 0 ? '이 부서에 발행된 평가체계 버전이 없습니다' : undefined}
                         >
-                            <option value="">전체</option>
+                            <option value="all">전체</option>
                             {[...departmentVersions].reverse().map((v, idx) => {
                                 const isLatest = idx === 0;
                                 const dateStr = v.effectiveFromDate
