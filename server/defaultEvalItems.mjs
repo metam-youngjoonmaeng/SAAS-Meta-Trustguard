@@ -101,3 +101,36 @@ export async function seedEvalItemsFromDomain(client, orgId, domainId) {
     }
     return rows.length;
 }
+
+// 신규 브랜드 시드 — 도메인(업종)별 기본 펜타곤 축(domain_default_pentagon_axes)을 복제.
+// 활성 축을 pentagon_axes 로 옮긴다(department='기본', version=1). 도메인 없거나 0건이면 0 반환
+// → pentagon_axes 행이 없으면 프론트가 brandConfig.radarLabels 코드 기본값으로 폴백(기존 동작).
+export async function seedPentagonAxesFromDomain(client, orgId, domainId) {
+    if (!Number.isFinite(Number(orgId))) {
+        throw new Error('seedPentagonAxesFromDomain: orgId must be a number');
+    }
+    if (domainId == null || !Number.isFinite(Number(domainId))) return 0;
+    const { rows } = await client.query(
+        `SELECT axis_no, label, description, prompt_template, is_active
+           FROM public.domain_default_pentagon_axes
+          WHERE domain_id = $1 AND is_active = true
+          ORDER BY axis_no ASC, id ASC`,
+        [domainId]
+    );
+    if (rows.length === 0) return 0;
+    for (const r of rows) {
+        await client.query(
+            `INSERT INTO public.pentagon_axes
+                 (org_id, department, axis_no, label, description, prompt_template,
+                  is_active, version, effective_from, deactivated_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), NULL, now())
+             ON CONFLICT (org_id, department, axis_no, version) DO NOTHING`,
+            [
+                orgId, SEED_DEPARTMENT, r.axis_no, r.label, r.description ?? null,
+                r.prompt_template ?? null, r.is_active === false ? false : true,
+                SEED_VERSION,
+            ]
+        );
+    }
+    return rows.length;
+}
