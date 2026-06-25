@@ -65,12 +65,12 @@ export async function ingestCallByUid(pool, cfg, uid, ingestStandardCallFromQaPi
     // AI 1차 필터: 통화시간 범위 밖이면 평가 건너뜀(비용 절감).
     const gate = await readDurationGate(pool, orgId);
     if (outOfDurationGate(gate, durSec)) {
-        logger.info(`[ics-qa/mqtt] ${projCd}/${uid}: 통화시간 ${durSec}s — 범위 밖, AI 평가 제외`);
+        logger.info(`[ics-qa/mqtt] ${projCd}/${uid}: 미적재 — ${gateSkipReason(gate, durSec)} (통화시간 게이트)`);
         return 'gate_skip';
     }
     const transcript = await fetchTranscript(uid);
     if (!transcript.length) {
-        logger.warn(`[ics-qa/mqtt] ${projCd}/${uid}: 발화 0건 — 건너뜀`);
+        logger.warn(`[ics-qa/mqtt] ${projCd}/${uid}: 미적재 — 발화 0건(상담사·고객 모두 없음)`);
         return 'empty';
     }
     const call = {
@@ -93,10 +93,10 @@ export async function ingestCallByUid(pool, cfg, uid, ingestStandardCallFromQaPi
         return 'fail';
     }
     if (result.skipped) {
-        logger.info(`[ics-qa/mqtt] ${projCd}/${uid}: 포기호/미응대 — 적재 건너뜀 (turns=${transcript.length})`);
+        logger.info(`[ics-qa/mqtt] ${projCd}/${uid}: 미적재 — 포기호/미응대 (turns=${transcript.length})`);
         return 'empty';
     }
-    logger.info(`[ics-qa/mqtt] ${projCd}/${uid}: 적재 OK (score=${result.total_score ?? '?'}, turns=${transcript.length})`);
+    logger.info(`[ics-qa/mqtt] ${projCd}/${uid}: 적재 OK (score=${result.total_score ?? '?'}, turns=${transcript.length}${result.elapsed_sec != null ? `, 검수 ${result.elapsed_sec}s` : ''})`);
     return 'done';
 }
 
@@ -154,6 +154,14 @@ async function readDurationGate(pool, orgId) {
 function outOfDurationGate(gate, durSec) {
     if (!gate || durSec == null) return false; // 미상(null)은 제외하지 않음 — 안전상 평가
     return durSec < gate.minSec || (gate.maxSec != null && durSec >= gate.maxSec);
+}
+
+/** 게이트 탈락 사유 — 최소/최대 어느 조건에 걸렸는지 로그용 문자열. */
+function gateSkipReason(gate, durSec) {
+    if (!gate || durSec == null) return '통화시간 미상';
+    if (durSec < gate.minSec) return `통화시간 ${durSec}s < 최소 ${gate.minSec}s`;
+    if (gate.maxSec != null && durSec >= gate.maxSec) return `통화시간 ${durSec}s ≥ 최대 ${gate.maxSec}s`;
+    return `통화시간 ${durSec}s`;
 }
 
 /**
@@ -253,6 +261,8 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
 
     let added = 0;
     let skippedByGate = 0;
+    let skippedEmpty = 0;       // 발화 0건
+    let skippedAbandoned = 0;   // 포기호/미응대
     let cursorEnd = wm.endDate;
     let cursorUid = wm.uid;
     const evaluatedIds = []; // 이번 주기에 평가·적재된 qa_id — 수기평가 대상 도장용
@@ -263,7 +273,7 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
         const durSec = durationSecFromDates(c.start_dt, c.end_dt);
         // AI 1차 필터: 통화시간 범위 밖이면 평가 자체를 건너뜀(비용 절감). 커서는 전진(재처리 방지).
         if (outOfDurationGate(gate, durSec)) {
-            logger.info(`[ics-qa] ${projCd}/${uid}: 통화시간 ${durSec}s — 범위 밖, AI 평가 제외(전진)`);
+            logger.info(`[ics-qa] ${projCd}/${uid}: 미적재 — ${gateSkipReason(gate, durSec)} (통화시간 게이트, 커서 전진)`);
             cursorEnd = endDt;
             cursorUid = uid;
             skippedByGate += 1;
@@ -273,9 +283,10 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
             const transcript = await fetchTranscript(uid);
             if (!transcript.length) {
                 // END_YN='Y' 인데 발화가 없음 — 빈 콜로 보고 전진(무한 재시도 방지). 내용 생기면 ICS측 이슈.
-                logger.warn(`[ics-qa] ${projCd}/${uid}: 발화 0건 — 건너뜀(전진)`);
+                logger.warn(`[ics-qa] ${projCd}/${uid}: 미적재 — 발화 0건(상담사·고객 모두 없음, 커서 전진)`);
                 cursorEnd = endDt;
                 cursorUid = uid;
+                skippedEmpty += 1;
                 continue;
             }
             // department/role 은 넘기지 않는다 — 적재 함수가 "그 org 기존 콜 최다 부서 > 기본('고객지원실')"
@@ -303,19 +314,23 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
             cursorEnd = endDt;
             cursorUid = uid;
             if (result.skipped) {
-                logger.info(`[ics-qa] ${projCd}/${uid}: 포기호/미응대 — 적재 건너뜀(전진, turns=${transcript.length})`);
+                logger.info(`[ics-qa] ${projCd}/${uid}: 미적재 — 포기호/미응대(전진, turns=${transcript.length})`);
+                skippedAbandoned += 1;
                 continue;
             }
             added += 1;
             evaluatedIds.push(call.qa_id);
-            logger.info(`[ics-qa] ${projCd}/${uid}: 적재 OK (score=${result.total_score ?? '?'}, turns=${transcript.length})`);
+            logger.info(`[ics-qa] ${projCd}/${uid}: 적재 OK (score=${result.total_score ?? '?'}, turns=${transcript.length}${result.elapsed_sec != null ? `, 검수 ${result.elapsed_sec}s` : ''})`);
         } catch (err) {
             logger.error(`[ics-qa] ${projCd}/${uid}: 예외 — ${String(err?.message || err)} (이번 주기 중단)`);
             break;
         }
     }
 
-    if (skippedByGate > 0) logger.info(`[ics-qa] ${projCd}: 통화시간 게이트로 ${skippedByGate}건 AI 평가 제외`);
+    const skippedTotal = skippedByGate + skippedEmpty + skippedAbandoned;
+    if (skippedTotal > 0) {
+        logger.info(`[ics-qa] ${projCd}: 미적재 ${skippedTotal}건 (통화시간게이트 ${skippedByGate}, 발화0건 ${skippedEmpty}, 포기호 ${skippedAbandoned})`);
+    }
 
     // 수기평가 대상 도장 — '실시간' 주기일 때만 이번에 평가된 콜을 즉시 표식(누적).
     //   매시간/매일은 tick 의 scheduledStampTick(정기 패스)이, 수동은 '지금 실행'(POST /api/batch/run)이 담당.
