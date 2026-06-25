@@ -279,3 +279,93 @@ export async function buildRubricFromDefs(pool, orgId) {
         rowMeta,
     };
 }
+
+/**
+ * 도메인(업종)별 기본 평가항목(domain_default_eval_items)으로 인라인 루브릭 조립.
+ * buildRubricFromDefs 와 동일한 item/rowMeta 형태를 산출하되 출처가 도메인 기본 테이블이다.
+ * 튜터(02) 등 외부 시스템의 도메인 기준 딥평가가 이 루브릭을 rubric_inline 으로 엔진에 동봉.
+ * 코오롱 레거시 제외(RUBRIC_EXCLUDED_ORDER_NOS) 없음 — 도메인 기본은 신규 트랙.
+ * rowMeta 에 pentagon_axis 포함(호출부가 펜타곤 축 귀속에 사용).
+ * @returns {Promise<{rubric:{tenant_id,name,items:Array}, orderMap:number[], rowMeta:Array}>}
+ */
+export async function buildRubricFromDomainDefaults(pool, domainId) {
+    const { rows } = await pool.query(
+        `SELECT order_no, category, item, criterion, prompt_template, max_score, scoring_type, pentagon_axis
+           FROM public.domain_default_eval_items
+          WHERE domain_id = $1
+            AND is_active = true
+          ORDER BY order_no ASC, id ASC`,
+        [domainId]
+    );
+
+    const items = [];
+    const orderMap = [];
+    const rowMeta = [];
+    for (const row of rows) {
+        const orderNo = asNumber(row.order_no);
+        if (orderNo === null) continue;
+
+        const scoringType = safeStr(row.scoring_type).trim().toLowerCase();
+        // 채점 스케일(maxScore=allowed_steps[0]) ↔ 표시 분모(displayMax) 분리 — buildRubricFromDefs 와 동일 규칙.
+        const promptSteps =
+            scoringType !== 'yes_no' ? parseStepsFromPromptLoose(row.prompt_template) : null;
+        let maxScore;
+        let allowedSteps;
+        let displayMax;
+        if (promptSteps) {
+            allowedSteps = promptSteps;
+            maxScore = promptSteps[0];
+            const dbMax = asNumber(row.max_score);
+            displayMax = dbMax !== null && dbMax > 0 ? Math.round(dbMax) : maxScore;
+        } else {
+            const dbMax = asNumber(row.max_score);
+            maxScore = dbMax !== null && dbMax > 0 ? Math.round(dbMax) : catalogMaxScore(orderNo);
+            allowedSteps =
+                scoringType === 'yes_no'
+                    ? [Math.round(maxScore), 0]
+                    : parseAllowedStepsFromPrompt(row.prompt_template, maxScore) ||
+                      catalogAllowedSteps(orderNo, maxScore);
+            displayMax = maxScore;
+        }
+        const itemName = safeStr(row.item).trim() || `항목 ${orderNo}`;
+        const categoryName = safeStr(row.category).trim();
+
+        items.push({
+            name: itemName,
+            category: categoryName,
+            max_score: maxScore,
+            display_max: displayMax,
+            allowed_steps: allowedSteps,
+            scoring_type: scoringType === 'yes_no' ? 'yes_no' : 'numeric',
+            criteria_full: safeStr(row.criterion),
+            prompt_template: sanitizePromptTemplate(row.prompt_template),
+            notes: null,
+            few_shot: false,
+            debate: false,
+            is_bonus: false,
+        });
+        orderMap.push(orderNo);
+        rowMeta.push({
+            order_no: orderNo,
+            category: categoryName,
+            item: itemName,
+            max_score: displayMax,
+            scoring_type: scoringType === 'yes_no' ? 'yes_no' : 'numeric',
+            pentagon_axis: safeStr(row.pentagon_axis).trim() || null,
+        });
+    }
+
+    return {
+        rubric: {
+            tenant_id: RUBRIC_TENANT_ID,
+            name: RUBRIC_NAME,
+            items,
+            special_global: CUSTOM_SPECIAL_GLOBAL,
+            special_enabled: true,
+            grade_bands: CUSTOM_GRADE_BANDS,
+            grade_bands_enabled: true,
+        },
+        orderMap,
+        rowMeta,
+    };
+}

@@ -22,7 +22,7 @@
  */
 
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
-import { buildRubricFromDefs } from './rubricSync.mjs';
+import { buildRubricFromDefs, buildRubricFromDomainDefaults } from './rubricSync.mjs';
 
 const DEFAULT_BASE_URL = 'http://localhost:8081';
 // EC2 원격 백엔드 (V3 qa-pipeline, 8081 직접 접근) — call.pipeline_target==='ec2' 시 사용.
@@ -1204,6 +1204,55 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
     // 검증 'score out of bounds' — 만점 override 와 채점 스케일 불일치로 report 생성 크래시).
     // 포기호 게이트로 흘려보내 무음 미적재하지 말고 라우트로 에러를 전파해 사용자에게 실패
     // 사유를 노출한다. 정상 평가(항목 1건 이상)면 비치명 error 는 무시(무회귀).
+    const pipelineError = safeStr(resp?.error).trim();
+    const noRows = !(mapped.evaluations?.length > 0) && !(mapped.checklist?.length > 0);
+    if (pipelineError && noRows) {
+        throw new Error(`파이프라인 평가 실패: ${pipelineError}`);
+    }
+    return mapped;
+}
+
+/**
+ * 도메인(업종) 기준 딥평가 — domain_default_eval_items 로 인라인 루브릭을 빌드해 엔진 호출.
+ * evaluateStandardCall 의 full-custom(rubric_inline) 경로만 사용(코오롱 표준 트랙 분기 없음).
+ * 채점 SSOT 가 브랜드(eval_item_defs)가 아니라 '도메인 기본'이라, 튜터(02) 등 외부 시스템이
+ * 도메인 기준으로 채점할 때 쓴다. DB 저장 없음(결과만 반환). 호출부가 pentagon 빌드에 쓰도록
+ * mapped.rowMeta(order_no→pentagon_axis 포함) 동봉.
+ * @param {{transcript:Array, domain_id:number, consultation_id?:string, role?:string, pipeline_target?:string}} call
+ */
+export async function evaluateDomainCall(pool, call, opts = {}) {
+    const warnings = [];
+    const domainId = asNumber(call?.domain_id);
+    if (domainId === null) throw new Error('evaluateDomainCall: domain_id (number) required');
+
+    const { rubric, rowMeta } = await buildRubricFromDomainDefaults(pool, domainId);
+    if (!rubric?.items?.length) {
+        throw new Error(`도메인 기본 평가항목이 없습니다 (domain_id=${domainId}).`);
+    }
+    // 평가 기준(criterion/prompt) 미입력 항목 차단 — 빈 항목 임의 채점 방지(evaluateStandardCall 게이트와 동일).
+    const unconfigured = rubric.items.filter(
+        (it) => !safeStr(it.prompt_template).trim() && !safeStr(it.criteria_full).trim()
+    );
+    if (unconfigured.length) {
+        const names = unconfigured.map((it) => safeStr(it.name).trim() || '(이름없음)').join(', ');
+        const e = new Error(`평가 기준이 입력되지 않은 도메인 평가항목이 있습니다: ${names}.`);
+        e.isUnconfiguredBlock = true;
+        throw e;
+    }
+
+    const rubricCall = { ...call, rubric_inline: rubric };
+    const resp =
+        typeof opts.onProgress === 'function'
+            ? await callQaPipelineStream(rubricCall, opts, opts.onProgress)
+            : await callQaPipeline(rubricCall, opts);
+
+    const mapped = mapEvaluateResponseRubric(resp, rowMeta);
+    if (!mapped) {
+        throw new Error('도메인 루브릭 매핑 실패 (엔진 응답에 5000번대 항목 없음).');
+    }
+    mapped.warnings = [...warnings, ...(mapped.warnings || [])];
+    mapped.rowMeta = rowMeta; // 펜타곤 축 귀속(order_no→pentagon_axis)에 호출부가 사용
+
     const pipelineError = safeStr(resp?.error).trim();
     const noRows = !(mapped.evaluations?.length > 0) && !(mapped.checklist?.length > 0);
     if (pipelineError && noRows) {
