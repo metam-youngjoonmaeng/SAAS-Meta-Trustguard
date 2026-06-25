@@ -1127,9 +1127,8 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                         {/* AI평가 — Y/N(컴플라이언스) 항목은 충족/위반, 점수제는 점수 */}
                                                         <td className="px-2.5 py-2.5 align-middle text-[13px] font-semibold tabular-nums">
                                                             {r.scoring_type === 'yes_no' ? (
-                                                                r.earned_ai === null ? (
-                                                                    <span className="text-[#98A2B3]">–</span>
-                                                                ) : r.earned_ai > 0 ? (
+                                                                // Y/N 2분법 — '했다' 확인되면 Y, 그 외(안 함·확인 안 됨) 전부 N.
+                                                                r.earned_ai > 0 ? (
                                                                     <span className="text-[15px] font-bold text-[#067647]">Y</span>
                                                                 ) : (
                                                                     <span className="text-[15px] font-bold text-[#D92D20]">N</span>
