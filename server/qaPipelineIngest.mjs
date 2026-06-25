@@ -159,13 +159,17 @@ export function extractForbiddenFromResult(resp) {
         if (!ev || typeof ev !== 'object') continue;
         const matches = [];
 
-        // 1) deductions[].rule_ref — rule_ref 또는 reason/quote 중 하나라도 있으면 채택.
+        // 1) deductions[].rule_ref — 실제 사전/규칙 매칭(rule_ref)이 있을 때만 채택.
+        //    순수 LLM 커스텀 루브릭(asdf 등 사전·규칙 없음)은 감점마다 reason(자유서술 사유)을
+        //    남기지만 rule_ref 는 없음 → rule_ref 게이트로 LLM 판정 사유가 '금지어/사전 매칭' 으로
+        //    오인 적재되는 것을 차단. RAG·사전 탭은 실제 사전/규칙 매칭(kolon/ecom/bank 의 rule_ref
+        //    보유 감점)만 표시(무회귀). reason/quote 만 있고 rule_ref 없는 감점은 forbidden 아님.
         for (const d of safeList(ev.deductions)) {
             if (!d || typeof d !== 'object') continue;
             const ruleRef = safeStr(d.rule_ref).trim();
+            if (!ruleRef) continue;
             const reason = safeStr(d.reason).trim();
             const quote = safeStr(d.quote || d.evidence_quote).trim();
-            if (!ruleRef && !reason && !quote) continue;
             matches.push({ term: '', rule_ref: ruleRef, verdict: reason, quote });
         }
 
