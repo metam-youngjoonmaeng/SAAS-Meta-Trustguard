@@ -1507,6 +1507,7 @@ app.get('/api/analysis/:qaId', async (req, res) => {
                         AND deactivated_at IS NULL
                         AND pentagon_axis IS NOT NULL
                         AND btrim(pentagon_axis) <> ''
+                        AND (scoring_type IS NULL OR scoring_type <> 'yes_no')
                       ORDER BY order_no ASC, version DESC`,
                     [rows[0].org_id]
                 );
