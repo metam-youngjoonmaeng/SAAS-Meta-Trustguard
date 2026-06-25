@@ -28,17 +28,21 @@ import { getOrgFewshot } from './ragFewshotConfig.mjs';
 const DEFAULT_BASE_URL = 'http://localhost:8081';
 // EC2 원격 백엔드 (V3 qa-pipeline, 8081 직접 접근) — call.pipeline_target==='ec2' 시 사용.
 const DEFAULT_EC2_BASE_URL = 'http://54.235.200.151:8081';
+// 컨테이너에서 호스트의 로컬 파이프라인 접근 주소 — force-local 시 기본 타깃.
+const DEFAULT_LOCAL_FORCE_URL = 'http://host.docker.internal:8081';
 const EVALUATE_TIMEOUT_MS = 600_000; // 600초
 
 /** 평가 백엔드 base URL 해석 — opts.baseUrl > call.pipeline_target('ec2') > env > 로컬 기본값 */
 function resolvePipelineBaseUrl(call, opts = {}) {
     if (opts.baseUrl) return opts.baseUrl;
     // 로컬 실험 강제 — env QA_PIPELINE_FORCE_LOCAL=1 이면 call.pipeline_target('ec2') 를 무시하고
-    // 무조건 로컬(QA_PIPELINE_BASE_URL)로. 대시보드 옛 번들이 ec2 를 보내도 로컬로 강제됨.
-    // 운영 복귀 시 env 만 해제하면 기존 동작(pipeline_target 기준) 복원.
+    // 무조건 로컬로. 대시보드 옛 번들이 ec2 를 보내도 로컬로 강제됨.
+    // ★ QA_PIPELINE_BASE_URL 을 신뢰하지 않음 — EC2 모드가 이 env 를 EC2 주소로 재활용했을 수 있어
+    //    force-local 이 조용히 EC2 로 새는 것을 방지. 전용 QA_PIPELINE_FORCE_LOCAL_URL > 컨테이너 호스트 기본값.
+    // 운영 복귀 시 env(QA_PIPELINE_FORCE_LOCAL) 만 해제하면 기존 동작(pipeline_target 기준) 복원.
     const _forceLocal = String(process.env.QA_PIPELINE_FORCE_LOCAL ?? '').trim().toLowerCase();
     if (_forceLocal === '1' || _forceLocal === 'true') {
-        return process.env.QA_PIPELINE_BASE_URL || DEFAULT_BASE_URL;
+        return process.env.QA_PIPELINE_FORCE_LOCAL_URL || DEFAULT_LOCAL_FORCE_URL;
     }
     if (isEc2Target(call)) {
         return process.env.QA_PIPELINE_BASE_URL_EC2 || DEFAULT_EC2_BASE_URL;
@@ -530,6 +534,15 @@ export async function callQaPipelineStream(call, { baseUrl } = {}, onProgress = 
                     }
                 } else if (ev.event === 'result') {
                     result = ev.data;
+                    // 최종 result 를 onProgress 로 전달 — index.js 가 capturedRawResp 에 담아
+                    // 금지어/사전 매칭(kind:'forbidden')을 RAG 로그 링버퍼에 적재. (#033 forbidden 경로)
+                    if (typeof onProgress === 'function') {
+                        try {
+                            onProgress({ type: 'result', data: ev.data });
+                        } catch {
+                            /* 진행상황 콜백 오류는 평가에 영향 없음 */
+                        }
+                    }
                 } else if (ev.event === 'error') {
                     streamError = safeStr(ev.data?.message || ev.data?.detail || ev.data?.error) || 'stream error';
                 }
