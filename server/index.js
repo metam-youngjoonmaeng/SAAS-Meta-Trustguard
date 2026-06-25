@@ -1601,7 +1601,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
     }
     try {
         const { rows: callRows } = await pool.query(
-            `SELECT "ID" AS qa_id, department, role, ai_analysis_target, ai_analysis_reason, voc_code, promotion_code,
+            `SELECT "ID" AS qa_id, department, role, org_id, ai_analysis_target, ai_analysis_reason, voc_code, promotion_code,
                     manual_review, manual_review_reasons
              FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
             [qaId]
@@ -1701,6 +1701,25 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
         for (const r of checklist_rows) {
             maxByOrderNo.set(Number(r.order_no), parseMaxPointsFromValidationTime(r.validation_time));
         }
+        // 항목별 채점방식 — 프론트가 Y/N(컴플라이언스 체크) 항목을 점수표에서 분리하는 데 사용.
+        // 활성 eval_item_defs.scoring_type by order_no (펜타곤 axisByOrderNo 조회와 동일 패턴).
+        const scoringTypeByOrderNo = new Map();
+        if (callMeta.org_id !== null && callMeta.org_id !== undefined) {
+            try {
+                const { rows: stRows } = await pool.query(
+                    `SELECT DISTINCT ON (order_no) order_no, scoring_type
+                       FROM public.eval_item_defs
+                      WHERE org_id = $1 AND is_active = true AND deactivated_at IS NULL
+                      ORDER BY order_no ASC, version DESC`,
+                    [callMeta.org_id]
+                );
+                for (const r of stRows) {
+                    scoringTypeByOrderNo.set(Number(r.order_no), String(r.scoring_type || 'numeric').toLowerCase());
+                }
+            } catch (stErr) {
+                console.error('GET /api/evaluations scoring_type lookup failed:', stErr);
+            }
+        }
         const { rows: ymRows } = await pool.query(
             `SELECT substr("CDATE", 1, 7) AS ym FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
             [qaId]
@@ -1749,6 +1768,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
             const monthlyAvgPct = toPct(monthlyByItem.get(r.item) ?? null, max);
             return {
                 ...r,
+                scoring_type: scoringTypeByOrderNo.get(Number(r.order_no)) || 'numeric',
                 manual_eval_option: opt || null,
                 manual_eval: judged ? r.manual_eval : null,
                 match_rate: matchRate,

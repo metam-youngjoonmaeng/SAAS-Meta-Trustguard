@@ -513,6 +513,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
             return {
                 ...base,
                 order_no: orderNo,
+                scoring_type: evalRow.scoring_type || 'numeric',
                 row_key: `${base.category}__${base.item}`,
                 reason_text: evalRow.reason_text || '-',
                 utterance: utterance || '-',
@@ -531,16 +532,28 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         });
     }, [evaluation, brandConfig, checklistTemplate, rubricMaxByOrderNo]);
 
+    // Y/N(컴플라이언스 체크) 항목은 점수표·총점·진행률에서 분리 — 점수 무관 모니터링 전용.
+    //   scoredRows: 점수제 항목(점수표·총점·검수진행률 대상)
+    //   complianceRows: Y/N 항목(별도 컴플라이언스 섹션, ✓충족/✗위반/–해당없음)
+    const scoredRows = useMemo(
+        () => checklistRows.filter((r) => r.scoring_type !== 'yes_no'),
+        [checklistRows]
+    );
+    const complianceRows = useMemo(
+        () => checklistRows.filter((r) => r.scoring_type === 'yes_no'),
+        [checklistRows]
+    );
+
     // 점수 헤더 표기 — 고객지원실은 원점수 "X / N점", 그 외는 기존 "X점 / 100점".
     // 분모 = 이 콜의 checklistRows.rubric_max_pts 합(평가-시점 만점 동결) — 0이면 DEFAULT_TOTAL_MAX 폴백.
     // 옛 콜: 카탈로그 배점 합(80)으로 동결, 루브릭 평가 콜: ev.max_score 합(예: 78)으로 동결.
     // NOTE: 반드시 checklistRows 선언 뒤에 위치 — 앞에 두면 const TDZ ReferenceError 로
     // Detail 전체가 흰 화면 (2026-06-11 수정).
     const callTotalMax = useMemo(
-        () => checklistRows.reduce((s, r) => s + (Number(r.rubric_max_pts) || 0), 0)
+        () => scoredRows.reduce((s, r) => s + (Number(r.rubric_max_pts) || 0), 0)
             || (dynamic ? Number(rubricTotalMax) || 0 : 0)
             || DEFAULT_TOTAL_MAX,
-        [checklistRows, dynamic, rubricTotalMax]
+        [scoredRows, dynamic, rubricTotalMax]
     );
     const reportScoreLabel = useMemo(() => {
         // 저장값 = 획득점 합계 원점수 — 환산 없이 "X / 만점" 그대로 표기.
@@ -637,13 +650,13 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
 
     // 체크리스트 검수 진행률 — 판단(낮음/동일/높음) 입력된 행 / 전체 항목.
     const reviewProgress = useMemo(() => {
-        const total = checklistRows.length;
-        const done = checklistRows.filter(
+        const total = scoredRows.length;
+        const done = scoredRows.filter(
             (r) => !!manualJudgments[r.row_key]?.judgment
         ).length;
         const pct = total > 0 ? Math.round((done / total) * 100) : 0;
         return { total, done, pct };
-    }, [checklistRows, manualJudgments]);
+    }, [scoredRows, manualJudgments]);
 
     // 검수상태 자동 전이 — '검수 시작'(대기→검수중)만 자동.
     //  상담사가 첫 판단을 입력하면 '검수중'으로 표시. 검토요청 '제출'은 명시 버튼(아래 액션바)으로만 —
@@ -1052,19 +1065,19 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                             // 전체 개수로 합치면 order_no 재정렬로 같은 카테고리가
                                             // 떨어진 위치에 다시 나타날 때 rowSpan 이 어긋난다.
                                             const isFirstInRun = (i) =>
-                                                i === 0 || checklistRows[i - 1].category !== checklistRows[i].category;
+                                                i === 0 || scoredRows[i - 1].category !== scoredRows[i].category;
                                             const runLength = (i) => {
                                                 let len = 1;
                                                 while (
-                                                    i + len < checklistRows.length &&
-                                                    checklistRows[i + len].category === checklistRows[i].category
+                                                    i + len < scoredRows.length &&
+                                                    scoredRows[i + len].category === scoredRows[i].category
                                                 ) {
                                                     len += 1;
                                                 }
                                                 return len;
                                             };
 
-                                            return checklistRows.map((r, i) => {
+                                            return scoredRows.map((r, i) => {
                                                 const showCategory = isFirstInRun(i);
 
                                                 return (
@@ -1134,6 +1147,36 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                         })()}
                                     </tbody>
                                 </table>
+                                {complianceRows.length > 0 && (
+                                    <div className="border-t border-[#F2F4F7] px-4 py-4">
+                                        <div className="flex items-baseline gap-2 mb-3">
+                                            <h4 className="text-[13px] font-semibold text-[#101828]">컴플라이언스 체크</h4>
+                                            <span className="text-[11px] text-[#98A2B3]">점수 미반영 · 준수 여부만 확인</span>
+                                        </div>
+                                        <div className="grid gap-1.5">
+                                            {complianceRows.map((r, i) => {
+                                                const checked = r.earned_ai !== null && r.earned_ai > 0;
+                                                const violated = r.earned_ai === 0;
+                                                const badge = violated
+                                                    ? { t: '✗ 위반', c: 'text-[#D92D20] bg-[#FEF3F2] border-[#FECDCA]' }
+                                                    : checked
+                                                      ? { t: '✓ 충족', c: 'text-[#067647] bg-[#ECFDF3] border-[#ABEFC6]' }
+                                                      : { t: '– 해당없음', c: 'text-[#667085] bg-[#F2F4F7] border-[#E4E7EC]' };
+                                                return (
+                                                    <div key={r.row_key || i} className="flex items-start gap-2.5 rounded-lg border border-[#E4E7EC] bg-white px-3 py-2">
+                                                        <span className={`mt-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badge.c}`}>{badge.t}</span>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="text-[12.5px] font-medium text-[#101828]">{r.item}</div>
+                                                            {r.reason_text && r.reason_text !== '-' && (
+                                                                <div className="text-[11px] text-[#667085] leading-relaxed mt-0.5 whitespace-pre-line">{r.reason_text}</div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
