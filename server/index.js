@@ -907,6 +907,11 @@ app.post('/api/svc/deep-eval', async (req, res) => {
                 result: String(aiByOrder.get(Number(c.order_no)) ?? ''),
             }));
             const pentagon = buildPentagonByAxisDefs(pentaRows, axisByOrderNo, definedAxes);
+            // 항목별 pentagon_axis 동봉 — 소비측(02 등)이 축 기준으로 레이더를 그릴 수 있게.
+            const evalsWithAxis = (mapped.evaluations || []).map((e) => ({
+                ...e,
+                pentagon_axis: axisByOrderNo[Number(e.order_no)] || null,
+            }));
             res.json({
                 ok: true,
                 domain_id: domainId,
@@ -914,7 +919,7 @@ app.post('/api/svc/deep-eval', async (req, res) => {
                 raw_total: mapped.raw_total ?? null,
                 max_total: mapped.max_total ?? null,
                 ai_score: mapped.ai_score ?? null,
-                evaluations: mapped.evaluations || [],
+                evaluations: evalsWithAxis,
                 checklist: mapped.checklist || [],
                 pentagon,                                       // {team_avg, agent_score, overall_avg}: {축라벨: %}
                 pentagon_axes: definedAxes || CANONICAL_PENTAGON_AXES,
