@@ -3790,9 +3790,18 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
                     kind: 'rag',
                     hits: hits.map((h) => ({
                         example_id: String(h?.example_id ?? ''),
-                        score: h?.score ?? null,
+                        // 평가 score 부재(루브릭 예시 스토어) 시 코사인 유사도를 표시값으로 폴백 →
+                        // "어떤 예시를 얼마나 유사하게 가져왔는지" 가시화. 둘 다 없으면 null.
+                        score:
+                            h?.score ??
+                            (typeof h?.cosine_score === 'number'
+                                ? Math.round(h.cosine_score * 100) / 100
+                                : typeof h?.similarity === 'number'
+                                  ? Math.round(h.similarity * 100) / 100
+                                  : null),
                         score_bucket: h?.score_bucket ?? undefined,
-                        summary: h?.index_summary || h?.rationale || h?.segment_text || undefined,
+                        // 가져온 예시 내용: 골든 원문(segment_text) 우선, 없으면 색인요약/근거.
+                        summary: h?.segment_text || h?.index_summary || h?.rationale || undefined,
                     })),
                 });
             } catch {

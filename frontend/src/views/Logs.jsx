@@ -460,9 +460,9 @@ function RagLogPanel() {
 
     async function load() {
         try {
-            const data = await fetchRagLogRecent({ limit: PAGE_SIZE });
-            const rows = Array.isArray(data?.entries) ? data.entries : [];
-            setEntries(rows);
+            // fetchRagLogRecent 는 이미 entries 배열을 반환(api.js) — 재언랩 금지(이중 언랩 시 항상 [])
+            const rows = await fetchRagLogRecent({ limit: PAGE_SIZE });
+            setEntries(Array.isArray(rows) ? rows : []);
             setError(null);
         } catch (e) {
             setError(e?.message || 'RAG 로그 로드 실패');

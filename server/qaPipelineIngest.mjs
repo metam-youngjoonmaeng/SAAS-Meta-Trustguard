@@ -184,12 +184,17 @@ export function extractForbiddenFromResult(resp) {
             }
         }
 
-        // 3) evidence[] — RAG 위반 시 추가된 상담사 인용 (speaker=상담사 우선, 그 외 quote 보존).
-        for (const q of safeList(ev.evidence)) {
-            if (!q || typeof q !== 'object') continue;
-            const quote = safeStr(q.quote).trim();
-            if (!quote) continue;
-            matches.push({ term: '', rule_ref: '', verdict: safeStr(q.speaker).trim(), quote });
+        // 3) evidence[] — 위 1/2 에서 실제 금지어/규칙 매칭(rule_ref/violation)이 있을 때만
+        //    보조 인용으로 추가. 매칭이 없으면 evidence 만으로 forbidden 항목을 만들지 않는다.
+        //    (순수 LLM 평가는 항목마다 근거 인용을 남기므로, 게이트 없이 두면 전 항목이
+        //     '금지어/사전 매칭' 으로 오인 적재되어 RAG·사전 탭이 오염됨.)
+        if (matches.length) {
+            for (const q of safeList(ev.evidence)) {
+                if (!q || typeof q !== 'object') continue;
+                const quote = safeStr(q.quote).trim();
+                if (!quote) continue;
+                matches.push({ term: '', rule_ref: '', verdict: safeStr(q.speaker).trim(), quote });
+            }
         }
 
         if (!matches.length) continue;
@@ -1283,16 +1288,20 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                 // RAG 토글과 독립이라 _rfx 가 null(RAG off)이어도 pure 는 유지. 퓨어 베이스 +
                 // 골든셋 RAG on/off 확장 구조.
                 const _pure = getOrgPure(orgId);
+                // disable_rag 단일 진실원천: pure 트랙은 _rfx 유무로 항상 명시(_rfx 없으면 true).
+                // 백엔드 _disable_rag 식이 pure 일 때 rubric_fewshot_item_names 토글 추론에 의존하므로,
+                // _rfx 가 null 로 떨어지면 RAG 가 조용히 꺼지는 회귀를 페이로드에 의도를 박아 차단.
+                // 비-pure org 는 _rfx 있을 때만 disable_rag:false, 그 외는 미동봉(backend 기본값 보존).
                 rubricCall = {
                     ...call,
                     org_id: orgId,
                     rubric_inline: rubric,
-                    ...(_pure ? { eval_mode: 'pure' } : {}),
+                    ...(_pure ? { eval_mode: 'pure', disable_rag: !_rfx } : {}),
                     ...(_rfx
                         ? {
                               rubric_id: _rfx.rubric_id,
                               rubric_fewshot_item_names: _rfx.item_names,
-                              disable_rag: false,
+                              ...(!_pure ? { disable_rag: false } : {}),
                           }
                         : {}),
                 };
