@@ -17,13 +17,7 @@ import {
     seedMinimalEvalItems,
     seedEvalItemsFromDomain,
     seedPentagonAxesFromDomain,
-    applyDomainEvalItems,
-    applyDomainPentagonAxes,
 } from './defaultEvalItems.mjs';
-
-// 레거시 표준 브랜드(신한1 / 한화2 / 코오롱3) — 도메인 변경 시 평가항목 교체 대상에서 제외(기존 항목 보존).
-// canonical 정의: server/qaPipelineIngest.mjs 의 동명 상수.
-const LEGACY_STANDARD_ORG_IDS = new Set([1, 2, 3]);
 
 function sha256Hex(s) {
     return crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -752,20 +746,14 @@ export function createBrandRouter(pool) {
                 res.status(404).json({ message: '브랜드를 찾을 수 없습니다' });
                 return;
             }
-            const prevDomainId = cur.rows[0].domain_id;
             const { rows } = await client.query(
                 `UPDATE public.organizations SET ${fields.join(', ')} WHERE id = $${idx}
                  RETURNING id, name, short, color, active, domain_id`,
                 values
             );
             out = rows[0];
-            // 도메인이 실제로 바뀌면 '기본' 평가항목 + 펜타곤 축을 새 도메인 기본값으로 교체. 레거시 표준(1/2/3)은 보존.
-            const domainChanged =
-                hasDomainInBody && Number(prevDomainId ?? -1) !== Number(newDomainId ?? -1);
-            if (domainChanged && !LEGACY_STANDARD_ORG_IDS.has(id)) {
-                reseed = await applyDomainEvalItems(client, id, newDomainId, true);
-                reseedAxes = await applyDomainPentagonAxes(client, id, newDomainId, true);
-            }
+            // 브랜드 수정 시에는 도메인이 바뀌어도 기존 평가항목/펜타곤 축을 보존한다(교체하지 않음).
+            // 도메인 기본 평가항목/펜타곤 축 적용은 신규 브랜드 생성(POST /admin/organizations) 시에만 수행.
             await client.query('COMMIT');
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});
