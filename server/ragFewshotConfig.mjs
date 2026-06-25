@@ -8,9 +8,12 @@
 //   ./data/uploads(→ /app/data/uploads) 볼륨에 저장. env RAG_FEWSHOT_CONFIG_DIR 로 override.
 //
 // 설정 shape:
-//   { "<org_id>": { "rubric_id": "<str>", "item_names": ["설명력", ...] } }
+//   { "<org_id>": { "rubric_id": "<str>", "item_names": ["설명력", ...], "pure": true } }
 //   item_names = 평가항목 "이름" 토큰(부분문자열 매칭). 항목 번호(eval_item_number)가 아니라
 //   이름 기반이라 항목 추가/순서변경(재번호)에도 안전.
+//   pure = 해당 브랜드를 PURE 트랙(eval_mode=pure)으로 라우팅(coverage/KMS/persona/pentagon 미수행,
+//   ~7초). RAG 토글(item_names)과 독립 — RAG 를 꺼도(item_names 비움) pure 는 유지된다.
+//   구성된 org 는 기본 pure:true (명시 false 일 때만 해제).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,9 +21,11 @@ import path from 'node:path';
 const CONFIG_DIR = process.env.RAG_FEWSHOT_CONFIG_DIR || '/app/data/uploads';
 const CONFIG_PATH = path.join(CONFIG_DIR, 'rag_fewshot_config.json');
 
-// 파일 부재 시 기본 시드 — 기존 asdf(org10) 설명력 실험 상태 보존.
+// 파일 부재 시 기본 시드 — asdf(org10) 설명력 RAG + METAM(org30) pure 라우팅.
+// org30 은 골든셋 미구축이라 RAG 는 no-op(rubric_id 없음)이나 pure 라우팅으로 ~7초 확보.
 const DEFAULT_CONFIG = {
-    10: { rubric_id: 'rbrc_asdf_org10', item_names: ['설명력'] },
+    10: { rubric_id: 'rbrc_asdf_org10', item_names: ['설명력'], pure: true },
+    30: { rubric_id: '', item_names: [], pure: true },
 };
 
 function _normalize(cfg) {
@@ -32,7 +37,9 @@ function _normalize(cfg) {
         const itemNames = Array.isArray(v.item_names)
             ? [...new Set(v.item_names.map((s) => String(s).trim()).filter(Boolean))]
             : [];
-        out[String(k)] = { rubric_id: rubricId, item_names: itemNames };
+        // 구성된 org 는 기본 PURE 라우팅 — 명시 false 일 때만 해제. RAG 토글과 독립이라
+        // item_names 가 비어도(RAG off) pure 는 보존된다.
+        out[String(k)] = { rubric_id: rubricId, item_names: itemNames, pure: v.pure !== false };
     }
     return out;
 }
@@ -59,13 +66,21 @@ export function saveRagFewshotConfig(cfg) {
     return obj;
 }
 
-// 평가 시 사용 — 해당 org 의 유효 설정. item_names 비었거나 rubric_id 없으면 null(=게이트 미적용).
+// 평가 시 사용 — 해당 org 의 유효 RAG 설정. item_names 비었거나 rubric_id 없으면 null(=게이트 미적용).
 export function getOrgFewshot(orgId) {
     const cfg = loadRagFewshotConfig();
     const entry = cfg[String(orgId)];
     if (!entry) return null;
     if (!entry.rubric_id || !Array.isArray(entry.item_names) || !entry.item_names.length) return null;
     return { rubric_id: entry.rubric_id, item_names: entry.item_names };
+}
+
+// PURE 라우팅 판정 — 해당 org 가 구성돼 있고 pure 해제(false)가 아니면 true. RAG 토글과
+// 독립이라 item_names 가 비어도(RAG off) pure 는 유지된다. 평가 콜에 eval_mode=pure 주입용.
+export function getOrgPure(orgId) {
+    const cfg = loadRagFewshotConfig();
+    const entry = cfg[String(orgId)];
+    return Boolean(entry && entry.pure);
 }
 
 export { CONFIG_PATH };

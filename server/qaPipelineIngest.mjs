@@ -23,7 +23,7 @@
 
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { buildRubricFromDefs } from './rubricSync.mjs';
-import { getOrgFewshot } from './ragFewshotConfig.mjs';
+import { getOrgFewshot, getOrgPure } from './ragFewshotConfig.mjs';
 
 const DEFAULT_BASE_URL = 'http://localhost:8081';
 // EC2 원격 백엔드 (V3 qa-pipeline, 8081 직접 접근) — call.pipeline_target==='ec2' 시 사용.
@@ -397,6 +397,9 @@ function buildEvaluatePayload(call) {
             org_id: call?.org_id !== undefined ? safeStr(call.org_id) : undefined,
             department: call?.department !== undefined ? safeStr(call.department) : undefined,
             role: call?.role !== undefined ? safeStr(call.role) : undefined,
+            // PURE 트랙 진입 신호 — 백엔드 _resolve_pure_mode 가 metadata.eval_mode 로 읽어
+            // build_graph_v2_pure 선택(coverage/KMS/persona/pentagon 미수행). 미동봉이면 기존 풀 그래프.
+            eval_mode: safeStr(call?.eval_mode).trim() || undefined,
             rubric_id: rubricId || undefined,
             // 루브릭 few-shot 항목 게이트 — "이 항목 이름들만" RAG few-shot 허용(브랜드 한정 실험).
             // 백엔드 rubric_fewshot_gate 가 state.metadata 에서 읽어 custom_rubric 경로① 게이트.
@@ -1275,10 +1278,16 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                 // 검색키)+항목이름 게이트+RAG ON 주입. 미설정/미토글 org 는 기존 거동(rubric_inline 만).
                 // rubric_inline 우선 해석은 그대로(평가 항목 불변), rubric_id 는 fewshot_store 검색 키로만 쓰임.
                 const _rfx = getOrgFewshot(orgId);
+                // PURE 라우팅 — 구성된 브랜드(ragFewshotConfig.pure)면 eval_mode=pure 동봉.
+                // 백엔드가 build_graph_v2_pure 로 분기 → coverage/KMS/persona/pentagon 미수행(~7초).
+                // RAG 토글과 독립이라 _rfx 가 null(RAG off)이어도 pure 는 유지. 퓨어 베이스 +
+                // 골든셋 RAG on/off 확장 구조.
+                const _pure = getOrgPure(orgId);
                 rubricCall = {
                     ...call,
                     org_id: orgId,
                     rubric_inline: rubric,
+                    ...(_pure ? { eval_mode: 'pure' } : {}),
                     ...(_rfx
                         ? {
                               rubric_id: _rfx.rubric_id,
