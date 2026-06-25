@@ -913,9 +913,15 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
             return m !== null && m > 0 ? m : 5;
         })();
         const aiEval = round1(score);
-        rawTotal += aiEval;
-        sumEarned += aiEval;
-        sumMax += itemMax;
+        // Y/N(컴플라이언스 체크) 항목은 콜 총점(ai_score)·만점 합산에서 제외 — 점수 무관 순수 모니터링
+        // (기획 docs/YN_EVAL_ITEM_PLAN §4.2). 결과 행(checklist/evaluations)은 그대로 기록 →
+        // qa_evaluation_rows 에 충족(ai_eval>0)/미충족(ai_eval=0)으로 남아 위반율 집계에 사용.
+        const isYesNo = safeStr(slot.scoring_type).trim().toLowerCase() === 'yes_no';
+        if (!isYesNo) {
+            rawTotal += aiEval;
+            sumEarned += aiEval;
+            sumMax += itemMax;
+        }
 
         checklist.push({
             order_no: orderNo,

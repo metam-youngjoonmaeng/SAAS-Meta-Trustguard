@@ -772,10 +772,6 @@ function AxisPreview({ axisNo, label, dbAxis, onEdit }) {
                 </PreviewSection>
 
                 <PreviewSection title="평가 프롬프트">
-                    <div className="text-[12px] text-[#055AAF] bg-[#EEF4FB] border border-[#BFD4F2] rounded-md px-3 py-2 mb-2.5 inline-flex items-start gap-2">
-                        <Info size={12} className="mt-0.5 shrink-0" />
-                        <span>이 축의 종합 등급·요약을 생성하는 메타 프롬프트입니다. 개별 항목 채점은 체크리스트 항목에서 설정합니다.</span>
-                    </div>
                     <pre className="text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3">{`이 축에 매핑된 체크리스트 결과와 상담 전사를 바탕으로
 "${label}" 영역의 종합 등급·분석·요약을 생성하세요.
 
@@ -959,6 +955,9 @@ const CHANGE_TYPE_LABEL = {
     criterion_prompt_update: '평가 기준 + 프롬프트 수정',
     prompt_update:           '평가 프롬프트 수정',
     criterion_update:        '평가 기준 수정',
+    // 펜타곤 축 전용 change_type (pentagon_axis_change_log)
+    label_rename:            '축 이름 변경',
+    description_update:      '축 설명 수정',
 };
 
 const FIELD_LABEL = {
@@ -1022,10 +1021,13 @@ function HistoryModal({ departments = [], onClose }) {
         );
         const lastByKey = new Map(); // key → 직전 changed_at
         for (const e of sortedAsc) {
-            const key = `${e.department}#${e.order_no}`;
-            const prev = lastByKey.get(key) || null;
-            map.set(e.id, prev);
-            lastByKey.set(key, e.changed_at);
+            // source 포함 — 평가항목/펜타곤축의 order_no↔axis_no 충돌로 diff '이전 시점'이 엉키지 않게.
+            const src = e.source || 'eval_item';
+            const groupKey = `${src}#${e.department}#${e.order_no}`;
+            const rowKey = `${src}-${e.id}`;
+            const prev = lastByKey.get(groupKey) || null;
+            map.set(rowKey, prev);
+            lastByKey.set(groupKey, e.changed_at);
         }
         return map;
     }, [entries]);
@@ -1070,20 +1072,21 @@ function HistoryModal({ departments = [], onClose }) {
                 ) : (
                     <div className="grid gap-2.5">
                         {entries.map((entry) => {
-                            const isOpen = expanded === entry.id;
+                            const rowKey = `${entry.source || 'eval_item'}-${entry.id}`;
+                            const isOpen = expanded === rowKey;
                             const label = CHANGE_TYPE_LABEL[entry.change_type] || entry.change_type;
                             const actorLabel = entry.display_name || entry.login_id || '시스템';
-                            const beforeAt = prevChangeByEntry.get(entry.id);
+                            const beforeAt = prevChangeByEntry.get(rowKey);
                             const beforeAtStr = beforeAt ? formatChangedAt(beforeAt) : null;
                             const afterAt = formatChangedAt(entry.changed_at);
                             const fields = collectChangedFields(entry.before_json, entry.after_json);
                             const itemLabel = entry.item_name || `(항목 #${entry.order_no})`;
                             const categoryLabel = entry.category_name || '';
                             return (
-                                <div key={entry.id} className="rounded-xl bg-white border border-[#E4E7EC]">
+                                <div key={rowKey} className="rounded-xl bg-white border border-[#E4E7EC]">
                                     <button
                                         type="button"
-                                        onClick={() => setExpanded(isOpen ? null : entry.id)}
+                                        onClick={() => setExpanded(isOpen ? null : rowKey)}
                                         className="w-full px-4 py-3 flex items-center gap-3 text-left cursor-pointer hover:bg-[#FAFBFC] rounded-xl"
                                     >
                                         <ChevronRight
@@ -1330,7 +1333,7 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                         </button>
                         <button
                             type="button"
-                            onClick={() => setScoringType('yes_no')}
+                            onClick={() => { setScoringType('yes_no'); setPentagonAxis(''); }}
                             className={pillBtn(scoringType === 'yes_no')}
                         >
                             Y/N
@@ -1353,27 +1356,29 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                         </div>
                     </FormGroup>
                 ) : (
-                    <FormGroup label="만점">
-                        <div className="text-[12.5px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5">
-                            충족=1점 / 미충족=0점 (자동)
+                    <FormGroup label="채점 안내">
+                        <div className="text-[12.5px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5 leading-relaxed">
+                            충족 / 위반 으로만 판정합니다. <span className="text-[#475467] font-medium">점수·총점·펜타곤에는 반영되지 않고</span>, 컴플라이언스 체크(이행·위반 모니터링)에만 사용됩니다.
                         </div>
                     </FormGroup>
                 )}
 
-                <FormGroup label="Pentagon 매핑">
-                    <select
-                        value={pentagonAxis}
-                        onChange={(e) => setPentagonAxis(e.target.value)}
-                        className="form-input-pretty"
-                    >
-                        <option value="">매핑 없음 (총점에만 반영)</option>
-                        {axes.map((label, idx) => (
-                            <option key={label} value={label}>
-                                {['①','②','③','④','⑤'][idx]} {label}
-                            </option>
-                        ))}
-                    </select>
-                </FormGroup>
+                {scoringType === 'numeric' && (
+                    <FormGroup label="Pentagon 매핑">
+                        <select
+                            value={pentagonAxis}
+                            onChange={(e) => setPentagonAxis(e.target.value)}
+                            className="form-input-pretty"
+                        >
+                            <option value="">매핑 없음 (총점에만 반영)</option>
+                            {axes.map((label, idx) => (
+                                <option key={label} value={label}>
+                                    {['①','②','③','④','⑤'][idx]} {label}
+                                </option>
+                            ))}
+                        </select>
+                    </FormGroup>
+                )}
 
                 {isEdit && (
                     <FormGroup label="활성 상태">

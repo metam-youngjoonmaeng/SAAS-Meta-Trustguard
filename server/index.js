@@ -1524,6 +1524,7 @@ app.get('/api/analysis/:qaId', async (req, res) => {
                         AND deactivated_at IS NULL
                         AND pentagon_axis IS NOT NULL
                         AND btrim(pentagon_axis) <> ''
+                        AND (scoring_type IS NULL OR scoring_type <> 'yes_no')
                       ORDER BY order_no ASC, version DESC`,
                     [rows[0].org_id]
                 );
@@ -1617,7 +1618,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
     }
     try {
         const { rows: callRows } = await pool.query(
-            `SELECT "ID" AS qa_id, department, role, ai_analysis_target, ai_analysis_reason, voc_code, promotion_code,
+            `SELECT "ID" AS qa_id, department, role, org_id, ai_analysis_target, ai_analysis_reason, voc_code, promotion_code,
                     manual_review, manual_review_reasons
              FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
             [qaId]
@@ -1717,6 +1718,25 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
         for (const r of checklist_rows) {
             maxByOrderNo.set(Number(r.order_no), parseMaxPointsFromValidationTime(r.validation_time));
         }
+        // 항목별 채점방식 — 프론트가 Y/N(컴플라이언스 체크) 항목을 점수표에서 분리하는 데 사용.
+        // 활성 eval_item_defs.scoring_type by order_no (펜타곤 axisByOrderNo 조회와 동일 패턴).
+        const scoringTypeByOrderNo = new Map();
+        if (callMeta.org_id !== null && callMeta.org_id !== undefined) {
+            try {
+                const { rows: stRows } = await pool.query(
+                    `SELECT DISTINCT ON (order_no) order_no, scoring_type
+                       FROM public.eval_item_defs
+                      WHERE org_id = $1 AND is_active = true AND deactivated_at IS NULL
+                      ORDER BY order_no ASC, version DESC`,
+                    [callMeta.org_id]
+                );
+                for (const r of stRows) {
+                    scoringTypeByOrderNo.set(Number(r.order_no), String(r.scoring_type || 'numeric').toLowerCase());
+                }
+            } catch (stErr) {
+                console.error('GET /api/evaluations scoring_type lookup failed:', stErr);
+            }
+        }
         const { rows: ymRows } = await pool.query(
             `SELECT substr("CDATE", 1, 7) AS ym FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
             [qaId]
@@ -1765,6 +1785,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
             const monthlyAvgPct = toPct(monthlyByItem.get(r.item) ?? null, max);
             return {
                 ...r,
+                scoring_type: scoringTypeByOrderNo.get(Number(r.order_no)) || 'numeric',
                 manual_eval_option: opt || null,
                 manual_eval: judged ? r.manual_eval : null,
                 match_rate: matchRate,
@@ -3483,15 +3504,28 @@ app.get('/api/admin/eval-item-history', async (req, res) => {
             params.push(changeType);
             where.push(`change_type = $${params.length}`);
         }
+        const whereSql = where.join(' AND ');
         params.push(effectiveLimit);
+        const limitParam = `$${params.length}`;
+        // 평가항목(eval_item_change_log) + 펜타곤 축(pentagon_axis_change_log) 통합 이력.
+        // 펜타곤 행은 axis_no→order_no, label_snapshot→item_name, category_name='펜타곤 축' 로 매핑하고
+        // source 로 출처 구분(프론트가 행 key·diff 그룹핑에 사용 — 두 테이블 id 충돌 방지).
+        // 두 WHERE 는 동일 placeholder($1..) 재사용. change_type 필터는 각 테이블 값에만 매칭(전체면 둘 다 표시).
         const { rows } = await pool.query(
             `SELECT id, department, order_no, item_name, category_name,
                     change_type, version, before_json, after_json,
-                    user_id, login_id, display_name, changed_at
+                    user_id, login_id, display_name, changed_at, 'eval_item' AS source
                FROM public.eval_item_change_log
-              WHERE ${where.join(' AND ')}
+              WHERE ${whereSql}
+            UNION ALL
+             SELECT id, department, axis_no AS order_no, label_snapshot AS item_name,
+                    '펜타곤 축' AS category_name,
+                    change_type, version, before_json, after_json,
+                    user_id, login_id, display_name, changed_at, 'pentagon_axis' AS source
+               FROM public.pentagon_axis_change_log
+              WHERE ${whereSql}
               ORDER BY changed_at DESC
-              LIMIT $${params.length}`,
+              LIMIT ${limitParam}`,
             params
         );
         res.json({ ok: true, entries: rows });
