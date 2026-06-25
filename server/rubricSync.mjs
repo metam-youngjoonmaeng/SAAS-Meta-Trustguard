@@ -231,6 +231,9 @@ export async function buildRubricFromDefs(pool, orgId) {
             name: itemName,
             category: categoryName,
             max_score: maxScore,
+            // 표시 분모(만점 폼 필드) — 채점 척도(max_score)와 독립. 백엔드 normalize_rubric 가
+            // 패스스루 → ItemResult.display_max. rowMeta(매퍼 분모)와 동일 값(SSOT).
+            display_max: displayMax,
             allowed_steps: allowedSteps,
             // 채점 방식 동봉 (SSOT: db_source.py item dict 와 정합). 백엔드
             // custom_rubric/prompt.py 의 build_rubric_item_block 이 이 값으로 Y/N

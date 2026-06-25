@@ -13,7 +13,11 @@ import fs from 'fs';
 import express from 'express';
 import { AUDIT_ACTION, AUDIT_VIEW_WINDOW_DAYS, insertQaAuditLog } from './auditLog.mjs';
 import { logger, todayLogPath } from './logger.mjs';
-import { seedMinimalEvalItems, seedEvalItemsFromDomain, seedPentagonAxesFromDomain } from './defaultEvalItems.mjs';
+import {
+    seedMinimalEvalItems,
+    seedEvalItemsFromDomain,
+    seedPentagonAxesFromDomain,
+} from './defaultEvalItems.mjs';
 
 function sha256Hex(s) {
     return crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -664,13 +668,12 @@ export function createBrandRouter(pool) {
                 [name, short, color, domainId]
             );
             out = rows[0];
-            // 신규 브랜드 = 선택한 도메인(업종)의 기본 평가항목을 복제.
-            // 도메인 미지정/디폴트 0건이면 '첫인사' 1항목으로 폴백(기존 동작 유지).
+            // 신규 브랜드 = 선택한 도메인(업종) 기본 평가항목 + 펜타곤 축 복제.
+            //   도메인 미지정/디폴트 0건이면 '첫인사' 1항목 폴백. 펜타곤 0건이면 프론트 코드 기본 라벨 폴백.
             seededItemCount = await seedEvalItemsFromDomain(client, out.id, domainId);
             if (seededItemCount === 0) {
                 seededItemCount = await seedMinimalEvalItems(client, out.id);
             }
-            // 도메인 기본 펜타곤 축도 복제(0건이면 프론트가 코드 기본 라벨로 폴백).
             seededAxisCount = await seedPentagonAxesFromDomain(client, out.id, domainId);
             await client.query('COMMIT');
         } catch (err) {
@@ -717,41 +720,71 @@ export function createBrandRouter(pool) {
             fields.push(`active = $${idx++}`);
             values.push(Boolean(req.body.active));
         }
-        if ('domain_id' in (req.body || {})) {
+        const hasDomainInBody = 'domain_id' in (req.body || {});
+        let newDomainId = null;
+        if (hasDomainInBody) {
+            newDomainId = req.body.domain_id == null || req.body.domain_id === '' ? null : Number(req.body.domain_id);
             fields.push(`domain_id = $${idx++}`);
-            values.push(req.body.domain_id == null || req.body.domain_id === '' ? null : Number(req.body.domain_id));
+            values.push(newDomainId);
         }
         if (fields.length === 0) {
             res.status(400).json({ message: '수정 항목이 없습니다' });
             return;
         }
         values.push(id);
+        const client = await pool.connect();
+        let out;
+        let reseed = null;
+        let reseedAxes = null;
         try {
-            const { rows } = await pool.query(
+            await client.query('BEGIN');
+            // 도메인 변경 감지용 현재 값
+            const cur = await client.query('SELECT domain_id FROM public.organizations WHERE id = $1', [id]);
+            if (cur.rows.length === 0) {
+                await client.query('ROLLBACK').catch(() => {});
+                client.release();
+                res.status(404).json({ message: '브랜드를 찾을 수 없습니다' });
+                return;
+            }
+            const { rows } = await client.query(
                 `UPDATE public.organizations SET ${fields.join(', ')} WHERE id = $${idx}
                  RETURNING id, name, short, color, active, domain_id`,
                 values
             );
-            if (rows.length === 0) {
-                res.status(404).json({ message: '브랜드를 찾을 수 없습니다' });
-                return;
-            }
-            const out = rows[0];
-            await insertQaAuditLog(pool, {
-                req,
-                action: AUDIT_ACTION.BRAND_UPDATE,
-                resource_type: 'brand',
-                resource_id: String(id),
-                http_method: 'PATCH',
-                http_path: `/api/admin/brands/${id}`,
-                detail_json: JSON.stringify(req.body || {}).slice(0, 8000),
-                success: true,
-            });
-            res.json({ ...out, domain_name: await domainNameById(pool, out.domain_id) });
+            out = rows[0];
+            // 브랜드 수정 시에는 도메인이 바뀌어도 기존 평가항목/펜타곤 축을 보존한다(교체하지 않음).
+            // 도메인 기본 평가항목/펜타곤 축 적용은 신규 브랜드 생성(POST /admin/organizations) 시에만 수행.
+            await client.query('COMMIT');
         } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            client.release();
             console.error('PATCH /api/admin/brands/:id error:', err);
             res.status(500).json({ message: 'Failed to update brand.' });
+            return;
         }
+        client.release();
+        await insertQaAuditLog(pool, {
+            req,
+            action: AUDIT_ACTION.BRAND_UPDATE,
+            resource_type: 'brand',
+            resource_id: String(id),
+            http_method: 'PATCH',
+            http_path: `/api/admin/brands/${id}`,
+            detail_json: JSON.stringify({
+                ...(req.body || {}),
+                reseeded_eval_items: reseed?.count ?? null,
+                reseed_mode: reseed?.mode ?? null,
+                reseeded_pentagon_axes: reseedAxes ?? null,
+            }).slice(0, 8000),
+            success: true,
+        });
+        res.json({
+            ...out,
+            domain_name: await domainNameById(pool, out.domain_id),
+            reseeded_eval_items: reseed?.count ?? null,
+            reseed_mode: reseed?.mode ?? null,
+            reseeded_pentagon_axes: reseedAxes ?? null,
+        });
     });
 
     router.delete('/admin/brands/:id', requireSuperAdmin, async (req, res) => {

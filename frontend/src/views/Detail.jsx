@@ -494,7 +494,10 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
             let earnedAi = null;
             if (aiEvalRaw !== null && aiEvalRaw !== undefined && aiEvalRaw !== '') {
                 const n = Number(aiEvalRaw);
-                if (Number.isFinite(n)) earnedAi = Math.max(0, Math.min(maxPts, n));
+                // 채점 척도(프롬프트 점수단계) ↔ 표시 분모(만점 폼) 분리: 분자가 분모를 초과해도
+                // 그대로 표시(예: 50/1). 상한 클램프(Math.min) 제거, 하한 0 만 유지.
+                // 레거시·ecom·bank 는 score<=maxPts 라 동작 불변(무회귀).
+                if (Number.isFinite(n)) earnedAi = Math.max(0, n);
             }
             const aiEvalLabel = earnedAi === null ? '-' : formatEarnedOverMax(earnedAi, maxPts);
             const manRaw = evalRow.manual_eval_option ?? evalRow.manual_eval;
