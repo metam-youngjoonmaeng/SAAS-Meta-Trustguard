@@ -129,6 +129,64 @@ function itemNameOf(ev) {
 }
 
 /**
+ * /evaluate 응답에서 금지어/사전 매칭·규칙 인용 표현을 항목별로 수집.
+ *   RAG 로그 링버퍼 kind:'forbidden' 적재용. 점수 환산이 아니라 표시용 구조화 데이터만 추출.
+ *   소스 경로 (report.item_scores[] / evaluations[].evaluation 양쪽 동형, indexEvaluations 사용):
+ *     1) deductions[].rule_ref      → 규칙 참조 + reason/quote (표준 #6/#7 사전 1차필터 감점 포함)
+ *     2) ecom_rag_verify.violations[] (이커머스) / 은행 미러 verdicts·violations
+ *                                   → verdict / agent_quote / rule_ref / reason
+ *     3) evidence[]                 → RAG 위반 시 추가된 상담사 인용 (speaker/quote)
+ *   항목당 매칭이 하나도 없으면 결과에서 제외.
+ * @param {object} resp /evaluate (또는 stream result) 응답
+ * @returns {Array<{item_number:number,item_name:string,matches:Array<{term:string,rule_ref:string,verdict:string,quote:string}>}>}
+ */
+export function extractForbiddenFromResult(resp) {
+    const out = [];
+    const { byItem } = indexEvaluations(resp);
+    for (const [itemNumber, ev] of byItem) {
+        if (!ev || typeof ev !== 'object') continue;
+        const matches = [];
+
+        // 1) deductions[].rule_ref — rule_ref 또는 reason/quote 중 하나라도 있으면 채택.
+        for (const d of safeList(ev.deductions)) {
+            if (!d || typeof d !== 'object') continue;
+            const ruleRef = safeStr(d.rule_ref).trim();
+            const reason = safeStr(d.reason).trim();
+            const quote = safeStr(d.quote || d.evidence_quote).trim();
+            if (!ruleRef && !reason && !quote) continue;
+            matches.push({ term: '', rule_ref: ruleRef, verdict: reason, quote });
+        }
+
+        // 2) ecom_rag_verify.violations[] (이커머스) / 은행 미러 verdicts·violations.
+        const ragVerify = ev.ecom_rag_verify || ev.bank_rag_verify || null;
+        if (ragVerify && typeof ragVerify === 'object') {
+            const violations = [...safeList(ragVerify.violations), ...safeList(ragVerify.verdicts)];
+            for (const v of violations) {
+                if (!v || typeof v !== 'object') continue;
+                const verdict = safeStr(v.verdict).trim();
+                const ruleRef = safeStr(v.rule_ref).trim();
+                const quote = safeStr(v.agent_quote || v.quote).trim();
+                const term = safeStr(v.question || v.reason).trim();
+                if (!verdict && !ruleRef && !quote && !term) continue;
+                matches.push({ term, rule_ref: ruleRef, verdict, quote });
+            }
+        }
+
+        // 3) evidence[] — RAG 위반 시 추가된 상담사 인용 (speaker=상담사 우선, 그 외 quote 보존).
+        for (const q of safeList(ev.evidence)) {
+            if (!q || typeof q !== 'object') continue;
+            const quote = safeStr(q.quote).trim();
+            if (!quote) continue;
+            matches.push({ term: '', rule_ref: '', verdict: safeStr(q.speaker).trim(), quote });
+        }
+
+        if (!matches.length) continue;
+        out.push({ item_number: itemNumber, item_name: itemNameOf(ev), matches });
+    }
+    return out;
+}
+
+/**
  * evidence[] 에서 첫 상담사 발화 추출. 상담사 마커 우선, 고객 마커 제외, 그 외 첫 발화 fallback.
  * (dashboard_output.py:_first_agent_quote 와 동치)
  */
@@ -328,6 +386,13 @@ function buildEvaluatePayload(call) {
             department: call?.department !== undefined ? safeStr(call.department) : undefined,
             role: call?.role !== undefined ? safeStr(call.role) : undefined,
             rubric_id: rubricId || undefined,
+            // 루브릭 few-shot 항목 게이트 — "이 항목 이름들만" RAG few-shot 허용(브랜드 한정 실험).
+            // 백엔드 rubric_fewshot_gate 가 state.metadata 에서 읽어 custom_rubric 경로① 게이트.
+            // 미동봉이면 백엔드 게이트 비활성(전 항목 통과, 기존 거동). 항목 이름 기반=재번호 안전.
+            rubric_fewshot_item_names:
+                Array.isArray(call?.rubric_fewshot_item_names) && call.rubric_fewshot_item_names.length
+                    ? call.rubric_fewshot_item_names
+                    : undefined,
             // 활성 테넌트 평가항목을 요청에 직접 동봉 — 원격(EC2) 백엔드도 프론트 기준 그대로 평가.
             rubric_inline:
                 call?.rubric_inline && typeof call.rubric_inline === 'object' ? call.rubric_inline : undefined,
@@ -441,6 +506,16 @@ export async function callQaPipelineStream(call, { baseUrl } = {}, onProgress = 
                     if (typeof onProgress === 'function') {
                         try {
                             onProgress(ev.data);
+                        } catch {
+                            /* 진행상황 콜백 오류는 평가에 영향 없음 */
+                        }
+                    }
+                } else if (ev.event === 'rag_hits_ready') {
+                    // RAG 라이브 few-shot hit (item별 SSE). status 와 달리 type 래핑으로 흘려
+                    // 하위호환 보존 — 기존 status onProgress(ev.data) 시그니처는 불변.
+                    if (typeof onProgress === 'function') {
+                        try {
+                            onProgress({ type: 'rag_hits', data: ev.data });
                         } catch {
                             /* 진행상황 콜백 오류는 평가에 영향 없음 */
                         }
@@ -747,6 +822,14 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
 
 // 루브릭 트랙 항목 번호 기준값 — eval_item_number = RUBRIC_ITEM_BASE + index.
 const RUBRIC_ITEM_BASE = 5000;
+
+// 브랜드 한정 루브릭 few-shot 실험 설정 — org_id → { rubric_id(안정 검색키), item_names(이름 게이트) }.
+// 백엔드 custom_rubric 경로①(rubric_fewshot_gate)가 metadata 로 받아 "그 항목 이름만" RAG few-shot.
+// disable_rag=false 도 함께 주입해 해당 콜만 RAG ON. 끄려면 해당 org 항목 제거(전 브랜드 비활성=기존 거동).
+// 항목 "이름" 기반이라 평가항목 추가/순서변경(eval_item_number 재부여)에도 안 깨짐.
+const RUBRIC_FEWSHOT_EXPERIMENT = {
+    10: { rubric_id: 'rbrc_asdf_org10', item_names: ['설명력'] }, // asdf — '설명력' 항목 Test-RAG
+};
 
 /**
  * 루브릭 트랙 /evaluate 응답 → 테넌트 평가항목 행 변환.
@@ -1169,7 +1252,22 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                 // aggregator(파이프라인)에서 병합되어 응답에 포함됨(impl-agg 담당).
                 rowMeta = [];
             } else {
-                rubricCall = { ...call, org_id: orgId, rubric_inline: rubric };
+                // 브랜드 한정 few-shot 실험 — 설정된 org 면 rubric_id(안정 검색키)+항목이름 게이트+RAG ON 주입.
+                // 미설정 org 는 기존 거동(rubric_inline 만). rubric_inline 우선 해석은 그대로(평가 항목 불변),
+                // rubric_id 는 fewshot_store 검색 키로만 쓰임(resolve_search_rubric_id).
+                const _rfx = RUBRIC_FEWSHOT_EXPERIMENT[Number(orgId)];
+                rubricCall = {
+                    ...call,
+                    org_id: orgId,
+                    rubric_inline: rubric,
+                    ...(_rfx
+                        ? {
+                              rubric_id: _rfx.rubric_id,
+                              rubric_fewshot_item_names: _rfx.item_names,
+                              disable_rag: false,
+                          }
+                        : {}),
+                };
             }
         } else {
             warnings.push(`루브릭 항목 0건(org=${orgId}) — 표준 트랙 진행`);

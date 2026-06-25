@@ -43,7 +43,8 @@ import {
 // (orgId, orderNo) 정확 매칭이 1차, 항목명('설명력 · 전달력') 매칭은 폴백.
 // 실험 종료 시 이 배열만 비우면 배지 전부 사라짐.
 const TEST_RAG_ITEMS = [
-    { orgId: 10, orderNo: 6, itemName: '설명력 · 전달력' },
+    // asdf(org 10) — '설명력' 항목. 재번호로 현재 order_no=7 (구 6). 이름 매칭이 우선 폴백.
+    { orgId: 10, orderNo: 7, itemName: '설명력 (내부용어 지양·두괄식)' },
 ];
 
 function normalizeItemName(s) {

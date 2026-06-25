@@ -615,6 +615,23 @@ export async function fetchAppLogsRecent({ limit } = {}) {
     return request(`/api/admin/logs/recent${qs ? `?${qs}` : ''}`);
 }
 
+/* ── RAG · 사전 로그(서버 인메모리 링버퍼) ───────────────────────
+ * 평가 시 sub-agent 가 emit 한 RAG few-shot hit / 금지어·사전 매칭을 백엔드 인메모리
+ * 링버퍼에 적재한 항목을 최신순으로 반환. (평가 요청에 disable_rag=false 여야 hit 발생)
+ * 응답: { entries: [{ qa_id, ts, org_id?, item_number, item_name?, kind:'rag'|'forbidden',
+ *                       hits?:[{example_id,score,score_bucket?,summary?}],
+ *                       matches?:[{term?,rule_ref?,verdict?,quote?}] }, ...] }
+ * → entries 배열만 반환(없으면 빈 배열).
+ */
+export async function fetchRagLogRecent({ limit = 100, qa_id } = {}) {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    if (qa_id) params.set('qa_id', String(qa_id));
+    const qs = params.toString();
+    const data = await request(`/api/rag-log/recent${qs ? `?${qs}` : ''}`);
+    return Array.isArray(data?.entries) ? data.entries : [];
+}
+
 /* ── 알림(수신자별 영구 알림) ───────────────────────────────────
  * 검수 워크플로우 이벤트(최종승인·수정반영)를 수신자(상담사) 단위로 영구 저장/조회.
  * 본인에게 온 알림만 반환(세션 스코프). scope: 'all'(기본) | 'current'(안읽음만).

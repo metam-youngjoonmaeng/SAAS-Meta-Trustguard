@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Loader2, Pause, Play, RefreshCw, ChevronDown, ListChecks, Terminal } from 'lucide-react';
+import { Loader2, Pause, Play, RefreshCw, ChevronDown, ListChecks, Terminal, Sparkles } from 'lucide-react';
 import Header from '../components/Header';
-import { fetchAuditLogs, fetchAppLogsRecent } from '../services/api';
+import { fetchAuditLogs, fetchAppLogsRecent, fetchRagLogRecent } from '../services/api';
 
 const POLL_INTERVAL_MS = 5000;
 const PAGE_SIZE = 100;
@@ -394,10 +394,173 @@ function AppPanel() {
     );
 }
 
+/* ── RAG · 사전 패널 (백엔드 인메모리 링버퍼) ──────────────── */
+function fmtRagTime(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString('ko-KR', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    });
+}
+
+function RagKindChip({ kind }) {
+    const isForbidden = kind === 'forbidden';
+    const tone = isForbidden ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700';
+    const label = isForbidden ? '금지어' : 'RAG';
+    return (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold font-mono ${tone}`}>
+            {label}
+        </span>
+    );
+}
+
+function RagContentCell({ entry }) {
+    if (entry.kind === 'forbidden') {
+        const matches = Array.isArray(entry.matches) ? entry.matches : [];
+        if (matches.length === 0) return <span className="text-[#98A2B3]">—</span>;
+        return (
+            <ul className="space-y-0.5">
+                {matches.map((m, i) => (
+                    <li key={i} className="text-[12px] text-[#475467]">
+                        <span className="font-semibold text-[#B42318]">{m.rule_ref || m.term || '—'}</span>
+                        {m.verdict && <span className="text-[#667085]"> · {m.verdict}</span>}
+                        {m.quote && <span className="text-[#98A2B3]"> — “{m.quote}”</span>}
+                    </li>
+                ))}
+            </ul>
+        );
+    }
+    const hits = Array.isArray(entry.hits) ? entry.hits : [];
+    if (hits.length === 0) return <span className="text-[#98A2B3]">—</span>;
+    return (
+        <ul className="space-y-0.5">
+            {hits.map((h, i) => (
+                <li key={i} className="text-[12px] text-[#475467]">
+                    <span className="font-semibold text-[#055AAF]">{h.example_id || '—'}</span>
+                    {(h.score !== null && h.score !== undefined) && (
+                        <span className="text-[#667085]"> ({h.score})</span>
+                    )}
+                    {h.summary && <span className="text-[#98A2B3]"> — {h.summary}</span>}
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+function RagLogPanel() {
+    const [entries, setEntries] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [paused, setPaused] = useState(false);
+
+    async function load() {
+        try {
+            const data = await fetchRagLogRecent({ limit: PAGE_SIZE });
+            const rows = Array.isArray(data?.entries) ? data.entries : [];
+            setEntries(rows);
+            setError(null);
+        } catch (e) {
+            setError(e?.message || 'RAG 로그 로드 실패');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        load();
+    }, []);
+
+    useEffect(() => {
+        if (paused) return;
+        const id = setInterval(load, POLL_INTERVAL_MS);
+        return () => clearInterval(id);
+    }, [paused]);
+
+    return (
+        <>
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-[12px] text-[#667085]">
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${paused ? 'bg-gray-400' : 'bg-green-500 animate-pulse'}`} />
+                        {paused ? '갱신 일시정지' : `자동 갱신 중 (${POLL_INTERVAL_MS / 1000}초)`}
+                    </span>
+                    <span>·</span>
+                    <span>총 {entries.length}건 표시</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setPaused((v) => !v)}
+                        className="inline-flex items-center gap-1.5 h-[34px] px-3.5 rounded-full border border-[#E4E7EC] bg-white text-[12.5px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer"
+                    >
+                        {paused ? <Play size={12} /> : <Pause size={12} />}
+                        {paused ? '재개' : '일시정지'}
+                    </button>
+                    <button
+                        onClick={load}
+                        className="inline-flex items-center gap-1.5 h-[34px] px-3.5 rounded-full bg-[#055AAF] text-white text-[12.5px] font-semibold hover:bg-[#1E70E0] shadow-sm cursor-pointer"
+                    >
+                        <RefreshCw size={12} /> 새로고침
+                    </button>
+                </div>
+            </div>
+
+            {loading ? (
+                <div className="flex justify-center py-12">
+                    <Loader2 className="h-5 w-5 animate-spin text-[#667085]" />
+                </div>
+            ) : (
+                <>
+                    {error && <p className="text-sm text-[#D92D20]">{error}</p>}
+                    <div className="bg-white border border-[#E4E7EC] rounded-xl overflow-hidden">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b border-[#E4E7EC] bg-[#F9FAFB]">
+                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[140px]">시각</th>
+                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[140px]">qa_id</th>
+                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[200px]">항목</th>
+                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[90px]">종류</th>
+                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider">내용</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#E4E7EC]">
+                                {entries.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} className="px-3 py-10 text-center text-sm text-[#667085]">
+                                            표시할 RAG/사전 로그가 없습니다. (평가 실행 시 disable_rag=false 여야 RAG hit 가 기록됩니다.)
+                                        </td>
+                                    </tr>
+                                )}
+                                {entries.map((e, idx) => (
+                                    <tr key={`${e.qa_id || 'na'}-${e.ts}-${idx}`} className="hover:bg-[#F9FAFB] align-top">
+                                        <td className="px-3 py-2 text-[11.5px] text-[#667085] tabular-nums font-mono">{fmtRagTime(e.ts)}</td>
+                                        <td className="px-3 py-2 text-[12px] text-[#101828] font-mono break-all">{e.qa_id || '—'}</td>
+                                        <td className="px-3 py-2 text-[12px] text-[#475467]">
+                                            <span className="font-semibold text-[#101828]">#{e.item_number}</span>
+                                            {e.item_name && <span className="text-[#667085]"> {e.item_name}</span>}
+                                        </td>
+                                        <td className="px-3 py-2"><RagKindChip kind={e.kind} /></td>
+                                        <td className="px-3 py-2"><RagContentCell entry={e} /></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
+            )}
+        </>
+    );
+}
+
 /* ── 페이지 컨테이너 + 서브탭 ────────────────────────────── */
 const TABS = [
     { id: 'audit', label: '사용자 활동 (Audit)', icon: ListChecks },
     { id: 'app', label: '서버 로그 (App)', icon: Terminal },
+    { id: 'rag', label: 'RAG · 사전 (백엔드)', icon: Sparkles },
 ];
 
 const Logs = () => {
@@ -410,7 +573,9 @@ const Logs = () => {
                 subtitle={
                     activeTab === 'audit'
                         ? `사용자 활동 audit — 최근 ${VIEW_WINDOW_DAYS}일 이내 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (DB 보관 3일).`
-                        : `서버 application 로그 — 오늘 ${APP_LOG_LIMIT}줄을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (파일 보관 3일).`
+                        : activeTab === 'app'
+                          ? `서버 application 로그 — 오늘 ${APP_LOG_LIMIT}줄을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (파일 보관 3일).`
+                          : `RAG few-shot 골든 / 금지어·사전 매칭 로그 — 백엔드 인메모리 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (평가 시 disable_rag=false 필요).`
                 }
                 actions={null}
             />
@@ -437,7 +602,7 @@ const Logs = () => {
             </div>
 
             <div className="space-y-3">
-                {activeTab === 'audit' ? <AuditPanel /> : <AppPanel />}
+                {activeTab === 'audit' ? <AuditPanel /> : activeTab === 'app' ? <AppPanel /> : <RagLogPanel />}
             </div>
         </div>
     );

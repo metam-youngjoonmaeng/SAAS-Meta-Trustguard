@@ -19,7 +19,7 @@ import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChe
 /* SAMPLE_UPLOAD_FEATURE */ import { ingestSampleToDb, clearSamplesFromDb } from './sampleIngest.mjs';
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
-import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall } from './qaPipelineIngest.mjs';
+import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, extractForbiddenFromResult } from './qaPipelineIngest.mjs';
 import { startIcsQaPoller } from './icsQaPoller.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
@@ -61,6 +61,22 @@ function round1(value) {
 
 function clamp0to100(value) {
     return Math.max(0, Math.min(100, value));
+}
+
+/* ── [RAG·사전 로그, additive] 백엔드 RAG few-shot hit / 금지어·사전 매칭 인메모리 링버퍼 ──
+ * DB 미적재(스키마 불변). 평가 잡 onProgress(type==='rag_hits') 와 평가 결과
+ * extractForbiddenFromResult(resp) 가 여기에 push. GET /api/rag-log/recent 가 최신순 반환.
+ * 레코드 계약:
+ *   { qa_id, ts, org_id?, item_number, item_name?, kind:'rag'|'forbidden',
+ *     hits?:[{example_id,score,score_bucket?,summary?}],            // kind==='rag'
+ *     matches?:[{term?,rule_ref?,verdict?,quote?}] }                // kind==='forbidden'
+ * 상한 500(초과분 shift). 외부(평가 잡)에서 pushRagLog(entry) 로 적재. */
+const RAG_LOG = [];
+const RAG_LOG_MAX = 500;
+function pushRagLog(entry) {
+    if (!entry || typeof entry !== 'object') return;
+    RAG_LOG.push({ ts: Date.now(), ...entry });
+    if (RAG_LOG.length > RAG_LOG_MAX) RAG_LOG.shift();
 }
 
 function orderNoPct(orderNos, rows) {
@@ -3718,15 +3734,52 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
     // 내부 플럼빙(barrier 등). 0초 완료 이벤트가 단계 수를 부풀리고 "KSQI 평가" 같은
     // 꺼진 기능명이 노출되는 것을 방지.
     const PROGRESS_HIDDEN_NODE = /^(ksqi|gt_)|_barrier$|^(debate|kms|consumer_detect|hitl_queue_populator|combined_report|report_narrator)$/;
+    // [RAG·사전 로그, additive] 평가 잡 진행 중 흘러오는 RAG few-shot hit(라이브)을 인메모리 링버퍼에 적재.
+    // 평가 결과의 금지어/사전 매칭은 잡 완료 후 extractForbiddenFromResult 로 별도 push.
+    const callOrgId = Number(call?.org_id);
+    const ragOrgId = Number.isFinite(callOrgId) ? callOrgId : undefined;
+    // 파이프라인이 forward 한 원 resp(있으면) — 금지어 추출용. onProgress(type==='result') 로 도착.
+    let capturedRawResp = null;
     const onProgress = (ev) => {
-        const node = String(ev?.node || '').trim();
+        if (!ev || typeof ev !== 'object') return;
+        // 신규: RAG few-shot hit 라이브 이벤트 → 계약 레코드(kind:'rag') 적재. (기존 status 흐름 불변)
+        if (ev.type === 'rag_hits') {
+            try {
+                const d = ev.data || {};
+                const hits = Array.isArray(d.fewshot) ? d.fewshot : [];
+                pushRagLog({
+                    qa_id: job.qa_id,
+                    org_id: ragOrgId,
+                    item_number: Number(d.item_number),
+                    item_name: d.item_name || d.intent || undefined,
+                    kind: 'rag',
+                    hits: hits.map((h) => ({
+                        example_id: String(h?.example_id ?? ''),
+                        score: h?.score ?? null,
+                        score_bucket: h?.score_bucket ?? undefined,
+                        summary: h?.index_summary || h?.rationale || h?.segment_text || undefined,
+                    })),
+                });
+            } catch {
+                /* 로그 적재 실패는 평가에 영향 없음 */
+            }
+            return;
+        }
+        // 신규: 파이프라인이 원 resp 를 forward 하면 캡처(금지어 추출용). 진행 표시에는 영향 없음.
+        if (ev.type === 'result') {
+            if (ev.data && typeof ev.data === 'object') capturedRawResp = ev.data;
+            return;
+        }
+        // 기존: 노드 진행(status). 신규 래핑(type:'status') / 레거시 평면 모두 수용.
+        const stat = ev.type === 'status' ? ev.data?.status : ev.status;
+        const node = String((ev.type === 'status' ? ev.data?.node : ev.node) || '').trim();
         if (!node) return;
         if (PROGRESS_HIDDEN_NODE.test(node)) return;
         const p = job.progress;
         p.last_event_at = Date.now();
-        if (ev?.status === 'started') {
+        if (stat === 'started') {
             if (!p.running_nodes.includes(node)) p.running_nodes.push(node);
-        } else if (ev?.status === 'completed') {
+        } else if (stat === 'completed') {
             p.running_nodes = p.running_nodes.filter((n) => n !== node);
             if (!doneNodes.has(node)) {
                 doneNodes.add(node);
@@ -3765,6 +3818,32 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
                 raw_total: result.raw_total,
                 max_total: result.max_total,
             };
+            // [RAG·사전 로그, additive] 평가 결과에서 금지어/사전·규칙 매칭 추출 → 계약 레코드(kind:'forbidden') 적재.
+            // 파이프라인이 원 resp 를 forward(onProgress type:'result')했을 때만 동작. 실패는 무시(무회귀).
+            try {
+                if (capturedRawResp && typeof extractForbiddenFromResult === 'function') {
+                    const forbidden = extractForbiddenFromResult(capturedRawResp) || [];
+                    for (const f of forbidden) {
+                        pushRagLog({
+                            qa_id: result.qa_id ?? job.qa_id,
+                            org_id: ragOrgId,
+                            item_number: Number(f?.item_number),
+                            item_name: f?.item_name || undefined,
+                            kind: 'forbidden',
+                            matches: Array.isArray(f?.matches)
+                                ? f.matches.map((m) => ({
+                                      term: m?.term ?? undefined,
+                                      rule_ref: m?.rule_ref ?? undefined,
+                                      verdict: m?.verdict ?? undefined,
+                                      quote: m?.quote ?? m?.agent_quote ?? undefined,
+                                  }))
+                                : [],
+                        });
+                    }
+                }
+            } catch {
+                /* 금지어 추출/적재 실패는 평가에 영향 없음 */
+            }
             await insertQaAuditLog(pool, {
                 req,
                 action: AUDIT_ACTION.INGEST_QA_PIPELINE,
@@ -3811,6 +3890,21 @@ app.get('/api/ingest/qa-pipeline-jobs/:jobId', (req, res) => {
             finished_at: job.finished_at,
         },
     });
+});
+
+// [RAG·사전 로그, additive] 백엔드 RAG few-shot hit / 금지어·사전 매칭 인메모리 로그 조회.
+// limit(기본 100, 1~500) · qa_id(옵션 필터). 최신순으로 slice 반환. DB 미조회(인메모리 링버퍼).
+// 평가 시 disable_rag=false 여야 RAG hit 이 발생(대시보드 기본 모드는 RAG OFF → 빈 결과).
+app.get('/api/rag-log/recent', requireAdmin, (req, res) => {
+    let limit = Number(req.query.limit);
+    if (!Number.isFinite(limit) || limit <= 0) limit = 100;
+    limit = Math.min(Math.max(1, Math.trunc(limit)), RAG_LOG_MAX);
+    const qaId = String(req.query.qa_id || '').trim();
+    let rows = RAG_LOG;
+    if (qaId) rows = rows.filter((e) => String(e.qa_id ?? '') === qaId);
+    // 최신순(ts 내림차순) — 원본 링버퍼는 변형하지 않도록 복사 후 정렬.
+    const entries = rows.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, limit);
+    res.json({ entries });
 });
 
 async function bootstrap() {
