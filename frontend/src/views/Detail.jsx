@@ -532,15 +532,10 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         });
     }, [evaluation, brandConfig, checklistTemplate, rubricMaxByOrderNo]);
 
-    // Y/N(컴플라이언스 체크) 항목은 점수표·총점·진행률에서 분리 — 점수 무관 모니터링 전용.
-    //   scoredRows: 점수제 항목(점수표·총점·검수진행률 대상)
-    //   complianceRows: Y/N 항목(별도 컴플라이언스 섹션, ✓충족/✗위반/–해당없음)
+    // Y/N(컴플라이언스 체크) 항목은 점수표에 같은 행으로 표시하되 AI평가=충족/위반, 수기평가 비활성.
+    // 점수 무관이라 총점(callTotalMax)·검수진행률(reviewProgress) 산정에서만 제외 → scoredRows.
     const scoredRows = useMemo(
         () => checklistRows.filter((r) => r.scoring_type !== 'yes_no'),
-        [checklistRows]
-    );
-    const complianceRows = useMemo(
-        () => checklistRows.filter((r) => r.scoring_type === 'yes_no'),
         [checklistRows]
     );
 
@@ -1065,19 +1060,19 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                             // 전체 개수로 합치면 order_no 재정렬로 같은 카테고리가
                                             // 떨어진 위치에 다시 나타날 때 rowSpan 이 어긋난다.
                                             const isFirstInRun = (i) =>
-                                                i === 0 || scoredRows[i - 1].category !== scoredRows[i].category;
+                                                i === 0 || checklistRows[i - 1].category !== checklistRows[i].category;
                                             const runLength = (i) => {
                                                 let len = 1;
                                                 while (
-                                                    i + len < scoredRows.length &&
-                                                    scoredRows[i + len].category === scoredRows[i].category
+                                                    i + len < checklistRows.length &&
+                                                    checklistRows[i + len].category === checklistRows[i].category
                                                 ) {
                                                     len += 1;
                                                 }
                                                 return len;
                                             };
 
-                                            return scoredRows.map((r, i) => {
+                                            return checklistRows.map((r, i) => {
                                                 const showCategory = isFirstInRun(i);
 
                                                 return (
@@ -1129,54 +1124,42 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                 </span>
                                                             </div>
                                                         </td>
-                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] font-semibold text-[#101828] tabular-nums">{r.ai_eval_label}</td>
-                                                        <td className="px-2.5 py-2.5 align-middle">
-                                                            <ManualJudgmentCell
-                                                                judgment={manualJudgments[r.row_key]?.judgment || ''}
-                                                                goldSet={manualJudgments[r.row_key]?.goldSet || false}
-                                                                onJudgment={(v) => setJudgment(r.row_key, r.order_no, v)}
-                                                                onGoldSet={(v) => setGoldSet(r.row_key, r.order_no, v)}
-                                                                canManageGold={canManageGold}
-                                                            />
+                                                        {/* AI평가 — Y/N(컴플라이언스) 항목은 충족/위반, 점수제는 점수 */}
+                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] font-semibold tabular-nums">
+                                                            {r.scoring_type === 'yes_no' ? (
+                                                                r.earned_ai === null ? (
+                                                                    <span className="text-[#98A2B3]">–</span>
+                                                                ) : r.earned_ai > 0 ? (
+                                                                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded border text-[#067647] bg-[#ECFDF3] border-[#ABEFC6]">충족</span>
+                                                                ) : (
+                                                                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded border text-[#D92D20] bg-[#FEF3F2] border-[#FECDCA]">위반</span>
+                                                                )
+                                                            ) : (
+                                                                <span className="text-[#101828]">{r.ai_eval_label}</span>
+                                                            )}
                                                         </td>
-                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] text-[#475467] tabular-nums">{r.monthly_avg}</td>
-                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] text-[#475467] tabular-nums">{r.team_avg}</td>
+                                                        {/* 수기평가 — Y/N 항목은 수기평가 불가(점수 무관) */}
+                                                        <td className="px-2.5 py-2.5 align-middle">
+                                                            {r.scoring_type === 'yes_no' ? (
+                                                                <span className="text-[12px] text-[#98A2B3]">–</span>
+                                                            ) : (
+                                                                <ManualJudgmentCell
+                                                                    judgment={manualJudgments[r.row_key]?.judgment || ''}
+                                                                    goldSet={manualJudgments[r.row_key]?.goldSet || false}
+                                                                    onJudgment={(v) => setJudgment(r.row_key, r.order_no, v)}
+                                                                    onGoldSet={(v) => setGoldSet(r.row_key, r.order_no, v)}
+                                                                    canManageGold={canManageGold}
+                                                                />
+                                                            )}
+                                                        </td>
+                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] text-[#475467] tabular-nums">{r.scoring_type === 'yes_no' ? '–' : r.monthly_avg}</td>
+                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] text-[#475467] tabular-nums">{r.scoring_type === 'yes_no' ? '–' : r.team_avg}</td>
                                                     </tr>
                                                 );
                                             });
                                         })()}
                                     </tbody>
                                 </table>
-                                {complianceRows.length > 0 && (
-                                    <div className="border-t border-[#F2F4F7] px-4 py-4">
-                                        <div className="flex items-baseline gap-2 mb-3">
-                                            <h4 className="text-[13px] font-semibold text-[#101828]">컴플라이언스 체크</h4>
-                                            <span className="text-[11px] text-[#98A2B3]">점수 미반영 · 준수 여부만 확인</span>
-                                        </div>
-                                        <div className="grid gap-1.5">
-                                            {complianceRows.map((r, i) => {
-                                                const checked = r.earned_ai !== null && r.earned_ai > 0;
-                                                const violated = r.earned_ai === 0;
-                                                const badge = violated
-                                                    ? { t: '✗ 위반', c: 'text-[#D92D20] bg-[#FEF3F2] border-[#FECDCA]' }
-                                                    : checked
-                                                      ? { t: '✓ 충족', c: 'text-[#067647] bg-[#ECFDF3] border-[#ABEFC6]' }
-                                                      : { t: '– 해당없음', c: 'text-[#667085] bg-[#F2F4F7] border-[#E4E7EC]' };
-                                                return (
-                                                    <div key={r.row_key || i} className="flex items-start gap-2.5 rounded-lg border border-[#E4E7EC] bg-white px-3 py-2">
-                                                        <span className={`mt-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badge.c}`}>{badge.t}</span>
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="text-[12.5px] font-medium text-[#101828]">{r.item}</div>
-                                                            {r.reason_text && r.reason_text !== '-' && (
-                                                                <div className="text-[11px] text-[#667085] leading-relaxed mt-0.5 whitespace-pre-line">{r.reason_text}</div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         </div>
                     </div>
