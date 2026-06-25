@@ -38,6 +38,43 @@ import {
 //  - 모든 변경은 eval_item_change_log / pentagon_axis_change_log 에 기록.
 // ============================================================
 
+// ── [임시] RAG 실험 중 항목 표시 (Test-RAG 배지) ───────────────────────────
+// 프론트 전용·되돌리기 쉬운 상수. DB 스키마/백엔드 무변경.
+// (orgId, orderNo) 정확 매칭이 1차, 항목명('설명력 · 전달력') 매칭은 폴백.
+// 실험 종료 시 이 배열만 비우면 배지 전부 사라짐.
+const TEST_RAG_ITEMS = [
+    { orgId: 10, orderNo: 6, itemName: '설명력 · 전달력' },
+];
+
+function normalizeItemName(s) {
+    // 중점(·)·공백 표기 흔들림 흡수 — '설명력·전달력' / '설명력 · 전달력' 동일 취급.
+    return String(s ?? '').replace(/\s+/g, '').replace(/[·ㆍ‧∙•]/g, '·');
+}
+
+function isTestRagItem(orgId, orderNo, itemName) {
+    const oid = Number(orgId);
+    const ono = Number(orderNo);
+    const nm = normalizeItemName(itemName);
+    return TEST_RAG_ITEMS.some((t) => {
+        if (Number(t.orgId) !== oid) return false;
+        if (t.orderNo != null && Number(t.orderNo) === ono) return true;
+        if (t.itemName && normalizeItemName(t.itemName) === nm) return true;
+        return false;
+    });
+}
+
+function TestRagBadge() {
+    return (
+        <span
+            title="RAG 실험 중인 항목 (임시 표시)"
+            className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[#FEF3F2] border border-[#FECDCA] text-[9px] font-bold text-[#B42318] leading-none"
+        >
+            <span aria-hidden="true">🧪</span>
+            Test-RAG
+        </span>
+    );
+}
+
 // 브랜드별 Pentagon 5축 키 (구성용) — constants.js 의 radarLabels 사용
 const PENTAGON_MOCK_DESC = {
     '인사·본인확인':    '통화 도입부의 인사·소속·본인 확인 절차 품질',
@@ -204,6 +241,7 @@ const EvalItems = ({ activeBrandId }) => {
                                         label={it.item}
                                         selected={on}
                                         inactive={it.is_active === false}
+                                        testRag={isTestRagItem(activeBrandId, it.order_no, it.item)}
                                         onSelect={() => setSelection({ kind: 'item', idx })}
                                         onEdit={() => setModal({ type: 'edit-item', item: it })}
                                     />
@@ -404,7 +442,7 @@ function AddBox({ label, onClick }) {
 
 /* ── 좌측 리스트 행 ───────────────────────────────────────────── */
 
-function ItemRow({ orderNo, category, label, selected, onSelect, onEdit, inactive = false }) {
+function ItemRow({ orderNo, category, label, selected, onSelect, onEdit, inactive = false, testRag = false }) {
     return (
         <div
             onClick={onSelect}
@@ -420,10 +458,13 @@ function ItemRow({ orderNo, category, label, selected, onSelect, onEdit, inactiv
                         <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[#F2F4F7] text-[#98A2B3]">비활성</span>
                     )}
                 </div>
-                <div className={`text-[12.5px] font-bold truncate ${
-                    inactive ? 'text-[#98A2B3]' : selected ? 'text-[#055AAF]' : 'text-[#101828]'
-                }`}>
-                    {label}
+                <div className="flex items-center gap-1.5 min-w-0">
+                    <span className={`text-[12.5px] font-bold truncate ${
+                        inactive ? 'text-[#98A2B3]' : selected ? 'text-[#055AAF]' : 'text-[#101828]'
+                    }`}>
+                        {label}
+                    </span>
+                    {testRag && <TestRagBadge />}
                 </div>
             </div>
             <button
