@@ -3467,15 +3467,28 @@ app.get('/api/admin/eval-item-history', async (req, res) => {
             params.push(changeType);
             where.push(`change_type = $${params.length}`);
         }
+        const whereSql = where.join(' AND ');
         params.push(effectiveLimit);
+        const limitParam = `$${params.length}`;
+        // 평가항목(eval_item_change_log) + 펜타곤 축(pentagon_axis_change_log) 통합 이력.
+        // 펜타곤 행은 axis_no→order_no, label_snapshot→item_name, category_name='펜타곤 축' 로 매핑하고
+        // source 로 출처 구분(프론트가 행 key·diff 그룹핑에 사용 — 두 테이블 id 충돌 방지).
+        // 두 WHERE 는 동일 placeholder($1..) 재사용. change_type 필터는 각 테이블 값에만 매칭(전체면 둘 다 표시).
         const { rows } = await pool.query(
             `SELECT id, department, order_no, item_name, category_name,
                     change_type, version, before_json, after_json,
-                    user_id, login_id, display_name, changed_at
+                    user_id, login_id, display_name, changed_at, 'eval_item' AS source
                FROM public.eval_item_change_log
-              WHERE ${where.join(' AND ')}
+              WHERE ${whereSql}
+            UNION ALL
+             SELECT id, department, axis_no AS order_no, label_snapshot AS item_name,
+                    '펜타곤 축' AS category_name,
+                    change_type, version, before_json, after_json,
+                    user_id, login_id, display_name, changed_at, 'pentagon_axis' AS source
+               FROM public.pentagon_axis_change_log
+              WHERE ${whereSql}
               ORDER BY changed_at DESC
-              LIMIT $${params.length}`,
+              LIMIT ${limitParam}`,
             params
         );
         res.json({ ok: true, entries: rows });

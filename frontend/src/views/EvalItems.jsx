@@ -837,6 +837,9 @@ const CHANGE_TYPE_LABEL = {
     criterion_prompt_update: '평가 기준 + 프롬프트 수정',
     prompt_update:           '평가 프롬프트 수정',
     criterion_update:        '평가 기준 수정',
+    // 펜타곤 축 전용 change_type (pentagon_axis_change_log)
+    label_rename:            '축 이름 변경',
+    description_update:      '축 설명 수정',
 };
 
 const FIELD_LABEL = {
@@ -900,10 +903,13 @@ function HistoryModal({ departments = [], onClose }) {
         );
         const lastByKey = new Map(); // key → 직전 changed_at
         for (const e of sortedAsc) {
-            const key = `${e.department}#${e.order_no}`;
-            const prev = lastByKey.get(key) || null;
-            map.set(e.id, prev);
-            lastByKey.set(key, e.changed_at);
+            // source 포함 — 평가항목/펜타곤축의 order_no↔axis_no 충돌로 diff '이전 시점'이 엉키지 않게.
+            const src = e.source || 'eval_item';
+            const groupKey = `${src}#${e.department}#${e.order_no}`;
+            const rowKey = `${src}-${e.id}`;
+            const prev = lastByKey.get(groupKey) || null;
+            map.set(rowKey, prev);
+            lastByKey.set(groupKey, e.changed_at);
         }
         return map;
     }, [entries]);
@@ -948,20 +954,21 @@ function HistoryModal({ departments = [], onClose }) {
                 ) : (
                     <div className="grid gap-2.5">
                         {entries.map((entry) => {
-                            const isOpen = expanded === entry.id;
+                            const rowKey = `${entry.source || 'eval_item'}-${entry.id}`;
+                            const isOpen = expanded === rowKey;
                             const label = CHANGE_TYPE_LABEL[entry.change_type] || entry.change_type;
                             const actorLabel = entry.display_name || entry.login_id || '시스템';
-                            const beforeAt = prevChangeByEntry.get(entry.id);
+                            const beforeAt = prevChangeByEntry.get(rowKey);
                             const beforeAtStr = beforeAt ? formatChangedAt(beforeAt) : null;
                             const afterAt = formatChangedAt(entry.changed_at);
                             const fields = collectChangedFields(entry.before_json, entry.after_json);
                             const itemLabel = entry.item_name || `(항목 #${entry.order_no})`;
                             const categoryLabel = entry.category_name || '';
                             return (
-                                <div key={entry.id} className="rounded-xl bg-white border border-[#E4E7EC]">
+                                <div key={rowKey} className="rounded-xl bg-white border border-[#E4E7EC]">
                                     <button
                                         type="button"
-                                        onClick={() => setExpanded(isOpen ? null : entry.id)}
+                                        onClick={() => setExpanded(isOpen ? null : rowKey)}
                                         className="w-full px-4 py-3 flex items-center gap-3 text-left cursor-pointer hover:bg-[#FAFBFC] rounded-xl"
                                     >
                                         <ChevronRight
