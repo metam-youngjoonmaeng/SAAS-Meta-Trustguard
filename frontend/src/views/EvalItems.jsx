@@ -654,10 +654,6 @@ function AxisPreview({ axisNo, label, dbAxis, onEdit }) {
                 </PreviewSection>
 
                 <PreviewSection title="평가 프롬프트">
-                    <div className="text-[12px] text-[#055AAF] bg-[#EEF4FB] border border-[#BFD4F2] rounded-md px-3 py-2 mb-2.5 inline-flex items-start gap-2">
-                        <Info size={12} className="mt-0.5 shrink-0" />
-                        <span>이 축의 종합 등급·요약을 생성하는 메타 프롬프트입니다. 개별 항목 채점은 체크리스트 항목에서 설정합니다.</span>
-                    </div>
                     <pre className="text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3">{`이 축에 매핑된 체크리스트 결과와 상담 전사를 바탕으로
 "${label}" 영역의 종합 등급·분석·요약을 생성하세요.
 
