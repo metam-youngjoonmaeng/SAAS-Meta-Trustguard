@@ -1130,9 +1130,9 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                 r.earned_ai === null ? (
                                                                     <span className="text-[#98A2B3]">–</span>
                                                                 ) : r.earned_ai > 0 ? (
-                                                                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded border text-[#067647] bg-[#ECFDF3] border-[#ABEFC6]">충족</span>
+                                                                    <span className="text-[15px] font-bold text-[#067647]">Y</span>
                                                                 ) : (
-                                                                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded border text-[#D92D20] bg-[#FEF3F2] border-[#FECDCA]">위반</span>
+                                                                    <span className="text-[15px] font-bold text-[#D92D20]">N</span>
                                                                 )
                                                             ) : (
                                                                 <span className="text-[#101828]">{r.ai_eval_label}</span>
