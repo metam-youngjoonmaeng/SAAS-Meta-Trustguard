@@ -1215,7 +1215,7 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                         </button>
                         <button
                             type="button"
-                            onClick={() => setScoringType('yes_no')}
+                            onClick={() => { setScoringType('yes_no'); setPentagonAxis(''); }}
                             className={pillBtn(scoringType === 'yes_no')}
                         >
                             Y/N
@@ -1238,27 +1238,29 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                         </div>
                     </FormGroup>
                 ) : (
-                    <FormGroup label="만점">
-                        <div className="text-[12.5px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5">
-                            충족=1점 / 미충족=0점 (자동)
+                    <FormGroup label="채점 안내">
+                        <div className="text-[12.5px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5 leading-relaxed">
+                            충족 / 위반 으로만 판정합니다. <span className="text-[#475467] font-medium">점수·총점·펜타곤에는 반영되지 않고</span>, 컴플라이언스 체크(이행·위반 모니터링)에만 사용됩니다.
                         </div>
                     </FormGroup>
                 )}
 
-                <FormGroup label="Pentagon 매핑">
-                    <select
-                        value={pentagonAxis}
-                        onChange={(e) => setPentagonAxis(e.target.value)}
-                        className="form-input-pretty"
-                    >
-                        <option value="">매핑 없음 (총점에만 반영)</option>
-                        {axes.map((label, idx) => (
-                            <option key={label} value={label}>
-                                {['①','②','③','④','⑤'][idx]} {label}
-                            </option>
-                        ))}
-                    </select>
-                </FormGroup>
+                {scoringType === 'numeric' && (
+                    <FormGroup label="Pentagon 매핑">
+                        <select
+                            value={pentagonAxis}
+                            onChange={(e) => setPentagonAxis(e.target.value)}
+                            className="form-input-pretty"
+                        >
+                            <option value="">매핑 없음 (총점에만 반영)</option>
+                            {axes.map((label, idx) => (
+                                <option key={label} value={label}>
+                                    {['①','②','③','④','⑤'][idx]} {label}
+                                </option>
+                            ))}
+                        </select>
+                    </FormGroup>
+                )}
 
                 {isEdit && (
                     <FormGroup label="활성 상태">
