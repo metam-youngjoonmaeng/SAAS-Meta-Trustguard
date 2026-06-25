@@ -7,6 +7,7 @@ import {
     fetchGoldenCasesByItem, removeGoldenSet,
     fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, deleteEvalItemDef, fetchEvalItemHistory,
     fetchPentagonAxes, savePentagonAxis, createPentagonAxis,
+    fetchRagFewshotConfig, saveRagFewshotConfig,
 } from '../services/api';
 import {
     Plus,
@@ -130,6 +131,56 @@ const EvalItems = ({ activeBrandId }) => {
         return () => window.clearTimeout(t);
     }, [rubricSyncToast]);
 
+    // ── 루브릭 few-shot 항목 토글 (브랜드 한정 "이 항목만 RAG") ──────────────
+    // 백엔드 ragFewshotConfig(파일 영속) + evaluateStandardCall(getOrgFewshot) 와 연동.
+    // shape: { "<org_id>": { rubric_id, item_names:[...] } }. 항목 "이름" 기반(재번호 안전).
+    const [ragCfg, setRagCfg] = useState({});
+    const [ragSaving, setRagSaving] = useState(false);
+    useEffect(() => {
+        let alive = true;
+        fetchRagFewshotConfig()
+            .then((cfg) => { if (alive) setRagCfg(cfg && typeof cfg === 'object' ? cfg : {}); })
+            .catch(() => { if (alive) setRagCfg({}); });
+        return () => { alive = false; };
+    }, []);
+    const isRagOn = useCallback(
+        (itemName) => {
+            const entry = ragCfg[String(activeBrandId)];
+            const names = entry && Array.isArray(entry.item_names) ? entry.item_names : [];
+            const nm = String(itemName || '');
+            return names.some((tok) => tok && nm.includes(String(tok)));
+        },
+        [ragCfg, activeBrandId]
+    );
+    const toggleRag = useCallback(
+        async (itemName) => {
+            const org = String(activeBrandId);
+            const nm = String(itemName || '').trim();
+            if (!nm) return;
+            const next = { ...ragCfg };
+            const prev = next[org] || {
+                rubric_id: Number(activeBrandId) === 10 ? 'rbrc_asdf_org10' : `rbrc_org${org}`,
+                item_names: [],
+            };
+            const names = Array.isArray(prev.item_names) ? [...prev.item_names] : [];
+            const on = names.some((tok) => tok && nm.includes(String(tok)));
+            const nextNames = on
+                ? names.filter((tok) => !(tok && nm.includes(String(tok)))) // OFF: 매칭 토큰 제거(시드 포함)
+                : [...names, nm]; // ON: 풀 항목명 추가
+            next[org] = { rubric_id: prev.rubric_id, item_names: nextNames };
+            setRagSaving(true);
+            try {
+                const saved = await saveRagFewshotConfig(next);
+                setRagCfg(saved && typeof saved === 'object' ? saved : next);
+            } catch {
+                setRubricSyncToast({ tone: 'error', message: 'RAG 토글 저장 실패', detail: '' });
+            } finally {
+                setRagSaving(false);
+            }
+        },
+        [ragCfg, activeBrandId]
+    );
+
     // 평가항목 정의(criterion + prompt_template + 메타)는 (org_id, department, order_no, version) 키로 DB 에 저장.
     // 체크리스트는 checklistDept(레거시='기본', 신규=브랜드 기본 부서) 스코프로 fetch — KSQI(department='KSQI')
     // 등 동일 org_id 타 부서 행이 order_no 1~9 로 섞여 미리보기 오염·cross-scope 오변경되는 것을 차단.
@@ -243,6 +294,9 @@ const EvalItems = ({ activeBrandId }) => {
                                         selected={on}
                                         inactive={it.is_active === false}
                                         testRag={isTestRagItem(activeBrandId, it.order_no, it.item)}
+                                        ragOn={isRagOn(it.item)}
+                                        ragSaving={ragSaving}
+                                        onToggleRag={() => toggleRag(it.item)}
                                         onSelect={() => setSelection({ kind: 'item', idx })}
                                         onEdit={() => setModal({ type: 'edit-item', item: it })}
                                     />
@@ -443,7 +497,10 @@ function AddBox({ label, onClick }) {
 
 /* ── 좌측 리스트 행 ───────────────────────────────────────────── */
 
-function ItemRow({ orderNo, category, label, selected, onSelect, onEdit, inactive = false, testRag = false }) {
+function ItemRow({
+    orderNo, category, label, selected, onSelect, onEdit, inactive = false,
+    testRag = false, ragOn = false, ragSaving = false, onToggleRag,
+}) {
     return (
         <div
             onClick={onSelect}
@@ -465,9 +522,28 @@ function ItemRow({ orderNo, category, label, selected, onSelect, onEdit, inactiv
                     }`}>
                         {label}
                     </span>
-                    {testRag && <TestRagBadge />}
+                    {(ragOn || testRag) && <TestRagBadge />}
                 </div>
             </div>
+            {onToggleRag && (
+                <button
+                    type="button"
+                    disabled={ragSaving}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleRag();
+                    }}
+                    title={ragOn ? 'RAG few-shot 켜짐 — 클릭하여 끄기' : 'RAG few-shot 꺼짐 — 클릭하여 켜기'}
+                    className={`shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold border transition-colors ${
+                        ragOn
+                            ? 'bg-[#055AAF] text-white border-[#055AAF]'
+                            : 'bg-white text-[#98A2B3] border-[#E4E7EC] hover:text-[#055AAF] hover:border-[#055AAF]'
+                    } ${ragSaving ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                >
+                    <Sparkles size={10} />
+                    RAG {ragOn ? 'ON' : 'OFF'}
+                </button>
+            )}
             <button
                 type="button"
                 onClick={(e) => {

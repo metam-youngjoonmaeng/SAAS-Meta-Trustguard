@@ -632,6 +632,20 @@ export async function fetchRagLogRecent({ limit = 100, qa_id } = {}) {
     return Array.isArray(data?.entries) ? data.entries : [];
 }
 
+// 루브릭 few-shot 항목 토글 설정 — { "<org_id>": { rubric_id, item_names:[...] } }
+export async function fetchRagFewshotConfig() {
+    const data = await request('/api/rag-fewshot-config');
+    return data?.config && typeof data.config === 'object' ? data.config : {};
+}
+
+export async function saveRagFewshotConfig(config) {
+    const data = await request('/api/rag-fewshot-config', {
+        method: 'PUT',
+        body: JSON.stringify({ config: config || {} }),
+    });
+    return data?.config && typeof data.config === 'object' ? data.config : {};
+}
+
 /* ── 알림(수신자별 영구 알림) ───────────────────────────────────
  * 검수 워크플로우 이벤트(최종승인·수정반영)를 수신자(상담사) 단위로 영구 저장/조회.
  * 본인에게 온 알림만 반환(세션 스코프). scope: 'all'(기본) | 'current'(안읽음만).

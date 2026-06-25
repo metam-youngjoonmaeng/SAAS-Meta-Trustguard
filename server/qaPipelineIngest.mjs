@@ -23,6 +23,7 @@
 
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { buildRubricFromDefs } from './rubricSync.mjs';
+import { getOrgFewshot } from './ragFewshotConfig.mjs';
 
 const DEFAULT_BASE_URL = 'http://localhost:8081';
 // EC2 원격 백엔드 (V3 qa-pipeline, 8081 직접 접근) — call.pipeline_target==='ec2' 시 사용.
@@ -32,6 +33,13 @@ const EVALUATE_TIMEOUT_MS = 600_000; // 600초
 /** 평가 백엔드 base URL 해석 — opts.baseUrl > call.pipeline_target('ec2') > env > 로컬 기본값 */
 function resolvePipelineBaseUrl(call, opts = {}) {
     if (opts.baseUrl) return opts.baseUrl;
+    // 로컬 실험 강제 — env QA_PIPELINE_FORCE_LOCAL=1 이면 call.pipeline_target('ec2') 를 무시하고
+    // 무조건 로컬(QA_PIPELINE_BASE_URL)로. 대시보드 옛 번들이 ec2 를 보내도 로컬로 강제됨.
+    // 운영 복귀 시 env 만 해제하면 기존 동작(pipeline_target 기준) 복원.
+    const _forceLocal = String(process.env.QA_PIPELINE_FORCE_LOCAL ?? '').trim().toLowerCase();
+    if (_forceLocal === '1' || _forceLocal === 'true') {
+        return process.env.QA_PIPELINE_BASE_URL || DEFAULT_BASE_URL;
+    }
     if (isEc2Target(call)) {
         return process.env.QA_PIPELINE_BASE_URL_EC2 || DEFAULT_EC2_BASE_URL;
     }
@@ -823,14 +831,6 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
 // 루브릭 트랙 항목 번호 기준값 — eval_item_number = RUBRIC_ITEM_BASE + index.
 const RUBRIC_ITEM_BASE = 5000;
 
-// 브랜드 한정 루브릭 few-shot 실험 설정 — org_id → { rubric_id(안정 검색키), item_names(이름 게이트) }.
-// 백엔드 custom_rubric 경로①(rubric_fewshot_gate)가 metadata 로 받아 "그 항목 이름만" RAG few-shot.
-// disable_rag=false 도 함께 주입해 해당 콜만 RAG ON. 끄려면 해당 org 항목 제거(전 브랜드 비활성=기존 거동).
-// 항목 "이름" 기반이라 평가항목 추가/순서변경(eval_item_number 재부여)에도 안 깨짐.
-const RUBRIC_FEWSHOT_EXPERIMENT = {
-    10: { rubric_id: 'rbrc_asdf_org10', item_names: ['설명력'] }, // asdf — '설명력' 항목 Test-RAG
-};
-
 /**
  * 루브릭 트랙 /evaluate 응답 → 테넌트 평가항목 행 변환.
  *   응답 항목의 item_number(>=5000) 를 index(번호-5000) → rowMeta[index] 로 환원.
@@ -1252,10 +1252,10 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                 // aggregator(파이프라인)에서 병합되어 응답에 포함됨(impl-agg 담당).
                 rowMeta = [];
             } else {
-                // 브랜드 한정 few-shot 실험 — 설정된 org 면 rubric_id(안정 검색키)+항목이름 게이트+RAG ON 주입.
-                // 미설정 org 는 기존 거동(rubric_inline 만). rubric_inline 우선 해석은 그대로(평가 항목 불변),
-                // rubric_id 는 fewshot_store 검색 키로만 쓰임(resolve_search_rubric_id).
-                const _rfx = RUBRIC_FEWSHOT_EXPERIMENT[Number(orgId)];
+                // 브랜드 한정 few-shot 토글 — UI 설정(ragFewshotConfig)에서 켠 org 면 rubric_id(안정
+                // 검색키)+항목이름 게이트+RAG ON 주입. 미설정/미토글 org 는 기존 거동(rubric_inline 만).
+                // rubric_inline 우선 해석은 그대로(평가 항목 불변), rubric_id 는 fewshot_store 검색 키로만 쓰임.
+                const _rfx = getOrgFewshot(orgId);
                 rubricCall = {
                     ...call,
                     org_id: orgId,
