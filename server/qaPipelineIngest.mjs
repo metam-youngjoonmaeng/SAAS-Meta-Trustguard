@@ -571,7 +571,7 @@ const NO_OCCURRENCE_MARKERS = ['미발생', '해당없음', '해당 없음', '�
 const SYSTEM_QUOTE_MARKERS = ['근거 인용 미제출', 'LLM 평가 실패', 'evidence 추출 불가'];
 
 /**
- * 단일 항목 평가 dict 에서 evidence 의 상담사 발화를 최대 3건 모아 개행 join.
+ * 단일 항목 평가 dict 에서 evidence 의 상담사 발화를 (개수 제한 없이) 모두 모아 개행 join.
  *   - 상담사 마커 우선, 고객 마커 제외, 마커 없으면 첫 발화 1건 fallback.
  *   - 감점이 없고 judgment 가 미발생/해당없음류면 발화 표시 생략.
  *   - (system) placeholder(근거 인용 미제출 등)는 발화가 아니므로 생략.
