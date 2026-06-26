@@ -462,7 +462,15 @@ function RagLogPanel() {
         try {
             // fetchRagLogRecent 는 이미 entries 배열을 반환(api.js) — 재언랩 금지(이중 언랩 시 항상 [])
             const rows = await fetchRagLogRecent({ limit: PAGE_SIZE });
-            setEntries(Array.isArray(rows) ? rows : []);
+            // 실제 emit 이벤트만 표시 — RAG few-shot hit(hits) 또는 금지어·사전 매칭(matches) 이 있는 항목만.
+            //   백엔드 인메모리 링버퍼에 누적되는 빈-내용('—') 엔트리(미적중 placeholder, 예: 커스텀 루브릭
+            //   #5000번대)는 노이즈라 제외. 버퍼는 글로벌·평가간 미클리어라 잔존분이 현재 콜과 무관하게 새어 보임.
+            const real = (Array.isArray(rows) ? rows : []).filter((e) => {
+                const hits = Array.isArray(e?.hits) ? e.hits : [];
+                const matches = Array.isArray(e?.matches) ? e.matches : [];
+                return hits.length > 0 || matches.length > 0;
+            });
+            setEntries(real);
             setError(null);
         } catch (e) {
             setError(e?.message || 'RAG 로그 로드 실패');

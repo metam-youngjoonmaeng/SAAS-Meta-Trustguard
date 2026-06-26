@@ -3839,6 +3839,9 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
             try {
                 const d = ev.data || {};
                 const hits = Array.isArray(d.fewshot) ? d.fewshot : [];
+                // RAG hit 0건 항목은 RAG탭에 빈('—') 엔트리로 안 쌓이게 차단(표시 노이즈 제거, 평가 무관).
+                //   미적중 placeholder(예: 커스텀 루브릭 #5000번대)가 글로벌 링버퍼에 누적되던 원인 차단.
+                if (hits.length === 0) return;
                 pushRagLog({
                     qa_id: job.qa_id,
                     org_id: ragOrgId,

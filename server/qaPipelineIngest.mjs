@@ -751,12 +751,9 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
     const evaluations = [];
     let sumEarned = 0;
     let sumMax = 0;
-    // 전량 평가불가 감지 + '적재(무음누락 방지)' 정책용 0점 행 후보 (Rubric 매퍼와 동형).
+    // 전량 평가불가(모든 항목 score=null) 감지용 카운터 — 미적재 게이트 신호(Rubric 매퍼와 동형).
     let nullCount = 0;
-    let nonCriteriaNull = false;
-    const unevalChecklist = [];
-    const unevalEvaluations = [];
-    let unevalMax = 0;
+    let nonCriteriaNull = false; // null 항목 중 flag!=='no_criteria' 가 하나라도 있으면 true
 
     for (const slot of STANDARD_ITEM_CATALOG) {
         const orderNo = slot.order_no;
@@ -773,24 +770,6 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
         if (score === null) {
             nullCount += 1;
             if (safeStr(ev?.flag).trim() !== 'no_criteria') nonCriteriaNull = true;
-            const _dynMaxN = maxByOrder ? asNumber(maxByOrder[orderNo]) : null;
-            const _um = _dynMaxN !== null && _dynMaxN > 0 ? _dynMaxN : slot.max;
-            unevalChecklist.push({
-                order_no: orderNo,
-                category: slot.category,
-                item: slot.item,
-                agent_utterance: agentQuoteOf(ev),
-                validation_time: `배점 ${_um}`,
-            });
-            unevalEvaluations.push({
-                order_no: orderNo,
-                category: slot.category,
-                item: slot.item,
-                reason_text: reasonTextOf(ev),
-                ai_eval: 0,
-                manual_eval: 0,
-            });
-            unevalMax += _um;
             warnings.push(`order ${orderNo}: item_number #${orderNo} score=null/skipped → 행 생략`);
             continue;
         }
@@ -871,13 +850,9 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
         }
     }
 
-    // 전량 평가불가 → 0점 행 적재(무음누락 방지). 진짜 포기호(byItem.size===0)는 후보 없어 게이트 skip.
-    const allUnevaluable = byItem.size > 0 && evaluations.length === 0 && unevalEvaluations.length > 0;
-    if (allUnevaluable) {
-        for (const c of unevalChecklist) checklist.push(c);
-        for (const e of unevalEvaluations) evaluations.push(e);
-        sumMax += unevalMax;
-    }
+    // 전량 평가불가(평가는 시도했으나 모든 항목 score=null) 감지 → 미적재 게이트(B 정책)용 신호.
+    // 진짜 포기호(byItem.size===0)는 nullCount=0 이라 false. 부분 평가불가는 evaluations.length>0 라 false.
+    const allUnevaluable = byItem.size > 0 && evaluations.length === 0 && nullCount > 0;
     const aiScore = sumMax > 0 && Number.isFinite(sumEarned) ? round1((100 * sumEarned) / sumMax) : 0;
     return {
         checklist,
@@ -889,6 +864,7 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
         source,
         item_count: byItem.size,
         all_unevaluable: allUnevaluable,
+        unevaluable_count: nullCount,
         unevaluable_reason: allUnevaluable ? (nonCriteriaNull ? 'unevaluable' : 'no_criteria') : null,
     };
 }
@@ -939,14 +915,10 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
     let sumEarned = 0;
     let sumMax = 0;
     let rawTotal = 0;
-    // 전량 평가불가(모든 항목 score=null) 감지 + '적재(무음누락 방지)' 정책용 0점 행 후보.
-    // null 항목은 기존대로 본문에서 드롭하되, 후보로 따로 모아 두었다가 "전량 null" 일 때만 채택한다.
-    // 부분 평가불가(일부만 null)는 드롭 유지 → 기존과 byte-identical(무회귀).
+    // 전량 평가불가(모든 항목 score=null) 감지용 카운터 — 미적재 게이트(B 정책) 신호.
+    // null 항목은 기존대로 드롭(부분 평가불가는 byte-identical). 전량 null 이면 게이트가 미적재+사유 표면화.
     let nullCount = 0;
     let nonCriteriaNull = false; // null 항목 중 flag!=='no_criteria' 가 하나라도 있으면 true
-    const unevalChecklist = [];
-    const unevalEvaluations = [];
-    let unevalMax = 0;
 
     for (const { index, ev } of rubricRows) {
         const slot = meta[index];
@@ -959,27 +931,6 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
         if (score === null) {
             nullCount += 1;
             if (safeStr(ev?.flag).trim() !== 'no_criteria') nonCriteriaNull = true;
-            // 전량 평가불가일 때만 채택할 0점 행 후보로 보관. 분모(표시 만점)는 rowMeta 우선 →
-            // ev.max_score → 5 폴백(0/NaN 방지). reason_text 는 reasonTextOf(판정 사유)만(내부 메타 미주입).
-            const _dm = asNumber(slot.max_score);
-            const _em = asNumber(ev.max_score);
-            const _um = _dm !== null && _dm > 0 ? _dm : _em !== null && _em > 0 ? _em : 5;
-            unevalChecklist.push({
-                order_no: orderNo,
-                category: slot.category,
-                item: slot.item,
-                agent_utterance: agentQuoteOf(ev),
-                validation_time: `배점 ${_um}`,
-            });
-            unevalEvaluations.push({
-                order_no: orderNo,
-                category: slot.category,
-                item: slot.item,
-                reason_text: reasonTextOf(ev),
-                ai_eval: 0,
-                manual_eval: 0,
-            });
-            unevalMax += _um;
             warnings.push(`루브릭 index ${index} → order_no ${orderNo}: score=null/skipped → 행 생략`);
             continue;
         }
@@ -1023,15 +974,9 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
         });
     }
 
-    // 전량 평가불가(평가는 시도했으나 모든 항목 score=null) → 0점 행으로 적재(무음누락 방지 정책).
-    // 진짜 포기호(byItem.size===0)는 후보 자체가 없어 게이트에서 계속 skip. 부분 평가불가는 위에서
-    // 드롭 유지(무회귀). 채택 시 sumEarned/rawTotal 은 0 유지 → 0점 콜로 표시(분모=합성 만점).
-    const allUnevaluable = byItem.size > 0 && evaluations.length === 0 && unevalEvaluations.length > 0;
-    if (allUnevaluable) {
-        for (const c of unevalChecklist) checklist.push(c);
-        for (const e of unevalEvaluations) evaluations.push(e);
-        sumMax += unevalMax;
-    }
+    // 전량 평가불가(평가는 시도했으나 모든 항목 score=null) 감지 → 미적재 게이트(B 정책) 신호.
+    // 진짜 포기호(byItem.size===0)는 nullCount=0 이라 false. 부분 평가불가는 evaluations.length>0 라 false.
+    const allUnevaluable = byItem.size > 0 && evaluations.length === 0 && nullCount > 0;
     const aiScore = sumMax > 0 && Number.isFinite(sumEarned) ? round1((100 * sumEarned) / sumMax) : 0;
     return {
         checklist,
@@ -1044,6 +989,7 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
         // 포기호(item_count===0) vs 전량 평가불가(item_count>0 + all_unevaluable) 구분 신호.
         item_count: byItem.size,
         all_unevaluable: allUnevaluable,
+        unevaluable_count: nullCount,
         unevaluable_reason: allUnevaluable ? (nonCriteriaNull ? 'unevaluable' : 'no_criteria') : null,
     };
 }
@@ -1084,19 +1030,21 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
     const hasEval = Array.isArray(mapped?.evaluations) && mapped.evaluations.length > 0;
     const hasChecklist = Array.isArray(mapped?.checklist) && mapped.checklist.length > 0;
     if (!hasEval && !hasChecklist) {
-        // (1) 진짜 포기호/미응대: 파이프라인이 항목평가를 0건(item_count===0, 상담사 미연결) 산출 →
-        //     기존대로 skip(무회귀·byte-identical). asdf·실제 미응대 콜이 여기 해당.
+        // (1) 진짜 포기호/미응대: 파이프라인이 항목평가를 0건(item_count===0=item_scores 자체 빔,
+        //     상담사 미연결) 산출 → 기존대로 skip(무회귀·byte-identical). asdf·실제 미응대 콜이 여기 해당.
         const itemCount = asNumber(mapped?.item_count) || 0;
         if (itemCount === 0) {
             return { ok: true, skipped: true, qa_id: id, turns: 0,
                      reason: '포기호/미응대(평가 산출물 없음) — 적재 안 함' };
         }
-        // (2) 항목평가는 했으나(item_count>0) 매핑 산출이 빔 — '적재' 정책에선 매퍼가 0점 행을
-        //     합성해 여기 도달하지 않는다(전량 평가불가는 위 매퍼에서 적재됨). 도달 시는 방어용:
-        //     무음 포기호 오분류 금지하고 사유를 표면화한다.
-        const _r = mapped?.unevaluable_reason === 'no_criteria' ? '기준 미입력(평가 기준 없음)' : '전항목 평가불가';
+        // (2) 전량 평가불가: 파이프라인이 항목평가는 시도(item_count>0)했으나 전 항목 score=null
+        //     (기준 미입력/STT불가 등) → 진짜 포기호와 구분해 미적재(B 정책) + 사유 표면화.
+        //     skipped.reason 에 'unevaluable_all' 태깅(리드/PM) → 라우트가 '포기호' 아닌 '평가불가'로 노출.
+        //     desync(5000번대 존재, rowMeta 길이 불일치)는 별도 사유로 표면화(점수 오귀속 방지).
+        const _ur = mapped?.unevaluable_reason;
+        const _sub = _ur === 'no_criteria' ? '기준 미입력' : _ur === 'desync' ? '루브릭 매핑 불일치' : '전항목 평가불가/STT불가';
         return { ok: true, skipped: true, qa_id: id, turns: 0, unevaluable: true,
-                 reason: `${_r} — 적재 안 함` };
+                 reason: `unevaluable_all(${_sub}) — 적재 안 함` };
     }
 
     const orgId = await resolveStandardOrgId(pool, call);
@@ -1461,7 +1409,31 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
     // 루브릭 매핑 우선, 5000번대 없으면 표준 매핑 폴백.
     let mapped = mapEvaluateResponseRubric(resp, rowMeta);
     if (!mapped) {
-        mapped = mapEvaluateResponseStandard(resp, standardMaxByOrder, additiveDisplayMeta);
+        // [방어] mapEvaluateResponseRubric 가 null 을 반환하는 두 경우:
+        //   ① 5000번대 항목 자체가 없음 → 표준(레거시 1~18) 응답 → Standard 폴백이 정상.
+        //   ② 5000번대는 있으나 rowMeta 길이 불일치(desync) → Standard(카탈로그 1~18) 폴백은
+        //      5000번대를 전부 miss → 점수 오귀속(0행→포기호 오분류) 위험. 이 경우 Standard 폴백을
+        //      금지하고, 빈 산출 + item_count(5000번대 수)로 게이트가 '평가불가'로 표면화하게 한다.
+        const _idx = indexEvaluations(resp);
+        const _has5000 = [...(_idx.byItem?.keys?.() || [])].some((n) => Number(n) >= RUBRIC_ITEM_BASE);
+        if (_has5000) {
+            warnings.push('루브릭 매핑 desync(5000번대 존재, rowMeta 길이 불일치) → Standard 폴백 금지, 평가불가 표면화');
+            mapped = {
+                checklist: [],
+                evaluations: [],
+                ai_score: 0,
+                raw_total: 0,
+                max_total: 0,
+                warnings: [],
+                source: _idx.source,
+                item_count: _idx.byItem.size,
+                all_unevaluable: false,
+                unevaluable_count: 0,
+                unevaluable_reason: 'desync',
+            };
+        } else {
+            mapped = mapEvaluateResponseStandard(resp, standardMaxByOrder, additiveDisplayMeta);
+        }
     }
     mapped.warnings = [...warnings, ...(mapped.warnings || [])];
     // 펜타곤 축별 정성평가(pure 트랙 pure_pentagon → result.pentagon) 통과 — ingestStandardCallToDb
