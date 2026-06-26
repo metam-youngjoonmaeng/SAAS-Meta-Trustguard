@@ -64,6 +64,10 @@ else
 fi
 
 cd /seed
+if [ ! -f data/seed/load.sql ]; then
+  echo "[seed] data/seed/load.sql 없음 — baseline 시드 폐기됨, 적재 건너뜀 (마이그레이션만 적용)"
+  exit 0
+fi
 psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -f data/seed/load.sql
 
 echo "[seed] 완료"

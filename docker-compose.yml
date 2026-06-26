@@ -52,9 +52,8 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 미설정}
       PGDATABASE: ${POSTGRES_DB:-qa_dashboard}
     volumes:
-      # baseline CSV 호스트 마운트 → 파일 수정 후 이미지 재빌드 불필요
-      - ./data/seed:/seed/data/seed:ro
       # 마이그레이션 SQL 호스트 마운트 → seeder 가 02_*.sql 이후를 idempotent 적용
+      # (baseline CSV 시드(data/seed)는 폐기 — 운영 데이터 적재 완료로 미사용)
       - ./docker/init/postgres:/seed/migrations:ro
     depends_on:
       qa-ai-postgres:
