@@ -3,7 +3,55 @@
 // kebab-case 아이콘명을 PascalCase 컴포넌트로 매핑하는 Icon 래퍼로 대체했다.
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import * as Lucide from 'lucide-react';
+
+// 별도 브라우저 창(window.open)을 열고 현재 문서 스타일(Tailwind/전역 CSS)을 복제한 뒤
+// 그 창에 새 React 루트를 마운트한다 — 02 페르소나 추가와 동일 방식.
+// (Modal 의 createPortal 은 메인 문서로 가버리므로 컴포넌트는 windowed 모드로 포털/스크림 없이 렌더.)
+export function openInWindow({ name, title, width, height, render }) {
+    if (typeof window === 'undefined') return;
+    const W = width, H = height;
+    const left = Math.round(window.screenX + Math.max(0, (window.outerWidth - W) / 2));
+    const top = Math.round(window.screenY + Math.max(0, (window.outerHeight - H) / 2));
+    const win = window.open('', name, `width=${W},height=${H},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+    if (!win) {
+        alert('팝업이 차단되었습니다. 브라우저의 팝업 차단을 해제한 뒤 다시 시도해주세요.');
+        return;
+    }
+    win.document.write('<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head><body></body></html>');
+    win.document.close();
+    win.document.title = title;
+    document.querySelectorAll('style').forEach((node) => {
+        win.document.head.appendChild(node.cloneNode(true));
+    });
+    document.querySelectorAll('link[rel="stylesheet"]').forEach((node) => {
+        const link = win.document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = node.href; // 절대 URL 로 복사 (상대경로 깨짐 방지)
+        win.document.head.appendChild(link);
+    });
+    win.document.body.className = document.body.className;
+    win.document.body.style.margin = '0';
+
+    const mount = win.document.createElement('div');
+    win.document.body.appendChild(mount);
+    const root = createRoot(mount);
+
+    let closed = false;
+    const close = () => {
+        if (closed) return;
+        closed = true;
+        root.unmount();
+        if (!win.closed) win.close();
+    };
+    win.addEventListener('beforeunload', () => {
+        if (!closed) { closed = true; root.unmount(); }
+    });
+
+    root.render(render(close));
+    win.focus();
+}
 
 // ─────────────────────────────────────────────────────
 // Icon — 'chevron-right' → <ChevronRight/> (lucide-react)
@@ -301,7 +349,7 @@ export function Seg({ items, value, onChange }) {
 // ─────────────────────────────────────────────────────
 // Modal
 // ─────────────────────────────────────────────────────
-export function Modal({ title, onClose, children, foot, width }) {
+export function Modal({ title, onClose, children, foot, width, windowed = false }) {
     useEffect(() => {
         const onKey = (e) => {
             if (e.key === 'Escape') onClose?.();
@@ -310,6 +358,23 @@ export function Modal({ title, onClose, children, foot, width }) {
         return () => window.removeEventListener('keydown', onKey);
     }, [onClose]);
     if (typeof document === 'undefined') return null;
+    // 별도 브라우저 창(window.open)에 마운트되는 경우 — createPortal 은 메인 문서로 가버리므로
+    // 포털/스크림 없이 인-트리로 창 전체를 채운다.
+    if (windowed) {
+        // 별도 창이라 브라우저 자체 닫기(X)가 이미 있어 헤더 X 는 생략(중복 방지).
+        // max-height(88vh) 를 해제하고 창 전체 높이를 채워 푸터가 바닥에 붙게 한다.
+        return (
+            <div className="tg-eval" style={{ minHeight: '100vh', background: '#fff' }}>
+                <div className="modal" style={{ width: '100%', maxWidth: 'none', height: '100vh', maxHeight: '100vh', borderRadius: 0, boxShadow: 'none', display: 'flex', flexDirection: 'column' }}>
+                    <div className="modal-head">
+                        <h2>{title}</h2>
+                    </div>
+                    <div className="modal-body" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>{children}</div>
+                    {foot && <div className="modal-foot">{foot}</div>}
+                </div>
+            </div>
+        );
+    }
     // document.body 포털 — 상위 레이아웃에 갇히지 않게 전체 화면을 덮는다.
     // 스타일이 .tg-eval 하위로 스코프돼 있어 래퍼를 .tg-eval 로 감싼다(스타일/CSS변수 유지).
     return createPortal(

@@ -3,7 +3,7 @@
 //         강점·개선(항목 평균), 배정된 코칭(/api/coaching/mine).
 //         감정·대화 품질(/api/me/ta-metrics): 부정발화·금칙어=03 tb_ta_rslt, 회복률=05 qa_call_recovery. (미연동 시 mock 폴백)
 import React, { useState, useEffect, useMemo } from 'react';
-import { Icon, Gauge, Spark, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod } from './ui';
+import { Icon, Gauge, Spark, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod, openInWindow } from './ui';
 import { scoreClass, TUTOR_SCENARIOS } from './mockData';
 import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
 import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
@@ -348,7 +348,6 @@ export default function CounselorResults() {
     const [taMetrics, setTaMetrics] = useState(null);  // 03 TA 지표(부정/금칙어). null=로딩
     const [onlyNeedsReview, setOnlyNeedsReview] = useState(false);  // '내 검수 필요'(대기·검수중)만
     const [colFilters, setColFilters] = useState({});  // 컬럼키 → 제외(excluded) Set
-    const [learningHistOpen, setLearningHistOpen] = useState(false);  // 학습 이력 팝업
     const name = readActorName();
 
     // 본인 콜 목록 + 배정 코칭 로드
@@ -610,7 +609,13 @@ export default function CounselorResults() {
                                 <Icon name="inbox" size={10} />{boardCoaching.length}건 진행 중
                             </span>
                         )}
-                        <button className="btn-mini" onClick={() => setLearningHistOpen(true)}>
+                        <button
+                            className="btn-mini"
+                            onClick={() => openInWindow({
+                                name: 'my-coaching-history', title: '코칭 이력', width: 880, height: 800,
+                                render: (close) => <CounselorHistoryModal windowed coaching={coaching} onClose={close} />,
+                            })}
+                        >
                             <Icon name="history" size={11} />코칭 이력
                         </button>
                     </div>
@@ -768,34 +773,45 @@ export default function CounselorResults() {
                 </Modal>
             )}
 
-            {/* 코칭 이력 — 팝업: 본인에게 배정된 코칭 실데이터(/api/coaching/mine). 완료수=튜터(02) 연동, 점수=배정 전/후 평균. */}
-            {learningHistOpen && (
-                <Modal title="코칭 이력" width={820} onClose={() => setLearningHistOpen(false)}>
-                    {coaching.length === 0 ? (
-                        <div className="muted-text" style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12.5 }}>아직 배정된 코칭이 없습니다.</div>
-                    ) : (
-                        <>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                                <span className="muted-text" style={{ fontSize: 12 }}>
-                                    배정된 코칭 {coaching.length}회 · 완료 {coaching.filter((c) => (c.total || 0) > 0 && (c.done || 0) >= c.total).length}회
-                                </span>
-                                <span className="muted-text mono" style={{ marginLeft: 'auto', fontSize: 11 }}>
-                                    누적 시나리오 {coaching.reduce((a, c) => a + ((c.scenarios && c.scenarios.length) || 0), 0)}개
-                                </span>
-                            </div>
-                            <LearningHistory rows={coaching} />
-                        </>
-                    )}
-                </Modal>
-            )}
         </div>
     );
 }
 
+// 코칭 이력 모달 — 새창 마운트 대응(props 로 coaching 전달). 완료수=튜터(02) 연동, 점수=배정 전/후 평균.
+function CounselorHistoryModal({ coaching = [], onClose, windowed = false }) {
+    return (
+        <Modal title="코칭 이력" width={820} windowed={windowed} onClose={onClose}>
+            {coaching.length === 0 ? (
+                <div className="muted-text" style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12.5 }}>아직 배정된 코칭이 없습니다.</div>
+            ) : (
+                <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                        <span className="muted-text" style={{ fontSize: 12 }}>
+                            배정된 코칭 {coaching.length}회 · 완료 {coaching.filter((c) => (c.total || 0) > 0 && (c.done || 0) >= c.total).length}회
+                        </span>
+                        <span className="muted-text mono" style={{ marginLeft: 'auto', fontSize: 11 }}>
+                            누적 시나리오 {coaching.reduce((a, c) => a + ((c.scenarios && c.scenarios.length) || 0), 0)}개
+                        </span>
+                    </div>
+                    <LearningHistory rows={coaching} />
+                </>
+            )}
+        </Modal>
+    );
+}
+
 // 코칭 이력 — 본인 배정 코칭 타임라인(실데이터). 영역=코칭명, 완료수=튜터(02) 연동, 점수=배정 전/후 평균.
+const LEARNING_PAGE_SIZE = 10;
+
 function LearningHistory({ rows }) {
+    const [page, setPage] = useState(0);
     const byArea = rows.reduce((m, r) => { const a = r.title || '코칭'; m[a] = (m[a] || 0) + 1; return m; }, {});
     const repeated = Object.entries(byArea).filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]);
+
+    // 10건 단위 페이지네이션.
+    const totalPages = Math.max(1, Math.ceil(rows.length / LEARNING_PAGE_SIZE));
+    const curPage = Math.min(page, totalPages - 1);
+    const pageRows = rows.slice(curPage * LEARNING_PAGE_SIZE, (curPage + 1) * LEARNING_PAGE_SIZE);
 
     return (
         <div>
@@ -816,7 +832,7 @@ function LearningHistory({ rows }) {
             <div style={{ position: 'relative' }}>
                 <div style={{ position: 'absolute', left: 19, top: 8, bottom: 8, width: 2, background: 'var(--border)' }}></div>
                 <div style={{ display: 'grid', gap: 4 }}>
-                    {rows.map((h) => {
+                    {pageRows.map((h) => {
                         const total = (h.scenarios && h.scenarios.length) || h.total || 0;
                         const done = h.done || 0;
                         const allDone = total > 0 && done >= total;
@@ -861,6 +877,22 @@ function LearningHistory({ rows }) {
                     })}
                 </div>
             </div>
+
+            {totalPages > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 16 }}>
+                    <button className="btn-mini" disabled={curPage === 0} onClick={() => setPage(curPage - 1)} style={{ opacity: curPage === 0 ? 0.45 : 1 }}>
+                        <Icon name="chevron-left" size={12} />
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => (
+                        <button key={i} className={`btn-mini ${i === curPage ? 'primary' : ''}`} onClick={() => setPage(i)} style={{ minWidth: 30, justifyContent: 'center' }}>
+                            {i + 1}
+                        </button>
+                    ))}
+                    <button className="btn-mini" disabled={curPage === totalPages - 1} onClick={() => setPage(curPage + 1)} style={{ opacity: curPage === totalPages - 1 ? 0.45 : 1 }}>
+                        <Icon name="chevron-right" size={12} />
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

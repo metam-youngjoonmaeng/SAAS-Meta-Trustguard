@@ -1,7 +1,7 @@
 // 관리자/슈퍼관리자 — 평가 관리 (디자인 프로토타입 etc/pages-admin.jsx 의 AdminEvalMgmt 외 포팅)
 // 평가 목록·필터·승인(AdminResults) + 코칭 배정(CoachingPanel/Carousel/MiniCard/DetailModal/CreateModal)
 import React, { useState, useEffect } from 'react';
-import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod } from './ui';
+import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod, openInWindow } from './ui';
 import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, scenById, catMeta } from './mockData';
 import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, archiveCoaching, fetchCoachingHistory, updateReviewStatus } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
@@ -82,7 +82,6 @@ const COACH_PRESETS = {
 export default function AdminEvalMgmt() {
     // 코칭 배정 — coaching_assignments(DB, org 스코프) 실연동. 관리자끼리 공유되며 상담사 본인화면(/api/coaching/mine)과 연결.
     const [coaching, setCoaching] = useState([]);
-    const [modalOpen, setModalOpen] = useState(false);
     const [results, setResults] = useState(null); // null=로딩, []=없음
     const [agents, setAgents] = useState([]);     // 실제 상담사(코칭 대상/멤버 소스)
 
@@ -169,19 +168,8 @@ export default function AdminEvalMgmt() {
                 embedded
                 results={results || []}
                 loading={results === null}
-                beforeList={<CoachingPanel coaching={coaching} agents={agents} onAssign={assign} onUnassign={unassign} onRemove={removeItem} onArchive={archiveItem} onNew={() => setModalOpen(true)} />}
+                beforeList={<CoachingPanel coaching={coaching} agents={agents} onAssign={assign} onUnassign={unassign} onRemove={removeItem} onArchive={archiveItem} onNew={() => openCoachingWindow({ agents, onCreate: addCoaching })} />}
             />
-
-            {modalOpen && (
-                <CoachingCreateModal
-                    agents={agents}
-                    onClose={() => setModalOpen(false)}
-                    onCreate={(entry) => {
-                        addCoaching(entry);
-                        setModalOpen(false);
-                    }}
-                />
-            )}
         </div>
     );
 }
@@ -189,27 +177,9 @@ export default function AdminEvalMgmt() {
 // 코칭 배정 섹션 — 요약 카드 리스트 (클릭 시 상세 모달)
 function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, onArchive, onNew }) {
     const [openKey, setOpenKey] = useState(null);
-    const [historyOpen, setHistoryOpen] = useState(false);
-    const [historyRows, setHistoryRows] = useState(null);   // null=로딩
     // 코칭 members 는 숫자 user_id(coaching_assignments.members) — agents 의 user_id 로 매칭(agents.id 는 agent_code 라 불일치).
     const memberObjs = (ids) => ids.map((id) => agents.find((c) => c.user_id === id)).filter(Boolean);
 
-    // 코칭 이력 모달 열릴 때 실데이터 로드(코칭배정 × 멤버 + 배정 전/후 점수).
-    useEffect(() => {
-        if (!historyOpen) return undefined;
-        let cancelled = false;
-        setHistoryRows(null);
-        (async () => {
-            try {
-                const data = await fetchCoachingHistory();
-                if (!cancelled) setHistoryRows(Array.isArray(data) ? data : []);
-            } catch (e) {
-                console.error('코칭 이력 로딩 실패:', e);
-                if (!cancelled) setHistoryRows([]);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [historyOpen]);
     // 진행 중인 코칭 — 학습 완료(allDone) 카드는 항상 맨 뒤로(미완료 먼저, 완료 나중). 그 외 순서는 유지.
     const active = coaching.filter((g) => g.assigned).sort((a, b) => (a.allDone ? 1 : 0) - (b.allDone ? 1 : 0));
     const pending = coaching.filter((g) => !g.assigned);
@@ -226,7 +196,7 @@ function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, 
                     <span className="muted-text" style={{ fontSize: 12 }}>· 진행 {active.length} · 배정 대기 {pending.length}</span>
                 </div>
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button className="btn-mini" onClick={() => setHistoryOpen(true)}>
+                    <button className="btn-mini" onClick={() => openCoachingHistoryWindow()}>
                         <Icon name="history" size={11} />코칭 이력
                     </button>
                     <button className="btn-mini primary" onClick={onNew}>
@@ -257,18 +227,6 @@ function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, 
                 )}
             </div>
 
-            {historyOpen && (
-                <Modal title="상담사별 코칭 이력" width={920} onClose={() => setHistoryOpen(false)}>
-                    {historyRows === null ? (
-                        <div className="muted-text" style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12.5 }}>불러오는 중…</div>
-                    ) : historyRows.length === 0 ? (
-                        <div className="muted-text" style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12.5 }}>아직 코칭 이력이 없습니다.</div>
-                    ) : (
-                        <CoachingHistory rows={historyRows} />
-                    )}
-                </Modal>
-            )}
-
             {openItem && (
                 <CoachingDetailModal
                     g={openItem}
@@ -292,8 +250,11 @@ function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, 
 
 // 코칭 이력 — 상담사별 누적 코칭 기록 + 점수 개선폭 (실데이터: /api/coaching/history).
 // row: { id, counselorId, counselorName, team, area, date, by, channel, scenarios, scoreBefore, scoreAfter, hasAfter }
+const HISTORY_PAGE_SIZE = 10;
+
 function CoachingHistory({ rows }) {
     const [openId, setOpenId] = useState(null);
+    const [page, setPage] = useState(0);
     if (!rows.length) return null;
     const fmtScore = (v) => (v == null ? '–' : v);
 
@@ -314,6 +275,11 @@ function CoachingHistory({ rows }) {
         return { cid, name, team, hs: sorted, count: hs.length, mainArea: mainArea[0], mainAreaN: mainArea[1], firstScore, lastScore, gain, ongoing };
     }).sort((a, b) => b.count - a.count);
 
+    // 상담사 카드 10개 단위 페이지네이션 — 목록이 줄어 현재 페이지가 비면 마지막 페이지로 보정.
+    const totalPages = Math.max(1, Math.ceil(list.length / HISTORY_PAGE_SIZE));
+    const curPage = Math.min(page, totalPages - 1);
+    const pageList = list.slice(curPage * HISTORY_PAGE_SIZE, (curPage + 1) * HISTORY_PAGE_SIZE);
+
     return (
         <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
@@ -321,7 +287,7 @@ function CoachingHistory({ rows }) {
             </div>
 
             <div style={{ display: 'grid', gap: 10 }}>
-                {list.map((g) => {
+                {pageList.map((g) => {
                     const open = openId === g.cid;
                     return (
                         <div key={g.cid} style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'white', overflow: 'hidden' }}>
@@ -404,6 +370,37 @@ function CoachingHistory({ rows }) {
                     );
                 })}
             </div>
+
+            {totalPages > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 16 }}>
+                    <button
+                        className="btn-mini"
+                        disabled={curPage === 0}
+                        onClick={() => { setPage(curPage - 1); setOpenId(null); }}
+                        style={{ opacity: curPage === 0 ? 0.45 : 1 }}
+                    >
+                        <Icon name="chevron-left" size={12} />
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => (
+                        <button
+                            key={i}
+                            className={`btn-mini ${i === curPage ? 'primary' : ''}`}
+                            onClick={() => { setPage(i); setOpenId(null); }}
+                            style={{ minWidth: 30, justifyContent: 'center' }}
+                        >
+                            {i + 1}
+                        </button>
+                    ))}
+                    <button
+                        className="btn-mini"
+                        disabled={curPage === totalPages - 1}
+                        onClick={() => { setPage(curPage + 1); setOpenId(null); }}
+                        style={{ opacity: curPage === totalPages - 1 ? 0.45 : 1 }}
+                    >
+                        <Icon name="chevron-right" size={12} />
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
@@ -657,7 +654,59 @@ function CoachingDetailModal({ g, members, onClose, onAssign, onUnassign, onRemo
 }
 
 // 코칭 만들기 모달
-function CoachingCreateModal({ agents = [], onClose, onCreate }) {
+// 새 코칭 배정 폼을 새창으로.
+function openCoachingWindow(opts) {
+    openInWindow({
+        name: 'coaching-form', title: '새 코칭 배정', width: 760, height: 880,
+        render: (close) => (
+            <CoachingCreateModal
+                windowed
+                agents={opts.agents || []}
+                onClose={close}
+                onCreate={(entry) => Promise.resolve(opts.onCreate?.(entry)).finally(close)}
+            />
+        ),
+    });
+}
+
+// 상담사별 코칭 이력을 새창으로.
+function openCoachingHistoryWindow() {
+    openInWindow({
+        name: 'coaching-history', title: '상담사별 코칭 이력', width: 960, height: 820,
+        render: (close) => <CoachingHistoryModal windowed onClose={close} />,
+    });
+}
+
+// 코칭 이력 모달 — 자체적으로 실데이터(/api/coaching/history) 로드 후 표시(새창 마운트 대응).
+function CoachingHistoryModal({ onClose, windowed = false }) {
+    const [rows, setRows] = useState(null);   // null=로딩
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const data = await fetchCoachingHistory();
+                if (!cancelled) setRows(Array.isArray(data) ? data : []);
+            } catch (e) {
+                console.error('코칭 이력 로딩 실패:', e);
+                if (!cancelled) setRows([]);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+    return (
+        <Modal title="상담사별 코칭 이력" width={920} windowed={windowed} onClose={onClose}>
+            {rows === null ? (
+                <div className="muted-text" style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12.5 }}>불러오는 중…</div>
+            ) : rows.length === 0 ? (
+                <div className="muted-text" style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12.5 }}>아직 코칭 이력이 없습니다.</div>
+            ) : (
+                <CoachingHistory rows={rows} />
+            )}
+        </Modal>
+    );
+}
+
+function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false }) {
     const [targetType, setTargetType] = useState('group');
     const [channel, setChannel] = useState('call');   // 학습 채널 — 'call'(전화) | 'chat'(채팅). Tutor 딥링크 mode 로 전달.
     const [selected, setSelected] = useState([]);
@@ -731,6 +780,7 @@ function CoachingCreateModal({ agents = [], onClose, onCreate }) {
             title="코칭 배정"
             onClose={onClose}
             width={680}
+            windowed={windowed}
             foot={
                 <>
                     <button className="btn-mini" onClick={onClose}>취소</button>
