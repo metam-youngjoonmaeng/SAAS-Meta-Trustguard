@@ -793,19 +793,24 @@ export function createBrandRouter(pool) {
             res.status(400).json({ message: 'invalid id' });
             return;
         }
+        const client = await pool.connect();
         try {
-            // qa_calls.org_id 가 ON DELETE RESTRICT 이므로 활성 콜이 있는 브랜드는 삭제 불가
-            const { rows: refRows } = await pool.query(
+            // 브랜드 삭제 = 평가 데이터까지 한 번에 제거. qa_calls.org_id 가 ON DELETE RESTRICT 이므로
+            // 콜을 먼저 명시 삭제(자식 qa_evaluation_rows/checklist/conversations/analysis_report/
+            // golden_set/review_events 등은 qa_calls FK 가 ON DELETE CASCADE → 자동 연쇄). 이어서
+            // organizations 삭제 시 eval_item_defs/pentagon_axes/change_log 가 CASCADE 로 함께 제거.
+            // 트랜잭션으로 묶어 부분 삭제(고아 데이터) 방지.
+            await client.query('BEGIN');
+            const { rows: refRows } = await client.query(
                 'SELECT COUNT(*)::int AS cnt FROM public.qa_calls WHERE org_id = $1',
                 [id]
             );
-            if (refRows[0]?.cnt > 0) {
-                res.status(409).json({
-                    message: `해당 브랜드에 연결된 콜 ${refRows[0].cnt}건이 있어 삭제할 수 없습니다`,
-                });
-                return;
+            const callCount = refRows[0]?.cnt ?? 0;
+            if (callCount > 0) {
+                await client.query('DELETE FROM public.qa_calls WHERE org_id = $1', [id]);
             }
-            await pool.query('DELETE FROM public.organizations WHERE id = $1', [id]);
+            await client.query('DELETE FROM public.organizations WHERE id = $1', [id]);
+            await client.query('COMMIT');
             await insertQaAuditLog(pool, {
                 req,
                 action: AUDIT_ACTION.BRAND_DELETE,
@@ -814,11 +819,19 @@ export function createBrandRouter(pool) {
                 http_method: 'DELETE',
                 http_path: `/api/admin/brands/${id}`,
                 success: true,
+                detail_json: JSON.stringify({ deleted_calls: callCount }),
             });
-            res.json({ ok: true });
+            res.json({ ok: true, deleted_calls: callCount });
         } catch (err) {
+            try {
+                await client.query('ROLLBACK');
+            } catch {
+                /* 롤백 실패는 무시 — 원 에러를 그대로 노출 */
+            }
             console.error('DELETE /api/admin/brands/:id error:', err);
             res.status(500).json({ message: 'Failed to delete brand.' });
+        } finally {
+            client.release();
         }
     });
 

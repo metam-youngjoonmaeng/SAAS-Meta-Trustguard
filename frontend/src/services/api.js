@@ -87,6 +87,14 @@ export async function fetchCalls() {
     return request('/api/calls');
 }
 
+// 관리자 — 평가 콜 삭제(벌크). qa_calls 행 삭제 시 자식 테이블(평가/분석/대화/검수 등)이 CASCADE 로 함께 제거.
+// body { ids:[...] } 단일 요청으로 처리(서버 트랜잭션). 응답 { ok, deleted }.
+export async function deleteCalls(ids) {
+    const list = [...new Set((Array.isArray(ids) ? ids : [ids]).map((v) => String(v ?? '').trim()).filter(Boolean))];
+    if (!list.length) throw new Error('ids is required');
+    return request('/api/calls', { method: 'DELETE', body: JSON.stringify({ ids: list }) });
+}
+
 // 코칭 배정용 실제 상담사 목록(평균점수·부서·콜수). admin_users + qa_calls 조인.
 export async function fetchAgents() {
     return request('/api/agents');
@@ -613,6 +621,37 @@ export async function fetchAppLogsRecent({ limit } = {}) {
     if (limit) params.set('limit', String(limit));
     const qs = params.toString();
     return request(`/api/admin/logs/recent${qs ? `?${qs}` : ''}`);
+}
+
+/* ── RAG · 사전 로그(서버 인메모리 링버퍼) ───────────────────────
+ * 평가 시 sub-agent 가 emit 한 RAG few-shot hit / 금지어·사전 매칭을 백엔드 인메모리
+ * 링버퍼에 적재한 항목을 최신순으로 반환. (평가 요청에 disable_rag=false 여야 hit 발생)
+ * 응답: { entries: [{ qa_id, ts, org_id?, item_number, item_name?, kind:'rag'|'forbidden',
+ *                       hits?:[{example_id,score,score_bucket?,summary?}],
+ *                       matches?:[{term?,rule_ref?,verdict?,quote?}] }, ...] }
+ * → entries 배열만 반환(없으면 빈 배열).
+ */
+export async function fetchRagLogRecent({ limit = 100, qa_id } = {}) {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    if (qa_id) params.set('qa_id', String(qa_id));
+    const qs = params.toString();
+    const data = await request(`/api/rag-log/recent${qs ? `?${qs}` : ''}`);
+    return Array.isArray(data?.entries) ? data.entries : [];
+}
+
+// 루브릭 few-shot 항목 토글 설정 — { "<org_id>": { rubric_id, item_names:[...] } }
+export async function fetchRagFewshotConfig() {
+    const data = await request('/api/rag-fewshot-config');
+    return data?.config && typeof data.config === 'object' ? data.config : {};
+}
+
+export async function saveRagFewshotConfig(config) {
+    const data = await request('/api/rag-fewshot-config', {
+        method: 'PUT',
+        body: JSON.stringify({ config: config || {} }),
+    });
+    return data?.config && typeof data.config === 'object' ? data.config : {};
 }
 
 /* ── 알림(수신자별 영구 알림) ───────────────────────────────────

@@ -7,6 +7,7 @@ import {
     fetchGoldenCasesByItem, removeGoldenSet,
     fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, deleteEvalItemDef, fetchEvalItemHistory,
     fetchPentagonAxes, savePentagonAxis, createPentagonAxis,
+    fetchRagFewshotConfig, saveRagFewshotConfig,
 } from '../services/api';
 import {
     Plus,
@@ -37,6 +38,49 @@ import {
 //  - 행이 없으면 brandConfig (constants.js) 기본값으로 fallback.
 //  - 모든 변경은 eval_item_change_log / pentagon_axis_change_log 에 기록.
 // ============================================================
+
+// ── [임시] RAG 실험 중 항목 표시 (Test-RAG 배지) ───────────────────────────
+// 프론트 전용·되돌리기 쉬운 상수. DB 스키마/백엔드 무변경.
+// (orgId, orderNo) 정확 매칭이 1차, 항목명('설명력 · 전달력') 매칭은 폴백.
+// 실험 종료 시 이 배열만 비우면 배지 전부 사라짐.
+const TEST_RAG_ITEMS = [
+    // asdf(org 10) — '설명력' 항목. 재번호로 현재 order_no=7 (구 6). 이름 매칭이 우선 폴백.
+    { orgId: 10, orderNo: 7, itemName: '설명력 (내부용어 지양·두괄식)' },
+];
+
+// RAG few-shot ON/OFF 토글 버튼 + Test-RAG 배지는 개발/실험 기능 — 기본 숨김(커밋 상태).
+// 로컬 개발 시 .env.local 에 NEXT_PUBLIC_SHOW_RAG=1 을 주면 노출(활성화). 미설정(운영/공유)에서는
+// 평가항목 행에 RAG 토글·배지가 렌더되지 않음. (백엔드 ragFewshotConfig 연동 로직은 무변경.)
+const SHOW_RAG_DEV = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_SHOW_RAG === '1';
+
+function normalizeItemName(s) {
+    // 중점(·)·공백 표기 흔들림 흡수 — '설명력·전달력' / '설명력 · 전달력' 동일 취급.
+    return String(s ?? '').replace(/\s+/g, '').replace(/[·ㆍ‧∙•]/g, '·');
+}
+
+function isTestRagItem(orgId, orderNo, itemName) {
+    const oid = Number(orgId);
+    const ono = Number(orderNo);
+    const nm = normalizeItemName(itemName);
+    return TEST_RAG_ITEMS.some((t) => {
+        if (Number(t.orgId) !== oid) return false;
+        if (t.orderNo != null && Number(t.orderNo) === ono) return true;
+        if (t.itemName && normalizeItemName(t.itemName) === nm) return true;
+        return false;
+    });
+}
+
+function TestRagBadge() {
+    return (
+        <span
+            title="RAG 실험 중인 항목 (임시 표시)"
+            className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[#FEF3F2] border border-[#FECDCA] text-[9px] font-bold text-[#B42318] leading-none"
+        >
+            <span aria-hidden="true">🧪</span>
+            Test-RAG
+        </span>
+    );
+}
 
 // 브랜드별 Pentagon 5축 키 (구성용) — constants.js 의 radarLabels 사용
 const PENTAGON_MOCK_DESC = {
@@ -91,6 +135,56 @@ const EvalItems = ({ activeBrandId }) => {
         const t = window.setTimeout(() => setRubricSyncToast(null), 5000);
         return () => window.clearTimeout(t);
     }, [rubricSyncToast]);
+
+    // ── 루브릭 few-shot 항목 토글 (브랜드 한정 "이 항목만 RAG") ──────────────
+    // 백엔드 ragFewshotConfig(파일 영속) + evaluateStandardCall(getOrgFewshot) 와 연동.
+    // shape: { "<org_id>": { rubric_id, item_names:[...] } }. 항목 "이름" 기반(재번호 안전).
+    const [ragCfg, setRagCfg] = useState({});
+    const [ragSaving, setRagSaving] = useState(false);
+    useEffect(() => {
+        let alive = true;
+        fetchRagFewshotConfig()
+            .then((cfg) => { if (alive) setRagCfg(cfg && typeof cfg === 'object' ? cfg : {}); })
+            .catch(() => { if (alive) setRagCfg({}); });
+        return () => { alive = false; };
+    }, []);
+    const isRagOn = useCallback(
+        (itemName) => {
+            const entry = ragCfg[String(activeBrandId)];
+            const names = entry && Array.isArray(entry.item_names) ? entry.item_names : [];
+            const nm = String(itemName || '');
+            return names.some((tok) => tok && nm.includes(String(tok)));
+        },
+        [ragCfg, activeBrandId]
+    );
+    const toggleRag = useCallback(
+        async (itemName) => {
+            const org = String(activeBrandId);
+            const nm = String(itemName || '').trim();
+            if (!nm) return;
+            const next = { ...ragCfg };
+            const prev = next[org] || {
+                rubric_id: Number(activeBrandId) === 10 ? 'rbrc_asdf_org10' : `rbrc_org${org}`,
+                item_names: [],
+            };
+            const names = Array.isArray(prev.item_names) ? [...prev.item_names] : [];
+            const on = names.some((tok) => tok && nm.includes(String(tok)));
+            const nextNames = on
+                ? names.filter((tok) => !(tok && nm.includes(String(tok)))) // OFF: 매칭 토큰 제거(시드 포함)
+                : [...names, nm]; // ON: 풀 항목명 추가
+            next[org] = { rubric_id: prev.rubric_id, item_names: nextNames };
+            setRagSaving(true);
+            try {
+                const saved = await saveRagFewshotConfig(next);
+                setRagCfg(saved && typeof saved === 'object' ? saved : next);
+            } catch {
+                setRubricSyncToast({ tone: 'error', message: 'RAG 토글 저장 실패', detail: '' });
+            } finally {
+                setRagSaving(false);
+            }
+        },
+        [ragCfg, activeBrandId]
+    );
 
     // 평가항목 정의(criterion + prompt_template + 메타)는 (org_id, department, order_no, version) 키로 DB 에 저장.
     // 체크리스트는 checklistDept(레거시='기본', 신규=브랜드 기본 부서) 스코프로 fetch — KSQI(department='KSQI')
@@ -204,6 +298,10 @@ const EvalItems = ({ activeBrandId }) => {
                                         label={it.item}
                                         selected={on}
                                         inactive={it.is_active === false}
+                                        testRag={isTestRagItem(activeBrandId, it.order_no, it.item)}
+                                        ragOn={isRagOn(it.item)}
+                                        ragSaving={ragSaving}
+                                        onToggleRag={() => toggleRag(it.item)}
                                         onSelect={() => setSelection({ kind: 'item', idx })}
                                         onEdit={() => setModal({ type: 'edit-item', item: it })}
                                     />
@@ -404,7 +502,10 @@ function AddBox({ label, onClick }) {
 
 /* ── 좌측 리스트 행 ───────────────────────────────────────────── */
 
-function ItemRow({ orderNo, category, label, selected, onSelect, onEdit, inactive = false }) {
+function ItemRow({
+    orderNo, category, label, selected, onSelect, onEdit, inactive = false,
+    testRag = false, ragOn = false, ragSaving = false, onToggleRag,
+}) {
     return (
         <div
             onClick={onSelect}
@@ -420,12 +521,34 @@ function ItemRow({ orderNo, category, label, selected, onSelect, onEdit, inactiv
                         <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[#F2F4F7] text-[#98A2B3]">비활성</span>
                     )}
                 </div>
-                <div className={`text-[12.5px] font-bold truncate ${
-                    inactive ? 'text-[#98A2B3]' : selected ? 'text-[#055AAF]' : 'text-[#101828]'
-                }`}>
-                    {label}
+                <div className="flex items-center gap-1.5 min-w-0">
+                    <span className={`text-[12.5px] font-bold truncate ${
+                        inactive ? 'text-[#98A2B3]' : selected ? 'text-[#055AAF]' : 'text-[#101828]'
+                    }`}>
+                        {label}
+                    </span>
+                    {SHOW_RAG_DEV && (ragOn || testRag) && <TestRagBadge />}
                 </div>
             </div>
+            {SHOW_RAG_DEV && onToggleRag && (
+                <button
+                    type="button"
+                    disabled={ragSaving}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleRag();
+                    }}
+                    title={ragOn ? 'RAG few-shot 켜짐 — 클릭하여 끄기' : 'RAG few-shot 꺼짐 — 클릭하여 켜기'}
+                    className={`shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold border transition-colors ${
+                        ragOn
+                            ? 'bg-[#055AAF] text-white border-[#055AAF]'
+                            : 'bg-white text-[#98A2B3] border-[#E4E7EC] hover:text-[#055AAF] hover:border-[#055AAF]'
+                    } ${ragSaving ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                >
+                    <Sparkles size={10} />
+                    RAG {ragOn ? 'ON' : 'OFF'}
+                </button>
+            )}
             <button
                 type="button"
                 onClick={(e) => {

@@ -19,7 +19,8 @@ import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChe
 /* SAMPLE_UPLOAD_FEATURE */ import { ingestSampleToDb, clearSamplesFromDb } from './sampleIngest.mjs';
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
-import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall } from './qaPipelineIngest.mjs';
+import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult } from './qaPipelineIngest.mjs';
+import { loadRagFewshotConfig, saveRagFewshotConfig } from './ragFewshotConfig.mjs';
 import { startIcsQaPoller } from './icsQaPoller.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
@@ -61,6 +62,22 @@ function round1(value) {
 
 function clamp0to100(value) {
     return Math.max(0, Math.min(100, value));
+}
+
+/* ── [RAG·사전 로그, additive] 백엔드 RAG few-shot hit / 금지어·사전 매칭 인메모리 링버퍼 ──
+ * DB 미적재(스키마 불변). 평가 잡 onProgress(type==='rag_hits') 와 평가 결과
+ * extractForbiddenFromResult(resp) 가 여기에 push. GET /api/rag-log/recent 가 최신순 반환.
+ * 레코드 계약:
+ *   { qa_id, ts, org_id?, item_number, item_name?, kind:'rag'|'forbidden',
+ *     hits?:[{example_id,score,score_bucket?,summary?}],            // kind==='rag'
+ *     matches?:[{term?,rule_ref?,verdict?,quote?}] }                // kind==='forbidden'
+ * 상한 500(초과분 shift). 외부(평가 잡)에서 pushRagLog(entry) 로 적재. */
+const RAG_LOG = [];
+const RAG_LOG_MAX = 500;
+function pushRagLog(entry) {
+    if (!entry || typeof entry !== 'object') return;
+    RAG_LOG.push({ ts: Date.now(), ...entry });
+    if (RAG_LOG.length > RAG_LOG_MAX) RAG_LOG.shift();
 }
 
 function orderNoPct(orderNos, rows) {
@@ -2181,6 +2198,63 @@ app.put('/api/evaluations/:qaId/admin-comments', async (req, res) => {
     }
 });
 
+// 평가 콜 삭제 (관리자 전용, 벌크). body { ids:[qaId, ...] } 또는 { id:qaId } 단건 수용.
+//   qa_calls 행 삭제 시 자식 9개 테이블(qa_evaluation_rows·qa_checklist_rows·qa_analysis_report·
+//   qa_conversations·qa_golden_set·qa_review_events·qa_consumer_*)이 FK ON DELETE CASCADE 로
+//   함께 제거된다 — 별도 자식 DELETE 불필요.
+//   sandbox 계정은 운영 행(is_sandbox=false) 삭제 불가 — 배치에 운영행 포함 시 전체 거부(평가/검수 PUT 가드 일관).
+//   SELECT(가드)→DELETE 를 한 트랜잭션으로 묶어 TOCTOU 방지.
+app.delete('/api/calls', requireAdmin, async (req, res) => {
+    // body.ids(배열) 우선, 없으면 body.id(단건) 수용. trim + 중복/공백 제거.
+    const rawIds = Array.isArray(req.body?.ids)
+        ? req.body.ids
+        : req.body?.id != null
+            ? [req.body.id]
+            : [];
+    const ids = [...new Set(rawIds.map((v) => String(v ?? '').trim()).filter(Boolean))];
+    if (!ids.length) {
+        res.status(400).json({ message: 'ids is required' });
+        return;
+    }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: targets } = await client.query(
+            `SELECT "ID" AS id, is_sandbox FROM qa_calls WHERE "ID" = ANY($1)`,
+            [ids]
+        );
+        // sandbox 계정: 배치에 운영 행(is_sandbox=false) 포함 시 전체 거부.
+        if (req.session?.login_id === SANDBOX_LOGIN_ID && targets.some((t) => t.is_sandbox === false)) {
+            await client.query('ROLLBACK');
+            res.status(403).json({ message: 'sandbox account cannot delete production calls' });
+            return;
+        }
+        const { rowCount } = await client.query('DELETE FROM qa_calls WHERE "ID" = ANY($1)', [ids]);
+        await client.query('COMMIT');
+        await insertQaAuditLog(pool, {
+            req,
+            action: 'QA_CALL_DELETE',
+            resource_type: 'qa_call',
+            resource_id: ids.length === 1 ? ids[0] : `${ids.length} calls`,
+            http_method: 'DELETE',
+            http_path: '/api/calls',
+            detail_json: JSON.stringify({ ids, requested: ids.length, deleted: rowCount }),
+            success: rowCount > 0,
+        });
+        res.json({ ok: true, deleted: rowCount });
+    } catch (error) {
+        try {
+            await client.query('ROLLBACK');
+        } catch {
+            /* 이미 롤백/종료된 트랜잭션 */
+        }
+        console.error('DELETE /api/calls error:', error);
+        res.status(500).json({ message: 'Failed to delete calls.' });
+    } finally {
+        client.release();
+    }
+});
+
 // 검수 4단계 전이 — 대기(pending) → 검수중(in_review) → 검토요청(review_done) → 최종승인(approved).
 //   상담사(agent): 본인 콜 한정, pending↔in_review↔review_done (approved 이후 잠금).
 //   관리자(admin/super): 모든 전이(최종승인 포함).
@@ -3830,15 +3904,64 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
     // 내부 플럼빙(barrier 등). 0초 완료 이벤트가 단계 수를 부풀리고 "KSQI 평가" 같은
     // 꺼진 기능명이 노출되는 것을 방지.
     const PROGRESS_HIDDEN_NODE = /^(ksqi|gt_)|_barrier$|^(debate|kms|consumer_detect|hitl_queue_populator|combined_report|report_narrator)$/;
+    // [RAG·사전 로그, additive] 평가 잡 진행 중 흘러오는 RAG few-shot hit(라이브)을 인메모리 링버퍼에 적재.
+    // 평가 결과의 금지어/사전 매칭은 잡 완료 후 extractForbiddenFromResult 로 별도 push.
+    const callOrgId = Number(call?.org_id);
+    const ragOrgId = Number.isFinite(callOrgId) ? callOrgId : undefined;
+    // 파이프라인이 forward 한 원 resp(있으면) — 금지어 추출용. onProgress(type==='result') 로 도착.
+    let capturedRawResp = null;
     const onProgress = (ev) => {
-        const node = String(ev?.node || '').trim();
+        if (!ev || typeof ev !== 'object') return;
+        // 신규: RAG few-shot hit 라이브 이벤트 → 계약 레코드(kind:'rag') 적재. (기존 status 흐름 불변)
+        if (ev.type === 'rag_hits') {
+            try {
+                const d = ev.data || {};
+                const hits = Array.isArray(d.fewshot) ? d.fewshot : [];
+                // RAG hit 0건 항목은 RAG탭에 빈('—') 엔트리로 안 쌓이게 차단(표시 노이즈 제거, 평가 무관).
+                //   미적중 placeholder(예: 커스텀 루브릭 #5000번대)가 글로벌 링버퍼에 누적되던 원인 차단.
+                if (hits.length === 0) return;
+                pushRagLog({
+                    qa_id: job.qa_id,
+                    org_id: ragOrgId,
+                    item_number: Number(d.item_number),
+                    item_name: d.item_name || d.intent || undefined,
+                    kind: 'rag',
+                    hits: hits.map((h) => ({
+                        example_id: String(h?.example_id ?? ''),
+                        // 평가 score 부재(루브릭 예시 스토어) 시 코사인 유사도를 표시값으로 폴백 →
+                        // "어떤 예시를 얼마나 유사하게 가져왔는지" 가시화. 둘 다 없으면 null.
+                        score:
+                            h?.score ??
+                            (typeof h?.cosine_score === 'number'
+                                ? Math.round(h.cosine_score * 100) / 100
+                                : typeof h?.similarity === 'number'
+                                  ? Math.round(h.similarity * 100) / 100
+                                  : null),
+                        score_bucket: h?.score_bucket ?? undefined,
+                        // 가져온 예시 내용: 골든 원문(segment_text) 우선, 없으면 색인요약/근거.
+                        summary: h?.segment_text || h?.index_summary || h?.rationale || undefined,
+                    })),
+                });
+            } catch {
+                /* 로그 적재 실패는 평가에 영향 없음 */
+            }
+            return;
+        }
+        // 신규: 파이프라인이 원 resp 를 forward 하면 캡처(금지어 추출용). 진행 표시에는 영향 없음.
+        if (ev.type === 'result') {
+            if (ev.data && typeof ev.data === 'object') capturedRawResp = ev.data;
+            return;
+        }
+        // 기존: 노드 진행(status). 신규 래핑(type:'status') / 레거시 평면 모두 수용.
+        const stat = ev.type === 'status' ? ev.data?.status : ev.status;
+        const node = String((ev.type === 'status' ? ev.data?.node : ev.node) || '').trim();
         if (!node) return;
         if (PROGRESS_HIDDEN_NODE.test(node)) return;
         const p = job.progress;
         p.last_event_at = Date.now();
-        if (ev?.status === 'started') {
+        if (stat === 'started') {
             if (!p.running_nodes.includes(node)) p.running_nodes.push(node);
-        } else if (ev?.status === 'completed') {
+        } else if (stat === 'completed') {
             p.running_nodes = p.running_nodes.filter((n) => n !== node);
             if (!doneNodes.has(node)) {
                 doneNodes.add(node);
@@ -3877,6 +4000,32 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
                 raw_total: result.raw_total,
                 max_total: result.max_total,
             };
+            // [RAG·사전 로그, additive] 평가 결과에서 금지어/사전·규칙 매칭 추출 → 계약 레코드(kind:'forbidden') 적재.
+            // 파이프라인이 원 resp 를 forward(onProgress type:'result')했을 때만 동작. 실패는 무시(무회귀).
+            try {
+                if (capturedRawResp && typeof extractForbiddenFromResult === 'function') {
+                    const forbidden = extractForbiddenFromResult(capturedRawResp) || [];
+                    for (const f of forbidden) {
+                        pushRagLog({
+                            qa_id: result.qa_id ?? job.qa_id,
+                            org_id: ragOrgId,
+                            item_number: Number(f?.item_number),
+                            item_name: f?.item_name || undefined,
+                            kind: 'forbidden',
+                            matches: Array.isArray(f?.matches)
+                                ? f.matches.map((m) => ({
+                                      term: m?.term ?? undefined,
+                                      rule_ref: m?.rule_ref ?? undefined,
+                                      verdict: m?.verdict ?? undefined,
+                                      quote: m?.quote ?? m?.agent_quote ?? undefined,
+                                  }))
+                                : [],
+                        });
+                    }
+                }
+            } catch {
+                /* 금지어 추출/적재 실패는 평가에 영향 없음 */
+            }
             await insertQaAuditLog(pool, {
                 req,
                 action: AUDIT_ACTION.INGEST_QA_PIPELINE,
@@ -3923,6 +4072,43 @@ app.get('/api/ingest/qa-pipeline-jobs/:jobId', (req, res) => {
             finished_at: job.finished_at,
         },
     });
+});
+
+// [RAG·사전 로그, additive] 백엔드 RAG few-shot hit / 금지어·사전 매칭 인메모리 로그 조회.
+// limit(기본 100, 1~500) · qa_id(옵션 필터). 최신순으로 slice 반환. DB 미조회(인메모리 링버퍼).
+// 평가 시 disable_rag=false 여야 RAG hit 이 발생(대시보드 기본 모드는 RAG OFF → 빈 결과).
+app.get('/api/rag-log/recent', requireAdmin, (req, res) => {
+    let limit = Number(req.query.limit);
+    if (!Number.isFinite(limit) || limit <= 0) limit = 100;
+    limit = Math.min(Math.max(1, Math.trunc(limit)), RAG_LOG_MAX);
+    const qaId = String(req.query.qa_id || '').trim();
+    let rows = RAG_LOG;
+    if (qaId) rows = rows.filter((e) => String(e.qa_id ?? '') === qaId);
+    // 최신순(ts 내림차순) — 원본 링버퍼는 변형하지 않도록 복사 후 정렬.
+    const entries = rows.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, limit);
+    res.json({ entries });
+});
+
+// 루브릭 few-shot 항목 토글 설정 — UI 에서 "이 항목만 RAG" 를 켜고 끄는 영속 설정.
+// shape: { "<org_id>": { rubric_id, item_names:[...] } }. 평가 시 evaluateStandardCall 이 getOrgFewshot 으로 읽음.
+app.get('/api/rag-fewshot-config', requireAdmin, (req, res) => {
+    try {
+        res.json({ config: loadRagFewshotConfig() });
+    } catch (e) {
+        res.status(500).json({ error: String(e?.message || e) });
+    }
+});
+
+app.put('/api/rag-fewshot-config', requireAdmin, (req, res) => {
+    try {
+        // body 가 {config:{...}} 또는 설정 객체 자체 둘 다 수용.
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const cfg = body.config && typeof body.config === 'object' ? body.config : body;
+        const saved = saveRagFewshotConfig(cfg);
+        res.json({ ok: true, config: saved });
+    } catch (e) {
+        res.status(500).json({ error: String(e?.message || e) });
+    }
 });
 
 async function bootstrap() {

@@ -166,7 +166,7 @@ function sanitizePromptTemplate(value) {
  */
 export async function buildRubricFromDefs(pool, orgId) {
     const { rows } = await pool.query(
-        `SELECT order_no, category, item, criterion, prompt_template, max_score, scoring_type
+        `SELECT order_no, category, item, criterion, prompt_template, max_score, scoring_type, pentagon_axis
            FROM public.eval_item_defs
           WHERE org_id = $1
             AND department = $2
@@ -179,6 +179,10 @@ export async function buildRubricFromDefs(pool, orgId) {
     const items = [];
     const orderMap = [];
     const rowMeta = [];
+    // 펜타곤 축 매핑 — 항목(pentagon_axis 라벨) → eval_item_number(5000+index) 목록.
+    // 백엔드 normalize_rubric 이 items[index] 에 eval_item_number=5000+index 를 부여하므로
+    // MTG 도 동일 index 로 축 item_numbers 를 산출(축 메타프롬프트가 해당 항목 채점결과만 요약).
+    const axisItemNumbers = new Map();
     for (const row of rows) {
         const orderNo = asNumber(row.order_no);
         if (orderNo === null) continue;
@@ -261,6 +265,48 @@ export async function buildRubricFromDefs(pool, orgId) {
             max_score: displayMax,
             scoring_type: scoringType === 'yes_no' ? 'yes_no' : 'numeric',
         });
+        // 펜타곤 축 매핑 — 항목의 pentagon_axis(축 라벨)에 이 항목의 eval_item_number(5000+index) 누적.
+        // index = items 배열 내 위치(직전 push 로 items.length-1) — 백엔드 normalize_rubric 번호부여와 정합.
+        const axisLabel = safeStr(row.pentagon_axis).trim();
+        if (axisLabel) {
+            const evalItemNumber = 5000 + (items.length - 1);
+            if (!axisItemNumbers.has(axisLabel)) axisItemNumbers.set(axisLabel, []);
+            axisItemNumbers.get(axisLabel).push(evalItemNumber);
+        }
+    }
+
+    // 펜타곤 축 정의(pentagon_axes) 조회 → rubric.pentagon 블록 조립. 백엔드 _resolve_rubric→
+    // normalize_rubric 이 pentagon_enabled 로 인식하면 pure 트랙 pure_pentagon 노드가 축당 LLM 1콜로
+    // {rating,analysis,summary} 산출 → 응답 result.pentagon. 축 미설정 브랜드는 pentagon=null →
+    // rubric 에 미동봉(byte-identical 무회귀). 조회 실패도 펜타곤 없이 평가 진행.
+    let pentagon = null;
+    try {
+        const { rows: axisRows } = await pool.query(
+            `SELECT axis_no, label, description, prompt_template
+               FROM public.pentagon_axes
+              WHERE org_id = $1
+                AND department = $2
+                AND deactivated_at IS NULL
+                AND is_active = true
+              ORDER BY axis_no ASC`,
+            [orgId, SYNC_DEPARTMENT]
+        );
+        const axes = [];
+        for (const ax of axisRows) {
+            const label = safeStr(ax.label).trim();
+            if (!label) continue;
+            axes.push({
+                name: label,
+                description: safeStr(ax.description),
+                // 축 평가 프롬프트(원문) — 백엔드 _eval_one_axis 가 eval_prompt 로 읽어 메타프롬프트에 주입.
+                eval_prompt: safeStr(ax.prompt_template),
+                item_numbers: axisItemNumbers.get(label) || [],
+                enabled: true,
+            });
+        }
+        if (axes.length) pentagon = { name: 'Pentagon Diagram', axes };
+    } catch {
+        pentagon = null; // 펜타곤 축 조회 실패 → 펜타곤 없이 진행(무회귀)
     }
 
     return {
@@ -274,6 +320,8 @@ export async function buildRubricFromDefs(pool, orgId) {
             special_enabled: true,
             grade_bands: CUSTOM_GRADE_BANDS,
             grade_bands_enabled: true,
+            // 펜타곤 — 축 설정된 브랜드만 동봉(pentagon_enabled). 미설정 시 키 자체 미포함(무회귀).
+            ...(pentagon ? { pentagon, pentagon_enabled: true } : {}),
         },
         orderMap,
         rowMeta,

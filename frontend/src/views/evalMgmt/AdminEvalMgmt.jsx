@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod, openInWindow } from './ui';
 import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, scenById, catMeta } from './mockData';
-import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, archiveCoaching, fetchCoachingHistory, updateReviewStatus } from '../../services/api';
+import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, archiveCoaching, fetchCoachingHistory, updateReviewStatus, deleteCalls } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
 import { DEFAULT_TOTAL_MAX } from '../../constants';
 
@@ -95,6 +95,17 @@ export default function AdminEvalMgmt() {
         }
     };
 
+    // 평가목록 재조회 — 삭제 등 변경 후 서버 기준으로 갱신(초기 로딩 effect 와 동일 매핑).
+    const reloadCalls = async () => {
+        try {
+            const data = await fetchCalls();
+            setResults((Array.isArray(data) ? data : []).map(adaptCall));
+        } catch (e) {
+            console.error('평가목록 로딩 실패:', e);
+            setResults([]);
+        }
+    };
+
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -168,6 +179,7 @@ export default function AdminEvalMgmt() {
                 embedded
                 results={results || []}
                 loading={results === null}
+                onReload={reloadCalls}
                 beforeList={<CoachingPanel coaching={coaching} agents={agents} onAssign={assign} onUnassign={unassign} onRemove={removeItem} onArchive={archiveItem} onNew={() => openCoachingWindow({ agents, onCreate: addCoaching })} />}
             />
         </div>
@@ -993,7 +1005,7 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
 // ─────────────────────────────────────────────────────
 // Admin 평가 결과 — 조직 전체 평가 데이터 관리
 // ─────────────────────────────────────────────────────
-function AdminResults({ embedded, beforeList, results = [], loading = false }) {
+function AdminResults({ embedded, beforeList, results = [], loading = false, onReload }) {
     const [period, setPeriod] = useState(defaultPeriod('7d'));
     const [channel, setChannel] = useState('all');
     const [team, setTeam] = useState('all');
@@ -1130,6 +1142,24 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
     const toggleAll = () => {
         if (selected.size === filtered.length) setSelected(new Set());
         else setSelected(new Set(filtered.map((r) => r.id)));
+    };
+    // 선택 건 삭제(관리자) — DELETE /api/calls { ids } 단일 요청(서버 트랜잭션, 자식 테이블 CASCADE).
+    //   되돌릴 수 없는 작업이라 확인창 필수. 완료 후 서버 재조회(onReload)로 목록 갱신.
+    const removeSelected = async () => {
+        const selectedIds = [...selected];
+        if (!selectedIds.length) return;
+        if (typeof window !== 'undefined' &&
+            !window.confirm(`선택한 ${selectedIds.length}건의 평가를 삭제할까요?\n평가·분석·대화 등 관련 데이터가 모두 삭제되며 되돌릴 수 없습니다.`)) {
+            return;
+        }
+        try {
+            await deleteCalls(selectedIds);
+            setSelected(new Set());
+            if (typeof onReload === 'function') await onReload();
+        } catch (e) {
+            console.error('평가 삭제 실패:', e);
+            alert(`삭제에 실패했습니다. ${e?.message || ''}`.trim());
+        }
     };
 
     const avgScore = filtered.length ? Math.round((filtered.reduce((s, r) => s + r.score, 0) / filtered.length) * 10) / 10 : 0;
@@ -1276,7 +1306,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false }) {
                     <button className="btn-mini" style={{ background: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.22)', color: 'white' }}>
                         <Icon name="download" />CSV 내보내기
                     </button>
-                    <button className="btn-mini" style={{ background: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.22)', color: 'white' }}>
+                    <button className="btn-mini" onClick={removeSelected} style={{ background: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.22)', color: 'white' }}>
                         <Icon name="trash-2" />삭제
                     </button>
                     <button onClick={() => setSelected(new Set())} style={{ marginLeft: 'auto', background: 'transparent', border: 0, color: 'rgba(255,255,255,0.7)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>

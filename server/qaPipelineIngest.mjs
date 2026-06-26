@@ -23,15 +23,27 @@
 
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { buildRubricFromDefs, buildRubricFromDomainDefaults } from './rubricSync.mjs';
+import { getOrgFewshot } from './ragFewshotConfig.mjs';
 
 const DEFAULT_BASE_URL = 'http://localhost:8081';
 // EC2 원격 백엔드 (V3 qa-pipeline, 8081 직접 접근) — call.pipeline_target==='ec2' 시 사용.
 const DEFAULT_EC2_BASE_URL = 'http://54.235.200.151:8081';
+// 컨테이너에서 호스트의 로컬 파이프라인 접근 주소 — force-local 시 기본 타깃.
+const DEFAULT_LOCAL_FORCE_URL = 'http://host.docker.internal:8081';
 const EVALUATE_TIMEOUT_MS = 600_000; // 600초
 
 /** 평가 백엔드 base URL 해석 — opts.baseUrl > call.pipeline_target('ec2') > env > 로컬 기본값 */
 function resolvePipelineBaseUrl(call, opts = {}) {
     if (opts.baseUrl) return opts.baseUrl;
+    // 로컬 실험 강제 — env QA_PIPELINE_FORCE_LOCAL=1 이면 call.pipeline_target('ec2') 를 무시하고
+    // 무조건 로컬로. 대시보드 옛 번들이 ec2 를 보내도 로컬로 강제됨.
+    // ★ QA_PIPELINE_BASE_URL 을 신뢰하지 않음 — EC2 모드가 이 env 를 EC2 주소로 재활용했을 수 있어
+    //    force-local 이 조용히 EC2 로 새는 것을 방지. 전용 QA_PIPELINE_FORCE_LOCAL_URL > 컨테이너 호스트 기본값.
+    // 운영 복귀 시 env(QA_PIPELINE_FORCE_LOCAL) 만 해제하면 기존 동작(pipeline_target 기준) 복원.
+    const _forceLocal = String(process.env.QA_PIPELINE_FORCE_LOCAL ?? '').trim().toLowerCase();
+    if (_forceLocal === '1' || _forceLocal === 'true') {
+        return process.env.QA_PIPELINE_FORCE_LOCAL_URL || DEFAULT_LOCAL_FORCE_URL;
+    }
     if (isEc2Target(call)) {
         return process.env.QA_PIPELINE_BASE_URL_EC2 || DEFAULT_EC2_BASE_URL;
     }
@@ -126,6 +138,73 @@ function indexEvaluations(resp) {
 function itemNameOf(ev) {
     const name = safeStr(ev?.item).trim() || safeStr(ev?.item_name).trim();
     return name || `item_${ev?.item_number}`;
+}
+
+/**
+ * /evaluate 응답에서 금지어/사전 매칭·규칙 인용 표현을 항목별로 수집.
+ *   RAG 로그 링버퍼 kind:'forbidden' 적재용. 점수 환산이 아니라 표시용 구조화 데이터만 추출.
+ *   소스 경로 (report.item_scores[] / evaluations[].evaluation 양쪽 동형, indexEvaluations 사용):
+ *     1) deductions[].rule_ref      → 규칙 참조 + reason/quote (표준 #6/#7 사전 1차필터 감점 포함)
+ *     2) ecom_rag_verify.violations[] (이커머스) / 은행 미러 verdicts·violations
+ *                                   → verdict / agent_quote / rule_ref / reason
+ *     3) evidence[]                 → RAG 위반 시 추가된 상담사 인용 (speaker/quote)
+ *   항목당 매칭이 하나도 없으면 결과에서 제외.
+ * @param {object} resp /evaluate (또는 stream result) 응답
+ * @returns {Array<{item_number:number,item_name:string,matches:Array<{term:string,rule_ref:string,verdict:string,quote:string}>}>}
+ */
+export function extractForbiddenFromResult(resp) {
+    const out = [];
+    const { byItem } = indexEvaluations(resp);
+    for (const [itemNumber, ev] of byItem) {
+        if (!ev || typeof ev !== 'object') continue;
+        const matches = [];
+
+        // 1) deductions[].rule_ref — 실제 사전/규칙 매칭(rule_ref)이 있을 때만 채택.
+        //    순수 LLM 커스텀 루브릭(asdf 등 사전·규칙 없음)은 감점마다 reason(자유서술 사유)을
+        //    남기지만 rule_ref 는 없음 → rule_ref 게이트로 LLM 판정 사유가 '금지어/사전 매칭' 으로
+        //    오인 적재되는 것을 차단. RAG·사전 탭은 실제 사전/규칙 매칭(kolon/ecom/bank 의 rule_ref
+        //    보유 감점)만 표시(무회귀). reason/quote 만 있고 rule_ref 없는 감점은 forbidden 아님.
+        for (const d of safeList(ev.deductions)) {
+            if (!d || typeof d !== 'object') continue;
+            const ruleRef = safeStr(d.rule_ref).trim();
+            if (!ruleRef) continue;
+            const reason = safeStr(d.reason).trim();
+            const quote = safeStr(d.quote || d.evidence_quote).trim();
+            matches.push({ term: '', rule_ref: ruleRef, verdict: reason, quote });
+        }
+
+        // 2) ecom_rag_verify.violations[] (이커머스) / 은행 미러 verdicts·violations.
+        const ragVerify = ev.ecom_rag_verify || ev.bank_rag_verify || null;
+        if (ragVerify && typeof ragVerify === 'object') {
+            const violations = [...safeList(ragVerify.violations), ...safeList(ragVerify.verdicts)];
+            for (const v of violations) {
+                if (!v || typeof v !== 'object') continue;
+                const verdict = safeStr(v.verdict).trim();
+                const ruleRef = safeStr(v.rule_ref).trim();
+                const quote = safeStr(v.agent_quote || v.quote).trim();
+                const term = safeStr(v.question || v.reason).trim();
+                if (!verdict && !ruleRef && !quote && !term) continue;
+                matches.push({ term, rule_ref: ruleRef, verdict, quote });
+            }
+        }
+
+        // 3) evidence[] — 위 1/2 에서 실제 금지어/규칙 매칭(rule_ref/violation)이 있을 때만
+        //    보조 인용으로 추가. 매칭이 없으면 evidence 만으로 forbidden 항목을 만들지 않는다.
+        //    (순수 LLM 평가는 항목마다 근거 인용을 남기므로, 게이트 없이 두면 전 항목이
+        //     '금지어/사전 매칭' 으로 오인 적재되어 RAG·사전 탭이 오염됨.)
+        if (matches.length) {
+            for (const q of safeList(ev.evidence)) {
+                if (!q || typeof q !== 'object') continue;
+                const quote = safeStr(q.quote).trim();
+                if (!quote) continue;
+                matches.push({ term: '', rule_ref: '', verdict: safeStr(q.speaker).trim(), quote });
+            }
+        }
+
+        if (!matches.length) continue;
+        out.push({ item_number: itemNumber, item_name: itemNameOf(ev), matches });
+    }
+    return out;
 }
 
 /**
@@ -327,7 +406,17 @@ function buildEvaluatePayload(call) {
             org_id: call?.org_id !== undefined ? safeStr(call.org_id) : undefined,
             department: call?.department !== undefined ? safeStr(call.department) : undefined,
             role: call?.role !== undefined ? safeStr(call.role) : undefined,
+            // PURE 트랙 진입 신호 — 백엔드 _resolve_pure_mode 가 metadata.eval_mode 로 읽어
+            // build_graph_v2_pure 선택(coverage/KMS/persona/pentagon 미수행). 미동봉이면 기존 풀 그래프.
+            eval_mode: safeStr(call?.eval_mode).trim() || undefined,
             rubric_id: rubricId || undefined,
+            // 루브릭 few-shot 항목 게이트 — "이 항목 이름들만" RAG few-shot 허용(브랜드 한정 실험).
+            // 백엔드 rubric_fewshot_gate 가 state.metadata 에서 읽어 custom_rubric 경로① 게이트.
+            // 미동봉이면 백엔드 게이트 비활성(전 항목 통과, 기존 거동). 항목 이름 기반=재번호 안전.
+            rubric_fewshot_item_names:
+                Array.isArray(call?.rubric_fewshot_item_names) && call.rubric_fewshot_item_names.length
+                    ? call.rubric_fewshot_item_names
+                    : undefined,
             // 활성 테넌트 평가항목을 요청에 직접 동봉 — 원격(EC2) 백엔드도 프론트 기준 그대로 평가.
             rubric_inline:
                 call?.rubric_inline && typeof call.rubric_inline === 'object' ? call.rubric_inline : undefined,
@@ -445,8 +534,27 @@ export async function callQaPipelineStream(call, { baseUrl } = {}, onProgress = 
                             /* 진행상황 콜백 오류는 평가에 영향 없음 */
                         }
                     }
+                } else if (ev.event === 'rag_hits_ready') {
+                    // RAG 라이브 few-shot hit (item별 SSE). status 와 달리 type 래핑으로 흘려
+                    // 하위호환 보존 — 기존 status onProgress(ev.data) 시그니처는 불변.
+                    if (typeof onProgress === 'function') {
+                        try {
+                            onProgress({ type: 'rag_hits', data: ev.data });
+                        } catch {
+                            /* 진행상황 콜백 오류는 평가에 영향 없음 */
+                        }
+                    }
                 } else if (ev.event === 'result') {
                     result = ev.data;
+                    // 최종 result 를 onProgress 로 전달 — index.js 가 capturedRawResp 에 담아
+                    // 금지어/사전 매칭(kind:'forbidden')을 RAG 로그 링버퍼에 적재. (#033 forbidden 경로)
+                    if (typeof onProgress === 'function') {
+                        try {
+                            onProgress({ type: 'result', data: ev.data });
+                        } catch {
+                            /* 진행상황 콜백 오류는 평가에 영향 없음 */
+                        }
+                    }
                 } else if (ev.event === 'error') {
                     streamError = safeStr(ev.data?.message || ev.data?.detail || ev.data?.error) || 'stream error';
                 }
@@ -530,6 +638,10 @@ const STANDARD_CATALOG_BY_ORDER = new Map(STANDARD_ITEM_CATALOG.map((slot) => [s
 // 신규 브랜드(id≥4)는 항목이 코오롱 카탈로그와 우연히 일치해도(예: '첫인사' 단일 항목) 표준
 // 트랙으로 빠지지 않고 항상 full custom(rubric_inline) 전송 → qa-pipeline custom_rubric 트랙.
 const LEGACY_STANDARD_ORG_IDS = new Set([1, 2, 3]);
+// 코오롱 = 레거시 풀 파이프라인(3-페르소나/KMS/coverage/debate/pentagon)을 유지하는 유일한 브랜드.
+// 그 외(신한·한화·이커머스·은행·test·asdf·METAM 등) 전부 신규 순수 LLM 모듈(eval_mode=pure).
+// (사용자 결정 2026-06-26: "코오롱만 제외하고 전부 신규 모듈")
+const KOLON_LEGACY_ORG_ID = 3;
 
 /**
  * 루브릭 항목(rubric.items[i])이 코오롱 표준 카탈로그 슬롯과 일치하는지 — order_no 가 카탈로그에
@@ -638,6 +750,9 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
     const evaluations = [];
     let sumEarned = 0;
     let sumMax = 0;
+    // 전량 평가불가(모든 항목 score=null) 감지용 카운터 — 미적재 게이트 신호(Rubric 매퍼와 동형).
+    let nullCount = 0;
+    let nonCriteriaNull = false; // null 항목 중 flag!=='no_criteria' 가 하나라도 있으면 true
 
     for (const slot of STANDARD_ITEM_CATALOG) {
         const orderNo = slot.order_no;
@@ -652,6 +767,8 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
         }
         const score = asNumber(ev.score);
         if (score === null) {
+            nullCount += 1;
+            if (safeStr(ev?.flag).trim() !== 'no_criteria') nonCriteriaNull = true;
             warnings.push(`order ${orderNo}: item_number #${orderNo} score=null/skipped → 행 생략`);
             continue;
         }
@@ -732,7 +849,10 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
         }
     }
 
-    const aiScore = sumMax > 0 ? round1((100 * sumEarned) / sumMax) : 0;
+    // 전량 평가불가(평가는 시도했으나 모든 항목 score=null) 감지 → 미적재 게이트(B 정책)용 신호.
+    // 진짜 포기호(byItem.size===0)는 nullCount=0 이라 false. 부분 평가불가는 evaluations.length>0 라 false.
+    const allUnevaluable = byItem.size > 0 && evaluations.length === 0 && nullCount > 0;
+    const aiScore = sumMax > 0 && Number.isFinite(sumEarned) ? round1((100 * sumEarned) / sumMax) : 0;
     return {
         checklist,
         evaluations,
@@ -741,6 +861,10 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
         max_total: sumMax,
         warnings,
         source,
+        item_count: byItem.size,
+        all_unevaluable: allUnevaluable,
+        unevaluable_count: nullCount,
+        unevaluable_reason: allUnevaluable ? (nonCriteriaNull ? 'unevaluable' : 'no_criteria') : null,
     };
 }
 
@@ -790,6 +914,10 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
     let sumEarned = 0;
     let sumMax = 0;
     let rawTotal = 0;
+    // 전량 평가불가(모든 항목 score=null) 감지용 카운터 — 미적재 게이트(B 정책) 신호.
+    // null 항목은 기존대로 드롭(부분 평가불가는 byte-identical). 전량 null 이면 게이트가 미적재+사유 표면화.
+    let nullCount = 0;
+    let nonCriteriaNull = false; // null 항목 중 flag!=='no_criteria' 가 하나라도 있으면 true
 
     for (const { index, ev } of rubricRows) {
         const slot = meta[index];
@@ -800,6 +928,8 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
         }
         const score = asNumber(ev.score);
         if (score === null) {
+            nullCount += 1;
+            if (safeStr(ev?.flag).trim() !== 'no_criteria') nonCriteriaNull = true;
             warnings.push(`루브릭 index ${index} → order_no ${orderNo}: score=null/skipped → 행 생략`);
             continue;
         }
@@ -843,8 +973,24 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
         });
     }
 
-    const aiScore = sumMax > 0 ? round1((100 * sumEarned) / sumMax) : 0;
-    return { checklist, evaluations, ai_score: aiScore, raw_total: round1(rawTotal), max_total: sumMax, warnings, source };
+    // 전량 평가불가(평가는 시도했으나 모든 항목 score=null) 감지 → 미적재 게이트(B 정책) 신호.
+    // 진짜 포기호(byItem.size===0)는 nullCount=0 이라 false. 부분 평가불가는 evaluations.length>0 라 false.
+    const allUnevaluable = byItem.size > 0 && evaluations.length === 0 && nullCount > 0;
+    const aiScore = sumMax > 0 && Number.isFinite(sumEarned) ? round1((100 * sumEarned) / sumMax) : 0;
+    return {
+        checklist,
+        evaluations,
+        ai_score: aiScore,
+        raw_total: round1(rawTotal),
+        max_total: sumMax,
+        warnings,
+        source,
+        // 포기호(item_count===0) vs 전량 평가불가(item_count>0 + all_unevaluable) 구분 신호.
+        item_count: byItem.size,
+        all_unevaluable: allUnevaluable,
+        unevaluable_count: nullCount,
+        unevaluable_reason: allUnevaluable ? (nonCriteriaNull ? 'unevaluable' : 'no_criteria') : null,
+    };
 }
 
 /**
@@ -883,8 +1029,21 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
     const hasEval = Array.isArray(mapped?.evaluations) && mapped.evaluations.length > 0;
     const hasChecklist = Array.isArray(mapped?.checklist) && mapped.checklist.length > 0;
     if (!hasEval && !hasChecklist) {
-        return { ok: true, skipped: true, qa_id: id, turns: 0,
-                 reason: '포기호/미응대(평가 산출물 없음) — 적재 안 함' };
+        // (1) 진짜 포기호/미응대: 파이프라인이 항목평가를 0건(item_count===0=item_scores 자체 빔,
+        //     상담사 미연결) 산출 → 기존대로 skip(무회귀·byte-identical). asdf·실제 미응대 콜이 여기 해당.
+        const itemCount = asNumber(mapped?.item_count) || 0;
+        if (itemCount === 0) {
+            return { ok: true, skipped: true, qa_id: id, turns: 0,
+                     reason: '포기호/미응대(평가 산출물 없음) — 적재 안 함' };
+        }
+        // (2) 전량 평가불가: 파이프라인이 항목평가는 시도(item_count>0)했으나 전 항목 score=null
+        //     (기준 미입력/STT불가 등) → 진짜 포기호와 구분해 미적재(B 정책) + 사유 표면화.
+        //     skipped.reason 에 'unevaluable_all' 태깅(리드/PM) → 라우트가 '포기호' 아닌 '평가불가'로 노출.
+        //     desync(5000번대 존재, rowMeta 길이 불일치)는 별도 사유로 표면화(점수 오귀속 방지).
+        const _ur = mapped?.unevaluable_reason;
+        const _sub = _ur === 'no_criteria' ? '기준 미입력' : _ur === 'desync' ? '루브릭 매핑 불일치' : '전항목 평가불가/STT불가';
+        return { ok: true, skipped: true, qa_id: id, turns: 0, unevaluable: true,
+                 reason: `unevaluable_all(${_sub}) — 적재 안 함` };
     }
 
     const orgId = await resolveStandardOrgId(pool, call);
@@ -1013,7 +1172,28 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
                 [id, e.order_no, e.category, e.item, e.reason_text, e.ai_eval, e.manual_eval]
             );
         }
-        // qa_analysis_report 는 쓰지 않음 — 분석 라우트가 buildDefaultFallbackReportRows 로 생성.
+        // 펜타곤 축별 정성평가 적재 — 백엔드(pure pure_pentagon)가 생성한 축별 {rating,analysis,summary}
+        // 를 qa_analysis_report 에 기록 → 분석 라우트(GET /api/analysis)가 점수밴드 보일러플레이트
+        // (buildDynamicFallbackReportRows) 대신 LLM 분석을 표시. axis_number→item_type_no, name→item_type,
+        // analysis→comment(NOT NULL), summary→summary. 비-pentagon 브랜드(pentagon 미수신)는 미적재 →
+        // 읽기 라우트 폴백 유지(무회귀). 99 종합의견 행은 읽기 라우트가 첫 축 summary 로 자동 부여(중복 방지 미적재).
+        const pentagonAxes = Array.isArray(mapped?.pentagon?.axes) ? mapped.pentagon.axes : [];
+        for (const ax of pentagonAxes) {
+            if (!ax || typeof ax !== 'object') continue;
+            const axisNo = asNumber(ax.axis_number);
+            if (axisNo === null) continue;
+            const itemType = safeStr(ax.name).trim() || `축 ${Math.trunc(axisNo)}`;
+            const rating = safeStr(ax.rating).trim() || null;
+            const summary = safeStr(ax.summary).trim() || null;
+            // comment 는 NOT NULL — 분석 비면 요약으로 폴백, 그것도 없으면 적재 스킵(보일러플레이트 회피).
+            const comment = safeStr(ax.analysis).trim() || summary || '';
+            if (!comment) continue;
+            await client.query(
+                `INSERT INTO qa_analysis_report ("ID", item_type_no, item_type, rating, comment, summary)
+                 VALUES ($1,$2,$3,$4,$5,$6)`,
+                [id, Math.trunc(axisNo), itemType, rating, comment, summary]
+            );
+        }
         await client.query('COMMIT');
     } catch (e) {
         await client.query('ROLLBACK');
@@ -1106,8 +1286,14 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
             // 테넌트 자체 루브릭) 기존대로 full custom(rubric_inline) — 무회귀.
             // ★레거시(1~3)만 코오롱 표준 트랙 자격. 신규 브랜드(id≥4)는 항목이 카탈로그와
             // 일치해도 표준 트랙 진입 차단 → 아래 else 의 full custom(rubric_inline) 경로로.
-            const isKolonStandard =
-                LEGACY_STANDARD_ORG_IDS.has(Number(orgId)) && standardIdx.length > 0 && !hasDivergent;
+            // ★ 코오롱(org3)만 레거시 풀 파이프라인(코오롱 튜닝 8노드 + KMS/coverage/debate/pentagon) 자격.
+            //   신한(1)/한화(2)는 더 이상 표준 트랙이 아니라 아래 else 의 신규 순수 LLM 모듈(rubric_inline +
+            //   eval_mode=pure)로 — 항목이 코오롱 카탈로그와 일치해도 표준 트랙 진입 차단.
+            // 전 브랜드 pure 전환(2026-06-26 리드 결정): 코오롱(org3) 포함 표준(레거시 8노드) 트랙 휴면.
+            // 아래 isKolonStandard 블록(prompt/max/step/additive overrides 빌드)은 dead 로 보존(삭제 금지·가역) —
+            // 라우팅만 차단해 코오롱도 else 의 pure(rubric_inline + eval_mode=pure) 경로로 보낸다.
+            // standardIdx/hasDivergent 산출은 남겨둠(레거시 블록 참조 보존, else 미사용 no-op).
+            const isKolonStandard = false;
             if (isKolonStandard) {
                 // 표준 트랙: rubric_inline 은 빼되(custom_rubric full flip 미트리거 → 코오롱
                 // 3-페르소나 엔진 유지), 표준 항목의 DB 프롬프트를 prompt_overrides
@@ -1174,7 +1360,35 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                 // aggregator(파이프라인)에서 병합되어 응답에 포함됨(impl-agg 담당).
                 rowMeta = [];
             } else {
-                rubricCall = { ...call, org_id: orgId, rubric_inline: rubric };
+                // 브랜드 한정 few-shot 토글 — UI 설정(ragFewshotConfig)에서 켠 org 면 rubric_id(안정
+                // 검색키)+항목이름 게이트+RAG ON 주입. 미설정/미토글 org 는 기존 거동(rubric_inline 만).
+                // rubric_inline 우선 해석은 그대로(평가 항목 불변), rubric_id 는 fewshot_store 검색 키로만 쓰임.
+                const _rfx = getOrgFewshot(orgId);
+                // PURE 라우팅 — 코오롱(org3)만 레거시, 그 외 전 브랜드는 신규 순수 LLM 모듈로.
+                // eval_mode=pure 동봉 → 백엔드 _resolve_pure_mode 가 build_graph_v2_pure(=v2.pure_llm)
+                // 선택(coverage/KMS/persona/pentagon/debate 미수행, 항목당 LLM 단일콜 ~7초).
+                // 브랜드별 config(getOrgPure) 의존 폐기 — 신규 브랜드도 자동 pure. RAG 토글(_rfx)과 독립.
+                // 전 브랜드 pure (코오롱 org3 포함, 2026-06-26 리드 결정). ★isKolonStandard 만 false 로
+                // 두고 이 식을 그대로 두면 org3 일 때 _pure=false → eval_mode 미동봉 → 백엔드 full-custom
+                // flip(코오롱 의도 반대). 두 곳을 함께 고쳐야 코오롱이 진짜 pure 로 간다.
+                const _pure = true;
+                // disable_rag 단일 진실원천: pure 트랙은 _rfx 유무로 항상 명시(_rfx 없으면 true).
+                // 백엔드 _disable_rag 식이 pure 일 때 rubric_fewshot_item_names 토글 추론에 의존하므로,
+                // _rfx 가 null 로 떨어지면 RAG 가 조용히 꺼지는 회귀를 페이로드에 의도를 박아 차단.
+                // 비-pure org 는 _rfx 있을 때만 disable_rag:false, 그 외는 미동봉(backend 기본값 보존).
+                rubricCall = {
+                    ...call,
+                    org_id: orgId,
+                    rubric_inline: rubric,
+                    ...(_pure ? { eval_mode: 'pure', disable_rag: !_rfx } : {}),
+                    ...(_rfx
+                        ? {
+                              rubric_id: _rfx.rubric_id,
+                              rubric_fewshot_item_names: _rfx.item_names,
+                              ...(!_pure ? { disable_rag: false } : {}),
+                          }
+                        : {}),
+                };
             }
         } else {
             warnings.push(`루브릭 항목 0건(org=${orgId}) — 표준 트랙 진행`);
@@ -1194,9 +1408,37 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
     // 루브릭 매핑 우선, 5000번대 없으면 표준 매핑 폴백.
     let mapped = mapEvaluateResponseRubric(resp, rowMeta);
     if (!mapped) {
-        mapped = mapEvaluateResponseStandard(resp, standardMaxByOrder, additiveDisplayMeta);
+        // [방어] mapEvaluateResponseRubric 가 null 을 반환하는 두 경우:
+        //   ① 5000번대 항목 자체가 없음 → 표준(레거시 1~18) 응답 → Standard 폴백이 정상.
+        //   ② 5000번대는 있으나 rowMeta 길이 불일치(desync) → Standard(카탈로그 1~18) 폴백은
+        //      5000번대를 전부 miss → 점수 오귀속(0행→포기호 오분류) 위험. 이 경우 Standard 폴백을
+        //      금지하고, 빈 산출 + item_count(5000번대 수)로 게이트가 '평가불가'로 표면화하게 한다.
+        const _idx = indexEvaluations(resp);
+        const _has5000 = [...(_idx.byItem?.keys?.() || [])].some((n) => Number(n) >= RUBRIC_ITEM_BASE);
+        if (_has5000) {
+            warnings.push('루브릭 매핑 desync(5000번대 존재, rowMeta 길이 불일치) → Standard 폴백 금지, 평가불가 표면화');
+            mapped = {
+                checklist: [],
+                evaluations: [],
+                ai_score: 0,
+                raw_total: 0,
+                max_total: 0,
+                warnings: [],
+                source: _idx.source,
+                item_count: _idx.byItem.size,
+                all_unevaluable: false,
+                unevaluable_count: 0,
+                unevaluable_reason: 'desync',
+            };
+        } else {
+            mapped = mapEvaluateResponseStandard(resp, standardMaxByOrder, additiveDisplayMeta);
+        }
     }
     mapped.warnings = [...warnings, ...(mapped.warnings || [])];
+    // 펜타곤 축별 정성평가(pure 트랙 pure_pentagon → result.pentagon) 통과 — ingestStandardCallToDb
+    // 가 axes[] 를 qa_analysis_report 에 적재해 분석 라우트가 점수밴드 보일러플레이트 대신 LLM
+    // {rating,analysis,summary} 를 표시. 비-pentagon 브랜드는 resp.pentagon 부재 → null(무회귀).
+    mapped.pentagon = resp && typeof resp === 'object' ? resp.pentagon || null : null;
 
     // 파이프라인 크래시 vs 포기호 구분: 평가 산출물이 0건인데 응답에 error 필드가 있으면
     // 이는 '포기호/미응대'가 아니라 평가 자체의 실패다(예: report_generator_v2 의 ItemResult
