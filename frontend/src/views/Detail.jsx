@@ -332,20 +332,6 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         return Math.round(avg * 10) / 10;
     }, [call, agentData]);
 
-    const reportSummary = useMemo(() => {
-        if (typeof reportMap.summary === 'string' && reportMap.summary.trim()) {
-            return reportMap.summary.trim();
-        }
-        const aiScore = Number(call?.ai_score);
-        if (!Number.isNaN(aiScore)) {
-            if (aiScore >= 90) return '전반적으로 우수한 상담 품질을 보이며, 현재 강점을 유지하는 것이 중요합니다.';
-            if (aiScore >= 80) return '기본 절차는 양호하며, 경청·공감 응대와 사후 처리 구간을 보완하면 더 안정적입니다.';
-            if (aiScore >= 70) return '인사·본인확인은 수행되었으나 경청·공감 응대와 업무 정확도 보강이 필요합니다.';
-            return '인사·본인확인·경청·공감 응대·업무 정확도·사후 처리 전반에 걸쳐 우선 개선이 필요합니다.';
-        }
-        return '전반적인 상담 품질 개선이 필요합니다.';
-    }, [reportMap, call]);
-
     const checklistRows = useMemo(() => {
         const checklistRowsRaw = evaluation?.checklist_rows || [];
         const evaluationRowsRaw = evaluation?.evaluation_rows || [];
@@ -1212,12 +1198,6 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                 </tr>
                                                             );
                                                         })}
-                                                        <tr className="bg-[#055AAF]/5 border-t border-[#055AAF]/10">
-                                                            <td className="px-5 py-5 font-black text-[#055AAF] align-top text-xs">종합의견</td>
-                                                            <td className="px-5 py-5 text-[#101828] font-bold leading-relaxed italic whitespace-pre-line text-[13px] bg-white/50">
-                                                                {reportSummary}
-                                                            </td>
-                                                        </tr>
                                                     </tbody>
                                                 </table>
                                             </div>
