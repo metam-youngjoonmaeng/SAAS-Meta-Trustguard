@@ -768,7 +768,15 @@ app.get('/api/svc/eval-items', async (req, res) => {
               ORDER BY department ASC, order_no ASC`,
             params
         );
-        res.json({ ok: true, org_id: orgId, count: rows.length, items: rows });
+        // 펜타곤 축(라벨·설명·평가 프롬프트) 동봉 — 도메인 분기와 동일. 엔진이 축별 평가기준 판단에 사용.
+        const { rows: axes } = await pool.query(
+            `SELECT axis_no, label, description, prompt_template
+               FROM public.pentagon_axes
+              WHERE ${where.join(' AND ')}
+              ORDER BY department ASC, axis_no ASC`,
+            params
+        );
+        res.json({ ok: true, org_id: orgId, count: rows.length, items: rows, pentagon_axes: axes });
     } catch (error) {
         console.error('GET /api/svc/eval-items error:', error);
         res.status(500).json({ message: 'Failed to load eval items.' });
