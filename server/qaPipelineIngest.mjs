@@ -566,7 +566,7 @@ function buildAdditiveItem(item, meta) {
 // 만점 + judgment 에 아래 마커가 있으면 "평가 대상 상황 자체가 없었다"는 의미 —
 // evidence 발화를 노출하면 혼란 (예: 쿠션어 '거절/불가 상황 미발생'인데 발화 표시).
 const NO_OCCURRENCE_MARKERS = ['미발생', '해당없음', '해당 없음', '불필요'];
-const AGENT_QUOTE_LIMIT = 3;
+// 평가 발화는 개수 제한 없이 매칭된 상담사 발화를 모두 저장한다(화면에서 셀 내부 스크롤로 노출).
 // 파이프라인이 evidence 부재 시 채워 넣는 시스템 placeholder — 발화가 아니므로 표시 제외.
 const SYSTEM_QUOTE_MARKERS = ['근거 인용 미제출', 'LLM 평가 실패', 'evidence 추출 불가'];
 
@@ -595,7 +595,6 @@ function agentQuoteOf(ev) {
         if (AGENT_MARKERS.some((m) => speaker.includes(m))) {
             seen.add(quote);
             picked.push(quote);
-            if (picked.length >= AGENT_QUOTE_LIMIT) break;
         } else if (!fallback) {
             fallback = quote;
         }

@@ -1081,7 +1081,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                 setRightView('stt');
                                                             }}
                                                         >
-                                                            <div className="flex flex-col gap-1">
+                                                            <div className="flex flex-col gap-1 max-h-[132px] overflow-y-auto pr-1">
                                                                 {String(r.utterance || '')
                                                                     .split('\n')
                                                                     .map((q) => q.trim())
