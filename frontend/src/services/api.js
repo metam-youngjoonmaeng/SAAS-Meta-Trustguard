@@ -87,6 +87,14 @@ export async function fetchCalls() {
     return request('/api/calls');
 }
 
+// 관리자 — 평가 콜 삭제(벌크). qa_calls 행 삭제 시 자식 테이블(평가/분석/대화/검수 등)이 CASCADE 로 함께 제거.
+// body { ids:[...] } 단일 요청으로 처리(서버 트랜잭션). 응답 { ok, deleted }.
+export async function deleteCalls(ids) {
+    const list = [...new Set((Array.isArray(ids) ? ids : [ids]).map((v) => String(v ?? '').trim()).filter(Boolean))];
+    if (!list.length) throw new Error('ids is required');
+    return request('/api/calls', { method: 'DELETE', body: JSON.stringify({ ids: list }) });
+}
+
 // 코칭 배정용 실제 상담사 목록(평균점수·부서·콜수). admin_users + qa_calls 조인.
 export async function fetchAgents() {
     return request('/api/agents');

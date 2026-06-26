@@ -2120,6 +2120,63 @@ app.put('/api/evaluations/:qaId/admin-comments', async (req, res) => {
     }
 });
 
+// 평가 콜 삭제 (관리자 전용, 벌크). body { ids:[qaId, ...] } 또는 { id:qaId } 단건 수용.
+//   qa_calls 행 삭제 시 자식 9개 테이블(qa_evaluation_rows·qa_checklist_rows·qa_analysis_report·
+//   qa_conversations·qa_golden_set·qa_review_events·qa_consumer_*)이 FK ON DELETE CASCADE 로
+//   함께 제거된다 — 별도 자식 DELETE 불필요.
+//   sandbox 계정은 운영 행(is_sandbox=false) 삭제 불가 — 배치에 운영행 포함 시 전체 거부(평가/검수 PUT 가드 일관).
+//   SELECT(가드)→DELETE 를 한 트랜잭션으로 묶어 TOCTOU 방지.
+app.delete('/api/calls', requireAdmin, async (req, res) => {
+    // body.ids(배열) 우선, 없으면 body.id(단건) 수용. trim + 중복/공백 제거.
+    const rawIds = Array.isArray(req.body?.ids)
+        ? req.body.ids
+        : req.body?.id != null
+            ? [req.body.id]
+            : [];
+    const ids = [...new Set(rawIds.map((v) => String(v ?? '').trim()).filter(Boolean))];
+    if (!ids.length) {
+        res.status(400).json({ message: 'ids is required' });
+        return;
+    }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: targets } = await client.query(
+            `SELECT "ID" AS id, is_sandbox FROM qa_calls WHERE "ID" = ANY($1)`,
+            [ids]
+        );
+        // sandbox 계정: 배치에 운영 행(is_sandbox=false) 포함 시 전체 거부.
+        if (req.session?.login_id === SANDBOX_LOGIN_ID && targets.some((t) => t.is_sandbox === false)) {
+            await client.query('ROLLBACK');
+            res.status(403).json({ message: 'sandbox account cannot delete production calls' });
+            return;
+        }
+        const { rowCount } = await client.query('DELETE FROM qa_calls WHERE "ID" = ANY($1)', [ids]);
+        await client.query('COMMIT');
+        await insertQaAuditLog(pool, {
+            req,
+            action: 'QA_CALL_DELETE',
+            resource_type: 'qa_call',
+            resource_id: ids.length === 1 ? ids[0] : `${ids.length} calls`,
+            http_method: 'DELETE',
+            http_path: '/api/calls',
+            detail_json: JSON.stringify({ ids, requested: ids.length, deleted: rowCount }),
+            success: rowCount > 0,
+        });
+        res.json({ ok: true, deleted: rowCount });
+    } catch (error) {
+        try {
+            await client.query('ROLLBACK');
+        } catch {
+            /* 이미 롤백/종료된 트랜잭션 */
+        }
+        console.error('DELETE /api/calls error:', error);
+        res.status(500).json({ message: 'Failed to delete calls.' });
+    } finally {
+        client.release();
+    }
+});
+
 // 검수 4단계 전이 — 대기(pending) → 검수중(in_review) → 검토요청(review_done) → 최종승인(approved).
 //   상담사(agent): 본인 콜 한정, pending↔in_review↔review_done (approved 이후 잠금).
 //   관리자(admin/super): 모든 전이(최종승인 포함).
