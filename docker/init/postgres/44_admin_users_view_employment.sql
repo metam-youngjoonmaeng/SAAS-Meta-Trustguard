@@ -18,7 +18,7 @@ SELECT
     tr.profile_image_path                                  AS profile_image_path,
     COALESCE(tr.must_change_password, false)               AS must_change_password,
     u.created_at                                           AS created_at,
-    tr.registered_at                                       AS updated_at,
+    u.created_at                                           AS updated_at,   -- 46 에서 registered_at 폐기 → 동일 소스(재실행 멱등)
     u.email                                                AS email,
     u.username                                             AS username,
     -- ── 신규 인사 필드(끝에 append) ──

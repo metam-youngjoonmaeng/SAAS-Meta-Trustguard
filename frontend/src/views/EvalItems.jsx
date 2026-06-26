@@ -772,15 +772,13 @@ function AxisPreview({ axisNo, label, dbAxis, onEdit }) {
                 </PreviewSection>
 
                 <PreviewSection title="평가 프롬프트">
-                    <pre className="text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3">{`이 축에 매핑된 체크리스트 결과와 상담 전사를 바탕으로
-"${label}" 영역의 종합 등급·분석·요약을 생성하세요.
-
-출력 형식:
-{
-  "rating": "<우수|보통|주의|실패>",
-  "analysis": "<3-5문장 종합 분석>",
-  "summary": "<1-2문장 요약>"
-}`}</pre>
+                    {dbAxis?.prompt_template ? (
+                        <pre className="text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3">{dbAxis.prompt_template}</pre>
+                    ) : (
+                        <div className="text-[13px] text-[#98A2B3] italic">
+                            평가 프롬프트가 비어 있습니다. [편집하기]에서 작성하면 평가 에이전트가 이 프롬프트로 "{label}" 축을 판단합니다.
+                        </div>
+                    )}
                 </PreviewSection>
             </div>
         </div>
@@ -1589,6 +1587,7 @@ function AxisModal({ mode, axisNo, nextAxisNo, label, dbAxis, onSaved, onClose }
     const [description, setDescription] = useState(
         dbAxis?.description ?? (isEdit ? (PENTAGON_MOCK_DESC[label] || '') : '')
     );
+    const [prompt, setPrompt] = useState(dbAxis?.prompt_template ?? '');
     const [isActive, setIsActive] = useState(dbAxis?.is_active ?? true);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState(null);
@@ -1625,6 +1624,16 @@ function AxisModal({ mode, axisNo, nextAxisNo, label, dbAxis, onSaved, onClose }
                     />
                 </FormGroup>
 
+                <FormGroup label="평가 프롬프트">
+                    <textarea
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        rows={4}
+                        placeholder={`이 축에 매핑된 평가항목 결과와 상담 전사를 바탕으로 "${labelDraft || '이 축'}" 영역을 판단하는 평가 기준을 작성하세요. (평가 에이전트가 이 프롬프트로 해당 축을 판단합니다)`}
+                        className="form-textarea-pretty font-mono text-[12px]"
+                    />
+                </FormGroup>
+
                 {isEdit && (
                     <FormGroup label="활성 상태">
                         <div className="flex gap-2">
@@ -1655,12 +1664,14 @@ function AxisModal({ mode, axisNo, nextAxisNo, label, dbAxis, onSaved, onClose }
                             await savePentagonAxis(effectiveNo, {
                                 label: labelDraft.trim(),
                                 description: description.trim() || null,
+                                prompt_template: prompt.trim() || null,
                                 is_active: isActive,
                             });
                         } else {
                             await createPentagonAxis({
                                 label: labelDraft.trim(),
                                 description: description.trim() || null,
+                                prompt_template: prompt.trim() || null,
                                 is_active: isActive,
                             });
                         }

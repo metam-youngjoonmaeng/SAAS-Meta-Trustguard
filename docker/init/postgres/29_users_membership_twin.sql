@@ -117,7 +117,8 @@ ON CONFLICT (id) DO NOTHING;
 
 -- ── 5) admin_users → trainee_registrations 백필 ──────────────
 INSERT INTO public.trainee_registrations
-    (user_id, org_id, name, department, role, status, registered_at, profile_image_path, must_change_password)
+    -- registered_at 은 46 에서 폐기 → 백필에서도 제외(46 이후 스키마 재실행 멱등 보장)
+    (user_id, org_id, name, department, role, status, profile_image_path, must_change_password)
 SELECT
     a.user_id,
     a.org_id,
@@ -125,7 +126,6 @@ SELECT
     NULLIF(a.department, ''),
     a.role::public.userrole,
     CASE WHEN a.is_active = 1 THEN 'active' ELSE 'suspended' END,
-    a.created_at,
     a.profile_image_path,
     -- 로컬 계정은 리셋 비번이므로 강제 변경, ICS/시드는 기존값 유지
     CASE WHEN position('@' in a.login_id) = 0

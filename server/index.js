@@ -19,7 +19,7 @@ import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChe
 /* SAMPLE_UPLOAD_FEATURE */ import { ingestSampleToDb, clearSamplesFromDb } from './sampleIngest.mjs';
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
-import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, extractForbiddenFromResult } from './qaPipelineIngest.mjs';
+import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult } from './qaPipelineIngest.mjs';
 import { loadRagFewshotConfig, saveRagFewshotConfig } from './ragFewshotConfig.mjs';
 import { startIcsQaPoller } from './icsQaPoller.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
@@ -745,13 +745,33 @@ app.get('/api/svc/eval-items', async (req, res) => {
         res.status(401).json({ message: 'invalid service token' });
         return;
     }
+    const domainId = Number(req.query.domain_id);
     const orgId = Number(req.query.org_id);
-    if (!Number.isFinite(orgId)) {
-        res.status(400).json({ message: 'org_id (number) required' });
+    if (!Number.isFinite(domainId) && !Number.isFinite(orgId)) {
+        res.status(400).json({ message: 'domain_id 또는 org_id (number) 가 필요합니다' });
         return;
     }
-    const department = req.query.department ? normalizeDepartment(req.query.department) : null;
     try {
+        if (Number.isFinite(domainId)) {
+            // 도메인(업종) 기준 — domain_default_eval_items + domain_default_pentagon_axes (표시·설정용).
+            const { rows: items } = await pool.query(
+                `SELECT order_no, category, item, criterion, pentagon_axis, scoring_type, max_score
+                   FROM public.domain_default_eval_items
+                  WHERE domain_id = $1 AND is_active = true
+                  ORDER BY order_no ASC, id ASC`,
+                [domainId]
+            );
+            const { rows: axes } = await pool.query(
+                `SELECT axis_no, label, description, prompt_template
+                   FROM public.domain_default_pentagon_axes
+                  WHERE domain_id = $1 AND is_active = true
+                  ORDER BY axis_no ASC`,
+                [domainId]
+            );
+            res.json({ ok: true, domain_id: domainId, count: items.length, items, pentagon_axes: axes });
+            return;
+        }
+        const department = req.query.department ? normalizeDepartment(req.query.department) : null;
         const params = [orgId];
         const where = ['org_id = $1', 'deactivated_at IS NULL', 'is_active = true', 'effective_from <= now()'];
         if (department) {
@@ -765,7 +785,15 @@ app.get('/api/svc/eval-items', async (req, res) => {
               ORDER BY department ASC, order_no ASC`,
             params
         );
-        res.json({ ok: true, org_id: orgId, count: rows.length, items: rows });
+        // 펜타곤 축(라벨·설명·평가 프롬프트) 동봉 — 도메인 분기와 동일. 엔진이 축별 평가기준 판단에 사용.
+        const { rows: axes } = await pool.query(
+            `SELECT axis_no, label, description, prompt_template
+               FROM public.pentagon_axes
+              WHERE ${where.join(' AND ')}
+              ORDER BY department ASC, axis_no ASC`,
+            params
+        );
+        res.json({ ok: true, org_id: orgId, count: rows.length, items: rows, pentagon_axes: axes });
     } catch (error) {
         console.error('GET /api/svc/eval-items error:', error);
         res.status(500).json({ message: 'Failed to load eval items.' });
@@ -858,27 +886,77 @@ app.post('/api/svc/deep-eval', async (req, res) => {
         res.status(401).json({ message: 'invalid service token' });
         return;
     }
-    const { transcript, qa_org_id, department, role, consultation_id } = req.body || {};
-    const orgId = Number(qa_org_id);
+    const { transcript, qa_org_id, domain_id, department, role, consultation_id } = req.body || {};
     if (!Array.isArray(transcript) || !transcript.length) {
         res.status(400).json({ message: 'transcript (non-empty array) required' });
         return;
     }
-    if (!Number.isFinite(orgId)) {
-        res.status(400).json({ message: 'qa_org_id (number) required' });
+    const domainId = Number(domain_id);
+    const orgId = Number(qa_org_id);
+    const useDomain = Number.isFinite(domainId);
+    if (!useDomain && !Number.isFinite(orgId)) {
+        res.status(400).json({ message: 'domain_id 또는 qa_org_id (number) 가 필요합니다' });
         return;
     }
-    const cid = String(consultation_id || `deep-${orgId}-${transcript.length}`).trim();
-    const call = {
-        transcript,
-        org_id: orgId,
-        department: department || undefined,
-        role: role || undefined,
-        consultation_id: cid,
-        qa_id: cid,
-        pipeline_target: 'ec2',
-    };
+    const cid = String(consultation_id || `deep-${useDomain ? `d${domainId}` : orgId}-${transcript.length}`).trim();
     try {
+        if (useDomain) {
+            // 도메인(업종) 기준 — domain_default_eval_items 루브릭으로 채점 + domain_default_pentagon_axes 로 펜타곤.
+            const call = {
+                transcript, domain_id: domainId, role: role || undefined,
+                consultation_id: cid, qa_id: cid, pipeline_target: 'ec2',
+            };
+            const mapped = await evaluateDomainCall(pool, call, {});
+            // 펜타곤(05 Detail 과 동일 로직): rowMeta(order_no→pentagon_axis) + 도메인 표준 축.
+            const axisByOrderNo = {};
+            for (const m of mapped.rowMeta || []) {
+                const ax = String(m?.pentagon_axis ?? '').trim();
+                if (ax) axisByOrderNo[Number(m.order_no)] = ax;
+            }
+            let definedAxes = null;
+            try {
+                const { rows: axRows } = await pool.query(
+                    `SELECT label FROM public.domain_default_pentagon_axes
+                      WHERE domain_id = $1 AND is_active = true AND label IS NOT NULL AND btrim(label) <> ''
+                      ORDER BY axis_no ASC`,
+                    [domainId]
+                );
+                if (axRows.length) definedAxes = axRows.map((r) => String(r.label).trim());
+            } catch (axErr) { console.error('svc/deep-eval pentagon axes lookup failed:', axErr); }
+            // 펜타곤 입력 행: order_no + 만점(validation_time) + 획득(result) 병합.
+            const aiByOrder = new Map((mapped.evaluations || []).map((e) => [Number(e.order_no), e.ai_eval]));
+            const pentaRows = (mapped.checklist || []).map((c) => ({
+                order_no: Number(c.order_no),
+                item: c.item,
+                validation_time: c.validation_time,
+                result: String(aiByOrder.get(Number(c.order_no)) ?? ''),
+            }));
+            const pentagon = buildPentagonByAxisDefs(pentaRows, axisByOrderNo, definedAxes);
+            // 항목별 pentagon_axis 동봉 — 소비측(02 등)이 축 기준으로 레이더를 그릴 수 있게.
+            const evalsWithAxis = (mapped.evaluations || []).map((e) => ({
+                ...e,
+                pentagon_axis: axisByOrderNo[Number(e.order_no)] || null,
+            }));
+            res.json({
+                ok: true,
+                domain_id: domainId,
+                source: mapped.source || null,
+                raw_total: mapped.raw_total ?? null,
+                max_total: mapped.max_total ?? null,
+                ai_score: mapped.ai_score ?? null,
+                evaluations: evalsWithAxis,
+                checklist: mapped.checklist || [],
+                pentagon,                                       // {team_avg, agent_score, overall_avg}: {축라벨: %}
+                pentagon_axes: definedAxes || CANONICAL_PENTAGON_AXES,
+                warnings: mapped.warnings || [],
+            });
+            return;
+        }
+        // (레거시) 브랜드 기준 — 기존 동작 유지.
+        const call = {
+            transcript, org_id: orgId, department: department || undefined, role: role || undefined,
+            consultation_id: cid, qa_id: cid, pipeline_target: 'ec2',
+        };
         const mapped = await evaluateStandardCall(pool, call, {});
         res.json({
             ok: true,
