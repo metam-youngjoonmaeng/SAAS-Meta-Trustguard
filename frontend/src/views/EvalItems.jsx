@@ -48,6 +48,11 @@ const TEST_RAG_ITEMS = [
     { orgId: 10, orderNo: 7, itemName: '설명력 (내부용어 지양·두괄식)' },
 ];
 
+// RAG few-shot ON/OFF 토글 버튼 + Test-RAG 배지는 개발/실험 기능 — 기본 숨김(커밋 상태).
+// 로컬 개발 시 .env.local 에 NEXT_PUBLIC_SHOW_RAG=1 을 주면 노출(활성화). 미설정(운영/공유)에서는
+// 평가항목 행에 RAG 토글·배지가 렌더되지 않음. (백엔드 ragFewshotConfig 연동 로직은 무변경.)
+const SHOW_RAG_DEV = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_SHOW_RAG === '1';
+
 function normalizeItemName(s) {
     // 중점(·)·공백 표기 흔들림 흡수 — '설명력·전달력' / '설명력 · 전달력' 동일 취급.
     return String(s ?? '').replace(/\s+/g, '').replace(/[·ㆍ‧∙•]/g, '·');
@@ -522,10 +527,10 @@ function ItemRow({
                     }`}>
                         {label}
                     </span>
-                    {(ragOn || testRag) && <TestRagBadge />}
+                    {SHOW_RAG_DEV && (ragOn || testRag) && <TestRagBadge />}
                 </div>
             </div>
-            {onToggleRag && (
+            {SHOW_RAG_DEV && onToggleRag && (
                 <button
                     type="button"
                     disabled={ragSaving}
