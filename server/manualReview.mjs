@@ -44,6 +44,8 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
     const qAbs = num(q.avgAbs, 0);
     const bHighOn = !!(on.bias && bias.highScore);
     const bHigh = num(bias.highThreshold, 101);
+    const bHighRel = bias.highMode === 'rel';        // 평균점수 이상: 상대값(평균 대비 +N) | 절대값
+    const bHighRelPts = num(bias.highRel, 0);
     const uncOn = !!(on.confidence && conf.uncertain);
     const conOn = !!(on.confidence && conf.contradiction);
     const excluded = Array.isArray(conf.excluded) ? conf.excluded.map(Number).filter(Number.isInteger) : [];
@@ -59,7 +61,7 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
 
     if (!qOn && !bHighOn && !uncOn && !conOn && !rOn && !tjOn && !tsOn) return 0; // 활성(지원) 조건 없음
 
-    const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, uncOn, conOn, excluded, rOn, rPct, tjOn, tjM, tsOn, tsY];
+    const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, uncOn, conOn, excluded, rOn, rPct, tjOn, tjM, tsOn, tsY, bHighRel, bHighRelPts];
     let orgClause = '';
     if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
     let idClause = '';
@@ -73,7 +75,7 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
       ), matched AS (
         SELECT c."ID" AS id,
           ($3 AND (($4 AND a.org_avg IS NOT NULL AND c."TOTAL_SCORE" <= a.org_avg - $5) OR (NOT $4 AND c."TOTAL_SCORE" < $6))) AS q,
-          ($7 AND c."TOTAL_SCORE" >= $8) AS b,
+          ($7 AND (($18 AND a.org_avg IS NOT NULL AND c."TOTAL_SCORE" >= a.org_avg + $19) OR (NOT $18 AND c."TOTAL_SCORE" >= $8))) AS b,
           ($9 AND EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(cj.judgments,'[]'::jsonb)) e
                    WHERE NOT ((e->>'order_no')::int = ANY($11::int[])) AND (e->>'uncertain')::boolean)) AS cf_unc,
           ($10 AND EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(cj.judgments,'[]'::jsonb)) e
@@ -92,11 +94,11 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
       UPDATE qa_calls t SET
         manual_review = true,
         manual_review_reasons =
-            (CASE WHEN m.q      THEN jsonb_build_array('저품질 검증 · 평균점수 미달') ELSE '[]'::jsonb END)
+            (CASE WHEN m.q      THEN jsonb_build_array('점수·표본 검증 · 평균점수 미달') ELSE '[]'::jsonb END)
          || (CASE WHEN m.cf_unc THEN jsonb_build_array('AI 신뢰도 검증 · 불확실 표현') ELSE '[]'::jsonb END)
          || (CASE WHEN m.cf_con THEN jsonb_build_array('AI 신뢰도 검증 · 근거-점수 모순') ELSE '[]'::jsonb END)
-         || (CASE WHEN m.b      THEN jsonb_build_array('AI 편향점검 · 비정상 고점') ELSE '[]'::jsonb END)
-         || (CASE WHEN m.r      THEN jsonb_build_array('AI 편향점검 · 무작위 표본') ELSE '[]'::jsonb END)
+         || (CASE WHEN m.b      THEN jsonb_build_array('점수·표본 검증 · 평균점수 이상') ELSE '[]'::jsonb END)
+         || (CASE WHEN m.r      THEN jsonb_build_array('점수·표본 검증 · 무작위 표본') ELSE '[]'::jsonb END)
          || (CASE WHEN m.te_j   THEN jsonb_build_array('대상자 특정 · 신입 상담사') ELSE '[]'::jsonb END)
          || (CASE WHEN m.te_s   THEN jsonb_build_array('대상자 특정 · 장기 근속') ELSE '[]'::jsonb END),
         manual_review_at = COALESCE(t.manual_review_at, now())

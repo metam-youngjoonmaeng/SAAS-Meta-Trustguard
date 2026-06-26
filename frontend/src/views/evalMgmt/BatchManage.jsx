@@ -1,6 +1,6 @@
 // AI 평가 배치 관리 (AI Evaluation Batch Filtering)
 // AI QA가 평가한 콜 중 "특정 조건"에 해당하는 콜만 사람이 재청취·검토 대상으로 배치.
-// 5개 검사 조건(on/off) + 공통 범위(통화시간·기간) + 배치 스케줄.
+// 4개 검사 조건(on/off) + 공통 범위(통화시간·기간) + 배치 스케줄.
 // 디자인 원본: etc/pages-batch.jsx (디자인 시스템은 evalMgmt 토큰 .tg-eval 스코프 재사용).
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Icon, PageHead, Modal } from './ui';
@@ -556,8 +556,8 @@ export default function BatchManage() {
     const [on, setOn] = useState({ quality: true, confidence: true, risk: true, tenure: false, bias: false });
     const toggle = (k) => setOn((s) => ({ ...s, [k]: !s[k] }));
 
-    // ① 저품질
-    const [q, setQ] = useState({ avgBelow: true, avgMode: 'rel', avgRel: 10, avgAbs: 70, essential: true, essThreshold: 60 });
+    // ① 점수·표본 검증 (평균 미달 + 평균 이상(고점) + 무작위) — '필수 항목 미달'은 기준 미정이라 제거.
+    const [q, setQ] = useState({ avgBelow: true, avgMode: 'rel', avgRel: 10, avgAbs: 70 });
     const setQk = (k, v) => setQ((s) => ({ ...s, [k]: v }));
 
     // ② AI 신뢰도 (weak '근거 빈약'은 기준 모호 + 과검출(53%)로 제외 — 불확실 표현·근거-점수 모순만)
@@ -571,8 +571,9 @@ export default function BatchManage() {
     const [tenure, setTenure] = useState({ junior: true, juniorMonths: 6, senior: true, seniorYears: 5 });
     const setTk = (k, v) => setTenure((s) => ({ ...s, [k]: v }));
 
-    // ⑤ 편향
-    const [bias, setBias] = useState({ random: true, randomPct: 5, highScore: true, highThreshold: 95 });
+    // 점수·표본 검증(①)의 무작위·고점 — 카드 ①로 통합(구 '편향점검'). 백엔드 bias 조건 키는 유지.
+    // highMode: 평균점수 이상 기준 — 'abs'(절대값, 기본) | 'rel'(상대값, 평균 대비 +N). 미달과 대칭.
+    const [bias, setBias] = useState({ random: true, randomPct: 5, highScore: true, highMode: 'abs', highThreshold: 95, highRel: 10 });
     const setBk = (k, v) => setBias((s) => ({ ...s, [k]: v }));
 
     // 공통 범위 / 스케줄
@@ -588,8 +589,9 @@ export default function BatchManage() {
     const [previewNonce, setPreviewNonce] = useState(0);    // 재판정 후 미리보기 강제 갱신
 
     // 현재 화면 state → 서버 config 직렬화(Set→배열).
+    // '점수·표본 검증'(①) 통합: 무작위·고점(bias)은 카드 마스터(on.quality)와 동행 — 카드를 켜면 함께 적용.
     const config = useMemo(() => ({
-        on, quality: q, confidence: { ...c, excluded: Array.from(excluded) }, tenure, bias, scope,
+        on: { ...on, bias: on.quality }, quality: q, confidence: { ...c, excluded: Array.from(excluded) }, tenure, bias, scope,
     }), [on, q, c, excluded, tenure, bias, scope]);
 
     // 마운트 시 저장된 설정 1회 로드(있으면 state 복원).
@@ -671,6 +673,13 @@ export default function BatchManage() {
         return key === 'confidence' ? '엔진 연동 대기'
             : key === 'risk' ? '기준 정의 대기'
             : key === 'tenure' ? '데이터 보강 대기' : '미지원';
+    };
+    // 통합 카드(점수·표본)용 — 여러 조건 예상건수 합산(미리보기 전이면 null).
+    const cardEstSum = (keys) => {
+        const ccs = keys.map((k) => preview?.conditions?.[k]).filter(Boolean);
+        if (!ccs.length) return null;
+        if (ccs.every((cc) => cc.supported)) return ccs.reduce((a, cc) => a + (cc.count ?? 0), 0);
+        return cardEst(keys[0]);
     };
     const pool = preview ? preview.pool : null;
     const totalTargets = preview ? preview.total_targets : null;
@@ -770,11 +779,11 @@ export default function BatchManage() {
                     </div>
                 </div>
 
-                {/* ① 저품질 검증 */}
-                <FilterCard idx={1} icon="trending-down" title="저품질 검증" tag="점수 필터링" est={cardEst('quality')}
-                    desc="평균·필수항목 점수가 기준 이하인 콜을 재검토 대상으로 선별합니다."
+                {/* ① 점수·표본 검증 — 평균 미달 + 평균 이상(고점) + 무작위 (점수 분포·표본 기반) */}
+                <FilterCard idx={1} icon="trending-down" title="점수·표본 검증" tag="점수 분포 · 표본" est={cardEstSum(['quality', 'bias'])}
+                    desc="평균 미달·평균 이상(과대평가)·무작위 표본 콜을 점수·표본 기준으로 선별합니다."
                     on={on.quality} onToggle={() => toggle('quality')}>
-                    <SubRule on={q.avgBelow} onToggle={() => setQk('avgBelow', !q.avgBelow)} label="평균 점수 미달" desc="콜 종합 점수가 기준 이하인 경우">
+                    <SubRule on={q.avgBelow} onToggle={() => setQk('avgBelow', !q.avgBelow)} label="평균점수 미달" desc="콜 종합 점수가 기준 이하인 경우">
                         <Segment value={q.avgMode} onChange={(v) => setQk('avgMode', v)} options={[{ v: 'rel', label: '상대값' }, { v: 'abs', label: '절대값' }]} />
                         {q.avgMode === 'rel' ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -789,9 +798,24 @@ export default function BatchManage() {
                             </div>
                         )}
                     </SubRule>
-                    <SubRule on={q.essential} onToggle={() => setQk('essential', !q.essential)} label="필수 항목 미달" desc="업무정확도 등 필수 항목 평균이 기준 이하인 경우">
-                        <input type="number" value={q.essThreshold} onChange={(e) => setQk('essThreshold', +e.target.value)} style={{ ...bInput, width: 56 }} />
-                        <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>점 미만</span>
+                    <SubRule on={bias.highScore} onToggle={() => setBk('highScore', !bias.highScore)} label="평균점수 이상" desc="과대평가 의심 — 점수가 기준 이상인 콜">
+                        <Segment value={bias.highMode} onChange={(v) => setBk('highMode', v)} options={[{ v: 'rel', label: '상대값' }, { v: 'abs', label: '절대값' }]} />
+                        {bias.highMode === 'rel' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>월평균 대비</span>
+                                <input type="number" value={bias.highRel} onChange={(e) => setBk('highRel', +e.target.value)} style={{ ...bInput, width: 56 }} />
+                                <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>점 이상</span>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <input type="number" value={bias.highThreshold} onChange={(e) => setBk('highThreshold', +e.target.value)} style={{ ...bInput, width: 56 }} />
+                                <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>점 이상</span>
+                            </div>
+                        )}
+                    </SubRule>
+                    <SubRule on={bias.random} onToggle={() => setBk('random', !bias.random)} label="무작위 표본" desc="전체 콜 중 무작위 추출 — 평가 일관성 점검용">
+                        <input type="number" value={bias.randomPct} onChange={(e) => setBk('randomPct', +e.target.value)} style={{ ...bInput, width: 56 }} />
+                        <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>%</span>
                     </SubRule>
                 </FilterCard>
 
@@ -875,19 +899,6 @@ export default function BatchManage() {
                     </SubRule>
                 </FilterCard>
 
-                {/* ⑤ AI 편향점검 */}
-                <FilterCard idx={5} icon="shuffle" title="AI 편향점검" tag="표본 · 과대평가" est={cardEst('bias')}
-                    desc="무작위 표본과 비정상 고점 콜을 추출해 AI 평가의 편향을 점검합니다."
-                    on={on.bias} onToggle={() => toggle('bias')}>
-                    <SubRule on={bias.random} onToggle={() => setBk('random', !bias.random)} label="무작위 표본" desc="전체 콜 중 무작위 추출 — 평가 일관성 점검용">
-                        <input type="number" value={bias.randomPct} onChange={(e) => setBk('randomPct', +e.target.value)} style={{ ...bInput, width: 56 }} />
-                        <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>%</span>
-                    </SubRule>
-                    <SubRule on={bias.highScore} onToggle={() => setBk('highScore', !bias.highScore)} label="비정상 고점 · 만점 콜" desc="과대평가 의심 — 점수가 기준 이상인 콜">
-                        <input type="number" value={bias.highThreshold} onChange={(e) => setBk('highThreshold', +e.target.value)} style={{ ...bInput, width: 56 }} />
-                        <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>점 이상</span>
-                    </SubRule>
-                </FilterCard>
             </div>
 
             {/* 하단 액션 바 — 조건 설정을 마친 뒤 저장(상단에서 하단으로 이동, 자연스러운 흐름). */}

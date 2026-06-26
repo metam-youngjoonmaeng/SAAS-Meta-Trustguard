@@ -4853,6 +4853,8 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
         const qAbs = num(q.avgAbs, 0);
         const bHighOn = !!(on.bias && bias.highScore);
         const bHigh = num(bias.highThreshold, 101);
+        const bHighRel = bias.highMode === 'rel';        // 평균점수 이상: 상대값(평균 대비 +N) | 절대값
+        const bHighRelPts = num(bias.highRel, 0);
         // ② 신뢰도 — 저장된 LLM 판정(qa_confidence_judgments)을 선택 항목으로 스코프해서 필터.
         const uncOn = !!conf.uncertain;
         const conOn = !!conf.contradiction;
@@ -4874,7 +4876,7 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
         const tsOn = !!(on.tenure && tenure.senior);
         const tsY = Math.max(0, Math.round(num(tenure.seniorYears, 5)));
 
-        const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, confOn, uncOn, conOn, excluded, randomOn, randomPct, tjOn, tjM, tsOn, tsY];
+        const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, confOn, uncOn, conOn, excluded, randomOn, randomPct, tjOn, tjM, tsOn, tsY, bHighRel, bHighRelPts];
         let orgClause = '';
         if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
 
@@ -4894,7 +4896,7 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
             ), flagged AS (
                 SELECT
                     ($3 AND ( ($4 AND a.org_avg IS NOT NULL AND i.score <= a.org_avg - $5) OR (NOT $4 AND i.score < $6) )) AS q_match,
-                    ($7 AND i.score >= $8) AS b_match,
+                    ($7 AND ( ($19 AND a.org_avg IS NOT NULL AND i.score >= a.org_avg + $20) OR (NOT $19 AND i.score >= $8) )) AS b_match,
                     ($9 AND EXISTS (
                         SELECT 1 FROM jsonb_array_elements(coalesce(i.judgments, '[]'::jsonb)) e
                          WHERE NOT ((e->>'order_no')::int = ANY($12::int[]))
