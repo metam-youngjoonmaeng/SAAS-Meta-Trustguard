@@ -184,6 +184,26 @@ async function readSchedule(pool, orgId) {
     }
 }
 
+/**
+ * 골든셋 "학습 배치" 주기(freq/time) — 에이전트에 골든셋 학습을 언제 트리거할지. (도장 스케줄과 별개)
+ * config.scope.goldenFreq/goldenTime 에 저장. 미설정 시 manual(자동 트리거 없음) 기본 → 기존 브랜드 무영향.
+ * @returns {Promise<{freq:string, time:string}>}  freq ∈ hourly|daily|manual
+ */
+async function readGoldenSchedule(pool, orgId) {
+    try {
+        const { rows } = await pool.query(
+            `SELECT config FROM public.qa_batch_configs
+              WHERE org_id = ANY($1) ORDER BY (org_id = $2) DESC LIMIT 1`,
+            [[orgId, 0], orgId]
+        );
+        const scope = rows[0]?.config?.scope || {};
+        return { freq: scope.goldenFreq || 'manual', time: scope.goldenTime || '02:00' };
+    } catch (e) {
+        logger.warn(`[ics-qa] 골든셋 배치주기 조회 실패(${e?.message || e}) — manual 기본`);
+        return { freq: 'manual', time: '02:00' };
+    }
+}
+
 // 정기 도장(매시간/매일) 실행 시점 판정 — 30초 틱을 스케줄러로 재사용. 시각은 KST(UTC+9, 한국 무 DST).
 // 인메모리 마커(구간키)로 같은 구간 1회만 실행. 재기동으로 마커가 리셋돼도 도장은 멱등이라 중복 무해.
 const _lastStampKey = new Map(); // projCd → 마지막 실행 구간키
@@ -207,6 +227,28 @@ function dueForScheduledStamp(projCd, freq, time) {
     return true;
 }
 
+// 골든셋 학습 배치도 같은 30초 틱을 재사용 — 도장과 독립된 마커맵으로 같은 구간 1회만.
+const _lastGoldenKey = new Map(); // projCd → 마지막 골든셋 학습 실행 구간키
+function dueForGoldenLearn(projCd, freq, time) {
+    const kst = new Date(Date.now() + 9 * 3600 * 1000);
+    const dateKey = kst.toISOString().slice(0, 10);
+    const hour = kst.getUTCHours();
+    const min = kst.getUTCMinutes();
+    let key;
+    if (freq === 'hourly') {
+        key = `${dateKey} ${String(hour).padStart(2, '0')}`;
+    } else if (freq === 'daily') {
+        const [th, tm] = String(time || '02:00').split(':').map((n) => Number(n) || 0);
+        if (hour < th || (hour === th && min < tm)) return false;
+        key = dateKey;
+    } else {
+        return false; // manual 은 정기 패스 대상 아님
+    }
+    if (_lastGoldenKey.get(projCd) === key) return false;
+    _lastGoldenKey.set(projCd, key);
+    return true;
+}
+
 /**
  * 정기 도장 패스 — tick 레벨에서 매 주기 호출(runOnce 조기 return 과 무관).
  * 매시간/매일 주기이고 실행 시점이면 in-scope 전체 미도장 대상에 도장(멱등·누적).
@@ -223,6 +265,63 @@ async function scheduledStampTick(pool, cfg) {
         }
     } catch (e) {
         logger.warn(`[ics-qa] 정기 도장 패스 실패: ${e?.message || e}`);
+    }
+}
+
+/**
+ * 골든셋 학습 트리거 — "우리(MTG)가 정한 시각/수동에 에이전트 학습을 호출"하는 단일 창구.
+ * ★ 트리거 주체는 우리. 실제 에이전트 학습 엔드포인트 계약(URL·push/pull·브랜드키)은 맹주임과 확정 후
+ *   env GOLDEN_LEARN_ENDPOINT(+필요 시 본문) 만 채우면 됨. 미설정이면 안전 no-op(로그만) — 스케줄/트리거
+ *   골격은 이미 동작. 과거 콜 재평가 아님(골든셋은 에이전트 학습용).
+ * 호출원: 스케줄 틱(scheduledGoldenLearnTick) + 수동(POST /api/golden-learn/run).
+ * @returns {Promise<{ok:boolean, triggered:boolean, ...}>}
+ */
+export async function triggerGoldenLearn(pool, orgId, opts = {}) {
+    const projCd = opts.projCd || '';
+    const tag = `org=${orgId}${projCd ? ` proj=${projCd}` : ''}${opts.source ? ` (${opts.source})` : ''}`;
+    let goldenCount = null;
+    try {
+        const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM public.qa_golden_set WHERE org_id = $1`, [orgId]);
+        goldenCount = rows[0]?.n ?? null;
+    } catch { /* 로그용 — 실패 무시 */ }
+
+    const endpoint = env('GOLDEN_LEARN_ENDPOINT');
+    if (!endpoint) {
+        logger.info(`[golden-learn] ${tag} 트리거 — 골든셋 ${goldenCount ?? '?'}건 / GOLDEN_LEARN_ENDPOINT 미설정 → no-op(에이전트 계약 확정 후 연결)`);
+        return { ok: true, triggered: false, reason: 'endpoint_unset', org_id: orgId, golden_count: goldenCount };
+    }
+    // ── 에이전트 학습 호출 (계약 확정 시 본문/헤더/push·pull/브랜드키 확정) ──
+    // TODO(맹주임 계약): 입력 형식(push=골든셋 동봉 / pull=에이전트가 svc 조회), 브랜드키(rubric_id), 응답 스키마.
+    try {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ org_id: orgId, proj_cd: projCd || undefined, golden_count: goldenCount, source: opts.source || 'mtg' }),
+            signal: AbortSignal.timeout(Number(env('GOLDEN_LEARN_TIMEOUT_MS', '600000')) || 600000),
+        });
+        logger.info(`[golden-learn] ${tag} 트리거 — 골든셋 ${goldenCount ?? '?'}건 → ${endpoint} HTTP ${res.status}`);
+        return { ok: res.ok, triggered: true, http_status: res.status, org_id: orgId, golden_count: goldenCount };
+    } catch (e) {
+        logger.error(`[golden-learn] ${tag} 트리거 실패: ${e?.message || e}`);
+        return { ok: false, triggered: false, reason: String(e?.message || e), org_id: orgId, golden_count: goldenCount };
+    }
+}
+
+/**
+ * 정기 골든셋 학습 패스 — tick 레벨에서 매 주기 호출. 매시간/매일이고 실행 시점이면 학습 트리거.
+ */
+async function scheduledGoldenLearnTick(pool, cfg) {
+    try {
+        const orgId = await resolveOrgId(pool, cfg.projCd, cfg.orgIdOverride);
+        if (!orgId) return;
+        const sched = await readGoldenSchedule(pool, orgId);
+        if ((sched.freq === 'hourly' || sched.freq === 'daily') && dueForGoldenLearn(cfg.projCd, sched.freq, sched.time)) {
+            const label = sched.freq === 'daily' ? `매일 ${sched.time}` : '매시간';
+            logger.info(`[golden-learn] ${cfg.projCd}: [${label}] 정기 학습 트리거 발화`);
+            await triggerGoldenLearn(pool, orgId, { projCd: cfg.projCd, source: `schedule:${sched.freq}` });
+        }
+    } catch (e) {
+        logger.warn(`[golden-learn] 정기 학습 패스 실패: ${e?.message || e}`);
     }
 }
 
@@ -382,6 +481,8 @@ export function startIcsQaPoller(pool, { ingestStandardCallFromQaPipeline }) {
             await runOnce(pool, cfg, ingestStandardCallFromQaPipeline);
             // 정기 도장(매시간/매일)은 신규 콜 유무와 무관하게 매 틱 시점 확인.
             await scheduledStampTick(pool, cfg);
+            // 골든셋 학습 배치(매시간/매일)도 같은 틱에서 시점 확인 → 우리 시각에 에이전트 학습 트리거.
+            await scheduledGoldenLearnTick(pool, cfg);
         } catch (err) {
             logger.error(`[ics-qa] 폴링 주기 오류: ${String(err?.message || err)}`);
         } finally {

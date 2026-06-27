@@ -21,7 +21,7 @@ import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
 import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult } from './qaPipelineIngest.mjs';
 import { loadRagFewshotConfig, saveRagFewshotConfig } from './ragFewshotConfig.mjs';
-import { startIcsQaPoller } from './icsQaPoller.mjs';
+import { startIcsQaPoller, triggerGoldenLearn } from './icsQaPoller.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
 import { taEnabled, fetchTaMetricsByUids, fetchSegmentSentimentsByUids } from './taSource.mjs';
@@ -4801,6 +4801,33 @@ app.put('/api/batch/config', requireAdmin, async (req, res) => {
     } catch (e) {
         console.error('PUT /api/batch/config error:', e?.message || e);
         res.status(500).json({ ok: false, message: '배치 설정 저장 실패' });
+    }
+});
+
+// POST /api/golden-learn/run — 골든셋 학습 배치 수동 트리거(우리가 즉시 실행). 스케줄 틱과 동일 창구(triggerGoldenLearn).
+//   실제 에이전트 호출은 GOLDEN_LEARN_ENDPOINT 계약 확정 후 연결(미설정 시 no-op 로그). 과거 콜 재평가 아님(골든셋=학습용).
+app.post('/api/golden-learn/run', requireAdmin, async (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
+    if (orgId === null || orgId === undefined) {
+        res.status(400).json({ message: 'active brand context required' });
+        return;
+    }
+    try {
+        const result = await triggerGoldenLearn(pool, orgId, { source: 'manual' });
+        await insertQaAuditLog(pool, {
+            req,
+            action: 'GOLDEN_LEARN_RUN',
+            resource_type: 'golden_learn',
+            resource_id: String(orgId),
+            http_method: 'POST',
+            http_path: '/api/golden-learn/run',
+            detail_json: JSON.stringify(result),
+            success: result.ok,
+        });
+        res.json(result);
+    } catch (e) {
+        console.error('POST /api/golden-learn/run error:', e?.message || e);
+        res.status(500).json({ message: 'Failed to trigger golden learn.' });
     }
 });
 

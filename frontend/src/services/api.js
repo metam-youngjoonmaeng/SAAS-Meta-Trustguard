@@ -185,6 +185,10 @@ export async function previewBatch(config) {
 export async function runBatchNow() {
     return request('/api/batch/run', { method: 'POST' });
 }
+// 골든셋 학습 배치 수동 트리거(우리가 즉시 실행) — 스케줄과 동일 창구.
+export async function runGoldenLearn() {
+    return request('/api/golden-learn/run', { method: 'POST' });
+}
 // ② '적용 평가 항목' 칩 — 실제 평가된 항목(order_no+item). 제외 order_no 로 ② 검사 스코프.
 export async function fetchBatchEvalItems() {
     return request('/api/batch/eval-items');
