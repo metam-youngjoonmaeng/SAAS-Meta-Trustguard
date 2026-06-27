@@ -74,8 +74,8 @@ services:
       # 코드 기본값 localhost:8081 로는 호스트 파이프라인에 못 닿는다. host.docker.internal 로 호스트를 가리킨다.
       # (EC2 평가는 call.pipeline_target='ec2' 가 별도 해석하므로 무영향.)
       QA_PIPELINE_BASE_URL: ${QA_PIPELINE_BASE_URL:-http://host.docker.internal:8081}
-      # 신규 사용자 발급 시 자동 부여되는 초기 비밀번호. 운영 환경에서는 반드시 .env 로 강력한 값 주입.
-      # 미설정 시 코드가 '1234' 폴백 + warn 로그를 남기지만 PoC 외에는 사용하지 말 것.
+      # 신규 사용자 발급 시 자동 부여되는 초기 비밀번호. 필수 — .env 로 강력한 값 주입.
+      # 미설정 시 사용자 생성/비번초기화가 에러로 막힌다(하드코딩 폴백 없음).
       INITIAL_USER_PASSWORD: ${INITIAL_USER_PASSWORD:-}
       # ICS SSO (운영 mtm30 읽기전용). 빈 ICS_DB_HOST 면 SSO 비활성.
       ICS_DB_HOST: ${ICS_DB_HOST:-}

@@ -23,17 +23,15 @@ function sha256Hex(s) {
     return crypto.createHash('sha256').update(String(s)).digest('hex');
 }
 
-// 신규 사용자에게 자동 부여되는 초기 비밀번호.
-// INITIAL_USER_PASSWORD env 가 있으면 그 값을, 없으면 PoC 폴백 '1234'.
+// 신규 사용자에게 자동 부여되는 초기 비밀번호. 반드시 INITIAL_USER_PASSWORD env 로 설정한다.
+// (하드코딩 폴백 제거 — 미설정 시 약한 기본값을 조용히 쓰지 않고 에러로 막는다.)
 // 신규 계정은 must_change_password=true 로 시작 → 첫 로그인 시 강제 변경.
 function resolveInitialPassword() {
     const fromEnv = String(process.env.INITIAL_USER_PASSWORD || '').trim();
-    if (fromEnv) return fromEnv;
-    if (!resolveInitialPassword._warned) {
-        console.warn('[qa-api] INITIAL_USER_PASSWORD 미설정 — PoC 폴백 "1234" 사용. 운영에서는 반드시 .env 로 강력한 값 설정.');
-        resolveInitialPassword._warned = true;
+    if (!fromEnv) {
+        throw new Error('INITIAL_USER_PASSWORD 미설정 — 신규 사용자 초기 비밀번호를 .env(INITIAL_USER_PASSWORD)에 강력한 값으로 설정하세요.');
     }
-    return '1234';
+    return fromEnv;
 }
 
 function requireSuperAdmin(req, res, next) {
@@ -903,7 +901,7 @@ export function createBrandRouter(pool) {
 
     // POST /api/admin/users
     // 관리자(super_admin)는 신규 사용자의 로그인ID/이름/역할/소속만 지정. 비밀번호는 관리자가 정할 수 없으며
-    // 서버가 초기 비밀번호(INITIAL_USER_PASSWORD env, 기본 폴백 '1234')를 자동 부여한다.
+    // 서버가 초기 비밀번호(INITIAL_USER_PASSWORD env, 필수)를 자동 부여한다.
     // 사용자는 첫 로그인 시 must_change_password=true 로 비밀번호 변경 강제.
     router.post('/admin/users', requireSuperAdmin, async (req, res) => {
         const loginId = String(req.body?.login_id || '').trim();
@@ -919,8 +917,8 @@ export function createBrandRouter(pool) {
             res.status(400).json({ message: '허용된 role: admin | super_admin' });
             return;
         }
-        const initialPassword = resolveInitialPassword();
         try {
+            const initialPassword = resolveInitialPassword();
             const { rows } = await pool.query(
                 `INSERT INTO public.admin_users (login_id, password_hash, display_name, role, org_id, department, must_change_password)
                  VALUES ($1, $2, $3, $4, $5, $6, true)
@@ -1063,8 +1061,8 @@ export function createBrandRouter(pool) {
             res.status(400).json({ message: 'invalid id' });
             return;
         }
-        const initialPassword = resolveInitialPassword();
         try {
+            const initialPassword = resolveInitialPassword();
             const { rows } = await pool.query(
                 `UPDATE public.admin_users
                     SET password_hash = $1, must_change_password = true, updated_at = now()
