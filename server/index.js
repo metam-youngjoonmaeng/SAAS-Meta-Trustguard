@@ -4090,21 +4090,22 @@ app.get('/api/rag-log/recent', requireAdmin, (req, res) => {
 });
 
 // 루브릭 few-shot 항목 토글 설정 — UI 에서 "이 항목만 RAG" 를 켜고 끄는 영속 설정.
-// shape: { "<org_id>": { rubric_id, item_names:[...] } }. 평가 시 evaluateStandardCall 이 getOrgFewshot 으로 읽음.
-app.get('/api/rag-fewshot-config', requireAdmin, (req, res) => {
+// shape: { "<org_id>": { rubric_id, item_names:[...] } }. DB(organizations) 영속, 평가 시
+// evaluateStandardCall 이 getOrgFewshot 으로 읽음.
+app.get('/api/rag-fewshot-config', requireAdmin, async (req, res) => {
     try {
-        res.json({ config: loadRagFewshotConfig() });
+        res.json({ config: await loadRagFewshotConfig(pool) });
     } catch (e) {
         res.status(500).json({ error: String(e?.message || e) });
     }
 });
 
-app.put('/api/rag-fewshot-config', requireAdmin, (req, res) => {
+app.put('/api/rag-fewshot-config', requireAdmin, async (req, res) => {
     try {
         // body 가 {config:{...}} 또는 설정 객체 자체 둘 다 수용.
         const body = req.body && typeof req.body === 'object' ? req.body : {};
         const cfg = body.config && typeof body.config === 'object' ? body.config : body;
-        const saved = saveRagFewshotConfig(cfg);
+        const saved = await saveRagFewshotConfig(pool, cfg);
         res.json({ ok: true, config: saved });
     } catch (e) {
         res.status(500).json({ error: String(e?.message || e) });

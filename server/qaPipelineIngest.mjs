@@ -1363,7 +1363,7 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                 // 브랜드 한정 few-shot 토글 — UI 설정(ragFewshotConfig)에서 켠 org 면 rubric_id(안정
                 // 검색키)+항목이름 게이트+RAG ON 주입. 미설정/미토글 org 는 기존 거동(rubric_inline 만).
                 // rubric_inline 우선 해석은 그대로(평가 항목 불변), rubric_id 는 fewshot_store 검색 키로만 쓰임.
-                const _rfx = getOrgFewshot(orgId);
+                const _rfx = await getOrgFewshot(pool, orgId);
                 // PURE 라우팅 — 코오롱(org3)만 레거시, 그 외 전 브랜드는 신규 순수 LLM 모듈로.
                 // eval_mode=pure 동봉 → 백엔드 _resolve_pure_mode 가 build_graph_v2_pure(=v2.pure_llm)
                 // 선택(coverage/KMS/persona/pentagon/debate 미수행, 항목당 LLM 단일콜 ~7초).

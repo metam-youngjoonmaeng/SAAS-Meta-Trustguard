@@ -137,7 +137,7 @@ const EvalItems = ({ activeBrandId }) => {
     }, [rubricSyncToast]);
 
     // ── 루브릭 few-shot 항목 토글 (브랜드 한정 "이 항목만 RAG") ──────────────
-    // 백엔드 ragFewshotConfig(파일 영속) + evaluateStandardCall(getOrgFewshot) 와 연동.
+    // 백엔드 ragFewshotConfig(DB: organizations 영속) + evaluateStandardCall(getOrgFewshot) 와 연동.
     // shape: { "<org_id>": { rubric_id, item_names:[...] } }. 항목 "이름" 기반(재번호 안전).
     const [ragCfg, setRagCfg] = useState({});
     const [ragSaving, setRagSaving] = useState(false);
