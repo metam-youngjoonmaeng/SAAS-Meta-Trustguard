@@ -587,6 +587,7 @@ export default function BatchManage() {
     const [savedAt, setSavedAt] = useState(null);
     const [promptModal, setPromptModal] = useState(null);  // null | 'uncertain' | 'contradiction'
     const [previewNonce, setPreviewNonce] = useState(0);    // 재판정 후 미리보기 강제 갱신
+    const [batchView, setBatchView] = useState('eval');     // 'eval' | 'golden' — 평가배치/골든셋배치 분리 토글
 
     // 현재 화면 state → 서버 config 직렬화(Set→배열).
     // '점수·표본 검증'(①) 통합: 무작위·고점(bias)은 카드 마스터(on.quality)와 동행 — 카드를 켜면 함께 적용.
@@ -708,7 +709,7 @@ export default function BatchManage() {
         <div>
             <PageHead title="AI 평가 배치 관리" sub="AI가 평가한 콜 중 사람이 재청취·검토할 대상을 조건으로 선별합니다. AI 오판 보정과 평가 신뢰성 확보를 위한 표본 추출 규칙을 설정하세요.">
                 {/* '지금 실행' — 실시간은 자동 도장이라 불필요, 그 외(매시간/매일/수동)는 강제 1회 실행 제공. */}
-                {scope.freq !== 'realtime' && (
+                {batchView === 'eval' && scope.freq !== 'realtime' && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         {runMsg && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{runMsg}</span>}
                         <button
@@ -724,6 +725,16 @@ export default function BatchManage() {
                 )}
             </PageHead>
 
+            {/* 평가배치 / 골든셋배치 분리 토글 — 골든셋 학습은 평가 필터와 성격이 달라 화면 분리 */}
+            <div style={{ marginBottom: 18 }}>
+                <Segment value={batchView} onChange={setBatchView} options={[
+                    { v: 'eval', label: '평가배치' },
+                    { v: 'golden', label: '골든셋배치' },
+                ]} />
+            </div>
+
+            {batchView === 'eval' && (
+            <>
             {/* 요약 바 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'wrap', border: '1px solid var(--border)', borderRadius: 14, background: 'white', overflow: 'hidden', marginBottom: 18 }}>
                 <div style={{ flex: 1, minWidth: 180, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -793,42 +804,6 @@ export default function BatchManage() {
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
                                 {scope.freq === 'daily' ? `매일 ${scope.time}(KST)에 조건에 맞는 미선별 콜을 일괄 수기평가 대상으로 도장합니다.` : scope.freq === 'realtime' ? 'AI 평가가 끝나는 즉시 조건에 맞는 콜을 수기평가 대상으로 도장합니다.' : scope.freq === 'hourly' ? '매시간 정각에 조건에 맞는 미선별 콜을 일괄 도장합니다.' : "자동 도장 없이, 관리자가 '지금 실행'을 누를 때만 도장합니다."}
                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* 골든셋 학습 배치 — 에이전트 학습 트리거를 우리(MTG) 스케줄로. 콜 재평가 아님(과거 평가 불변). */}
-                <div className="panel" style={{ padding: 0 }}>
-                    <div className="panel-head">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Icon name="list-checks" size={15} style={{ color: 'var(--ink-500)' }} />
-                            <h3>골든셋 학습 배치</h3>
-                        </div>
-                        <span className="muted-text" style={{ fontSize: 12, marginLeft: 'auto' }}>에이전트가 골든셋을 학습하는 시각을 우리가 지정 · 과거 콜 재평가 아님</span>
-                    </div>
-                    <div style={{ padding: 18 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 8 }}>학습 주기</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                            <Segment value={scope.goldenFreq} onChange={(v) => setSk('goldenFreq', v)} options={[
-                                { v: 'hourly', label: '매시간' }, { v: 'daily', label: '매일' }, { v: 'manual', label: '수동' },
-                            ]} />
-                            {scope.goldenFreq === 'daily' && (
-                                <input type="time" value={scope.goldenTime} onChange={(e) => setSk('goldenTime', e.target.value)} style={{ ...bInput, width: 150 }} />
-                            )}
-                            <button
-                                type="button"
-                                onClick={handleGoldenRun}
-                                disabled={goldenRunning}
-                                title="현재 학습 주기/시각을 저장하고 골든셋 학습을 즉시 1회 트리거"
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '8px 14px', borderRadius: 9, fontWeight: 700, fontSize: 12.5, cursor: goldenRunning ? 'default' : 'pointer', fontFamily: 'inherit', opacity: goldenRunning ? 0.6 : 1 }}
-                            >
-                                <Icon name="play" size={14} />{goldenRunning ? '실행 중…' : '지금 실행'}
-                            </button>
-                            {goldenMsg && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{goldenMsg}</span>}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
-                            {scope.goldenFreq === 'daily' ? `매일 ${scope.goldenTime}(KST)에 골든셋 학습을 트리거합니다.` : scope.goldenFreq === 'hourly' ? '매시간 정각에 골든셋 학습을 트리거합니다.' : "자동 트리거 없이 '지금 실행'으로만 학습합니다."}
-                            {' '}주기·시각 변경은 상단 저장 버튼으로 저장됩니다. (에이전트 학습 엔드포인트 연결 전엔 트리거만 기록)
                         </div>
                     </div>
                 </div>
@@ -954,6 +929,48 @@ export default function BatchManage() {
                 </FilterCard>
 
             </div>
+            </>
+            )}
+
+            {batchView === 'golden' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
+                    {/* 골든셋 학습 배치 — 에이전트 학습 트리거를 우리(MTG) 스케줄로. 콜 재평가 아님(과거 평가 불변). */}
+                    <div className="panel" style={{ padding: 0 }}>
+                        <div className="panel-head">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Icon name="list-checks" size={15} style={{ color: 'var(--ink-500)' }} />
+                                <h3>골든셋 학습 배치</h3>
+                            </div>
+                            <span className="muted-text" style={{ fontSize: 12, marginLeft: 'auto' }}>에이전트가 골든셋을 학습하는 시각을 우리가 지정 · 과거 콜 재평가 아님</span>
+                        </div>
+                        <div style={{ padding: 18 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 8 }}>학습 주기</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                <Segment value={scope.goldenFreq} onChange={(v) => setSk('goldenFreq', v)} options={[
+                                    { v: 'hourly', label: '매시간' }, { v: 'daily', label: '매일' }, { v: 'manual', label: '수동' },
+                                ]} />
+                                {scope.goldenFreq === 'daily' && (
+                                    <input type="time" value={scope.goldenTime} onChange={(e) => setSk('goldenTime', e.target.value)} style={{ ...bInput, width: 150 }} />
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={handleGoldenRun}
+                                    disabled={goldenRunning}
+                                    title="현재 학습 주기/시각을 저장하고 골든셋 학습을 즉시 1회 트리거"
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '8px 14px', borderRadius: 9, fontWeight: 700, fontSize: 12.5, cursor: goldenRunning ? 'default' : 'pointer', fontFamily: 'inherit', opacity: goldenRunning ? 0.6 : 1 }}
+                                >
+                                    <Icon name="play" size={14} />{goldenRunning ? '실행 중…' : '지금 실행'}
+                                </button>
+                                {goldenMsg && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{goldenMsg}</span>}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
+                                {scope.goldenFreq === 'daily' ? `매일 ${scope.goldenTime}(KST)에 골든셋 학습을 트리거합니다.` : scope.goldenFreq === 'hourly' ? '매시간 정각에 골든셋 학습을 트리거합니다.' : "자동 트리거 없이 '지금 실행'으로만 학습합니다."}
+                                {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다. (에이전트 학습 엔드포인트 연결 전엔 트리거만 기록)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* 하단 액션 바 — 조건 설정을 마친 뒤 저장(상단에서 하단으로 이동, 자연스러운 흐름). */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14, marginTop: 22 }}>
