@@ -1,7 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, ChevronRight, FileX, Info } from 'lucide-react';
-import Header from '../components/Header';
-import { PRODUCT_NAME, PLATFORM_TITLE } from '../branding';
 import {
     CONSUMER_TOTAL_MAX,
     DEFAULT_TOTAL_MAX,
@@ -11,7 +9,6 @@ import {
 import { formatDateTime, formatDuration } from '../utils/formatters';
 import { fetchEvalItemVersions } from '../services/api';
 import useDefaultRubricMax from '../hooks/useDefaultRubricMax';
-/* SAMPLE_UPLOAD_FEATURE */ import SampleUploadModal from '../components/SampleUploadModal';
 // 추후 상세 로직 확정 후 재활성화 — "코칭 액션 (AI 자동 추천)" / "자동 플래그 (오늘 배치)"
 // import CoachingActionPanel from '../components/CoachingActionPanel';
 // import AutoFlagPanel from '../components/AutoFlagPanel';
@@ -82,7 +79,24 @@ function categoryCell(raw, categoryKey, categoryMaxPoints) {
 
 const DASHBOARD_DEPT_STORAGE_KEY = 'qa_dashboard_active_department';
 
-const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId }) => {
+// 평가 리스트 한 페이지 건수 — 10건까지 한 화면, 초과분은 하단 숫자 네비게이션.
+const PAGE_SIZE = 10;
+
+// 하단 페이지 네비게이션 표시용 — 현재 페이지 주변 + 처음/끝, 사이는 '…'. (0-based 입력/반환, '…' 포함)
+function buildPages(current, total) {
+    const keep = new Set([0, total - 1, current - 1, current, current + 1]);
+    const valid = [...keep].filter((p) => p >= 0 && p < total).sort((a, b) => a - b);
+    const out = [];
+    let prev = null;
+    for (const p of valid) {
+        if (prev !== null && p - prev > 1) out.push('…');
+        out.push(p);
+        prev = p;
+    }
+    return out;
+}
+
+const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
     // 활성 브랜드의 평가 체계 lookup. 신한(=1) 은 컬렉션관리부 9항목 + 소비자보호부 20항목, 한화(=2) 는 고객센터 8항목.
     const brandConfig = useMemo(() => getBrandConfig(activeBrandId), [activeBrandId]);
     const DEPARTMENT_OPTIONS = brandConfig.departments;
@@ -121,14 +135,14 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
         item: 'AI_QA',
         consultationType: '',
         reviewStatus: '',
-        aiTarget: '',
         manualOnly: false,
     });
+    const [page, setPage] = useState(0);  // 평가 리스트 페이지네이션(0-based)
 
-    // 부서 변경 시 부서별 의미 없는 필터(직무·분석대상) 초기화
+    // 부서 변경 시 부서별 의미 없는 필터(직무) 초기화
     const handleDepartmentChange = (next) => {
         setDepartment(next);
-        setFilters((prev) => ({ ...prev, role: '', aiTarget: '' }));
+        setFilters((prev) => ({ ...prev, role: '' }));
         if (typeof window !== 'undefined' && DEPARTMENT_OPTIONS.includes(next)) {
             window.sessionStorage.setItem(DASHBOARD_DEPT_STORAGE_KEY, next);
         }
@@ -282,7 +296,6 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                 if (endDate && callDate > endDate) return false;
             }
             if (filters.role && row.role !== filters.role) return false;
-            if (filters.aiTarget && String(row.ai_analysis_target || '').toUpperCase() !== filters.aiTarget) return false;
             if (filters.agent && !String(row.agent_name || '').includes(filters.agent)) return false;
             if (filters.item && filters.item !== 'AI_QA' && !(row.evaluation_items || []).includes(filters.item)) return false;
             if (filters.consultationType && row.consultation_type !== filters.consultationType) return false;
@@ -290,7 +303,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
             if (filters.manualOnly && !row.manual_review) return false;
             return true;
         });
-    }, [calls, filters.startDate, filters.endDate, filters.role, filters.aiTarget, filters.agent, filters.item, filters.consultationType, filters.reviewStatus, filters.manualOnly, department, DEPARTMENT_OPTIONS]);
+    }, [calls, filters.startDate, filters.endDate, filters.role, filters.agent, filters.item, filters.consultationType, filters.reviewStatus, filters.manualOnly, department, DEPARTMENT_OPTIONS]);
 
     // 자동 전환: 선택 버전과 날짜 범위가 완전히 어긋나 0건이면 데이터가 있는 버전으로 fallback.
     // 0건 ≠ 자동 전환: 사용자가 선택한 버전 안에 콜이 있으면 그대로 유지 (부분 겹침은 부분만 표시).
@@ -328,6 +341,13 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
         });
     }, [baseFilteredCalls, versionFilterInfo.effectiveVersion, matchCallToVersion]);
 
+    // 페이지네이션 — 한 화면에 PAGE_SIZE(10)건, 초과분은 하단 숫자 네비게이션.
+    const pageCount = Math.max(1, Math.ceil(filteredCalls.length / PAGE_SIZE));
+    const safePage = Math.min(page, pageCount - 1);
+    const pagedCalls = filteredCalls.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+    // 필터·데이터 변경 시 1페이지로 복귀.
+    useEffect(() => { setPage(0); }, [filteredCalls]);
+
     // 표 컬럼(평가 항목) = 선택된 평가체계 버전의 항목만. (전 기간 합집합 나열 금지 — UX)
     //   - 최신 버전(기본): 현재 활성 항목만(effectiveTemplate) → 삭제(소프트삭제) 항목 제외, 콜 0건 신규 항목도 표시.
     //   - 옛 버전: 그 버전에 매칭되는 콜에 실제 채점된 카테고리만(과거 결과 보존 — 버전 전환으로 열람).
@@ -363,17 +383,6 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
 
     return (
         <div className="w-full">
-            <Header
-                title={PRODUCT_NAME}
-                subtitle={PLATFORM_TITLE}
-                actions={
-                    <>
-                        {/* SAMPLE_UPLOAD_FEATURE */}
-                        <SampleUploadModal onUploaded={onRefresh} />
-                    </>
-                }
-            />
-
             {/* Filter Section */}
             <div className="bg-white p-6 rounded-xl border border-[#E4E7EC] shadow-sm mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -498,19 +507,6 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                             <option value="AI_QA">AI_QA</option>
                         </select>
                     </div>
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">AI 분석대상</label>
-                        <select
-                            className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 outline-none cursor-pointer disabled:bg-[#F2F4F7] disabled:text-[#98A2B3] disabled:cursor-not-allowed"
-                            value={filters.aiTarget}
-                            onChange={(e) => setFilters(prev => ({ ...prev, aiTarget: e.target.value }))}
-                            disabled={department !== '소비자보호부'}
-                        >
-                            <option value="">전체</option>
-                            <option value="O">O (분석)</option>
-                            <option value="X">X (미분석)</option>
-                        </select>
-                    </div>
                 </div>
             </div>
 
@@ -538,7 +534,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
 
             {/* Main Table — evolved direction: 흰색 헤더 + 중성 칩, 짙은 파란 chrome 제거 */}
             <div className="bg-white rounded-xl border border-[#E4E7EC] overflow-hidden shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-                <div className="overflow-auto min-h-[400px] max-h-[520px]">
+                <div className="overflow-auto min-h-[400px] max-h-[720px]">
                     {department !== '소비자보호부' ? (
                         <table className="w-full border-collapse table-fixed text-left">
                             <colgroup>
@@ -589,7 +585,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                                             </div>
                                         </td>
                                     </tr>
-                                ) : filteredCalls.map((row) => {
+                                ) : pagedCalls.map((row) => {
                                     const yn = row.checklist_yn_kor || {};
                                     return (
                                         <tr key={row.qa_id} className="hover:bg-[#FAFBFC] transition-colors group">
@@ -656,8 +652,6 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                                 <col className="w-24" />
                                 <col className="w-24" />
                                 <col className="w-24" />
-                                <col className="w-28" />
-                                <col />
                             </colgroup>
                             <thead>
                                 <tr>
@@ -668,55 +662,39 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                                     <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">판촉</th>
                                     <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085] text-right">합계</th>
                                     <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085] text-right">미충족</th>
-                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085] text-center">AI분석대상</th>
-                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">사유</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-[#F2F4F7]">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={9} className="py-20 text-center text-[#98A2B3] text-[13px]">
+                                        <td colSpan={7} className="py-20 text-center text-[#98A2B3] text-[13px]">
                                             데이터를 불러오는 중입니다...
                                         </td>
                                     </tr>
                                 ) : filteredCalls.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} className="py-20 text-center">
+                                        <td colSpan={7} className="py-20 text-center">
                                             <div className="flex flex-col items-center gap-2 text-[#98A2B3]">
                                                 <FileX size={40} strokeWidth={1.5} className="opacity-60" />
                                                 <p className="text-[13px]">조회 결과가 없습니다.</p>
                                             </div>
                                         </td>
                                     </tr>
-                                ) : filteredCalls.map((row) => {
+                                ) : pagedCalls.map((row) => {
                                     const violations = Number(row.consumer_violations);
                                     const total = Number(row.consumer_total) || CONSUMER_TOTAL_MAX;
                                     const earned = Number.isFinite(violations)
                                         ? Math.max(0, total - violations)
                                         : null;
-                                    const target = String(row.ai_analysis_target || '').toUpperCase();
-                                    const isO = target === 'O';
-                                    const isX = target === 'X';
                                     return (
                                         <tr key={row.qa_id} className="hover:bg-[#FAFBFC] transition-colors group">
                                             <td className="text-center py-3">
-                                                {isX ? (
-                                                    <button
-                                                        type="button"
-                                                        disabled
-                                                        title="AI 분석대상이 아닌 콜입니다"
-                                                        className="w-7 h-7 rounded-md inline-flex items-center justify-center text-[#D0D5DD] cursor-not-allowed"
-                                                    >
-                                                        <ChevronRight size={16} />
-                                                    </button>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => onOpenDetail(row.qa_id)}
-                                                        className="w-7 h-7 rounded-md inline-flex items-center justify-center text-[#98A2B3] hover:bg-[#055AAF] hover:text-white transition-all"
-                                                    >
-                                                        <ChevronRight size={16} />
-                                                    </button>
-                                                )}
+                                                <button
+                                                    onClick={() => onOpenDetail(row.qa_id)}
+                                                    className="w-7 h-7 rounded-md inline-flex items-center justify-center text-[#98A2B3] hover:bg-[#055AAF] hover:text-white transition-all"
+                                                >
+                                                    <ChevronRight size={16} />
+                                                </button>
                                             </td>
                                             <td className="px-3 py-3 font-mono text-[12px] text-[#475467]">
                                                 <div className="flex items-center gap-1.5">
@@ -748,27 +726,6 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                                                     {Number.isFinite(violations) ? `${violations}건` : '-'}
                                                 </span>
                                             </td>
-                                            <td className="px-3 py-3 text-center">
-                                                {isO || isX ? (
-                                                    <span
-                                                        className={`inline-flex items-center justify-center min-w-[32px] px-2.5 py-0.5 rounded-full text-[12px] font-semibold ${
-                                                            isO
-                                                                ? 'bg-[#F2F4F7] text-[#101828]'
-                                                                : 'bg-[#F9FAFB] text-[#98A2B3]'
-                                                        }`}
-                                                    >
-                                                        {target}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-[#98A2B3] text-[13px]">-</span>
-                                                )}
-                                            </td>
-                                            <td
-                                                className="px-3 py-3 text-[13px] text-[#475467] truncate"
-                                                title={row.ai_analysis_reason || ''}
-                                            >
-                                                {row.ai_analysis_reason || '-'}
-                                            </td>
                                         </tr>
                                     );
                                 })}
@@ -776,9 +733,53 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, onRefresh, activeBrandId })
                         </table>
                     )}
                 </div>
-                <div className="px-5 py-3 border-t border-[#F2F4F7] bg-[#FAFBFC] flex items-center justify-between text-[12px] text-[#667085]">
-                    <span>{department} · 총 <strong className="text-[#101828] font-semibold">{filteredCalls.length}</strong> 건</span>
-                    <span>전체 녹취 데이터 실시간 분석 현황</span>
+                <div className="px-5 py-3 border-t border-[#F2F4F7] bg-[#FAFBFC] flex items-center justify-between gap-4 text-[12px] text-[#667085]">
+                    <span className="shrink-0">{department} · 총 <strong className="text-[#101828] font-semibold">{filteredCalls.length}</strong> 건</span>
+
+                    {/* 페이지 네비게이션 — 10건 초과 시에만 노출 */}
+                    {pageCount > 1 && (
+                        <div className="flex items-center gap-1">
+                            <button
+                                type="button"
+                                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                                disabled={safePage === 0}
+                                className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[#D0D5DD] bg-white text-[#475467] hover:bg-[#F2F4F7] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                aria-label="이전 페이지"
+                            >
+                                <ChevronRight size={14} className="rotate-180" />
+                            </button>
+                            {buildPages(safePage, pageCount).map((p, i) =>
+                                p === '…' ? (
+                                    <span key={`gap-${i}`} className="w-7 h-7 inline-flex items-center justify-center text-[#98A2B3]">…</span>
+                                ) : (
+                                    <button
+                                        key={p}
+                                        type="button"
+                                        onClick={() => setPage(p)}
+                                        className={`min-w-[28px] h-7 px-2 inline-flex items-center justify-center rounded-md border text-[12px] font-semibold transition-colors ${
+                                            p === safePage
+                                                ? 'border-[#055AAF] bg-[#055AAF] text-white'
+                                                : 'border-[#D0D5DD] bg-white text-[#475467] hover:bg-[#F2F4F7]'
+                                        }`}
+                                        aria-current={p === safePage ? 'page' : undefined}
+                                    >
+                                        {p + 1}
+                                    </button>
+                                )
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                                disabled={safePage === pageCount - 1}
+                                className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[#D0D5DD] bg-white text-[#475467] hover:bg-[#F2F4F7] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                aria-label="다음 페이지"
+                            >
+                                <ChevronRight size={14} />
+                            </button>
+                        </div>
+                    )}
+
+                    <span className="shrink-0">전체 녹취 데이터 실시간 분석 현황</span>
                 </div>
             </div>
 

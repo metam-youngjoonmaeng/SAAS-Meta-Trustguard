@@ -551,6 +551,7 @@ function App() {
                 activeTab={activeTab}
                 detailOrigin={detailOrigin}
                 onNavTab={handleSidebarTabClick}
+                onSampleUploaded={refreshCalls}
             />
             <div className="app-shell-body">
                 <Sidebar
@@ -568,7 +569,6 @@ function App() {
                         calls={calls}
                         isLoading={isLoading}
                         onOpenDetail={handleOpenDetail}
-                        onRefresh={refreshCalls}
                         activeBrandId={selectedBrandId}
                     />
                 )}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Clock3, ShieldCheck, Shield, Headset, Home, ChevronRight } from 'lucide-react';
 import NotificationBell from './NotificationBell';
+/* SAMPLE_UPLOAD_FEATURE */ import SampleUploadModal from './SampleUploadModal';
 
 // 원본: 01-AI-Tutor-dev/frontend/components/nav.tsx
 // 사이즈/위치 동일: h-60px, 좌측 패딩 22px, 로고 h-22px, 워드마크 fontFamily=Moneygraphy Rounded, fontSize 14.5
@@ -68,7 +69,7 @@ function initialsOf(user) {
     return src.slice(0, 2).toUpperCase();
 }
 
-const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, activeTab, detailOrigin, onNavTab }) => {
+const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, activeTab, detailOrigin, onNavTab, onSampleUploaded }) => {
     const roleMeta = user?.role ? ROLE_META[user.role] : null;
     const displayName = user?.display_name || user?.login_id || '';
     const avatarUrl = user?.profile_image_url;
@@ -120,6 +121,10 @@ const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, 
                         </nav>
                     )}
                     <div className="app-nav-right">
+                        {/* SAMPLE_UPLOAD_FEATURE — 평가 리스트(평가 업로드)에서만 노출 */}
+                        {user && activeTab === 'dashboard' && (
+                            <SampleUploadModal onUploaded={onSampleUploaded} />
+                        )}
                         {user && <NotificationBell />}
                         {user && (
                             <button
