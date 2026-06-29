@@ -11,7 +11,8 @@ const BULLET_RE = /^\s*-\s*([\d.]+)\s*점\s*[:：]\s*(.*)$/;
 export function parseSteps(promptTemplate) {
     const text = String(promptTemplate || '');
     const rows = [];
-    for (const line of text.split('\n')) {
+    // CRLF/CR 도 안전하게 분할(\r 잔류 시 BULLET_RE 의 $ 앵커가 어긋나 일부 단계만 잡히는 버그 방지).
+    for (const line of text.split(/\r?\n/)) {
         const m = line.match(BULLET_RE);
         if (m) rows.push({ score: m[1], desc: (m[2] || '').trim() });
     }

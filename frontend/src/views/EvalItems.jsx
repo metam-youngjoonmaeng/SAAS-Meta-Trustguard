@@ -669,19 +669,21 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
             <div className="flex-1 overflow-y-auto p-5 min-h-0">
                 {tab === 'overview' ? (
                     <div className="flex flex-col gap-5 h-full min-h-0">
-                        <PreviewSection title="항목 평가 설명">
-                            {def?.criterion ? (
-                                <div className="text-[13px] text-[#475467] leading-relaxed whitespace-pre-wrap">{def.criterion}</div>
-                            ) : (
-                                <div className="text-[13px] text-[#98A2B3] italic leading-relaxed">
-                                    아직 설정된 평가 설명이 없습니다. 우상단 편집하기에서 입력하세요.
-                                </div>
-                            )}
-                        </PreviewSection>
+                        <div className="flex-1 min-h-0 overflow-y-auto">
+                            <PreviewSection title="항목 평가 설명">
+                                {def?.criterion ? (
+                                    <div className="text-[13px] text-[#475467] leading-relaxed whitespace-pre-wrap">{def.criterion}</div>
+                                ) : (
+                                    <div className="text-[13px] text-[#98A2B3] italic leading-relaxed">
+                                        아직 설정된 평가 설명이 없습니다. 우상단 편집하기에서 입력하세요.
+                                    </div>
+                                )}
+                            </PreviewSection>
+                        </div>
 
-                        <div className="flex flex-col flex-1 min-h-0">
+                        <div className="flex flex-col shrink-0">
                             <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2">점수 기준 {def?.scoring_type !== 'yes_no' && `(만점 ${def?.max_score ?? maxPoints}점)`}</div>
-                            <pre className="flex-1 min-h-0 text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3 overflow-auto">{def?.prompt_template ? def.prompt_template : `만점 ${def?.max_score ?? maxPoints}점 기준으로 "${item.item}" 항목의 점수 단계별 판정 조건을 작성하세요.
+                            <pre className="min-h-[120px] max-h-[40vh] text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3 overflow-auto">{def?.prompt_template ? def.prompt_template : `만점 ${def?.max_score ?? maxPoints}점 기준으로 "${item.item}" 항목의 점수 단계별 판정 조건을 작성하세요.
 
 예: ${def?.max_score ?? maxPoints}점(완전 충족) / 부분 점수(일부 충족) / 0점(미충족) — 각 단계의 조건과 감점·만점 사유를 구체적으로.
 
