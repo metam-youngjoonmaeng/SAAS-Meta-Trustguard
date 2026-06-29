@@ -1005,6 +1005,10 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
 // ─────────────────────────────────────────────────────
 // Admin 평가 결과 — 조직 전체 평가 데이터 관리
 // ─────────────────────────────────────────────────────
+// 평가목록 체크박스 선택 보존 키 — 상세(#/detail) 왕복 시 컴포넌트가 언마운트돼도 유지.
+// sessionStorage(탭 단위, 탭 닫으면 자동 해제). 쿠키/localStorage 대신 SPA 내 화면 전환 보존용.
+const SELECTED_KEY = 'tg.evalMgmt.adminResults.selected';
+
 function AdminResults({ embedded, beforeList, results = [], loading = false, onReload }) {
     const [period, setPeriod] = useState(defaultPeriod('7d'));
     const [channel, setChannel] = useState('all');
@@ -1012,7 +1016,11 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
     const [approval, setApproval] = useState('all');
     const [approvedIds, setApprovedIds] = useState(() => new Set());
     const [scoreRange, setScoreRange] = useState('all');
-    const [selected, setSelected] = useState(new Set());
+    // 체크박스 선택 — 상세 왕복 보존을 위해 sessionStorage 에서 초기화.
+    const [selected, setSelected] = useState(() => {
+        try { return new Set(JSON.parse(sessionStorage.getItem(SELECTED_KEY) || '[]')); }
+        catch { return new Set(); }
+    });
     const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
     const [drawerId, setDrawerId] = useState(null);
     const [colFilters, setColFilters] = useState({});  // 헤더 엑셀식 필터: 컬럼키 → 제외 Set
@@ -1021,6 +1029,12 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
     useEffect(() => {
         setApprovedIds(new Set(results.filter((r) => r.approved).map((r) => r.id)));
     }, [results]);
+
+    // 선택 변경 시 sessionStorage 동기화 → 상세(#/detail) 다녀와도 체크 유지.
+    useEffect(() => {
+        try { sessionStorage.setItem(SELECTED_KEY, JSON.stringify([...selected])); }
+        catch { /* storage 불가 환경 무시 */ }
+    }, [selected]);
 
     // 행 클릭 → 기존 평가리스트의 실제 "상세 QA 분석" 화면(#/detail/{qa_id}, Detail.jsx)으로 이동.
     // 앱 전체가 단일 해시라우팅 SPA 라, hash 만 바꾸면 App 이 Detail 로 전환한다.
