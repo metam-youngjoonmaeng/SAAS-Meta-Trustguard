@@ -1481,7 +1481,10 @@ export async function evaluateDomainCall(pool, call, opts = {}) {
         throw e;
     }
 
-    const rubricCall = { ...call, rubric_inline: rubric };
+    // PURE 트랙 동봉 — 전 브랜드 pure 전환(2026-06-26) 이후 레거시 풀그래프 트랙은 휴면이라,
+    // eval_mode 미동봉 시 엔진이 5000번대 루브릭을 echo하지 않아 매핑이 실패한다(브랜드 경로와 동일하게 pure).
+    // 도메인엔 org 별 fewshot 스토어가 없으므로 RAG off.
+    const rubricCall = { ...call, rubric_inline: rubric, eval_mode: 'pure', disable_rag: true };
     const resp =
         typeof opts.onProgress === 'function'
             ? await callQaPipelineStream(rubricCall, opts, opts.onProgress)
@@ -1489,7 +1492,12 @@ export async function evaluateDomainCall(pool, call, opts = {}) {
 
     const mapped = mapEvaluateResponseRubric(resp, rowMeta);
     if (!mapped) {
-        throw new Error('도메인 루브릭 매핑 실패 (엔진 응답에 5000번대 항목 없음).');
+        // null 사유 구분: 5000번대 0개(엔진이 루브릭 미적용) vs 개수 불일치(desync).
+        const _idx = indexEvaluations(resp);
+        const _n5000 = [...(_idx.byItem?.keys?.() || [])].filter((n) => Number(n) >= RUBRIC_ITEM_BASE).length;
+        throw new Error(_n5000 > 0
+            ? `도메인 루브릭 매핑 불일치 (엔진 5000번대 ${_n5000}개 ≠ 도메인 항목 ${rowMeta.length}개).`
+            : '도메인 루브릭 매핑 실패 (엔진 응답에 5000번대 항목 없음).');
     }
     mapped.warnings = [...warnings, ...(mapped.warnings || [])];
     mapped.rowMeta = rowMeta; // 펜타곤 축 귀속(order_no→pentagon_axis)에 호출부가 사용
