@@ -3,7 +3,7 @@
 // 4개 검사 조건(on/off) + 공통 범위(통화시간·기간) + 배치 스케줄.
 // 디자인 원본: etc/pages-batch.jsx (디자인 시스템은 evalMgmt 토큰 .tg-eval 스코프 재사용).
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Icon, PageHead, Modal } from './ui';
+import { Icon, PageHead, Modal, Tabs } from './ui';
 import {
     fetchBatchConfig, saveBatchConfig, previewBatch, fetchBatchEvalItems,
     fetchBatchPrompt, saveBatchPrompt, rejudgeConfidence, fetchRejudgeStatus, fetchBatchPromptHistory,
@@ -566,6 +566,8 @@ export default function BatchManage() {
     const [excluded, setExcluded] = useState(new Set()); // 제외할 평가항목 order_no 집합(기본: 전 항목 포함)
     const toggleExcluded = (key) => setExcluded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
     const [evalItems, setEvalItems] = useState([]); // 실제 평가된 항목(order_no+item) — ② 적용 항목 칩
+    const [goldenExcluded, setGoldenExcluded] = useState(new Set()); // 골든셋 학습 제외 평가항목 order_no (평가배치 excluded 와 독립)
+    const toggleGoldenExcluded = (key) => setGoldenExcluded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
     // ④ 근속
     const [tenure, setTenure] = useState({ junior: true, juniorMonths: 6, senior: true, seniorYears: 5 });
@@ -593,7 +595,8 @@ export default function BatchManage() {
     // '점수·표본 검증'(①) 통합: 무작위·고점(bias)은 카드 마스터(on.quality)와 동행 — 카드를 켜면 함께 적용.
     const config = useMemo(() => ({
         on: { ...on, bias: on.quality }, quality: q, confidence: { ...c, excluded: Array.from(excluded) }, tenure, bias, scope,
-    }), [on, q, c, excluded, tenure, bias, scope]);
+        golden: { excluded: Array.from(goldenExcluded) },
+    }), [on, q, c, excluded, tenure, bias, scope, goldenExcluded]);
 
     // 마운트 시 저장된 설정 1회 로드(있으면 state 복원).
     useEffect(() => {
@@ -613,6 +616,7 @@ export default function BatchManage() {
                     if (cfg.tenure) setTenure((s) => ({ ...s, ...cfg.tenure }));
                     if (cfg.bias) setBias((s) => ({ ...s, ...cfg.bias }));
                     if (cfg.scope) setScope((s) => ({ ...s, ...cfg.scope }));
+                    if (cfg.golden && Array.isArray(cfg.golden.excluded)) setGoldenExcluded(new Set(cfg.golden.excluded));
                 }
             })
             .catch(() => {})
@@ -725,13 +729,11 @@ export default function BatchManage() {
                 )}
             </PageHead>
 
-            {/* 평가배치 / 골든셋배치 분리 토글 — 골든셋 학습은 평가 필터와 성격이 달라 화면 분리 */}
-            <div style={{ marginBottom: 18 }}>
-                <Segment value={batchView} onChange={setBatchView} options={[
-                    { v: 'eval', label: '평가배치' },
-                    { v: 'golden', label: '골든셋배치' },
-                ]} />
-            </div>
+            {/* 평가배치 / 골든셋배치 분리 — 페이지 탭(underline)으로 분리해 눈에 잘 띄게. 성격이 다른 두 배치를 분리 */}
+            <Tabs value={batchView} onChange={setBatchView} items={[
+                { key: 'eval', label: '평가배치' },
+                { key: 'golden', label: '골든셋배치' },
+            ]} />
 
             {batchView === 'eval' && (
             <>
@@ -966,6 +968,48 @@ export default function BatchManage() {
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
                                 {scope.goldenFreq === 'daily' ? `매일 ${scope.goldenTime}(KST)에 골든셋 학습을 트리거합니다.` : scope.goldenFreq === 'hourly' ? '매시간 정각에 골든셋 학습을 트리거합니다.' : "자동 트리거 없이 '지금 실행'으로만 학습합니다."}
                                 {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다. (에이전트 학습 엔드포인트 연결 전엔 트리거만 기록)
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 골든셋 학습 적용 평가 항목 — 항목별 학습 반영 on/off (평가배치와 동일 UX, 선택은 독립) */}
+                    <div className="panel" style={{ padding: 0 }}>
+                        <div className="panel-head">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Icon name="list-checks" size={15} style={{ color: 'var(--ink-500)' }} />
+                                <h3>적용 평가 항목</h3>
+                            </div>
+                            <span className="muted-text" style={{ fontSize: 12, marginLeft: 'auto' }}>체크 해제한 항목은 골든셋 학습에서 제외 ({Math.max(0, evalItems.length - goldenExcluded.size)}/{evalItems.length})</span>
+                        </div>
+                        <div style={{ padding: 18 }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                                {evalItems.length === 0 && (
+                                    <span style={{ fontSize: 12, color: 'var(--ink-400)' }}>평가된 콜이 없어 항목이 비어 있습니다.</span>
+                                )}
+                                {evalItems.map((it) => {
+                                    const incl = !goldenExcluded.has(it.order_no);
+                                    return (
+                                        <button
+                                            key={it.order_no}
+                                            type="button"
+                                            onClick={() => toggleGoldenExcluded(it.order_no)}
+                                            title={`${it.calls}콜 평가됨`}
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 9999,
+                                                border: `1px solid ${incl ? 'var(--primary-soft-border)' : 'var(--border)'}`,
+                                                background: incl ? 'var(--primary-soft-flat)' : 'white',
+                                                color: incl ? 'var(--primary)' : 'var(--ink-400)',
+                                                fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+                                                textDecoration: incl ? 'none' : 'line-through',
+                                            }}
+                                        >
+                                            <Icon name={incl ? 'check' : 'minus'} size={11} />{it.item}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 10, lineHeight: 1.5 }}>
+                                골든셋 학습에 반영할 평가 항목을 선택합니다. 평가배치 선택과 독립이며, 아래 ‘배치 저장’으로 저장됩니다.
                             </div>
                         </div>
                     </div>
