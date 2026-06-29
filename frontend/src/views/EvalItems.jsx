@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import Header from '../components/Header';
 import { PRODUCT_NAME } from '../branding';
 import { getBrandConfig, isDynamicChecklistBrand, buildChecklistTemplateFromDefs } from '../constants';
+import ScoreStepsEditor, { parseSteps, assembleSteps } from '../components/ScoreStepsEditor';
 import {
     fetchGoldenCasesByItem, removeGoldenSet,
     fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, deleteEvalItemDef, fetchEvalItemHistory,
@@ -29,7 +30,7 @@ import {
 //
 // 좌측: 체크리스트 / Pentagon 2섹션. 헤더 ✏️ 는 선택 항목 편집,
 //       리스트 하단 [+ 새 항목] dashed 박스가 신규 추가 진입점.
-// 우측: 선택 항목 미리보기 + [편집하기] (평가 기준·프롬프트).
+// 우측: 선택 항목 미리보기 + [편집하기] (항목 평가 설명·점수 기준).
 //
 // 영속화:
 //  - eval_item_defs (category/item/criterion/prompt_template/pentagon_axis/
@@ -352,7 +353,7 @@ const EvalItems = ({ activeBrandId }) => {
                         item={selectedItem}
                         activeBrandId={activeBrandId}
                         def={evalDefsByOrderNo[selectedItem.order_no]}
-                        onEdit={() => setModal({ type: 'edit-prompt', item: selectedItem })}
+                        onEdit={() => setModal({ type: 'edit-item', item: selectedItem })}
                     />
                 ) : selectedAxis ? (
                     <AxisPreview
@@ -387,15 +388,6 @@ const EvalItems = ({ activeBrandId }) => {
                     axes={effectiveAxes}
                     departments={departments}
                     onSaved={(def) => { if (def) upsertEvalDef(def); else reloadDefs(); }}
-                    onRubricSync={handleRubricSync}
-                    onClose={() => setModal(null)}
-                />
-            )}
-            {modal?.type === 'edit-prompt' && (
-                <PromptEditModal
-                    item={modal.item}
-                    existingDef={evalDefsByOrderNo[modal.item.order_no]}
-                    onSaved={upsertEvalDef}
                     onRubricSync={handleRubricSync}
                     onClose={() => setModal(null)}
                 />
@@ -677,23 +669,23 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
             <div className="flex-1 overflow-y-auto p-5 min-h-0">
                 {tab === 'overview' ? (
                     <div className="flex flex-col gap-5 h-full min-h-0">
-                        <PreviewSection title="평가 기준">
+                        <PreviewSection title="항목 평가 설명">
                             {def?.criterion ? (
                                 <div className="text-[13px] text-[#475467] leading-relaxed whitespace-pre-wrap">{def.criterion}</div>
                             ) : (
                                 <div className="text-[13px] text-[#98A2B3] italic leading-relaxed">
-                                    아직 설정된 평가 기준이 없습니다. 우상단 편집하기에서 입력하세요.
+                                    아직 설정된 평가 설명이 없습니다. 우상단 편집하기에서 입력하세요.
                                 </div>
                             )}
                         </PreviewSection>
 
                         <div className="flex flex-col flex-1 min-h-0">
-                            <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2">평가 프롬프트</div>
-                            <pre className="flex-1 min-h-0 text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3 overflow-auto">{def?.prompt_template ? def.prompt_template : `"${item.item}" 항목을 어떻게 평가할지 그 기준만 작성하세요.
+                            <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2">점수 기준 {def?.scoring_type !== 'yes_no' && `(만점 ${def?.max_score ?? maxPoints}점)`}</div>
+                            <pre className="flex-1 min-h-0 text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3 overflow-auto">{def?.prompt_template ? def.prompt_template : `만점 ${def?.max_score ?? maxPoints}점 기준으로 "${item.item}" 항목의 점수 단계별 판정 조건을 작성하세요.
 
-점수 단계별(예: ${maxPoints}점 / 부분 점수 / 0점) 판정 조건과 감점·만점 사유를 구체적으로 기술합니다.
+예: ${def?.max_score ?? maxPoints}점(완전 충족) / 부분 점수(일부 충족) / 0점(미충족) — 각 단계의 조건과 감점·만점 사유를 구체적으로.
 
-※ 출력 형식(JSON)·점수 산술 규칙·자기 검증·공통 정책은 백엔드가 자동 부착합니다. 평가 기준에만 집중하세요.`}</pre>
+※ 출력 형식(JSON)·점수 산술 규칙·자기 검증·공통 정책은 백엔드가 자동 부착합니다.`}</pre>
                         </div>
                     </div>
                 ) : (
@@ -955,9 +947,9 @@ const CHANGE_TYPE_LABEL = {
     item_rename:             '항목명/대분류 변경',
     pentagon_axis_update:    'Pentagon 매핑 변경',
     scoring_update:          '채점 방식/만점 변경',
-    criterion_prompt_update: '평가 기준 + 프롬프트 수정',
-    prompt_update:           '평가 프롬프트 수정',
-    criterion_update:        '평가 기준 수정',
+    criterion_prompt_update: '평가 설명 + 점수 기준 수정',
+    prompt_update:           '점수 기준 수정',
+    criterion_update:        '평가 설명 수정',
     // 펜타곤 축 전용 change_type (pentagon_axis_change_log)
     label_rename:            '축 이름 변경',
     description_update:      '축 설명 수정',
@@ -966,8 +958,8 @@ const CHANGE_TYPE_LABEL = {
 const FIELD_LABEL = {
     category:        '대분류',
     item:            '항목명',
-    criterion:       '평가 기준',
-    prompt_template: '평가 프롬프트',
+    criterion:       '항목 평가 설명',
+    prompt_template: '점수 기준',
     pentagon_axis:   'Pentagon 매핑',
     scoring_type:    '채점 방식',
     max_score:       '만점',
@@ -1249,6 +1241,10 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
     );
     const [pentagonAxis, setPentagonAxis] = useState(existingDef?.pentagon_axis ?? '');
     const [isActive, setIsActive] = useState(existingDef?.is_active ?? true);
+    // 항목 평가 설명(criterion) + 점수 기준(prompt_template) — 만점과 한 모달에서 함께 편집(어긋남 방지).
+    const [criterion, setCriterion] = useState(existingDef?.criterion ?? '');
+    const [prompt, setPrompt] = useState(existingDef?.prompt_template ?? '');       // Y/N 판정 기준(텍스트)
+    const [steps, setSteps] = useState(() => parseSteps(existingDef?.prompt_template)); // 점수제 점수 단계(행)
     // 신규 추가는 평가 부서('기본')에 생성 → 체크리스트·평가와 일치해 추가 즉시 반영.
     // '기본'이 부서 옵션에 있으면 그것을, 없으면(레거시 등) 첫 부서를 기본 선택.
     const [selectedDepts, setSelectedDepts] = useState(
@@ -1344,28 +1340,6 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                     </div>
                 </FormGroup>
 
-                {scoringType === 'numeric' ? (
-                    <FormGroup label="만점">
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="number"
-                                min="1"
-                                value={maxScore}
-                                onChange={(e) => setMaxScore(e.target.value)}
-                                className="form-input-pretty"
-                                style={{ width: 120 }}
-                            />
-                            <span className="text-[13px] text-[#667085]">점</span>
-                        </div>
-                    </FormGroup>
-                ) : (
-                    <FormGroup label="채점 안내">
-                        <div className="text-[12.5px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5 leading-relaxed">
-                            충족 / 위반 으로만 판정합니다. <span className="text-[#475467] font-medium">점수·총점·펜타곤에는 반영되지 않고</span>, 컴플라이언스 체크(이행·위반 모니터링)에만 사용됩니다.
-                        </div>
-                    </FormGroup>
-                )}
-
                 {scoringType === 'numeric' && (
                     <FormGroup label="Pentagon 매핑">
                         <select
@@ -1382,6 +1356,37 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                         </select>
                     </FormGroup>
                 )}
+
+                {/* 항목 평가 설명 = 무엇을·어떻게 평가하는지(설명 프롬프트). 점수 단계는 여기 쓰지 않음. */}
+                <FormGroup label="항목 평가 설명">
+                    <textarea
+                        value={criterion}
+                        onChange={(e) => setCriterion(e.target.value)}
+                        rows={8}
+                        placeholder={`이 항목을 '무엇을·어떻게' 평가하는지 설명을 작성하세요. 예)\n[평가 대상] 상담 시작 시 표준 인사와 소속·성명을 밝혔는지\n[평가 기준] 표준 인사·소속·성명 안내로 상담을 적절히 시작했는가?\n[판정 주의] 인입 직후 고객이 바로 용건을 말한 경우 도입 멘트 비중을 낮게`}
+                        className="form-textarea-pretty font-mono text-[12px]"
+                    />
+                </FormGroup>
+
+                {/* 점수 기준 = 만점 + 점수 단계(행 단위). 저장 시 표준 텍스트로 합쳐 prompt_template 보관 → 엔진이 척도 파싱. */}
+                <FormGroup label="점수 기준">
+                    {scoringType === 'numeric' ? (
+                        <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} />
+                    ) : (
+                        <>
+                            <div className="text-[12.5px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5 leading-relaxed mb-2.5">
+                                충족 / 위반 으로만 판정합니다. <span className="text-[#475467] font-medium">점수·총점·펜타곤에는 반영되지 않고</span>, 컴플라이언스 체크(이행·위반 모니터링)에만 사용됩니다.
+                            </div>
+                            <textarea
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                                rows={4}
+                                placeholder="충족 / 위반 판정 기준을 작성하세요 (예: ~를 누락하면 위반)"
+                                className="form-textarea-pretty font-mono text-[12px]"
+                            />
+                        </>
+                    )}
+                </FormGroup>
 
                 {isEdit && (
                     <FormGroup label="활성 상태">
@@ -1430,13 +1435,17 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                     setSaving(true);
                     setSaveError(null);
                     try {
+                        // 점수제: 점수 단계 행 → 표준 텍스트로 합쳐 저장. Y/N: 텍스트 그대로.
+                        const promptOut = scoringType === 'numeric'
+                            ? (assembleSteps(steps) || null)
+                            : (prompt.trim() ? prompt : null);
                         if (isEdit) {
-                            // 편집: 기존 criterion/prompt_template 은 PromptEditModal 소관이라 그대로 유지.
+                            // 만점·점수기준·설명을 한 모달에서 함께 저장(동일 엔드포인트).
                             const res = await saveEvalItemDef(item.order_no, {
                                 category: category.trim(),
                                 item: name.trim(),
-                                criterion: existingDef?.criterion ?? null,
-                                prompt_template: existingDef?.prompt_template ?? null,
+                                criterion: criterion.trim() ? criterion : null,
+                                prompt_template: promptOut,
                                 pentagon_axis: pentagonAxis || null,
                                 scoring_type: scoringType,
                                 max_score: maxScoreNum,
@@ -1450,6 +1459,8 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                             const res = await createEvalItemDef({
                                 category: category.trim(),
                                 item: name.trim(),
+                                criterion: criterion.trim() ? criterion : null,
+                                prompt_template: promptOut,
                                 pentagon_axis: pentagonAxis || null,
                                 scoring_type: scoringType,
                                 max_score: maxScoreNum,
@@ -1493,87 +1504,6 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                         </button>
                     )
                 }
-            />
-        </ModalShell>
-    );
-}
-
-/* ── 평가 기준 + 프롬프트 편집 모달 (미리보기 패널 편집하기 진입점) ───────── */
-
-function PromptEditModal({ item, existingDef, onSaved, onRubricSync, onClose }) {
-    const maxPoints = parsePoints(item.validation_time);
-    const defaultPrompt = `"${item.item}" 항목을 어떻게 평가할지 그 기준만 작성하세요.
-
-점수 단계별(예: ${maxPoints}점 / 부분 점수 / 0점) 판정 조건과 감점·만점 사유를 구체적으로 기술합니다.
-
-※ 출력 형식(JSON)·점수 산술 규칙·자기 검증·공통 정책(STT·마스킹·평가모드 등)은 백엔드가 자동 부착하므로 여기에 작성하지 않습니다. 평가 기준(무엇을 어떻게 평가하는가)에만 집중하세요.`;
-    const [criterion, setCriterion] = useState(existingDef?.criterion ?? '');
-    const [prompt, setPrompt] = useState(existingDef?.prompt_template ?? defaultPrompt);
-    // 평가 기준·프롬프트 수정은 항상 in-place — 항목 자체가 바뀌는 게 아니라 설명을 다듬는 영역이라
-    // 버전 발행 대상이 아님. 의미 변경(=항목명/대분류 자체 변경)은 ItemModal 의 mode='edit' 에서 다룸.
-    // 모든 수정은 eval_item_change_log 에 row 가 적재되어 우측 패널 "변경 이력" 탭에서 조회됨.
-    const [saving, setSaving] = useState(false);
-    const [saveError, setSaveError] = useState(null);
-
-    return (
-        <ModalShell title={`${item.item} — 평가 기준 / 프롬프트 편집`} onClose={onClose} widthClass="max-w-[640px]">
-            <div className="px-6 py-5 space-y-4">
-                <FormGroup label="평가 기준">
-                    <textarea
-                        value={criterion}
-                        onChange={(e) => setCriterion(e.target.value)}
-                        rows={3}
-                        placeholder="이 항목을 평가할 때 적용할 세부 기준을 입력하세요 (예: 인사말, 소속, 성명을 정확하게 시행)"
-                        className="form-textarea-pretty"
-                    />
-                </FormGroup>
-
-                <FormGroup label="평가 프롬프트 (평가 기준)">
-                    <div className="text-[12px] text-[#055AAF] bg-[#EEF4FB] border border-[#BFD4F2] rounded-md px-3 py-2 mb-2.5 flex items-start gap-2">
-                        <Info size={12} className="mt-0.5 shrink-0" />
-                        <span>
-                            <strong>어떻게 평가할지(평가 기준)만</strong> 작성하세요. 출력 형식(JSON)·점수 산술 규칙·자기 검증·공통
-                            정책(STT·마스킹·평가모드 등)은 <strong>백엔드가 자동으로 부착</strong>합니다.
-                        </span>
-                    </div>
-                    <textarea
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        rows={12}
-                        className="form-textarea-pretty font-mono text-[12px]"
-                    />
-                </FormGroup>
-
-                {saveError && (
-                    <div className="text-[12px] text-[#B42318]">{saveError}</div>
-                )}
-            </div>
-
-            <ModalFooter
-                onCancel={() => !saving && onClose()}
-                primaryLabel={saving ? '저장 중…' : '저장'}
-                onPrimary={async () => {
-                    if (saving) return;
-                    setSaving(true);
-                    setSaveError(null);
-                    try {
-                        const res = await saveEvalItemDef(item.order_no, {
-                            category: item.category,
-                            item: item.item,
-                            criterion: criterion.trim() ? criterion : null,
-                            prompt_template: prompt.trim() ? prompt : null,
-                            department: item.department,
-                            is_meaning_change: false,
-                        });
-                        if (res?.item && onSaved) onSaved(res.item);
-                        onRubricSync?.(res?.rubric_sync);
-                        onClose();
-                    } catch (err) {
-                        setSaveError(err?.message || '저장에 실패했습니다.');
-                    } finally {
-                        setSaving(false);
-                    }
-                }}
             />
         </ModalShell>
     );

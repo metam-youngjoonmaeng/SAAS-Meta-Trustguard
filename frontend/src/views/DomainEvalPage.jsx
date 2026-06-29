@@ -5,6 +5,7 @@ import {
     fetchDomainEvalDefaults, createDomainEvalDefault, updateDomainEvalDefault, deleteDomainEvalDefault,
     fetchDomainPentagonDefaults, createDomainPentagonDefault, updateDomainPentagonDefault, deleteDomainPentagonDefault,
 } from '../services/api';
+import ScoreStepsEditor, { parseSteps, assembleSteps } from '../components/ScoreStepsEditor';
 
 // 도메인(업종)별 기본 평가체계 편집 — AI QA 항목관리(EvalItems.jsx)와 동일한 2패널 UX.
 // 좌측: 평가항목 리스트 + 펜타곤 축 리스트 / 우측: 선택 항목 미리보기·편집.
@@ -264,13 +265,13 @@ function ItemPreview({ item, axisIndex, onEdit }) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 min-h-0 flex flex-col gap-5">
-                <PreviewSection title="평가 기준">
+                <PreviewSection title="항목 평가 설명">
                     {item.criterion
                         ? <div className="text-[13px] text-[#475467] leading-relaxed whitespace-pre-wrap">{item.criterion}</div>
-                        : <div className="text-[13px] text-[#98A2B3] italic leading-relaxed">아직 설정된 평가 기준이 없습니다. 우상단 편집하기에서 입력하세요.</div>}
+                        : <div className="text-[13px] text-[#98A2B3] italic leading-relaxed">아직 설정된 평가 설명이 없습니다. 우상단 편집하기에서 입력하세요.</div>}
                 </PreviewSection>
                 <div className="flex flex-col flex-1 min-h-0">
-                    <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2">평가 프롬프트</div>
+                    <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2">점수 기준 {item.scoring_type !== 'yes_no' && `(만점 ${item.max_score ?? '-'}점)`}</div>
                     <pre className="flex-1 min-h-0 text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3 overflow-auto">{item.prompt_template || `"${item.item}" 항목을 어떻게 평가할지 기준을 작성하세요.\n\n비워두면 신규 브랜드에도 빈 값으로 복제됩니다. (브랜드별로 추후 보완 가능)`}</pre>
                 </div>
             </div>
@@ -340,7 +341,8 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
     const [maxScore, setMaxScore] = useState(item?.max_score != null ? String(item.max_score) : '10');
     const [pentagonAxis, setPentagonAxis] = useState(item?.pentagon_axis ?? '');
     const [criterion, setCriterion] = useState(item?.criterion ?? '');
-    const [prompt, setPrompt] = useState(item?.prompt_template ?? '');
+    const [prompt, setPrompt] = useState(item?.prompt_template ?? '');          // Y/N 판정 기준(텍스트)
+    const [steps, setSteps] = useState(() => parseSteps(item?.prompt_template)); // 점수제 점수 단계(행)
     const [isActive, setIsActive] = useState(item?.is_active ?? true);
     const [saving, setSaving] = useState(false);
     const [err, setErr] = useState(null);
@@ -358,19 +360,12 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
                     </FormGroup>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    <FormGroup label="채점 방식" required>
-                        <div className="flex gap-2">
-                            <button type="button" onClick={() => setScoringType('numeric')} className={pillBtn(isNumeric)}>점수제</button>
-                            <button type="button" onClick={() => { setScoringType('yes_no'); setPentagonAxis(''); }} className={pillBtn(!isNumeric)}>Y/N</button>
-                        </div>
-                    </FormGroup>
-                    <FormGroup label={isNumeric ? '만점' : '만점 (Y/N은 불필요)'} required={isNumeric}>
-                        <input type="number" min={1} disabled={!isNumeric} value={isNumeric ? maxScore : ''}
-                            onChange={(e) => setMaxScore(e.target.value)} placeholder={isNumeric ? '예) 10' : 'Y/N'}
-                            className="form-input-pretty disabled:bg-[#F2F4F7] disabled:text-[#98A2B3]" />
-                    </FormGroup>
-                </div>
+                <FormGroup label="채점 방식" required>
+                    <div className="flex gap-2">
+                        <button type="button" onClick={() => setScoringType('numeric')} className={pillBtn(isNumeric)}>점수제</button>
+                        <button type="button" onClick={() => { setScoringType('yes_no'); setPentagonAxis(''); }} className={pillBtn(!isNumeric)}>Y/N</button>
+                    </div>
+                </FormGroup>
 
                 {isNumeric ? (
                     <FormGroup label="Pentagon 매핑">
@@ -390,14 +385,25 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
                     </FormGroup>
                 )}
 
-                <FormGroup label="평가 기준">
-                    <textarea value={criterion} onChange={(e) => setCriterion(e.target.value)} rows={3}
-                        placeholder="이 항목을 어떤 기준으로 평가하는지 (선택)" className="form-textarea-pretty" />
+                {/* 항목 평가 설명 = 무엇을·어떻게 평가하는지(설명 프롬프트). 점수 단계는 여기 쓰지 않음. */}
+                <FormGroup label="항목 평가 설명">
+                    <textarea value={criterion} onChange={(e) => setCriterion(e.target.value)} rows={8}
+                        placeholder={`이 항목을 '무엇을·어떻게' 평가하는지 설명을 작성하세요. 예)\n[평가 대상] 상담 시작 시 표준 인사와 소속·성명을 밝혔는지\n[평가 기준] 표준 인사·소속·성명 안내로 상담을 적절히 시작했는가?\n[판정 주의] 인입 직후 고객이 바로 용건을 말한 경우 도입 멘트 비중을 낮게`}
+                        className="form-textarea-pretty font-mono text-[12px]" />
                 </FormGroup>
 
-                <FormGroup label="평가 프롬프트">
-                    <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4}
-                        placeholder="AI 평가에 사용할 프롬프트 (선택, 비워두면 추후 작성)" className="form-textarea-pretty font-mono text-[12px]" />
+                {/* 점수 기준 = 만점 + 점수 단계(행 단위). 저장 시 표준 텍스트로 합쳐 prompt_template 보관 → 엔진이 척도 파싱. */}
+                <FormGroup label="점수 기준">
+                    {isNumeric ? (
+                        <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} />
+                    ) : (
+                        <>
+                            <div className="text-[12px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5 leading-relaxed mb-2.5">충족 / 위반 으로만 판정합니다. 점수·총점·펜타곤에는 반영되지 않습니다.</div>
+                            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4}
+                                placeholder="충족 / 위반 판정 기준 (선택, 비워두면 추후 작성)"
+                                className="form-textarea-pretty font-mono text-[12px]" />
+                        </>
+                    )}
                 </FormGroup>
 
                 <FormGroup label="활성 상태">
@@ -419,13 +425,15 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
                     if (!name.trim()) { setErr('항목명은 필수입니다.'); return; }
                     if (isNumeric && !(Number(maxScore) > 0)) { setErr('점수제는 만점 > 0 이 필요합니다.'); return; }
                     setSaving(true); setErr(null);
+                    // 점수제: 점수 단계 행 → 표준 텍스트. Y/N: 텍스트 그대로.
+                    const promptOut = isNumeric ? (assembleSteps(steps) || null) : (prompt.trim() || null);
                     const payload = {
                         category: category.trim(), item: name.trim(),
                         scoring_type: isNumeric ? 'numeric' : 'yes_no',
                         max_score: isNumeric ? Number(maxScore) : null,
                         pentagon_axis: pentagonAxis.trim() || null,
                         criterion: criterion.trim() || null,
-                        prompt_template: prompt.trim() || null,
+                        prompt_template: promptOut,
                         is_active: isActive,
                     };
                     try {
