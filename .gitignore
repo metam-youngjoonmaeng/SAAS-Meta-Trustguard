@@ -60,3 +60,7 @@ Thumbs.db
 *.swo
 *.tmp
 *.local
+
+# ─── 문서 .md 는 README.md 만 추적 (나머지 .md 전부 제외) ───
+*.md
+!README.md
