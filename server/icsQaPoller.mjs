@@ -20,6 +20,7 @@
 import { icsEnabled, listCompletedCalls, fetchTranscript, maxCompletedEndDate, getCallMaster, durationSecFromDates } from './icsSource.mjs';
 import { applyManualReviewStamps } from './manualReview.mjs';
 import { logger } from './logger.mjs';
+import { ingestGoldenSetToRag } from './qaPipelineIngest.mjs';
 
 function env(key, def = '') {
     return String(process.env[key] ?? def).trim();
@@ -227,9 +228,9 @@ function dueForScheduledStamp(projCd, freq, time) {
     return true;
 }
 
-// 골든셋 학습 배치도 같은 30초 틱을 재사용 — 도장과 독립된 마커맵으로 같은 구간 1회만.
-const _lastGoldenKey = new Map(); // projCd → 마지막 골든셋 학습 실행 구간키
-function dueForGoldenLearn(projCd, freq, time) {
+// 골든셋 학습 배치 — 전용 스케줄러(startGoldenLearnScheduler)가 브랜드별 마커맵으로 같은 구간 1회만 발화.
+const _lastGoldenKey = new Map(); // 'org:'+orgId → 마지막 골든셋 학습 실행 구간키
+function dueForGoldenLearn(markerKey, freq, time) {
     const kst = new Date(Date.now() + 9 * 3600 * 1000);
     const dateKey = kst.toISOString().slice(0, 10);
     const hour = kst.getUTCHours();
@@ -244,8 +245,8 @@ function dueForGoldenLearn(projCd, freq, time) {
     } else {
         return false; // manual 은 정기 패스 대상 아님
     }
-    if (_lastGoldenKey.get(projCd) === key) return false;
-    _lastGoldenKey.set(projCd, key);
+    if (_lastGoldenKey.get(markerKey) === key) return false;
+    _lastGoldenKey.set(markerKey, key);
     return true;
 }
 
@@ -269,60 +270,81 @@ async function scheduledStampTick(pool, cfg) {
 }
 
 /**
- * 골든셋 학습 트리거 — "우리(MTG)가 정한 시각/수동에 에이전트 학습을 호출"하는 단일 창구.
- * ★ 트리거 주체는 우리. 실제 에이전트 학습 엔드포인트 계약(URL·push/pull·브랜드키)은 맹주임과 확정 후
- *   env GOLDEN_LEARN_ENDPOINT(+필요 시 본문) 만 채우면 됨. 미설정이면 안전 no-op(로그만) — 스케줄/트리거
- *   골격은 이미 동작. 과거 콜 재평가 아님(골든셋은 에이전트 학습용).
- * 호출원: 스케줄 틱(scheduledGoldenLearnTick) + 수동(POST /api/golden-learn/run).
+ * 골든셋 학습 트리거 — 브랜드 골든셋을 백엔드 MTG 전용 RAG 인덱스(AOSS qa-mtg-golden)에 색인하는 단일 창구.
+ * 실제 색인 본체는 qaPipelineIngest.ingestGoldenSetToRag (qa_golden_set ⋈ 전사 → 백엔드 색인 엔드포인트 호출,
+ * golden_set 코어 무수정). dryRun(opts.dryRun) 지원 — AOSS 미기록 프리뷰. 과거 콜 재평가 아님(골든셋=학습용).
+ * 호출원: 전용 스케줄러(startGoldenLearnScheduler) + 수동(POST /api/golden-learn/run).
  * @returns {Promise<{ok:boolean, triggered:boolean, ...}>}
  */
 export async function triggerGoldenLearn(pool, orgId, opts = {}) {
     const projCd = opts.projCd || '';
     const tag = `org=${orgId}${projCd ? ` proj=${projCd}` : ''}${opts.source ? ` (${opts.source})` : ''}`;
-    let goldenCount = null;
+    // 실제 골든셋 학습 = 브랜드 골든셋을 백엔드 MTG 전용 RAG 인덱스(qa-mtg-golden)에 색인.
+    // 구현 본체는 qaPipelineIngest.ingestGoldenSetToRag (기존 백엔드 엔드포인트만 호출 — golden_set 코어 무수정).
+    // dryRun(opts.dryRun) 지원 — '지금 실행' 검증 시 AOSS 미기록 프리뷰. 과거 콜 재평가 아님(골든셋=학습용).
     try {
-        const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM public.qa_golden_set WHERE org_id = $1`, [orgId]);
-        goldenCount = rows[0]?.n ?? null;
-    } catch { /* 로그용 — 실패 무시 */ }
-
-    const endpoint = env('GOLDEN_LEARN_ENDPOINT');
-    if (!endpoint) {
-        logger.info(`[golden-learn] ${tag} 트리거 — 골든셋 ${goldenCount ?? '?'}건 / GOLDEN_LEARN_ENDPOINT 미설정 → no-op(에이전트 계약 확정 후 연결)`);
-        return { ok: true, triggered: false, reason: 'endpoint_unset', org_id: orgId, golden_count: goldenCount };
-    }
-    // ── 에이전트 학습 호출 (계약 확정 시 본문/헤더/push·pull/브랜드키 확정) ──
-    // TODO(맹주임 계약): 입력 형식(push=골든셋 동봉 / pull=에이전트가 svc 조회), 브랜드키(rubric_id), 응답 스키마.
-    try {
-        const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ org_id: orgId, proj_cd: projCd || undefined, golden_count: goldenCount, source: opts.source || 'mtg' }),
-            signal: AbortSignal.timeout(Number(env('GOLDEN_LEARN_TIMEOUT_MS', '600000')) || 600000),
-        });
-        logger.info(`[golden-learn] ${tag} 트리거 — 골든셋 ${goldenCount ?? '?'}건 → ${endpoint} HTTP ${res.status}`);
-        return { ok: res.ok, triggered: true, http_status: res.status, org_id: orgId, golden_count: goldenCount };
+        const result = await ingestGoldenSetToRag(pool, orgId, { dryRun: !!opts.dryRun });
+        logger.info(
+            `[golden-learn] ${tag} — 골든 ${result.golden_count ?? '?'}건 → rubric=${result.rubric_id}` +
+                `${result.dry_run ? ' (dry_run)' : ''} records=${result.records ?? '-'} saved=${result.saved ?? '-'} ok=${result.ok}`
+        );
+        return { ...result, org_id: orgId, source: opts.source };
     } catch (e) {
         logger.error(`[golden-learn] ${tag} 트리거 실패: ${e?.message || e}`);
-        return { ok: false, triggered: false, reason: String(e?.message || e), org_id: orgId, golden_count: goldenCount };
+        return { ok: false, triggered: false, reason: String(e?.message || e), org_id: orgId };
     }
 }
 
+// 골든셋 학습 전용 스케줄러 주기(약 60초). ICS 폴링 주기와 독립.
+const GOLDEN_LEARN_INTERVAL_MS = 60000;
+
 /**
- * 정기 골든셋 학습 패스 — tick 레벨에서 매 주기 호출. 매시간/매일이고 실행 시점이면 학습 트리거.
+ * 골든셋 학습 전용 스케줄러 — ICS 폴러(setInterval)와 독립된 자체 타이머(약 60초).
+ * 매 틱마다 qa_batch_configs 에서 config.scope.goldenFreq ∈ {hourly,daily} 로 명시된 모든
+ * 브랜드(org_id<>0)를 조회하고, 브랜드별 freq/time(readGoldenSchedule)으로 dueForGoldenLearn 판정
+ * → 충족 org 만 triggerGoldenLearn 발화. 브랜드별로 따로따로 발화하며, ICS 접속(ICS_DB_*) 유무와
+ * 무관하게 모든 배포에서 동작. goldenFreq 가 명시되지 않은 브랜드(기본 manual)는 자동 발화 안 함.
+ * 한 org 실패가 전체를 멈추지 않게 org 별 try/catch. 부트 직후 1회 즉시 + 이후 주기 실행.
+ * 재기동 시 인메모리 마커(_lastGoldenKey) 리셋으로 같은 버킷 재발화 가능하나, 색인
+ * (ingestGoldenSetToRag) 이 skip_existing 멱등이라 중복 색인은 무해.
+ * @returns {{stop: () => void}}
  */
-async function scheduledGoldenLearnTick(pool, cfg) {
-    try {
-        const orgId = await resolveOrgId(pool, cfg.projCd, cfg.orgIdOverride);
-        if (!orgId) return;
-        const sched = await readGoldenSchedule(pool, orgId);
-        if ((sched.freq === 'hourly' || sched.freq === 'daily') && dueForGoldenLearn(cfg.projCd, sched.freq, sched.time)) {
-            const label = sched.freq === 'daily' ? `매일 ${sched.time}` : '매시간';
-            logger.info(`[golden-learn] ${cfg.projCd}: [${label}] 정기 학습 트리거 발화`);
-            await triggerGoldenLearn(pool, orgId, { projCd: cfg.projCd, source: `schedule:${sched.freq}` });
+export function startGoldenLearnScheduler(pool) {
+    let running = false;
+    const tick = async () => {
+        if (running) return; // 직전 틱이 끝나지 않았으면 건너뜀(동시중복 방지)
+        running = true;
+        try {
+            const { rows } = await pool.query(
+                `SELECT org_id FROM public.qa_batch_configs
+                  WHERE org_id <> 0 AND (config #>> '{scope,goldenFreq}') IN ('hourly', 'daily')`
+            );
+            for (const row of rows) {
+                const orgId = row.org_id;
+                try {
+                    const sched = await readGoldenSchedule(pool, orgId);
+                    if ((sched.freq === 'hourly' || sched.freq === 'daily') && dueForGoldenLearn(`org:${orgId}`, sched.freq, sched.time)) {
+                        const label = sched.freq === 'daily' ? `매일 ${sched.time}` : '매시간';
+                        logger.info(`[golden-learn] org=${orgId}: [${label}] 정기 학습 트리거 발화`);
+                        await triggerGoldenLearn(pool, orgId, { source: `schedule:${sched.freq}` });
+                    }
+                } catch (e) {
+                    logger.warn(`[golden-learn] org=${orgId} 정기 학습 패스 실패: ${e?.message || e}`);
+                }
+            }
+        } catch (e) {
+            logger.warn(`[golden-learn] 스케줄러 대상 조회 실패: ${e?.message || e}`);
+        } finally {
+            running = false;
         }
-    } catch (e) {
-        logger.warn(`[golden-learn] 정기 학습 패스 실패: ${e?.message || e}`);
-    }
+    };
+
+    logger.info('[golden-learn] 골든셋 학습 스케줄러 활성 — 60초 주기(브랜드별 goldenFreq hourly/daily 발화)');
+    // 부트 직후 1회 즉시 확인 + 이후 주기 실행.
+    tick();
+    const timer = setInterval(tick, GOLDEN_LEARN_INTERVAL_MS);
+    timer.unref?.();
+    return { stop: () => clearInterval(timer) };
 }
 
 /**
@@ -479,10 +501,9 @@ export function startIcsQaPoller(pool, { ingestStandardCallFromQaPipeline }) {
         running = true;
         try {
             await runOnce(pool, cfg, ingestStandardCallFromQaPipeline);
-            // 정기 도장(매시간/매일)은 신규 콜 유무와 무관하게 매 틱 시점 확인.
+            // 정기 도장(매시간/매일)은 신규 콜 유무와 무관하게 매 틱 시점 확인. (ICS 전용)
+            // 골든셋 학습 배치는 ICS 와 무관하게 startGoldenLearnScheduler(전용 스케줄러)가 단독 소유.
             await scheduledStampTick(pool, cfg);
-            // 골든셋 학습 배치(매시간/매일)도 같은 틱에서 시점 확인 → 우리 시각에 에이전트 학습 트리거.
-            await scheduledGoldenLearnTick(pool, cfg);
         } catch (err) {
             logger.error(`[ics-qa] 폴링 주기 오류: ${String(err?.message || err)}`);
         } finally {

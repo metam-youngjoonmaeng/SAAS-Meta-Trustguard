@@ -7,7 +7,7 @@ import { Icon, PageHead, Modal, Tabs } from './ui';
 import {
     fetchBatchConfig, saveBatchConfig, previewBatch, fetchBatchEvalItems,
     fetchBatchPrompt, saveBatchPrompt, rejudgeConfidence, fetchRejudgeStatus, fetchBatchPromptHistory,
-    runBatchNow, runGoldenLearn,
+    runBatchNow, runGoldenLearn, fetchGoldenLearnStatus,
 } from '../../services/api';
 
 // 작은 입력 컨트롤 공통 스타일
@@ -674,16 +674,46 @@ export default function BatchManage() {
     const [goldenRunning, setGoldenRunning] = useState(false);
     const [goldenMsg, setGoldenMsg] = useState(null);
     const handleGoldenRun = useCallback(async () => {
-        setGoldenRunning(true); setGoldenMsg(null);
+        setGoldenRunning(true); setGoldenMsg('학습 시작 중…');
         try {
             await saveBatchConfig(config);   // 변경한 주기/시각 저장 후 실행
-            const r = await runGoldenLearn();
-            setGoldenMsg(r?.triggered
-                ? `학습 트리거 완료 (골든셋 ${r.golden_count ?? '?'}건)`
-                : `트리거 발화 — 에이전트 미연결(no-op), 골든셋 ${r?.golden_count ?? '?'}건`);
+            const r = await runGoldenLearn(); // 즉시 반환(백그라운드 시작)
+            if (!r?.started) {
+                // 하위호환: 옛 동기 응답
+                setGoldenMsg(r?.triggered
+                    ? `학습 트리거 완료 (골든셋 ${r.golden_count ?? '?'}건)`
+                    : `트리거 발화, 골든셋 ${r?.golden_count ?? '?'}건`);
+                setGoldenRunning(false);
+                return;
+            }
+            setGoldenMsg(`백그라운드 학습 진행 중… (골든셋 ${r.golden_count ?? '?'}건)`);
+            // 완료까지 상태 폴링(3초 간격, 최대 ~10분).
+            let tries = 0;
+            const poll = async () => {
+                tries += 1;
+                try {
+                    const s = await fetchGoldenLearnStatus();
+                    if (s?.state === 'running' && tries < 200) { setTimeout(poll, 3000); return; }
+                    if (s?.state === 'done') {
+                        const rs = s.result || {};
+                        const saved = rs.saved ?? rs.records ?? '?';
+                        setGoldenMsg(rs.ok === false
+                            ? `학습 실패: ${rs.error || rs.reason || '오류'}`
+                            : `학습 완료 — 골든셋 ${rs.golden_count ?? s.golden_count ?? '?'}건, 색인 ${saved}건${rs.dry_run ? ' (dry-run)' : ''}`);
+                    } else if (s?.state === 'error') {
+                        setGoldenMsg('학습 실패: ' + (s.error || '오류'));
+                    } else {
+                        setGoldenMsg('학습 시작됨 — 잠시 후 실시간 로그에서 확인하세요.');
+                    }
+                } catch {
+                    setGoldenMsg('학습 시작됨 (상태 확인 불가) — 실시간 로그에서 확인하세요.');
+                } finally {
+                    setGoldenRunning(false);
+                }
+            };
+            setTimeout(poll, 3000);
         } catch (e) {
             setGoldenMsg('실행 실패: ' + (e?.message || '오류'));
-        } finally {
             setGoldenRunning(false);
         }
     }, [config]);
@@ -966,8 +996,8 @@ export default function BatchManage() {
                                 {goldenMsg && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{goldenMsg}</span>}
                             </div>
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
-                                {scope.goldenFreq === 'daily' ? `매일 ${scope.goldenTime}(KST)에 골든셋 학습을 트리거합니다.` : scope.goldenFreq === 'hourly' ? '매시간 정각에 골든셋 학습을 트리거합니다.' : "자동 트리거 없이 '지금 실행'으로만 학습합니다."}
-                                {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다. (에이전트 학습 엔드포인트 연결 전엔 트리거만 기록)
+                                {scope.goldenFreq === 'daily' ? `매일 ${scope.goldenTime}(KST)에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.` : scope.goldenFreq === 'hourly' ? '매시간 정각에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.' : "자동 실행 없이 '지금 실행'으로만 즉시 학습합니다."}
+                                {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다. '지금 실행'은 저장 후 즉시 1회 수동 학습합니다.
                             </div>
                         </div>
                     </div>

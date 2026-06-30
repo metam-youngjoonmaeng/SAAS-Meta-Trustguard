@@ -21,7 +21,7 @@ import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
 import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult } from './qaPipelineIngest.mjs';
 import { loadRagFewshotConfig, saveRagFewshotConfig } from './ragFewshotConfig.mjs';
-import { startIcsQaPoller, triggerGoldenLearn } from './icsQaPoller.mjs';
+import { startIcsQaPoller, startGoldenLearnScheduler, triggerGoldenLearn } from './icsQaPoller.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
 import { taEnabled, fetchTaMetricsByUids, fetchSegmentSentimentsByUids } from './taSource.mjs';
@@ -3917,19 +3917,31 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
             try {
                 const d = ev.data || {};
                 const hits = Array.isArray(d.fewshot) ? d.fewshot : [];
-                // RAG hit 0건 항목은 RAG탭에 빈('—') 엔트리로 안 쌓이게 차단(표시 노이즈 제거, 평가 무관).
-                //   미적중 placeholder(예: 커스텀 루브릭 #5000번대)가 글로벌 링버퍼에 누적되던 원인 차단.
-                if (hits.length === 0) return;
+                // 0-hit(미적중) 도 "RAG 조회 활동"으로 적재 — 사용자가 RAG 가 돌았는지 확인 가능하게.
+                //   잔존(stale) 노이즈는 GET /api/rag-log/recent 의 qa_id 스코프 + within_minutes 윈도우로 차단.
+                //   (주의: PURE 평가 경로는 백엔드가 0-hit 시 rag_hits 이벤트 자체를 보내지 않으므로 — evaluator.py emit 가드 —
+                //    이 적재만으로 PURE 0-hit 은 안 보임. 백엔드 검토안 적용 시 가시화됨. CUSTOM_RUBRIC·금지어·hit≥1 은 즉시 표시.)
+                // STT 전체 원문(parsed_text)은 길 수 있어 인메모리 RAG_LOG 비대화 방지로 cap.
+                const _capText = (v, n) => {
+                    const s = String(v ?? '');
+                    return s.length > n ? s.slice(0, n) + ' …' : s;
+                };
                 pushRagLog({
                     qa_id: job.qa_id,
                     org_id: ragOrgId,
                     item_number: Number(d.item_number),
                     item_name: d.item_name || d.intent || undefined,
                     kind: 'rag',
+                    // 검색어/intent — 리치 카드 상단 표시용(UnifiedRagPanel QueryDisplay 동형).
+                    fewshot_query: d.fewshot_query ? _capText(d.fewshot_query, 4000) : undefined,
+                    intent: d.intent || undefined,
+                    // ★ 리치 골든셋 카드(프론트 RagGoldenCard)용 — 백엔드 emit_rag_hits_ready 가 보내는
+                    //   전체 필드 보존(압축 금지). segment_text/rationale/parsed_text/index_summary/
+                    //   score_bucket/cos·rrf·rerank/rater_meta 모두 카드 토글 섹션에서 소비.
                     hits: hits.map((h) => ({
                         example_id: String(h?.example_id ?? ''),
-                        // 평가 score 부재(루브릭 예시 스토어) 시 코사인 유사도를 표시값으로 폴백 →
-                        // "어떤 예시를 얼마나 유사하게 가져왔는지" 가시화. 둘 다 없으면 null.
+                        item_number: h?.item_number ?? Number(d.item_number),
+                        // 평가 score 부재(루브릭 예시 스토어) 시 코사인 유사도를 표시값으로 폴백.
                         score:
                             h?.score ??
                             (typeof h?.cosine_score === 'number'
@@ -3937,9 +3949,31 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
                                 : typeof h?.similarity === 'number'
                                   ? Math.round(h.similarity * 100) / 100
                                   : null),
+                        // 항목 만점 — 카드 "人 N/M" 분모 표시용(관측 전용).
+                        max_score: typeof h?.max_score === 'number' ? h.max_score : undefined,
                         score_bucket: h?.score_bucket ?? undefined,
+                        intent: h?.intent ?? undefined,
                         // 가져온 예시 내용: 골든 원문(segment_text) 우선, 없으면 색인요약/근거.
                         summary: h?.segment_text || h?.index_summary || h?.rationale || undefined,
+                        // ── 리치 카드 섹션 본문 ──
+                        segment_text: _capText(h?.segment_text, 8000) || undefined,
+                        rationale: _capText(h?.rationale, 4000) || undefined,
+                        rationale_tags: Array.isArray(h?.rationale_tags) ? h.rationale_tags : undefined,
+                        parsed_text: _capText(h?.parsed_text, 16000) || undefined,
+                        index_summary: _capText(h?.index_summary, 4000) || undefined,
+                        // ── 유사도/리랭크 칩 ──
+                        cosine_score: typeof h?.cosine_score === 'number' ? h.cosine_score : undefined,
+                        rrf_score: typeof h?.rrf_score === 'number' ? h.rrf_score : undefined,
+                        bm25_score: typeof h?.bm25_score === 'number' ? h.bm25_score : undefined,
+                        similarity: typeof h?.similarity === 'number' ? h.similarity : undefined,
+                        cohere_rerank_score:
+                            typeof h?.cohere_rerank_score === 'number' ? h.cohere_rerank_score : undefined,
+                        reranked: h?.reranked ?? undefined,
+                        rerank_provider: h?.rerank_provider ?? undefined,
+                        rerank_skipped_reason: h?.rerank_skipped_reason ?? undefined,
+                        // ── 검수자 메타 ──
+                        rater_type: h?.rater_type ?? undefined,
+                        rater_source: h?.rater_source ?? undefined,
                     })),
                 });
             } catch {
@@ -4082,8 +4116,17 @@ app.get('/api/rag-log/recent', requireAdmin, (req, res) => {
     if (!Number.isFinite(limit) || limit <= 0) limit = 100;
     limit = Math.min(Math.max(1, Math.trunc(limit)), RAG_LOG_MAX);
     const qaId = String(req.query.qa_id || '').trim();
+    // 잔존 노이즈 차단: RAG_LOG 는 글로벌·평가간 미클리어라 0-hit 적재 후 과거 콜이 섞여 보일 수 있음.
+    //   qa_id 지정 시 그 콜만(윈도우 무시). 미지정(탭 기본 폴링) 시 within_minutes(기본 60분) 밖은 컷.
+    let withinMin = Number(req.query.within_minutes);
+    if (!Number.isFinite(withinMin) || withinMin <= 0) withinMin = 60;
     let rows = RAG_LOG;
-    if (qaId) rows = rows.filter((e) => String(e.qa_id ?? '') === qaId);
+    if (qaId) {
+        rows = rows.filter((e) => String(e.qa_id ?? '') === qaId);
+    } else {
+        const cutoff = Date.now() - withinMin * 60 * 1000;
+        rows = rows.filter((e) => (e.ts || 0) >= cutoff);
+    }
     // 최신순(ts 내림차순) — 원본 링버퍼는 변형하지 않도록 복사 후 정렬.
     const entries = rows.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, limit);
     res.json({ entries });
@@ -4805,31 +4848,66 @@ app.put('/api/batch/config', requireAdmin, async (req, res) => {
     }
 });
 
-// POST /api/golden-learn/run — 골든셋 학습 배치 수동 트리거(우리가 즉시 실행). 스케줄 틱과 동일 창구(triggerGoldenLearn).
-//   실제 에이전트 호출은 GOLDEN_LEARN_ENDPOINT 계약 확정 후 연결(미설정 시 no-op 로그). 과거 콜 재평가 아님(골든셋=학습용).
+// 골든셋 학습 비동기 잡 상태(인메모리, org 별 최신 1건). 47건 임베딩+색인이 수십 초 걸려
+//   동기 응답 시 대시보드 프록시/브라우저가 타임아웃("Internal Server Error") → 백그라운드 실행 + status 폴링으로 회피.
+const goldenLearnStatus = new Map(); // org_id -> { state:'running'|'done'|'error', started_at, finished_at, result, error }
+
+// POST /api/golden-learn/run — 골든셋 학습 배치 수동 트리거(백그라운드). 즉시 응답({started:true}) 후
+//   triggerGoldenLearn → ingestGoldenSetToRag: qa_golden_set ⋈ 전사 → 백엔드 POST /v2/mtg-rag/{rubric_id}/examples 색인.
+//   진행/결과는 GET /api/golden-learn/status 로 폴링. body.dry_run=true 시 AOSS 미기록 프리뷰. 과거 콜 재평가 아님.
 app.post('/api/golden-learn/run', requireAdmin, async (req, res) => {
     const orgId = resolveActiveOrgId(req, { strict: true });
     if (orgId === null || orgId === undefined) {
         res.status(400).json({ message: 'active brand context required' });
         return;
     }
-    try {
-        const result = await triggerGoldenLearn(pool, orgId, { source: 'manual' });
-        await insertQaAuditLog(pool, {
-            req,
-            action: 'GOLDEN_LEARN_RUN',
-            resource_type: 'golden_learn',
-            resource_id: String(orgId),
-            http_method: 'POST',
-            http_path: '/api/golden-learn/run',
-            detail_json: JSON.stringify(result),
-            success: result.ok,
-        });
-        res.json(result);
-    } catch (e) {
-        console.error('POST /api/golden-learn/run error:', e?.message || e);
-        res.status(500).json({ message: 'Failed to trigger golden learn.' });
+    const dryRun = !!(req.body && req.body.dry_run);
+    const cur = goldenLearnStatus.get(orgId);
+    if (cur && cur.state === 'running') {
+        res.json({ ok: true, started: true, already_running: true, org_id: orgId, golden_count: cur.golden_count ?? null });
+        return;
     }
+    // 즉시 피드백용 빠른 카운트(임베딩 전).
+    let goldenCount = null;
+    try {
+        const { rows } = await pool.query('SELECT count(*)::int AS n FROM public.qa_golden_set WHERE org_id = $1', [orgId]);
+        goldenCount = rows[0]?.n ?? null;
+    } catch {
+        /* 카운트 실패는 무시 — 실행에 영향 없음 */
+    }
+    const startedAt = Date.now();
+    goldenLearnStatus.set(orgId, { state: 'running', started_at: startedAt, dry_run: dryRun, golden_count: goldenCount });
+    // 백그라운드 실행 — 즉시 응답(프록시/브라우저 타임아웃 회피). 결과는 status 로 확인.
+    (async () => {
+        try {
+            const result = await triggerGoldenLearn(pool, orgId, { source: 'manual', dryRun });
+            goldenLearnStatus.set(orgId, { state: 'done', started_at: startedAt, finished_at: Date.now(), dry_run: dryRun, golden_count: goldenCount, result });
+            await insertQaAuditLog(pool, {
+                req,
+                action: 'GOLDEN_LEARN_RUN',
+                resource_type: 'golden_learn',
+                resource_id: String(orgId),
+                http_method: 'POST',
+                http_path: '/api/golden-learn/run',
+                detail_json: JSON.stringify(result),
+                success: result.ok,
+            }).catch(() => {});
+        } catch (e) {
+            console.error('golden-learn background error:', e?.message || e);
+            goldenLearnStatus.set(orgId, { state: 'error', started_at: startedAt, finished_at: Date.now(), error: String(e?.message || e) });
+        }
+    })();
+    res.json({ ok: true, started: true, org_id: orgId, golden_count: goldenCount });
+});
+
+// GET /api/golden-learn/status — 활성 브랜드의 골든셋 학습 잡 최신 상태(폴링용).
+app.get('/api/golden-learn/status', requireAdmin, (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
+    if (orgId === null || orgId === undefined) {
+        res.status(400).json({ message: 'active brand context required' });
+        return;
+    }
+    res.json(goldenLearnStatus.get(orgId) || { state: 'idle' });
 });
 
 // GET /api/batch/eval-items — ② '적용 평가 항목' 칩용. 실제 평가된 항목(order_no+item) 집합.
@@ -5155,8 +5233,10 @@ bootstrap()
             console.log(`[qa-api] ${msg2}`);
             logger.info(msg1, { module: 'qa-api' });
             logger.info(msg2, { module: 'qa-api' });
-            // ICS(mtm30) → 09 QA 폴러 기동. env-gated(MARIA_DB_* + ICS_QA_POLL_ENABLED=true) — 미설정 시 no-op.
+            // ICS(mtm30) → 09 QA 폴러 기동. env-gated(ICS_DB_HOST 미설정 시 no-op).
             startIcsQaPoller(pool, { ingestStandardCallFromQaPipeline });
+            // 골든셋 학습 스케줄러 — ICS 게이트와 무관하게 모든 배포에서 기동. 브랜드별 goldenFreq(hourly/daily)로 발화.
+            startGoldenLearnScheduler(pool);
             // AICC MQTT 실시간 STT 스트림 — finish 시 그 콜 즉시 QA 적재(폴러 안전망 병행). MQTT_HOST 미설정 시 no-op.
             startMqttListener(pool, { ingestStandardCallFromQaPipeline });
         });

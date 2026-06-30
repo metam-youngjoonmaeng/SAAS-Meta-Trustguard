@@ -1534,3 +1534,133 @@ export async function ingestStandardCallFromQaPipeline(pool, call, opts = {}) {
         max_total: mapped.max_total ?? null,
     };
 }
+
+/**
+ * 골든셋 학습 배치 — 브랜드 골든셋(qa_golden_set)을 백엔드 MTG 전용 RAG 인덱스(qa-mtg-golden)에 색인.
+ * "골든셋배치 > 지금 실행" 버튼(POST /api/golden-learn/run → triggerGoldenLearn)의 실제 동작 본체.
+ *
+ * 경로(전부 기존 백엔드 엔드포인트 — golden_set/RAG 코어 무수정):
+ *   ① rubric_id 해석 = 평가 시점 resolve_search_rubric_id 와 동일 규칙(getOrgFewshot 충족 시
+ *      rag_rubric_id, 아니면 inline-org{N}) → 색인 키 = 평가 검색 키 정합.
+ *   ② buildRubricFromDefs 로 order_no→eval_item_number(5000+index) 맵 산출 + 루브릭 파일스토어
+ *      등록(POST /v2/rubrics, 멱등) → 색인 엔드포인트 load_rubric 게이트 충족.
+ *   ③ qa_golden_set ⋈ qa_conversations(전사) → MtgGoldenRecord[] 조립(item_number=②맵).
+ *   ④ POST /v2/mtg-rag/{rubric_id}/examples (org_id 동봉 → 백엔드 resolve_allowed_items 가
+ *      qa_batch_configs.golden.excluded 존중해 항목 자동 필터). dry_run 지원.
+ *
+ * @param {import('pg').Pool} pool
+ * @param {number} orgId
+ * @param {{ dryRun?: boolean, baseUrl?: string }} [opts]
+ * @returns {Promise<{ok:boolean, triggered:boolean, rubric_id:string, golden_count:number, records?:number, saved?:number, dry_run?:boolean}>}
+ */
+export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
+    const dryRun = !!opts.dryRun;
+    const base = resolvePipelineBaseUrl({}, opts).replace(/\/+$/, '');
+
+    // ① rubric_id (평가 시점 검색 키와 동일 규칙 — 색인↔검색 정합)
+    let rubricId;
+    try {
+        const fx = await getOrgFewshot(pool, orgId);
+        rubricId = fx && fx.rubric_id ? fx.rubric_id : `inline-org${orgId}`;
+    } catch {
+        rubricId = `inline-org${orgId}`;
+    }
+
+    // ② 루브릭 빌드 + order_no→item_number 맵
+    const { rubric, rowMeta } = await buildRubricFromDefs(pool, orgId);
+    if (!rubric || !(rubric.items && rubric.items.length)) {
+        return { ok: false, triggered: false, reason: 'no_rubric_items', org_id: orgId, rubric_id: rubricId };
+    }
+    // order_no → eval_item_number. MTG buildRubricFromDefs 는 items[].eval_item_number 를 부여하지 않고
+    // (백엔드 normalize_rubric 이 5000+index 로 부여) items/rowMeta 가 동일 루프 index 정합이므로,
+    // 평가 시점(백엔드)과 동일한 RUBRIC_ITEM_BASE+index 로 산출한다(제외 order_no 는 빌더가 이미 누락).
+    const orderToItemNum = {};
+    // order_no → 항목 만점(max_score). 백엔드 build_rag_index_summary 의 score_bucket 분류
+    // (score>=max→full / 0→zero / 그외→partial)가 max_score 없으면 전부 partial 로 떨어지므로,
+    // 골든 레코드에 항목별 만점을 동봉해야 full/zero 버킷이 정상 산출된다. rubric.items[i].max_score
+    // (eval_item_defs 만점) 우선, 없으면 rowMeta[i].max_score 폴백.
+    const orderToMaxScore = {};
+    (rowMeta || []).forEach((m, i) => {
+        const o = asNumber(m && m.order_no);
+        if (o !== null) {
+            orderToItemNum[o] = RUBRIC_ITEM_BASE + i;
+            const mx = asNumber((rubric.items[i] && rubric.items[i].max_score) ?? (m && m.max_score));
+            if (mx !== null && mx > 0) orderToMaxScore[o] = mx;
+        }
+    });
+
+    // 루브릭 파일스토어 등록(load_rubric 게이트 충족 — 멱등, rubric_id 강제).
+    try {
+        await fetch(`${base}/v2/rubrics`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...rubric, rubric_id: rubricId, name: rubric.name || `org${orgId}` }),
+            signal: AbortSignal.timeout(30000),
+        });
+    } catch (e) {
+        console.warn(`[golden-learn] rubric 등록 실패(무시 — ingest 응답에서 확인): ${(e && e.message) || e}`);
+    }
+
+    // ③ 골든 추출 + 전사 결합
+    const { rows: gs } = await pool.query(
+        `SELECT qa_id, order_no, category, item, reason_text, agent_utterance, score
+           FROM public.qa_golden_set WHERE org_id = $1 ORDER BY qa_id, order_no`,
+        [orgId]
+    );
+    if (!gs.length) {
+        return { ok: true, triggered: false, reason: 'no_golden_rows', org_id: orgId, rubric_id: rubricId, golden_count: 0 };
+    }
+    const tmap = {};
+    for (const qid of [...new Set(gs.map((g) => g.qa_id))]) {
+        const { rows: c } = await pool.query(
+            `SELECT speaker, "text" FROM public.qa_conversations WHERE "ID" = $1 ORDER BY turn_no`,
+            [qid]
+        );
+        tmap[qid] = c.map((r) => `${r.speaker}: ${r.text}`).join('\n');
+    }
+    const examples = gs
+        .map((g) => ({
+            consultation_id: g.qa_id,
+            item_number: orderToItemNum[g.order_no],
+            item_name: g.item,
+            category: g.category,
+            transcript_body: tmap[g.qa_id] || '',
+            note_section: g.reason_text,
+            stt_excerpt: g.agent_utterance,
+            score: Number(g.score),
+            // 항목 만점 — 백엔드 score_bucket 분류(full/partial/zero)에 필수. 누락 시 전부 partial.
+            max_score: orderToMaxScore[g.order_no] ?? null,
+        }))
+        .filter((e) => e.item_number != null);
+
+    // ④ 색인 위임 (dry_run 지원)
+    const timeoutMs = Number(process.env.GOLDEN_LEARN_TIMEOUT_MS || '600000') || 600000;
+    const resp = await fetch(`${base}/v2/mtg-rag/${encodeURIComponent(rubricId)}/examples`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: orgId, dry_run: dryRun, examples }),
+        signal: AbortSignal.timeout(timeoutMs),
+    });
+    let j = {};
+    try {
+        j = await resp.json();
+    } catch {
+        /* 비-JSON 응답 */
+    }
+    return {
+        ok: !!j.ok,
+        triggered: true,
+        dry_run: dryRun,
+        org_id: orgId,
+        rubric_id: rubricId,
+        golden_count: gs.length,
+        records: examples.length,
+        saved: j.saved,
+        skipped: j.skipped,
+        failed: j.failed,
+        invalid: j.invalid,
+        filtered: j.filtered,
+        http_status: resp.status,
+        error: j.error,
+    };
+}
