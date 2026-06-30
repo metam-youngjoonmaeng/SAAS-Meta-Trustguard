@@ -28,6 +28,14 @@ export function parseSteps(promptTemplate) {
     return [];
 }
 
+// 저장 차단 규칙 — 최고 단계 점수 ≠ 만점 이면 true(불일치). 단계가 없으면 false.
+export function stepsMaxMismatch(maxScore, steps) {
+    const nums = (steps || []).map((s) => Number(s.score)).filter((n) => Number.isFinite(n));
+    if (!nums.length) return false;
+    const max = Math.max(...nums);
+    return Number(maxScore) > 0 && max !== Number(maxScore);
+}
+
 // 점수 단계 행 배열 → prompt_template 텍스트(엔진 파싱용 표준 포맷)
 export function assembleSteps(steps) {
     const valid = (steps || []).filter((s) => String(s.score).trim() !== '');
@@ -39,7 +47,7 @@ export function assembleSteps(steps) {
     return `${header}\n${bullets}`;
 }
 
-export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps }) {
+export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps, error = false }) {
     const setRow = (i, patch) => onSteps(steps.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
     const addRow = () => {
         // 첫 행이면 만점을 기본 점수로 채워 만점-단계 일치를 유도
@@ -50,7 +58,10 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps 
 
     const numericScores = steps.map((s) => Number(s.score)).filter((n) => Number.isFinite(n));
     const topScore = numericScores.length ? Math.max(...numericScores) : null;
-    const mismatch = topScore != null && Number(maxScore) > 0 && topScore !== Number(maxScore);
+    const mismatch = stepsMaxMismatch(maxScore, steps);
+    // 저장 시도(error) + 실제 불일치일 때만 빨간 테두리. 고치면(불일치 해소) 자동으로 사라짐.
+    const showRed = error && mismatch;
+    const redStyle = showRed ? { borderColor: '#F04438', boxShadow: '0 0 0 3px rgba(240,68,56,0.10)' } : null;
 
     return (
         <div className="space-y-3.5">
@@ -64,7 +75,7 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps 
                     onChange={(e) => onMaxScore(e.target.value)}
                     placeholder="예) 10"
                     className="form-input-pretty text-center"
-                    style={{ width: 96 }}
+                    style={{ width: 96, ...(redStyle || {}) }}
                 />
                 <span className="text-[13px] text-[#667085]">점</span>
             </div>
@@ -104,6 +115,7 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps 
                                         onChange={(e) => setRow(i, { score: e.target.value })}
                                         placeholder="점수"
                                         className="form-input-pretty text-center pr-6"
+                                        style={redStyle || undefined}
                                     />
                                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-[#98A2B3] pointer-events-none">점</span>
                                 </div>
@@ -128,9 +140,15 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps 
                 )}
 
                 {mismatch && (
-                    <div className="mt-2 text-[11.5px] text-[#B54708] bg-[#FFFAEB] border border-[#FEDF89] rounded-md px-2.5 py-1.5">
-                        ⚠ 최고 단계 점수({topScore}점)와 만점({maxScore}점)이 다릅니다. 보통 일치시킵니다.
-                    </div>
+                    showRed ? (
+                        <div className="mt-2 text-[11.5px] font-medium text-[#B42318] bg-[#FEF3F2] border border-[#FDA29B] rounded-md px-2.5 py-1.5">
+                            ✕ 최고 단계 점수({topScore}점)와 만점({maxScore}점)이 일치해야 저장할 수 있습니다.
+                        </div>
+                    ) : (
+                        <div className="mt-2 text-[11.5px] text-[#B54708] bg-[#FFFAEB] border border-[#FEDF89] rounded-md px-2.5 py-1.5">
+                            ⚠ 최고 단계 점수({topScore}점)와 만점({maxScore}점)이 다릅니다. 일치시켜 주세요.
+                        </div>
+                    )
                 )}
             </div>
         </div>

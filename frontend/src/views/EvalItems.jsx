@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import Header from '../components/Header';
 import { PRODUCT_NAME } from '../branding';
 import { getBrandConfig, isDynamicChecklistBrand, buildChecklistTemplateFromDefs } from '../constants';
-import ScoreStepsEditor, { parseSteps, assembleSteps } from '../components/ScoreStepsEditor';
+import ScoreStepsEditor, { parseSteps, assembleSteps, stepsMaxMismatch } from '../components/ScoreStepsEditor';
 import {
     fetchGoldenCasesByItem, removeGoldenSet,
     fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, deleteEvalItemDef, fetchEvalItemHistory,
@@ -1247,6 +1247,7 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
     const [criterion, setCriterion] = useState(existingDef?.criterion ?? '');
     const [prompt, setPrompt] = useState(existingDef?.prompt_template ?? '');       // Y/N 판정 기준(텍스트)
     const [steps, setSteps] = useState(() => parseSteps(existingDef?.prompt_template)); // 점수제 점수 단계(행)
+    const [stepErr, setStepErr] = useState(false); // 저장 시 만점≠최고단계 강조 플래그
     // 신규 추가는 평가 부서('기본')에 생성 → 체크리스트·평가와 일치해 추가 즉시 반영.
     // '기본'이 부서 옵션에 있으면 그것을, 없으면(레거시 등) 첫 부서를 기본 선택.
     const [selectedDepts, setSelectedDepts] = useState(
@@ -1373,7 +1374,7 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                 {/* 점수 기준 = 만점 + 점수 단계(행 단위). 저장 시 표준 텍스트로 합쳐 prompt_template 보관 → 엔진이 척도 파싱. */}
                 <FormGroup label="점수 기준">
                     {scoringType === 'numeric' ? (
-                        <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} />
+                        <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} error={stepErr} />
                     ) : (
                         <>
                             <div className="text-[12.5px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5 leading-relaxed mb-2.5">
@@ -1432,6 +1433,11 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                     const maxScoreNum = scoringType === 'numeric' ? Number(maxScore) : null;
                     if (scoringType === 'numeric' && (!Number.isFinite(maxScoreNum) || maxScoreNum <= 0)) {
                         setSaveError('만점은 1 이상의 숫자여야 합니다.');
+                        return;
+                    }
+                    if (scoringType === 'numeric' && stepsMaxMismatch(maxScore, steps)) {
+                        setStepErr(true);
+                        setSaveError('최고 단계 점수와 만점이 일치해야 저장할 수 있습니다.');
                         return;
                     }
                     setSaving(true);

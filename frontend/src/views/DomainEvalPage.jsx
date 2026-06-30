@@ -5,7 +5,7 @@ import {
     fetchDomainEvalDefaults, createDomainEvalDefault, updateDomainEvalDefault, deleteDomainEvalDefault,
     fetchDomainPentagonDefaults, createDomainPentagonDefault, updateDomainPentagonDefault, deleteDomainPentagonDefault,
 } from '../services/api';
-import ScoreStepsEditor, { parseSteps, assembleSteps } from '../components/ScoreStepsEditor';
+import ScoreStepsEditor, { parseSteps, assembleSteps, stepsMaxMismatch } from '../components/ScoreStepsEditor';
 
 // 도메인(업종)별 기본 평가체계 편집 — AI QA 항목관리(EvalItems.jsx)와 동일한 2패널 UX.
 // 좌측: 평가항목 리스트 + 펜타곤 축 리스트 / 우측: 선택 항목 미리보기·편집.
@@ -345,6 +345,7 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
     const [criterion, setCriterion] = useState(item?.criterion ?? '');
     const [prompt, setPrompt] = useState(item?.prompt_template ?? '');          // Y/N 판정 기준(텍스트)
     const [steps, setSteps] = useState(() => parseSteps(item?.prompt_template)); // 점수제 점수 단계(행)
+    const [stepErr, setStepErr] = useState(false); // 저장 시 만점≠최고단계 강조 플래그
     const [isActive, setIsActive] = useState(item?.is_active ?? true);
     const [saving, setSaving] = useState(false);
     const [err, setErr] = useState(null);
@@ -397,7 +398,7 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
                 {/* 점수 기준 = 만점 + 점수 단계(행 단위). 저장 시 표준 텍스트로 합쳐 prompt_template 보관 → 엔진이 척도 파싱. */}
                 <FormGroup label="점수 기준">
                     {isNumeric ? (
-                        <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} />
+                        <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} error={stepErr} />
                     ) : (
                         <>
                             <div className="text-[12px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5 leading-relaxed mb-2.5">충족 / 위반 으로만 판정합니다. 점수·총점·펜타곤에는 반영되지 않습니다.</div>
@@ -426,6 +427,11 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
                     if (!category.trim()) { setErr('대분류는 필수입니다.'); return; }
                     if (!name.trim()) { setErr('항목명은 필수입니다.'); return; }
                     if (isNumeric && !(Number(maxScore) > 0)) { setErr('점수제는 만점 > 0 이 필요합니다.'); return; }
+                    if (isNumeric && stepsMaxMismatch(maxScore, steps)) {
+                        setStepErr(true);
+                        setErr('최고 단계 점수와 만점이 일치해야 저장할 수 있습니다.');
+                        return;
+                    }
                     setSaving(true); setErr(null);
                     // 점수제: 점수 단계 행 → 표준 텍스트. Y/N: 텍스트 그대로.
                     const promptOut = isNumeric ? (assembleSteps(steps) || null) : (prompt.trim() || null);
