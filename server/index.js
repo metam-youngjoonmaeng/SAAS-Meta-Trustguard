@@ -4850,7 +4850,57 @@ app.put('/api/batch/config', requireAdmin, async (req, res) => {
 
 // 골든셋 학습 비동기 잡 상태(인메모리, org 별 최신 1건). 47건 임베딩+색인이 수십 초 걸려
 //   동기 응답 시 대시보드 프록시/브라우저가 타임아웃("Internal Server Error") → 백그라운드 실행 + status 폴링으로 회피.
-const goldenLearnStatus = new Map(); // org_id -> { state:'running'|'done'|'error', started_at, finished_at, result, error }
+const goldenLearnStatus = new Map(); // org_id -> { state:'running'|'done'|'error', source, started_at, finished_at, result, error }
+
+// 골든셋 학습 완료/실패 → 알림 센터 통지. 수동(트리거한 관리자 actor 포함) + 해당 브랜드 관리자
+// 전원에게 1건씩(user_id 중복 제거). 자동(스케줄러) 발화는 actor 없이 브랜드 관리자에게만.
+// dry-run(프리뷰)은 통지 대상 아님 — 호출측에서 제외. 알림 실패는 학습에 영향 없음(삼킴).
+async function notifyGoldenLearnComplete(orgId, result, { actorUserId = null, actorName = null, source = 'manual' } = {}) {
+    try {
+        const recipients = new Set();
+        if (actorUserId != null) recipients.add(Number(actorUserId));
+        try {
+            // 수신자: (1) super_admin 전원(브랜드 전환기로 모든 브랜드 관리 — org_id 무관),
+            //   (2) 전역 관리자(org_id IS NULL — 이 배포처럼 관리자에 org 미지정),
+            //   (3) 해당 브랜드 관리자(org_id = 브랜드). 멀티테넌트/단일 배포 모두 커버.
+            const { rows } = await pool.query(
+                `SELECT user_id FROM public.admin_users
+                  WHERE COALESCE(is_active, 0) <> 0
+                    AND role IN ('admin', 'super_admin')
+                    AND (role = 'super_admin' OR org_id IS NULL OR org_id = $1)`,
+                [orgId]
+            );
+            for (const r of rows) if (r.user_id != null) recipients.add(Number(r.user_id));
+        } catch (e) {
+            console.warn('notifyGoldenLearnComplete: 관리자 조회 실패:', e?.message || e);
+        }
+        if (!recipients.size) return;
+        const ok = result?.ok !== false;
+        const savedN = result?.saved ?? result?.records ?? '?';
+        const goldenN = result?.golden_count ?? '?';
+        const srcLabel = source && source.startsWith('schedule') ? '자동(스케줄러)' : '수동';
+        const type = ok ? 'golden_learn_completed' : 'golden_learn_failed';
+        const title = ok ? '골든셋 학습 완료' : '골든셋 학습 실패';
+        const body = ok
+            ? `${srcLabel} · 골든 ${goldenN}건 · 색인 ${savedN}건${result?.dry_run ? ' (dry-run)' : ''}`
+            : `${srcLabel} · ${result?.error || result?.reason || '오류'}`;
+        for (const uid of recipients) {
+            await createNotification(pool, {
+                recipientUserId: uid,
+                type,
+                title,
+                body,
+                resourceType: 'golden_learn',
+                resourceId: String(orgId),
+                actorUserId,
+                actorName,
+                orgId,
+            });
+        }
+    } catch (e) {
+        console.error('notifyGoldenLearnComplete error:', e?.message || e);
+    }
+}
 
 // POST /api/golden-learn/run — 골든셋 학습 배치 수동 트리거(백그라운드). 즉시 응답({started:true}) 후
 //   triggerGoldenLearn → ingestGoldenSetToRag: qa_golden_set ⋈ 전사 → 백엔드 POST /v2/mtg-rag/{rubric_id}/examples 색인.
@@ -4876,7 +4926,7 @@ app.post('/api/golden-learn/run', requireAdmin, async (req, res) => {
         /* 카운트 실패는 무시 — 실행에 영향 없음 */
     }
     const startedAt = Date.now();
-    goldenLearnStatus.set(orgId, { state: 'running', started_at: startedAt, dry_run: dryRun, golden_count: goldenCount, progress: { processed: 0, total: goldenCount || null, saved: 0, skipped: 0, failed: 0 } });
+    goldenLearnStatus.set(orgId, { state: 'running', source: 'manual', started_at: startedAt, dry_run: dryRun, golden_count: goldenCount, progress: { processed: 0, total: goldenCount || null, saved: 0, skipped: 0, failed: 0 } });
     // 백그라운드 실행 — 즉시 응답(프록시/브라우저 타임아웃 회피). 결과는 status 로 확인.
     (async () => {
         try {
@@ -4887,7 +4937,7 @@ app.post('/api/golden-learn/run', requireAdmin, async (req, res) => {
                 goldenLearnStatus.set(orgId, { ...prev, progress: p });
             };
             const result = await triggerGoldenLearn(pool, orgId, { source: 'manual', dryRun, onProgress });
-            goldenLearnStatus.set(orgId, { state: 'done', started_at: startedAt, finished_at: Date.now(), dry_run: dryRun, golden_count: goldenCount, result });
+            goldenLearnStatus.set(orgId, { state: 'done', source: 'manual', started_at: startedAt, finished_at: Date.now(), dry_run: dryRun, golden_count: goldenCount, result });
             await insertQaAuditLog(pool, {
                 req,
                 action: 'GOLDEN_LEARN_RUN',
@@ -4898,6 +4948,14 @@ app.post('/api/golden-learn/run', requireAdmin, async (req, res) => {
                 detail_json: JSON.stringify(result),
                 success: result.ok,
             }).catch(() => {});
+            // 학습 완료 → 알림 센터 통지(트리거 관리자 + 브랜드 관리자). dry-run 프리뷰는 제외.
+            if (!dryRun) {
+                await notifyGoldenLearnComplete(orgId, result, {
+                    actorUserId: req.session?.user_id ?? null,
+                    actorName: req.session?.display_name || req.session?.login_id || null,
+                    source: 'manual',
+                }).catch(() => {});
+            }
         } catch (e) {
             console.error('golden-learn background error:', e?.message || e);
             goldenLearnStatus.set(orgId, { state: 'error', started_at: startedAt, finished_at: Date.now(), error: String(e?.message || e) });
@@ -5302,7 +5360,34 @@ bootstrap()
             // ICS(mtm30) → 09 QA 폴러 기동. env-gated(ICS_DB_HOST 미설정 시 no-op).
             startIcsQaPoller(pool, { ingestStandardCallFromQaPipeline });
             // 골든셋 학습 스케줄러 — ICS 게이트와 무관하게 모든 배포에서 기동. 브랜드별 goldenFreq(hourly/daily)로 발화.
-            startGoldenLearnScheduler(pool);
+            //   훅으로 자동 발화를 goldenLearnStatus(수동과 동일 채널)에 반영 → 대시보드 폴링이 실시간 진행바로 표시.
+            //   완료 시 알림 센터 통지(브랜드 관리자). 훅 예외는 학습에 영향 없음.
+            startGoldenLearnScheduler(pool, {
+                onRunStart: (orgId) => {
+                    goldenLearnStatus.set(orgId, {
+                        state: 'running',
+                        source: 'schedule',
+                        started_at: Date.now(),
+                        golden_count: null,
+                        progress: { processed: 0, total: null, saved: 0, skipped: 0, failed: 0 },
+                    });
+                },
+                onProgress: (orgId, p) => {
+                    const prev = goldenLearnStatus.get(orgId) || {};
+                    if (prev.state !== 'running') return; // 완료/에러 후 늦은 콜백 무시
+                    goldenLearnStatus.set(orgId, { ...prev, progress: p, golden_count: prev.golden_count ?? p?.total ?? null });
+                },
+                onRunDone: (orgId, result) => {
+                    goldenLearnStatus.set(orgId, {
+                        state: 'done',
+                        source: 'schedule',
+                        finished_at: Date.now(),
+                        golden_count: result?.golden_count ?? null,
+                        result,
+                    });
+                    notifyGoldenLearnComplete(orgId, result, { source: 'schedule' }).catch(() => {});
+                },
+            });
             // AICC MQTT 실시간 STT 스트림 — finish 시 그 콜 즉시 QA 적재(폴러 안전망 병행). MQTT_HOST 미설정 시 no-op.
             startMqttListener(pool, { ingestStandardCallFromQaPipeline });
         });

@@ -2,7 +2,7 @@
 // 03(Meta-Summary) 알림센터 디자인을 차용하되, 데이터는 05 백엔드(수신자별 영구 알림)에서 가져온다.
 //   현재 알림 = 안읽음(read=false), 지난 알림 = 읽음. 카드 클릭 시 읽음 처리 + 상세 이동.
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Bell, X, Trash2, CheckCircle2, Pencil, ClipboardCheck, GraduationCap, Award, Undo2 } from 'lucide-react';
+import { Bell, X, Trash2, CheckCircle2, Pencil, ClipboardCheck, GraduationCap, Award, Undo2, Sparkles } from 'lucide-react';
 import {
     fetchNotifications,
     fetchUnreadCount,
@@ -21,6 +21,8 @@ const TYPE_META = {
     review_reobjected: { label: '이의제기', cls: 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]', Icon: Undo2 },
     coaching_assigned: { label: '코칭 배정', cls: 'bg-[#F4F3FF] text-[#5925DC] border-[#D9D6FE]', Icon: GraduationCap },
     coaching_completed: { label: '코칭 완료', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: Award },
+    golden_learn_completed: { label: '학습 완료', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: Sparkles },
+    golden_learn_failed: { label: '학습 실패', cls: 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]', Icon: Sparkles },
 };
 const metaOf = (t) => TYPE_META[t] || { label: '알림', cls: 'bg-[#F2F4F7] text-[#667085] border-[#E4E7EC]', Icon: Bell };
 
@@ -28,6 +30,7 @@ const metaOf = (t) => TYPE_META[t] || { label: '알림', cls: 'bg-[#F2F4F7] text
 function hashFor(n) {
     if (n.resource_type === 'qa_call' && n.resource_id) return `#/detail/${encodeURIComponent(n.resource_id)}`;
     if (n.resource_type === 'coaching') return '#/eval-mgmt';
+    if (n.resource_type === 'golden_learn') return '#/admin/batch';
     return null;
 }
 
@@ -190,6 +193,7 @@ export default function NotificationBell() {
                                                 <span>{fmtTime(n.created_at)}</span>
                                                 {n.resource_type === 'qa_call' && <span>· 클릭 시 상세로 이동</span>}
                                                 {n.resource_type === 'coaching' && <span>· 클릭 시 코칭으로 이동</span>}
+                                                {n.resource_type === 'golden_learn' && <span>· 클릭 시 골든셋 배치로 이동</span>}
                                             </div>
                                             <button
                                                 type="button"

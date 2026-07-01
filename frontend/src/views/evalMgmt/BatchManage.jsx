@@ -17,6 +17,15 @@ const bInput = {
     fontVariantNumeric: 'tabular-nums',
 };
 
+// 학습 기준 타임스탬프 포맷 — 'YYYY-MM-DD HH:MM:SS'(브라우저 로컬=KST). null/불량 시 null.
+function fmtIndexedAt(ts) {
+    if (!ts) return null;
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return null;
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 // 토글 스위치 — evalMgmt.css 의 .toggle/.track/.thumb 사용
 function Toggle({ checked, onChange }) {
     return (
@@ -686,6 +695,7 @@ export default function BatchManage() {
     const [goldenRunning, setGoldenRunning] = useState(false);
     const [goldenMsg, setGoldenMsg] = useState(null);
     const [goldenProgress, setGoldenProgress] = useState(null); // { processed, total, saved, skipped, failed }
+    const [goldenAuto, setGoldenAuto] = useState(null); // 스케줄러 자동 학습 진행 상태 { progress, source } | null
     const handleGoldenRun = useCallback(async () => {
         setGoldenRunning(true); setGoldenMsg('학습 시작 중…'); setGoldenProgress(null);
         try {
@@ -739,6 +749,39 @@ export default function BatchManage() {
             setGoldenRunning(false);
         }
     }, [config]);
+
+    // 스케줄러 자동 학습 실시간 감지 — 골든 탭이고 수동 실행 중이 아닐 때만 유휴 폴링(4s).
+    //   수동 실행 중(goldenRunning)이면 handleGoldenRun 의 1초 폴러가 상태를 소유하므로 비활성.
+    //   running 감지 → 자동 진행바 표시. running→종료 전이 → 커버리지(학습 기준일) 재조회 + 완료 메시지.
+    useEffect(() => {
+        if (batchView !== 'golden' || goldenRunning) { setGoldenAuto(null); return undefined; }
+        let alive = true;
+        let sawRunning = false;
+        const tick = async () => {
+            if (!alive) return;
+            let s = null;
+            try { s = await fetchGoldenLearnStatus(); } catch { return; }
+            if (!alive || !s) return;
+            if (s.state === 'running') {
+                sawRunning = true;
+                setGoldenAuto({ progress: s.progress || null, source: s.source || null });
+            } else {
+                if (sawRunning) {
+                    sawRunning = false;
+                    const rs = s.result || {};
+                    const saved = rs.saved ?? rs.records ?? '?';
+                    setGoldenMsg(rs.ok === false
+                        ? `자동 학습 실패: ${rs.error || rs.reason || '오류'}`
+                        : `자동 학습 완료 — 색인 ${saved}건`);
+                    setGoldenCovNonce((n) => n + 1); // 학습 기준일 재조회
+                }
+                setGoldenAuto(null);
+            }
+        };
+        tick();
+        const t = setInterval(tick, 4000);
+        return () => { alive = false; clearInterval(t); };
+    }, [batchView, goldenRunning]);
 
     // 카드별 예상 대상 — 지원 조건은 실수치(number), 미지원은 사유 라벨(string).
     const cardEst = (key) => {
@@ -1003,7 +1046,7 @@ export default function BatchManage() {
                                     <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink-900)', fontVariantNumeric: 'tabular-nums' }}>골든 {goldenCoverage.golden_count ?? 0}건</span>
                                     <span style={{ fontSize: 11.5, color: 'var(--ink-400)' }}>· 대화 {goldenCoverage.conversation_count ?? 0}건</span>
                                     <span style={{ marginLeft: 6, fontSize: 11.5, color: 'var(--ink-500)' }}>
-                                        학습 기준 <b style={{ color: 'var(--ink-800)' }}>{goldenCoverage.latest_indexed_at ? String(goldenCoverage.latest_indexed_at).slice(0, 10) : '미학습'}</b>
+                                        학습 기준 <b style={{ color: 'var(--ink-800)' }}>{fmtIndexedAt(goldenCoverage.latest_indexed_at) || '미학습'}</b>
                                         <span style={{ color: 'var(--ink-400)' }}> ({goldenCoverage.indexed_count ?? 0}건 색인)</span>
                                     </span>
                                     {goldenCoverage.needs_relearn && (
@@ -1052,6 +1095,33 @@ export default function BatchManage() {
                                             transition: 'width 0.4s ease',
                                         }} />
                                     </div>
+                                </div>
+                            ) : null}
+                            {/* 스케줄러 자동 학습 실시간 표시 — 수동 실행바와 별도(파란 배너). */}
+                            {goldenAuto ? (
+                                <div style={{ marginTop: 12, padding: '10px 12px', background: '#EFF8FF', border: '1px solid #B2DDFF', borderRadius: 9 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: goldenAuto.progress && goldenAuto.progress.total ? 6 : 0 }}>
+                                        <span className="animate-pulse" style={{ width: 8, height: 8, borderRadius: 999, background: '#2E90FA', flexShrink: 0 }} />
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: '#175CD3' }}>
+                                            {goldenAuto.source === 'schedule' ? '자동 학습(스케줄러) 진행 중…' : '학습 진행 중…'}
+                                        </span>
+                                        {goldenAuto.progress && goldenAuto.progress.total ? (
+                                            <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#175CD3', fontVariantNumeric: 'tabular-nums' }}>
+                                                {goldenAuto.progress.processed}/{goldenAuto.progress.total} · 신규 {goldenAuto.progress.saved ?? 0}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                    {goldenAuto.progress && goldenAuto.progress.total ? (
+                                        <div style={{ height: 8, borderRadius: 6, background: '#D1E9FF', overflow: 'hidden' }}>
+                                            <div style={{
+                                                height: '100%',
+                                                width: `${Math.min(100, Math.round((goldenAuto.progress.processed / goldenAuto.progress.total) * 100))}%`,
+                                                background: '#2E90FA',
+                                                borderRadius: 6,
+                                                transition: 'width 0.4s ease',
+                                            }} />
+                                        </div>
+                                    ) : null}
                                 </div>
                             ) : null}
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>

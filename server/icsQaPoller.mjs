@@ -307,9 +307,15 @@ const GOLDEN_LEARN_INTERVAL_MS = 60000;
  * 한 org 실패가 전체를 멈추지 않게 org 별 try/catch. 부트 직후 1회 즉시 + 이후 주기 실행.
  * 재기동 시 인메모리 마커(_lastGoldenKey) 리셋으로 같은 버킷 재발화 가능하나, 색인
  * (ingestGoldenSetToRag) 이 skip_existing 멱등이라 중복 색인은 무해.
+ *
+ * hooks(선택) — 자동 발화를 대시보드에 실시간 노출하기 위한 UI 콜백(스케줄러는 UI 무지):
+ *   onRunStart(orgId, sched)  발화 직전 — index.js 가 goldenLearnStatus=running 로 세팅.
+ *   onProgress(orgId, p)      청크별 진척({processed,total,saved,...}) — 진행바 실시간 반영.
+ *   onRunDone(orgId, result)  완료 — goldenLearnStatus=done + 알림 센터 통지.
+ * 훅 예외는 학습 자체에 영향 주지 않게 삼킨다(색인은 이미 수행됨).
  * @returns {{stop: () => void}}
  */
-export function startGoldenLearnScheduler(pool) {
+export function startGoldenLearnScheduler(pool, hooks = {}) {
     let running = false;
     const tick = async () => {
         if (running) return; // 직전 틱이 끝나지 않았으면 건너뜀(동시중복 방지)
@@ -326,7 +332,12 @@ export function startGoldenLearnScheduler(pool) {
                     if ((sched.freq === 'hourly' || sched.freq === 'daily') && dueForGoldenLearn(`org:${orgId}`, sched.freq, sched.time)) {
                         const label = sched.freq === 'daily' ? `매일 ${sched.time}` : '매시간';
                         logger.info(`[golden-learn] org=${orgId}: [${label}] 정기 학습 트리거 발화`);
-                        await triggerGoldenLearn(pool, orgId, { source: `schedule:${sched.freq}` });
+                        try { hooks.onRunStart?.(orgId, sched); } catch { /* UI 훅 실패는 학습에 무영향 */ }
+                        const result = await triggerGoldenLearn(pool, orgId, {
+                            source: `schedule:${sched.freq}`,
+                            onProgress: typeof hooks.onProgress === 'function' ? (p) => hooks.onProgress(orgId, p) : undefined,
+                        });
+                        try { hooks.onRunDone?.(orgId, result); } catch { /* UI 훅 실패는 학습에 무영향 */ }
                     }
                 } catch (e) {
                     logger.warn(`[golden-learn] org=${orgId} 정기 학습 패스 실패: ${e?.message || e}`);
