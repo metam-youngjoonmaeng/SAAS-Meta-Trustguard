@@ -19,6 +19,10 @@ ENV NEXT_PUBLIC_DEV_BADGE=$NEXT_PUBLIC_DEV_BADGE
 # 배정 코칭 "학습 시작" → 튜터 학습 앱 URL. NEXT_PUBLIC_ 이라 빌드 시점 인라인 필수.
 ARG NEXT_PUBLIC_TUTOR_APP_URL=""
 ENV NEXT_PUBLIC_TUTOR_APP_URL=$NEXT_PUBLIC_TUTOR_APP_URL
+# RAG 개발 UI(실시간 로그 RAG·사전 탭, 평가항목 Test-RAG 배지/토글) 노출 — 운영 빌드 미주입 → 숨김.
+# 로컬 개발만 docker-compose.override.yml 에서 "1" 주입(NEXT_PUBLIC_ 이라 빌드 시점 인라인 필수).
+ARG NEXT_PUBLIC_SHOW_RAG=""
+ENV NEXT_PUBLIC_SHOW_RAG=$NEXT_PUBLIC_SHOW_RAG
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # 네이티브 바인딩(@tailwindcss/oxide)을 빌드 플랫폼(linux-x64-gnu)에 맞춰 받기 위해

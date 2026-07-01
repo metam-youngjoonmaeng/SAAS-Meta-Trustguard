@@ -1534,3 +1534,193 @@ export async function ingestStandardCallFromQaPipeline(pool, call, opts = {}) {
         max_total: mapped.max_total ?? null,
     };
 }
+
+/**
+ * 골든셋 학습 배치 — 브랜드 골든셋(qa_golden_set)을 백엔드 MTG 전용 RAG 인덱스(qa-mtg-golden)에 색인.
+ * "골든셋배치 > 지금 실행" 버튼(POST /api/golden-learn/run → triggerGoldenLearn)의 실제 동작 본체.
+ *
+ * 경로(전부 기존 백엔드 엔드포인트 — golden_set/RAG 코어 무수정):
+ *   ① rubric_id 해석 = 평가 시점 resolve_search_rubric_id 와 동일 규칙(getOrgFewshot 충족 시
+ *      rag_rubric_id, 아니면 inline-org{N}) → 색인 키 = 평가 검색 키 정합.
+ *   ② buildRubricFromDefs 로 order_no→eval_item_number(5000+index) 맵 산출 + 루브릭 파일스토어
+ *      등록(POST /v2/rubrics, 멱등) → 색인 엔드포인트 load_rubric 게이트 충족.
+ *   ③ qa_golden_set ⋈ qa_conversations(전사) → MtgGoldenRecord[] 조립(item_number=②맵).
+ *   ④ POST /v2/mtg-rag/{rubric_id}/examples (org_id 동봉 → 백엔드 resolve_allowed_items 가
+ *      qa_batch_configs.golden.excluded 존중해 항목 자동 필터). dry_run 지원.
+ *
+ * @param {import('pg').Pool} pool
+ * @param {number} orgId
+ * @param {{ dryRun?: boolean, baseUrl?: string }} [opts]
+ * @returns {Promise<{ok:boolean, triggered:boolean, rubric_id:string, golden_count:number, records?:number, saved?:number, dry_run?:boolean}>}
+ */
+export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
+    const dryRun = !!opts.dryRun;
+    const base = resolvePipelineBaseUrl({}, opts).replace(/\/+$/, '');
+
+    // ① rubric_id (평가 시점 검색 키와 동일 규칙 — 색인↔검색 정합)
+    let rubricId;
+    try {
+        const fx = await getOrgFewshot(pool, orgId);
+        rubricId = fx && fx.rubric_id ? fx.rubric_id : `inline-org${orgId}`;
+    } catch {
+        rubricId = `inline-org${orgId}`;
+    }
+
+    // ② 루브릭 빌드 + order_no→item_number 맵
+    const { rubric, rowMeta } = await buildRubricFromDefs(pool, orgId);
+    if (!rubric || !(rubric.items && rubric.items.length)) {
+        return { ok: false, triggered: false, reason: 'no_rubric_items', org_id: orgId, rubric_id: rubricId };
+    }
+    // order_no → eval_item_number. MTG buildRubricFromDefs 는 items[].eval_item_number 를 부여하지 않고
+    // (백엔드 normalize_rubric 이 5000+index 로 부여) items/rowMeta 가 동일 루프 index 정합이므로,
+    // 평가 시점(백엔드)과 동일한 RUBRIC_ITEM_BASE+index 로 산출한다(제외 order_no 는 빌더가 이미 누락).
+    const orderToItemNum = {};
+    // order_no → 항목 만점(max_score). 백엔드 build_rag_index_summary 의 score_bucket 분류
+    // (score>=max→full / 0→zero / 그외→partial)가 max_score 없으면 전부 partial 로 떨어지므로,
+    // 골든 레코드에 항목별 만점을 동봉해야 full/zero 버킷이 정상 산출된다. rubric.items[i].max_score
+    // (eval_item_defs 만점) 우선, 없으면 rowMeta[i].max_score 폴백.
+    const orderToMaxScore = {};
+    (rowMeta || []).forEach((m, i) => {
+        const o = asNumber(m && m.order_no);
+        if (o !== null) {
+            orderToItemNum[o] = RUBRIC_ITEM_BASE + i;
+            const mx = asNumber((rubric.items[i] && rubric.items[i].max_score) ?? (m && m.max_score));
+            if (mx !== null && mx > 0) orderToMaxScore[o] = mx;
+        }
+    });
+
+    // 루브릭 파일스토어 등록(load_rubric 게이트 충족 — 멱등, rubric_id 강제).
+    try {
+        await fetch(`${base}/v2/rubrics`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...rubric, rubric_id: rubricId, name: rubric.name || `org${orgId}` }),
+            signal: AbortSignal.timeout(30000),
+        });
+    } catch (e) {
+        console.warn(`[golden-learn] rubric 등록 실패(무시 — ingest 응답에서 확인): ${(e && e.message) || e}`);
+    }
+
+    // ③ 골든 추출 + 전사 결합
+    const { rows: gs } = await pool.query(
+        `SELECT qa_id, order_no, category, item, reason_text, agent_utterance, score
+           FROM public.qa_golden_set WHERE org_id = $1 ORDER BY qa_id, order_no`,
+        [orgId]
+    );
+    if (!gs.length) {
+        return { ok: true, triggered: false, reason: 'no_golden_rows', org_id: orgId, rubric_id: rubricId, golden_count: 0 };
+    }
+    const tmap = {};
+    for (const qid of [...new Set(gs.map((g) => g.qa_id))]) {
+        const { rows: c } = await pool.query(
+            `SELECT speaker, "text" FROM public.qa_conversations WHERE "ID" = $1 ORDER BY turn_no`,
+            [qid]
+        );
+        tmap[qid] = c.map((r) => `${r.speaker}: ${r.text}`).join('\n');
+    }
+    const examples = gs
+        .map((g) => ({
+            consultation_id: g.qa_id,
+            item_number: orderToItemNum[g.order_no],
+            item_name: g.item,
+            category: g.category,
+            transcript_body: tmap[g.qa_id] || '',
+            note_section: g.reason_text,
+            stt_excerpt: g.agent_utterance,
+            score: Number(g.score),
+            // 항목 만점 — 백엔드 score_bucket 분류(full/partial/zero)에 필수. 누락 시 전부 partial.
+            max_score: orderToMaxScore[g.order_no] ?? null,
+        }))
+        .filter((e) => e.item_number != null);
+
+    // 골든셋 학습(색인)은 항상 전 항목 색인 — '적용 평가 항목' 체크는 평가 시 RAG on/off
+    //   (organizations.rag_fewshot_item_names, syncRagFewshotFromGolden)만 제어하고 색인 범위는
+    //   제한하지 않는다(전체 색인 → 나중에 항목 RAG 를 켜면 재색인 없이 즉시 사용).
+    //   예시에 존재하는 전 항목 item_number 를 allowed_items 로 명시 동봉해 백엔드의 org_id DB
+    //   재조회(제외 필터) 개입을 차단한다(전 항목 색인 보장).
+    const allowedItems = [...new Set(examples.map((e) => e.item_number).filter((n) => n != null))];
+
+    // ④ 색인 위임 (dry_run 지원) — 진행바용 청크 분할.
+    //   백엔드 /v2/mtg-rag/{rubric}/examples 는 examples 배열 길이 무관하게 처리하고, dedup(skip_existing)은
+    //   호출별 existing_external_ids 조회라 청크로 나눠도 멱등·결과 동일. examples 를 GOLDEN_LEARN_CHUNK(기본 5)
+    //   건씩 순차 POST 하고, 각 청크 후 opts.onProgress({processed,total,saved,skipped,failed})로 진척을 올려
+    //   프론트 진행바가 실시간 반영되게 한다. 단일 POST 대비 라운드트립만 늘 뿐(임베딩은 어차피 건별) 부담 미미.
+    const timeoutMs = Number(process.env.GOLDEN_LEARN_TIMEOUT_MS || '600000') || 600000;
+    const chunkSize = Math.max(1, Number(process.env.GOLDEN_LEARN_CHUNK || '5') || 5);
+    const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+    const total = examples.length;
+    const agg = { saved: 0, skipped: 0, failed: 0, invalid: 0, filtered: 0 };
+    let processed = 0;
+    let lastStatus = 0;
+    let lastError = null;
+    let anyOk = false;
+    if (onProgress) onProgress({ processed: 0, total, ...agg });
+    for (let i = 0; i < total; i += chunkSize) {
+        const chunk = examples.slice(i, i + chunkSize);
+        const resp = await fetch(`${base}/v2/mtg-rag/${encodeURIComponent(rubricId)}/examples`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ org_id: orgId, dry_run: dryRun, examples: chunk, ...(allowedItems ? { allowed_items: allowedItems } : {}) }),
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+        lastStatus = resp.status;
+        let j = {};
+        try {
+            j = await resp.json();
+        } catch {
+            /* 비-JSON 응답 */
+        }
+        if (j.ok) anyOk = true;
+        if (j.error) lastError = j.error;
+        agg.saved += Number(j.saved || 0);
+        agg.skipped += Number(j.skipped || 0);
+        agg.failed += Number(j.failed || 0);
+        agg.invalid += Number(j.invalid || 0);
+        agg.filtered += Number(j.filtered || 0);
+        processed = Math.min(total, i + chunk.length);
+        if (onProgress) onProgress({ processed, total, ...agg });
+    }
+    return {
+        ok: agg.failed === 0 && (total === 0 || anyOk),
+        triggered: true,
+        dry_run: dryRun,
+        org_id: orgId,
+        rubric_id: rubricId,
+        golden_count: gs.length,
+        records: total,
+        saved: agg.saved,
+        skipped: agg.skipped,
+        failed: agg.failed,
+        invalid: agg.invalid,
+        filtered: agg.filtered,
+        http_status: lastStatus,
+        error: lastError,
+    };
+}
+
+// 골든 색인 커버리지(정밀) — 백엔드 /v2/mtg-rag/{rubric}/coverage 로 **색인된 consultation_id 목록**을
+//   받아온다. 호출측(index.js)이 이를 PG qa_golden_set.created_at 과 조인해 "며칠까지 학습됐나"를 산출.
+//   rubric_id 는 색인 시(ingestGoldenSetToRag)와 동일 규칙(getOrgFewshot → inline-org{N})으로 맞춰 정합.
+export async function fetchGoldenIndexCoverage(pool, orgId, opts = {}) {
+    const base = resolvePipelineBaseUrl({}, opts).replace(/\/+$/, '');
+    let rubricId;
+    try {
+        const fx = await getOrgFewshot(pool, orgId);
+        rubricId = fx && fx.rubric_id ? fx.rubric_id : `inline-org${orgId}`;
+    } catch {
+        rubricId = `inline-org${orgId}`;
+    }
+    try {
+        const resp = await fetch(`${base}/v2/mtg-rag/${encodeURIComponent(rubricId)}/coverage`, {
+            signal: AbortSignal.timeout(15000),
+        });
+        const j = await resp.json().catch(() => ({}));
+        return {
+            rubric_id: rubricId,
+            indexed_count: Number(j.indexed_count || 0),
+            consultation_ids: Array.isArray(j.consultation_ids) ? j.consultation_ids.map((x) => String(x)) : [],
+        };
+    } catch (e) {
+        return { rubric_id: rubricId, indexed_count: 0, consultation_ids: [], error: String((e && e.message) || e) };
+    }
+}

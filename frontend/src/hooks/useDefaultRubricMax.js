@@ -22,7 +22,11 @@ import {
 //
 // enabled=false(신한/한화 등) 이거나 DB 미적재면 fallbackTemplate(정적 합계)로 폴백.
 
-export default function useDefaultRubricMax({ enabled, fallbackTemplate, dynamicList = false } = {}) {
+// activeBrandId: 활성 브랜드 식별자. fetchEvalItemDefs 는 X-Active-Brand-Id 헤더로 브랜드를
+//   구분하므로, 브랜드 전환 시 반드시 재조회해야 컬럼(카테고리)·분모가 새 브랜드로 갱신된다.
+//   ★ effect deps 에 포함하지 않으면 enabled 값이 그대로인 브랜드 간 전환(예: 동적→동적)에서
+//     재조회가 안 돼 직전 브랜드 항목이 stale 로 남고, 새로고침해야만 정상화되는 버그가 생긴다.
+export default function useDefaultRubricMax({ enabled, fallbackTemplate, dynamicList = false, activeBrandId } = {}) {
     // DB eval_item_defs(department='기본') 를 order_no → def 맵으로 보관. null=미적재.
     const [defsByOrderNo, setDefsByOrderNo] = useState(null);
     const [loaded, setLoaded] = useState(false);
@@ -54,7 +58,8 @@ export default function useDefaultRubricMax({ enabled, fallbackTemplate, dynamic
                 }
             });
         return () => { cancelled = true; };
-    }, [enabled]);
+        // activeBrandId 포함 — 브랜드 전환 시 새 브랜드 항목으로 재조회(stale 컬럼/분모 방지).
+    }, [enabled, activeBrandId]);
 
     return useMemo(() => {
         const staticTemplate = Array.isArray(fallbackTemplate) ? fallbackTemplate : [];

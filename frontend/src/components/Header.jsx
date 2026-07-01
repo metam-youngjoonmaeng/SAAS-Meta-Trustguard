@@ -1,5 +1,4 @@
 import React from 'react';
-import { Search } from 'lucide-react';
 
 const Header = ({ title, subtitle, actions }) => {
     return (
@@ -10,14 +9,9 @@ const Header = ({ title, subtitle, actions }) => {
                     <p className="text-sm text-[#667085] mt-1 leading-relaxed whitespace-pre-line">{subtitle}</p>
                 )}
             </div>
-            <div className="flex items-center gap-2">
-                {actions ? actions : (
-                    <button className="flex items-center gap-2 px-6 py-2 bg-[#055AAF] rounded-lg text-sm font-semibold text-white hover:bg-[#1E70E0] shadow-sm transition-all active:scale-[0.98]">
-                        <Search size={16} />
-                        조회
-                    </button>
-                )}
-            </div>
+            {/* actions 를 넘긴 화면만 우측 액션 노출. 미지정 시 아무것도 렌더하지 않음
+                (과거의 동작 없는 '조회' 폴백 버튼 제거 — 사용자관리 등 검색은 입력 즉시 필터). */}
+            {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
         </header>
     );
 };

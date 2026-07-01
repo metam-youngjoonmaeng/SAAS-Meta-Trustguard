@@ -11,7 +11,7 @@
  * 연결정보는 09가 ICS SSO 용으로 이미 쓰는 ICS_DB_* 를 그대로 재사용한다(중복 설정 방지):
  *   ICS_DB_HOST / ICS_DB_PORT(3306) / ICS_DB_NAME(mtm30) / ICS_DB_USER / ICS_DB_PW
  * env-gated: ICS_DB_HOST 가 비어 있으면 icsEnabled()=false → 폴러가 no-op.
- * (단, 폴링 자체의 on/off 마스터 스위치는 폴러의 ICS_QA_POLL_ENABLED 이다.)
+ * (폴링 on/off 별도 마스터 스위치는 없다 — ICS_DB_HOST 존재 여부가 곧 활성 게이트.)
  *
  * 날짜는 dateStrings:true 로 문자열('YYYY-MM-DD HH:mm:ss') 수신 → 워터마크/CDATE 를 텍스트로 안전 보관.
  * (SSO 풀과 독립된 작은 읽기 전용 풀.)

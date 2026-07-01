@@ -185,9 +185,18 @@ export async function previewBatch(config) {
 export async function runBatchNow() {
     return request('/api/batch/run', { method: 'POST' });
 }
-// 골든셋 학습 배치 수동 트리거(우리가 즉시 실행) — 스케줄과 동일 창구.
+// 골든셋 학습 배치 수동 트리거(백그라운드 실행) — 즉시 { ok, started, golden_count } 반환. 진행/결과는 status 폴링.
 export async function runGoldenLearn() {
     return request('/api/golden-learn/run', { method: 'POST' });
+}
+// 골든셋 학습 잡 상태 — { state:'running'|'done'|'error'|'idle', golden_count, result } 반환.
+export async function fetchGoldenLearnStatus() {
+    return request('/api/golden-learn/status');
+}
+// 골든셋 규모/학습 기준일(정밀) — { golden_count, conversation_count, latest_golden_at,
+//   indexed_count, indexed_conversation_count, latest_indexed_at, needs_relearn } 반환.
+export async function fetchGoldenLearnCoverage() {
+    return request('/api/golden-learn/coverage');
 }
 // ② '적용 평가 항목' 칩 — 실제 평가된 항목(order_no+item). 제외 order_no 로 ② 검사 스코프.
 export async function fetchBatchEvalItems() {
@@ -635,10 +644,11 @@ export async function fetchAppLogsRecent({ limit } = {}) {
  *                       matches?:[{term?,rule_ref?,verdict?,quote?}] }, ...] }
  * → entries 배열만 반환(없으면 빈 배열).
  */
-export async function fetchRagLogRecent({ limit = 100, qa_id } = {}) {
+export async function fetchRagLogRecent({ limit = 100, qa_id, within_minutes } = {}) {
     const params = new URLSearchParams();
     if (limit) params.set('limit', String(limit));
     if (qa_id) params.set('qa_id', String(qa_id));
+    if (within_minutes) params.set('within_minutes', String(within_minutes));
     const qs = params.toString();
     const data = await request(`/api/rag-log/recent${qs ? `?${qs}` : ''}`);
     return Array.isArray(data?.entries) ? data.entries : [];

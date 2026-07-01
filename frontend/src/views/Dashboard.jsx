@@ -109,6 +109,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
         enabled: brandConfig.key === 'default' || dynamic,
         fallbackTemplate: brandConfig.checklistTemplate,
         dynamicList: dynamic,
+        activeBrandId, // 브랜드 전환 시 재조회 → 컬럼(카테고리)·분모 즉시 갱신(stale 방지).
     });
     // 표 컬럼(CHECKLIST_KEYS)은 평가체계 버전 필터에 의존하므로 버전 계산 뒤(아래)에서 정의한다.
     // 상세페이지 → 뒤로가기 복귀 시 직전에 보던 부서 탭을 유지.
