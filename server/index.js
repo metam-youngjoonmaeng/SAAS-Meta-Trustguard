@@ -3930,7 +3930,9 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
                     qa_id: job.qa_id,
                     org_id: ragOrgId,
                     item_number: Number(d.item_number),
-                    item_name: d.item_name || d.intent || undefined,
+                    // 항목명 — 백엔드 emit_rag_hits_ready 가 보내는 실제 평가항목명. intent(general_inquiry)로
+                    //   폴백하지 않음(폴백 시 이름 자리에 intent 가 중복 표시되던 문제). 없으면 프론트가 #번호 표시.
+                    item_name: d.item_name || undefined,
                     kind: 'rag',
                     // 검색어/intent — 리치 카드 상단 표시용(UnifiedRagPanel QueryDisplay 동형).
                     fewshot_query: d.fewshot_query ? _capText(d.fewshot_query, 4000) : undefined,
