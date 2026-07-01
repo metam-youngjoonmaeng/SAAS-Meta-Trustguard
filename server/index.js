@@ -4841,12 +4841,49 @@ app.put('/api/batch/config', requireAdmin, async (req, res) => {
                config = EXCLUDED.config, updated_at = now(), updated_by = EXCLUDED.updated_by`,
             [orgId, JSON.stringify(config), updatedBy]
         );
+        // 골든셋 배치 '적용 평가 항목' = 평가 시 RAG 사용 항목(단일 컨트롤). 체크(=미제외)된 항목의
+        //   이름을 organizations.rag_fewshot_item_names 로 동기화 → 그 항목만 평가 시 few-shot RAG 사용
+        //   (getOrgFewshot 게이트). 색인(golden.excluded→allowed_items)과 동일 체크박스가 구동.
+        await syncRagFewshotFromGolden(orgId, config).catch(() => {});
         res.json({ ok: true, org_id: orgId });
     } catch (e) {
         console.error('PUT /api/batch/config error:', e?.message || e);
         res.status(500).json({ ok: false, message: '배치 설정 저장 실패' });
     }
 });
+
+// 골든셋 배치 '적용 평가 항목' → 평가 시 RAG 항목(organizations.rag_fewshot_item_names) 동기화.
+//   체크(=config.golden.excluded 에 없는) 항목의 이름을 RAG 사용 목록으로 저장. 항목명 소스는
+//   '적용 평가 항목' 칩과 동일(qa_evaluation_rows) — order_no 정합. rubric_id 는 기존값 보존,
+//   없으면 rbrc_org{N}(색인측 getOrgFewshot 규칙과 정합). golden 미설정/org 0 이면 무동작.
+//   전 항목 제외(체크 0) → item_names 빈 배열 → getOrgFewshot null → 평가 시 RAG 전면 OFF.
+async function syncRagFewshotFromGolden(orgId, config) {
+    if (!orgId || Number(orgId) === 0) return;
+    const golden = config && config.golden;
+    if (!golden || !Array.isArray(golden.excluded)) return; // 골든 섹션 없는 저장은 건드리지 않음
+    const excludedSet = new Set(golden.excluded.map(Number).filter(Number.isFinite));
+    // '적용 평가 항목' 칩과 동일 소스로 order_no → 항목명(정합 보장).
+    const { rows } = await pool.query(
+        `SELECT er.order_no, max(er.item) AS item
+           FROM qa_evaluation_rows er
+           JOIN qa_calls c ON c."ID" = er."ID"
+          WHERE c.is_sandbox = false AND c.org_id = $1
+          GROUP BY er.order_no ORDER BY er.order_no`,
+        [orgId]
+    );
+    const includedNames = rows
+        .filter((r) => !excludedSet.has(Number(r.order_no)))
+        .map((r) => String(r.item || '').trim())
+        .filter(Boolean);
+    // rubric_id: 기존값 보존(org10=rbrc_asdf_org10 등 특수 유지), 없으면 rbrc_org{N}.
+    const { rows: orgRows } = await pool.query(
+        `SELECT rag_rubric_id FROM public.organizations WHERE id = $1 LIMIT 1`,
+        [orgId]
+    );
+    const existingRubric = String(orgRows[0]?.rag_rubric_id || '').trim();
+    const rubricId = existingRubric || `rbrc_org${orgId}`;
+    await saveRagFewshotConfig(pool, { [orgId]: { rubric_id: rubricId, item_names: includedNames } });
+}
 
 // 골든셋 학습 비동기 잡 상태(인메모리, org 별 최신 1건). 47건 임베딩+색인이 수십 초 걸려
 //   동기 응답 시 대시보드 프록시/브라우저가 타임아웃("Internal Server Error") → 백그라운드 실행 + status 폴링으로 회피.

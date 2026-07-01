@@ -1633,32 +1633,12 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
         }))
         .filter((e) => e.item_number != null);
 
-    // 적용 평가 항목(체크박스) 제외 → allowed_items 직접 동봉.
-    // 제외 order_no 를 예시와 동일한 orderToItemNum 맵으로 5000+index item_number 로 환산해
-    // ingest 요청에 allowed_items 로 싣는다. 백엔드(mtg_rag_api)는 body.allowed_items 가 있으면
-    // 그대로 필터에 쓰고(없을 때만 org_id 로 DB 재조회) — MTG config DB(이 pool)와 백엔드
-    // QA_DASHBOARD_DB_DSN 이 다른 환경에서도 cross-DB 읽기 없이 제외가 반영된다. 예시 item_number 와
-    // 동일 맵 산식이라 항목번호 어긋남(off-by-N)도 없음. 제외 0건이면 미동봉(무필터).
-    let allowedItems = null;
-    try {
-        const { rows: cfgRows } = await pool.query(
-            `SELECT config #> '{golden,excluded}' AS excluded FROM public.qa_batch_configs WHERE org_id = $1 LIMIT 1`,
-            [orgId]
-        );
-        const rawExcluded = cfgRows[0] && cfgRows[0].excluded;
-        const excludedSet = new Set(
-            (Array.isArray(rawExcluded) ? rawExcluded : []).map((v) => asNumber(v)).filter((v) => v !== null)
-        );
-        if (excludedSet.size) {
-            allowedItems = Object.keys(orderToItemNum)
-                .map((o) => Number(o))
-                .filter((o) => !excludedSet.has(o))
-                .map((o) => orderToItemNum[o]);
-            console.log(`[golden-learn] org=${orgId} 제외 ${excludedSet.size}항목 → allowed_items ${allowedItems.length}개 동봉`);
-        }
-    } catch (e) {
-        console.warn(`[golden-learn] 제외 항목(config.golden.excluded) 조회 실패(무시 — 전 항목 색인): ${(e && e.message) || e}`);
-    }
+    // 골든셋 학습(색인)은 항상 전 항목 색인 — '적용 평가 항목' 체크는 평가 시 RAG on/off
+    //   (organizations.rag_fewshot_item_names, syncRagFewshotFromGolden)만 제어하고 색인 범위는
+    //   제한하지 않는다(전체 색인 → 나중에 항목 RAG 를 켜면 재색인 없이 즉시 사용).
+    //   예시에 존재하는 전 항목 item_number 를 allowed_items 로 명시 동봉해 백엔드의 org_id DB
+    //   재조회(제외 필터) 개입을 차단한다(전 항목 색인 보장).
+    const allowedItems = [...new Set(examples.map((e) => e.item_number).filter((n) => n != null))];
 
     // ④ 색인 위임 (dry_run 지원) — 진행바용 청크 분할.
     //   백엔드 /v2/mtg-rag/{rubric}/examples 는 examples 배열 길이 무관하게 처리하고, dedup(skip_existing)은

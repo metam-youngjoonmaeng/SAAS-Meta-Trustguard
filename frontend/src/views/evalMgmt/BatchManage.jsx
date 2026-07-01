@@ -696,6 +696,42 @@ export default function BatchManage() {
     const [goldenMsg, setGoldenMsg] = useState(null);
     const [goldenProgress, setGoldenProgress] = useState(null); // { processed, total, saved, skipped, failed }
     const [goldenAuto, setGoldenAuto] = useState(null); // 스케줄러 자동 학습 진행 상태 { progress, source } | null
+    // 진행 폴링 루프(공용) — 최초 실행(handleGoldenRun) + 마운트 복원 둘 다 사용.
+    //   서버 /status 를 1초 간격으로 읽어 진행바 갱신, 종료 시 메시지/커버리지 갱신 + 버튼 재활성.
+    const runGoldenPoll = useCallback(() => {
+        let tries = 0;
+        const poll = async () => {
+            tries += 1;
+            let s = null;
+            try {
+                s = await fetchGoldenLearnStatus();
+            } catch {
+                setGoldenMsg('학습 진행 중 (상태 확인 불가) — 실시간 로그에서 확인하세요.');
+                setGoldenProgress(null);
+                setGoldenRunning(false);
+                return;
+            }
+            if (s?.progress) setGoldenProgress(s.progress);
+            if (s?.state === 'running' && tries < 600) { setTimeout(poll, 1000); return; }
+            // 종료 상태 — 진행바 정리 + 버튼 재활성.
+            if (s?.state === 'done') {
+                const rs = s.result || {};
+                const saved = rs.saved ?? rs.records ?? '?';
+                setGoldenMsg(rs.ok === false
+                    ? `학습 실패: ${rs.error || rs.reason || '오류'}`
+                    : `학습 완료 — 골든셋 ${rs.golden_count ?? s.golden_count ?? '?'}건, 색인 ${saved}건${rs.dry_run ? ' (dry-run)' : ''}`);
+            } else if (s?.state === 'error') {
+                setGoldenMsg('학습 실패: ' + (s.error || '오류'));
+            } else {
+                setGoldenMsg(null);
+            }
+            setGoldenProgress(null);
+            setGoldenRunning(false);
+            setGoldenCovNonce((n) => n + 1);  // 학습 종료 → 커버리지(학습 기준일) 재조회
+        };
+        setTimeout(poll, 1000);
+    }, []);
+
     const handleGoldenRun = useCallback(async () => {
         setGoldenRunning(true); setGoldenMsg('학습 시작 중…'); setGoldenProgress(null);
         try {
@@ -711,44 +747,32 @@ export default function BatchManage() {
             }
             setGoldenMsg(`백그라운드 학습 진행 중… (골든셋 ${r.golden_count ?? '?'}건)`);
             setGoldenProgress({ processed: 0, total: r.golden_count ?? null, saved: 0, skipped: 0, failed: 0 });
-            // 완료까지 상태 폴링(1초 간격, 최대 ~10분). 매 틱 progress 를 읽어 진행바 실시간 갱신.
-            let tries = 0;
-            const poll = async () => {
-                tries += 1;
-                let s = null;
-                try {
-                    s = await fetchGoldenLearnStatus();
-                } catch {
-                    setGoldenMsg('학습 시작됨 (상태 확인 불가) — 실시간 로그에서 확인하세요.');
-                    setGoldenProgress(null);
-                    setGoldenRunning(false);
-                    return;
-                }
-                if (s?.progress) setGoldenProgress(s.progress);
-                if (s?.state === 'running' && tries < 600) { setTimeout(poll, 1000); return; }
-                // 종료 상태 — 진행바 정리 + 버튼 재활성.
-                if (s?.state === 'done') {
-                    const rs = s.result || {};
-                    const saved = rs.saved ?? rs.records ?? '?';
-                    setGoldenMsg(rs.ok === false
-                        ? `학습 실패: ${rs.error || rs.reason || '오류'}`
-                        : `학습 완료 — 골든셋 ${rs.golden_count ?? s.golden_count ?? '?'}건, 색인 ${saved}건${rs.dry_run ? ' (dry-run)' : ''}`);
-                } else if (s?.state === 'error') {
-                    setGoldenMsg('학습 실패: ' + (s.error || '오류'));
-                } else {
-                    setGoldenMsg('학습 시작됨 — 잠시 후 실시간 로그에서 확인하세요.');
-                }
-                setGoldenProgress(null);
-                setGoldenRunning(false);
-                setGoldenCovNonce((n) => n + 1);  // 학습 종료 → 커버리지(학습 기준일) 재조회
-            };
-            setTimeout(poll, 1000);
+            runGoldenPoll();
         } catch (e) {
             setGoldenMsg('실행 실패: ' + (e?.message || '오류'));
             setGoldenProgress(null);
             setGoldenRunning(false);
         }
-    }, [config]);
+    }, [config, runGoldenPoll]);
+
+    // 마운트 복원 — 다른 화면을 다녀와(BatchManage 언마운트) 진행바가 사라져도, 서버에 진행 중
+    //   학습이 있으면 진행바·폴링을 재개한다(다른 탭 이동 시 진행상황 초기화 문제 해소). 백엔드
+    //   goldenLearnStatus 가 정본이라 로컬 state 유실과 무관하게 복원된다. idle-poll(goldenAuto)은
+    //   goldenRunning 이 켜지면 자동 비활성이라 충돌 없음.
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const s = await fetchGoldenLearnStatus();
+                if (!alive || s?.state !== 'running') return;
+                setGoldenRunning(true);
+                if (s.progress) setGoldenProgress(s.progress);
+                setGoldenMsg('학습 진행 중…');
+                runGoldenPoll();
+            } catch { /* 상태 확인 실패는 무시(복원 생략) */ }
+        })();
+        return () => { alive = false; };
+    }, [runGoldenPoll]);
 
     // 스케줄러 자동 학습 실시간 감지 — 골든 탭이고 수동 실행 중이 아닐 때만 유휴 폴링(4s).
     //   수동 실행 중(goldenRunning)이면 handleGoldenRun 의 1초 폴러가 상태를 소유하므로 비활성.
@@ -1138,7 +1162,20 @@ export default function BatchManage() {
                                 <Icon name="list-checks" size={15} style={{ color: 'var(--ink-500)' }} />
                                 <h3>적용 평가 항목</h3>
                             </div>
-                            <span className="muted-text" style={{ fontSize: 12, marginLeft: 'auto' }}>체크 해제한 항목은 골든셋 학습에서 제외 ({Math.max(0, evalItems.length - goldenExcluded.size)}/{evalItems.length})</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
+                                <span className="muted-text" style={{ fontSize: 12 }}>체크한 항목만 평가 시 RAG(골든셋) 사용 ({Math.max(0, evalItems.length - goldenExcluded.size)}/{evalItems.length})</span>
+                                {evalItems.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setGoldenExcluded(goldenExcluded.size === 0 ? new Set(evalItems.map((it) => it.order_no)) : new Set())}
+                                        title={goldenExcluded.size === 0 ? '전 항목 RAG 끄기' : '전 항목 RAG 켜기'}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'white', color: 'var(--ink-600)', fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                    >
+                                        <Icon name={goldenExcluded.size === 0 ? 'minus' : 'check'} size={12} />
+                                        {goldenExcluded.size === 0 ? '모두 끄기' : '모두 켜기'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         <div style={{ padding: 18 }}>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
@@ -1168,7 +1205,8 @@ export default function BatchManage() {
                                 })}
                             </div>
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 10, lineHeight: 1.5 }}>
-                                골든셋 학습에 반영할 평가 항목을 선택합니다. 평가배치 선택과 독립이며, 아래 ‘배치 저장’으로 저장됩니다.
+                                골든셋 학습은 <b>전체 평가항목</b>을 색인합니다. 여기서 <b>체크한 항목만 평가 시 RAG(골든셋 few-shot)를 사용</b>하고,
+                                해제한 항목은 평가 시 RAG를 쓰지 않습니다(색인은 그대로 유지 → 나중에 켜면 즉시 반영). 아래 ‘배치 저장’으로 저장됩니다.
                             </div>
                         </div>
                     </div>

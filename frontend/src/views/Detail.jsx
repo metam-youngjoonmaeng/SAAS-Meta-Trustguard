@@ -86,6 +86,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         enabled: isDefaultDept || dynamic,
         fallbackTemplate: brandConfig.checklistTemplate,
         dynamicList: dynamic,
+        activeBrandId, // 브랜드 전환 시 재조회 → 항목/분모 즉시 갱신(stale 방지).
     });
     // 표시용 체크리스트: 신규 브랜드는 DB 기반(effectiveTemplate), 레거시는 정적 템플릿.
     const checklistTemplate = dynamic ? (effectiveTemplate || []) : brandConfig.checklistTemplate;
