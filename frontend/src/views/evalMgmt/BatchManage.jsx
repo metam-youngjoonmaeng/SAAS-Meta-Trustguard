@@ -7,7 +7,7 @@ import { Icon, PageHead, Modal, Tabs } from './ui';
 import {
     fetchBatchConfig, saveBatchConfig, previewBatch, fetchBatchEvalItems,
     fetchBatchPrompt, saveBatchPrompt, rejudgeConfidence, fetchRejudgeStatus, fetchBatchPromptHistory,
-    runBatchNow, runGoldenLearn, fetchGoldenLearnStatus,
+    runBatchNow, runGoldenLearn, fetchGoldenLearnStatus, fetchGoldenLearnCoverage,
 } from '../../services/api';
 
 // 작은 입력 컨트롤 공통 스타일
@@ -590,6 +590,10 @@ export default function BatchManage() {
     const [promptModal, setPromptModal] = useState(null);  // null | 'uncertain' | 'contradiction'
     const [previewNonce, setPreviewNonce] = useState(0);    // 재판정 후 미리보기 강제 갱신
     const [batchView, setBatchView] = useState('eval');     // 'eval' | 'golden' — 평가배치/골든셋배치 분리 토글
+    // 골든셋 규모/학습 기준일(정밀) — 골든 탭 진입 + 학습 실행 후(nonce) 로드. ★effect(아래)에서 참조하므로
+    //   반드시 그 effect 보다 먼저 선언(TDZ ReferenceError 회피 — 매 렌더 deps 평가 시점 초기화 완료 보장).
+    const [goldenCoverage, setGoldenCoverage] = useState(null);
+    const [goldenCovNonce, setGoldenCovNonce] = useState(0);
 
     // 현재 화면 state → 서버 config 직렬화(Set→배열).
     // '점수·표본 검증'(①) 통합: 무작위·고점(bias)은 카드 마스터(on.quality)와 동행 — 카드를 켜면 함께 적용.
@@ -630,6 +634,14 @@ export default function BatchManage() {
         fetchBatchEvalItems().then((res) => { if (alive && res?.ok) setEvalItems(res.items || []); }).catch(() => {});
         return () => { alive = false; };
     }, []);
+
+    // 골든셋 규모/학습 기준일(정밀) — 골든 탭 진입 시 + 학습 실행 후(nonce) 로드.
+    useEffect(() => {
+        if (batchView !== 'golden') return undefined;
+        let alive = true;
+        fetchGoldenLearnCoverage().then((res) => { if (alive && res && !res.message) setGoldenCoverage(res); }).catch(() => {});
+        return () => { alive = false; };
+    }, [batchView, goldenCovNonce]);
 
     // config 변경 → 디바운스 후 서버 미리보기 갱신(실데이터 예상 대상).
     useEffect(() => {
@@ -673,8 +685,9 @@ export default function BatchManage() {
     // 골든셋 학습 '지금 실행' — 우리 스케줄 저장 후 에이전트 학습 즉시 1회 트리거(콜 재평가 아님).
     const [goldenRunning, setGoldenRunning] = useState(false);
     const [goldenMsg, setGoldenMsg] = useState(null);
+    const [goldenProgress, setGoldenProgress] = useState(null); // { processed, total, saved, skipped, failed }
     const handleGoldenRun = useCallback(async () => {
-        setGoldenRunning(true); setGoldenMsg('학습 시작 중…');
+        setGoldenRunning(true); setGoldenMsg('학습 시작 중…'); setGoldenProgress(null);
         try {
             await saveBatchConfig(config);   // 변경한 주기/시각 저장 후 실행
             const r = await runGoldenLearn(); // 즉시 반환(백그라운드 시작)
@@ -687,33 +700,42 @@ export default function BatchManage() {
                 return;
             }
             setGoldenMsg(`백그라운드 학습 진행 중… (골든셋 ${r.golden_count ?? '?'}건)`);
-            // 완료까지 상태 폴링(3초 간격, 최대 ~10분).
+            setGoldenProgress({ processed: 0, total: r.golden_count ?? null, saved: 0, skipped: 0, failed: 0 });
+            // 완료까지 상태 폴링(1초 간격, 최대 ~10분). 매 틱 progress 를 읽어 진행바 실시간 갱신.
             let tries = 0;
             const poll = async () => {
                 tries += 1;
+                let s = null;
                 try {
-                    const s = await fetchGoldenLearnStatus();
-                    if (s?.state === 'running' && tries < 200) { setTimeout(poll, 3000); return; }
-                    if (s?.state === 'done') {
-                        const rs = s.result || {};
-                        const saved = rs.saved ?? rs.records ?? '?';
-                        setGoldenMsg(rs.ok === false
-                            ? `학습 실패: ${rs.error || rs.reason || '오류'}`
-                            : `학습 완료 — 골든셋 ${rs.golden_count ?? s.golden_count ?? '?'}건, 색인 ${saved}건${rs.dry_run ? ' (dry-run)' : ''}`);
-                    } else if (s?.state === 'error') {
-                        setGoldenMsg('학습 실패: ' + (s.error || '오류'));
-                    } else {
-                        setGoldenMsg('학습 시작됨 — 잠시 후 실시간 로그에서 확인하세요.');
-                    }
+                    s = await fetchGoldenLearnStatus();
                 } catch {
                     setGoldenMsg('학습 시작됨 (상태 확인 불가) — 실시간 로그에서 확인하세요.');
-                } finally {
+                    setGoldenProgress(null);
                     setGoldenRunning(false);
+                    return;
                 }
+                if (s?.progress) setGoldenProgress(s.progress);
+                if (s?.state === 'running' && tries < 600) { setTimeout(poll, 1000); return; }
+                // 종료 상태 — 진행바 정리 + 버튼 재활성.
+                if (s?.state === 'done') {
+                    const rs = s.result || {};
+                    const saved = rs.saved ?? rs.records ?? '?';
+                    setGoldenMsg(rs.ok === false
+                        ? `학습 실패: ${rs.error || rs.reason || '오류'}`
+                        : `학습 완료 — 골든셋 ${rs.golden_count ?? s.golden_count ?? '?'}건, 색인 ${saved}건${rs.dry_run ? ' (dry-run)' : ''}`);
+                } else if (s?.state === 'error') {
+                    setGoldenMsg('학습 실패: ' + (s.error || '오류'));
+                } else {
+                    setGoldenMsg('학습 시작됨 — 잠시 후 실시간 로그에서 확인하세요.');
+                }
+                setGoldenProgress(null);
+                setGoldenRunning(false);
+                setGoldenCovNonce((n) => n + 1);  // 학습 종료 → 커버리지(학습 기준일) 재조회
             };
-            setTimeout(poll, 3000);
+            setTimeout(poll, 1000);
         } catch (e) {
             setGoldenMsg('실행 실패: ' + (e?.message || '오류'));
+            setGoldenProgress(null);
             setGoldenRunning(false);
         }
     }, [config]);
@@ -976,6 +998,21 @@ export default function BatchManage() {
                             <span className="muted-text" style={{ fontSize: 12, marginLeft: 'auto' }}>에이전트가 골든셋을 학습하는 시각을 우리가 지정 · 과거 콜 재평가 아님</span>
                         </div>
                         <div style={{ padding: 18 }}>
+                            {goldenCoverage && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid var(--border-soft)' }}>
+                                    <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink-900)', fontVariantNumeric: 'tabular-nums' }}>골든 {goldenCoverage.golden_count ?? 0}건</span>
+                                    <span style={{ fontSize: 11.5, color: 'var(--ink-400)' }}>· 대화 {goldenCoverage.conversation_count ?? 0}건</span>
+                                    <span style={{ marginLeft: 6, fontSize: 11.5, color: 'var(--ink-500)' }}>
+                                        학습 기준 <b style={{ color: 'var(--ink-800)' }}>{goldenCoverage.latest_indexed_at ? String(goldenCoverage.latest_indexed_at).slice(0, 10) : '미학습'}</b>
+                                        <span style={{ color: 'var(--ink-400)' }}> ({goldenCoverage.indexed_count ?? 0}건 색인)</span>
+                                    </span>
+                                    {goldenCoverage.needs_relearn && (
+                                        <span style={{ fontSize: 10.5, fontWeight: 700, color: '#B42318', background: '#FEF3F2', border: '1px solid #FECDCA', borderRadius: 999, padding: '2px 9px', lineHeight: 1.6 }}>
+                                            재학습 필요 · 미학습 {Math.max(0, (goldenCoverage.golden_count || 0) - (goldenCoverage.indexed_count || 0))}건
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 8 }}>학습 주기</div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                 <Segment value={scope.goldenFreq} onChange={(v) => setSk('goldenFreq', v)} options={[
@@ -995,6 +1032,28 @@ export default function BatchManage() {
                                 </button>
                                 {goldenMsg && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{goldenMsg}</span>}
                             </div>
+                            {goldenProgress && goldenProgress.total ? (
+                                <div style={{ marginTop: 12 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-700)' }}>
+                                            색인 중… {goldenProgress.processed}/{goldenProgress.total}
+                                        </span>
+                                        <span style={{ fontSize: 11.5, color: 'var(--ink-500)', fontVariantNumeric: 'tabular-nums' }}>
+                                            신규 {goldenProgress.saved ?? 0} · skip {goldenProgress.skipped ?? 0}
+                                            {goldenProgress.failed ? ` · 실패 ${goldenProgress.failed}` : ''}
+                                        </span>
+                                    </div>
+                                    <div style={{ height: 8, borderRadius: 6, background: 'var(--border-soft)', overflow: 'hidden' }}>
+                                        <div style={{
+                                            height: '100%',
+                                            width: `${Math.min(100, Math.round((goldenProgress.processed / goldenProgress.total) * 100))}%`,
+                                            background: 'var(--primary)',
+                                            borderRadius: 6,
+                                            transition: 'width 0.4s ease',
+                                        }} />
+                                    </div>
+                                </div>
+                            ) : null}
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
                                 {scope.goldenFreq === 'daily' ? `매일 ${scope.goldenTime}(KST)에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.` : scope.goldenFreq === 'hourly' ? '매시간 정각에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.' : "자동 실행 없이 '지금 실행'으로만 즉시 학습합니다."}
                                 {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다. '지금 실행'은 저장 후 즉시 1회 수동 학습합니다.

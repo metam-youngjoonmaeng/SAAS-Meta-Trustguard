@@ -283,7 +283,7 @@ export async function triggerGoldenLearn(pool, orgId, opts = {}) {
     // 구현 본체는 qaPipelineIngest.ingestGoldenSetToRag (기존 백엔드 엔드포인트만 호출 — golden_set 코어 무수정).
     // dryRun(opts.dryRun) 지원 — '지금 실행' 검증 시 AOSS 미기록 프리뷰. 과거 콜 재평가 아님(골든셋=학습용).
     try {
-        const result = await ingestGoldenSetToRag(pool, orgId, { dryRun: !!opts.dryRun });
+        const result = await ingestGoldenSetToRag(pool, orgId, { dryRun: !!opts.dryRun, onProgress: opts.onProgress });
         logger.info(
             `[golden-learn] ${tag} — 골든 ${result.golden_count ?? '?'}건 → rubric=${result.rubric_id}` +
                 `${result.dry_run ? ' (dry_run)' : ''} records=${result.records ?? '-'} saved=${result.saved ?? '-'} ok=${result.ok}`

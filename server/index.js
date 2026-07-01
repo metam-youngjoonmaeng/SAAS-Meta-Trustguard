@@ -19,7 +19,7 @@ import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChe
 /* SAMPLE_UPLOAD_FEATURE */ import { ingestSampleToDb, clearSamplesFromDb } from './sampleIngest.mjs';
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
-import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult } from './qaPipelineIngest.mjs';
+import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult, fetchGoldenIndexCoverage } from './qaPipelineIngest.mjs';
 import { loadRagFewshotConfig, saveRagFewshotConfig } from './ragFewshotConfig.mjs';
 import { startIcsQaPoller, startGoldenLearnScheduler, triggerGoldenLearn } from './icsQaPoller.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
@@ -4876,11 +4876,17 @@ app.post('/api/golden-learn/run', requireAdmin, async (req, res) => {
         /* 카운트 실패는 무시 — 실행에 영향 없음 */
     }
     const startedAt = Date.now();
-    goldenLearnStatus.set(orgId, { state: 'running', started_at: startedAt, dry_run: dryRun, golden_count: goldenCount });
+    goldenLearnStatus.set(orgId, { state: 'running', started_at: startedAt, dry_run: dryRun, golden_count: goldenCount, progress: { processed: 0, total: goldenCount || null, saved: 0, skipped: 0, failed: 0 } });
     // 백그라운드 실행 — 즉시 응답(프록시/브라우저 타임아웃 회피). 결과는 status 로 확인.
     (async () => {
         try {
-            const result = await triggerGoldenLearn(pool, orgId, { source: 'manual', dryRun });
+            // 진척 콜백 — ingest 청크마다 progress 갱신 → GET /status 폴링이 진행바에 실시간 반영.
+            const onProgress = (p) => {
+                const prev = goldenLearnStatus.get(orgId) || {};
+                if (prev.state !== 'running') return; // 완료/에러 후 늦은 콜백 무시
+                goldenLearnStatus.set(orgId, { ...prev, progress: p });
+            };
+            const result = await triggerGoldenLearn(pool, orgId, { source: 'manual', dryRun, onProgress });
             goldenLearnStatus.set(orgId, { state: 'done', started_at: startedAt, finished_at: Date.now(), dry_run: dryRun, golden_count: goldenCount, result });
             await insertQaAuditLog(pool, {
                 req,
@@ -4908,6 +4914,66 @@ app.get('/api/golden-learn/status', requireAdmin, (req, res) => {
         return;
     }
     res.json(goldenLearnStatus.get(orgId) || { state: 'idle' });
+});
+
+// GET /api/golden-learn/coverage — 골든셋 규모/학습 기준일(정밀) 표시용.
+//   · 테이블: 골든 총 건수(+대화 수) + 골든 최신 등록일(qa_golden_set.created_at MAX = "며칠까지 쌓였나")
+//   · 색인(정밀): 백엔드에서 실제 색인된 consultation_id 를 받아 PG created_at 과 조인 → latest_indexed_at
+//     (= "며칠까지 진짜 학습됐나"). 재색인 없이 기존 색인 그대로 정확.
+//   · needs_relearn: 골든 총량 > 색인량 또는 최신 등록 > 최신 색인 → 미학습분 존재(재학습 필요).
+app.get('/api/golden-learn/coverage', requireAdmin, async (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
+    if (orgId === null || orgId === undefined) {
+        res.status(400).json({ message: 'active brand context required' });
+        return;
+    }
+    try {
+        // ① 테이블 총량 + 최신 등록일
+        const { rows: t } = await pool.query(
+            `SELECT COUNT(*)::int AS golden_count,
+                    COUNT(DISTINCT qa_id)::int AS conversation_count,
+                    MAX(created_at) AS latest_golden_at
+               FROM public.qa_golden_set WHERE org_id = $1`,
+            [orgId]
+        );
+        const tot = t[0] || {};
+        // ② 색인 커버리지(정밀) — 백엔드에서 색인된 consultation_id 받아 PG created_at 과 조인
+        const cov = await fetchGoldenIndexCoverage(pool, orgId);
+        let latestIndexedAt = null;
+        let indexedConvCount = 0;
+        if (cov.consultation_ids && cov.consultation_ids.length) {
+            const { rows: ir } = await pool.query(
+                `SELECT COUNT(DISTINCT qa_id)::int AS indexed_conversation_count,
+                        MAX(created_at) AS latest_indexed_at
+                   FROM public.qa_golden_set WHERE org_id = $1 AND qa_id = ANY($2::text[])`,
+                [orgId, cov.consultation_ids]
+            );
+            latestIndexedAt = (ir[0] && ir[0].latest_indexed_at) || null;
+            indexedConvCount = (ir[0] && ir[0].indexed_conversation_count) || 0;
+        }
+        const latestGoldenMs = tot.latest_golden_at ? new Date(tot.latest_golden_at).getTime() : null;
+        const latestIndexedMs = latestIndexedAt ? new Date(latestIndexedAt).getTime() : null;
+        const needsRelearn = !!(
+            (tot.golden_count ?? 0) > (cov.indexed_count ?? 0) ||
+            (latestGoldenMs && (!latestIndexedMs || latestGoldenMs > latestIndexedMs))
+        );
+        const status = goldenLearnStatus.get(orgId) || {};
+        res.json({
+            org_id: orgId,
+            rubric_id: cov.rubric_id,
+            golden_count: tot.golden_count ?? 0,
+            conversation_count: tot.conversation_count ?? 0,
+            latest_golden_at: tot.latest_golden_at || null,
+            indexed_count: cov.indexed_count ?? 0,
+            indexed_conversation_count: indexedConvCount,
+            latest_indexed_at: latestIndexedAt,
+            needs_relearn: needsRelearn,
+            last_run_at: status.finished_at || null,
+            last_run_state: status.state || 'idle',
+        });
+    } catch (e) {
+        res.status(500).json({ message: String(e?.message || e) });
+    }
 });
 
 // GET /api/batch/eval-items — ② '적용 평가 항목' 칩용. 실제 평가된 항목(order_no+item) 집합.

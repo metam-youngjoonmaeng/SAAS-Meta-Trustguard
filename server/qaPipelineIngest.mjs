@@ -1660,34 +1660,87 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
         console.warn(`[golden-learn] 제외 항목(config.golden.excluded) 조회 실패(무시 — 전 항목 색인): ${(e && e.message) || e}`);
     }
 
-    // ④ 색인 위임 (dry_run 지원)
+    // ④ 색인 위임 (dry_run 지원) — 진행바용 청크 분할.
+    //   백엔드 /v2/mtg-rag/{rubric}/examples 는 examples 배열 길이 무관하게 처리하고, dedup(skip_existing)은
+    //   호출별 existing_external_ids 조회라 청크로 나눠도 멱등·결과 동일. examples 를 GOLDEN_LEARN_CHUNK(기본 5)
+    //   건씩 순차 POST 하고, 각 청크 후 opts.onProgress({processed,total,saved,skipped,failed})로 진척을 올려
+    //   프론트 진행바가 실시간 반영되게 한다. 단일 POST 대비 라운드트립만 늘 뿐(임베딩은 어차피 건별) 부담 미미.
     const timeoutMs = Number(process.env.GOLDEN_LEARN_TIMEOUT_MS || '600000') || 600000;
-    const resp = await fetch(`${base}/v2/mtg-rag/${encodeURIComponent(rubricId)}/examples`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ org_id: orgId, dry_run: dryRun, examples, ...(allowedItems ? { allowed_items: allowedItems } : {}) }),
-        signal: AbortSignal.timeout(timeoutMs),
-    });
-    let j = {};
-    try {
-        j = await resp.json();
-    } catch {
-        /* 비-JSON 응답 */
+    const chunkSize = Math.max(1, Number(process.env.GOLDEN_LEARN_CHUNK || '5') || 5);
+    const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+    const total = examples.length;
+    const agg = { saved: 0, skipped: 0, failed: 0, invalid: 0, filtered: 0 };
+    let processed = 0;
+    let lastStatus = 0;
+    let lastError = null;
+    let anyOk = false;
+    if (onProgress) onProgress({ processed: 0, total, ...agg });
+    for (let i = 0; i < total; i += chunkSize) {
+        const chunk = examples.slice(i, i + chunkSize);
+        const resp = await fetch(`${base}/v2/mtg-rag/${encodeURIComponent(rubricId)}/examples`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ org_id: orgId, dry_run: dryRun, examples: chunk, ...(allowedItems ? { allowed_items: allowedItems } : {}) }),
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+        lastStatus = resp.status;
+        let j = {};
+        try {
+            j = await resp.json();
+        } catch {
+            /* 비-JSON 응답 */
+        }
+        if (j.ok) anyOk = true;
+        if (j.error) lastError = j.error;
+        agg.saved += Number(j.saved || 0);
+        agg.skipped += Number(j.skipped || 0);
+        agg.failed += Number(j.failed || 0);
+        agg.invalid += Number(j.invalid || 0);
+        agg.filtered += Number(j.filtered || 0);
+        processed = Math.min(total, i + chunk.length);
+        if (onProgress) onProgress({ processed, total, ...agg });
     }
     return {
-        ok: !!j.ok,
+        ok: agg.failed === 0 && (total === 0 || anyOk),
         triggered: true,
         dry_run: dryRun,
         org_id: orgId,
         rubric_id: rubricId,
         golden_count: gs.length,
-        records: examples.length,
-        saved: j.saved,
-        skipped: j.skipped,
-        failed: j.failed,
-        invalid: j.invalid,
-        filtered: j.filtered,
-        http_status: resp.status,
-        error: j.error,
+        records: total,
+        saved: agg.saved,
+        skipped: agg.skipped,
+        failed: agg.failed,
+        invalid: agg.invalid,
+        filtered: agg.filtered,
+        http_status: lastStatus,
+        error: lastError,
     };
+}
+
+// 골든 색인 커버리지(정밀) — 백엔드 /v2/mtg-rag/{rubric}/coverage 로 **색인된 consultation_id 목록**을
+//   받아온다. 호출측(index.js)이 이를 PG qa_golden_set.created_at 과 조인해 "며칠까지 학습됐나"를 산출.
+//   rubric_id 는 색인 시(ingestGoldenSetToRag)와 동일 규칙(getOrgFewshot → inline-org{N})으로 맞춰 정합.
+export async function fetchGoldenIndexCoverage(pool, orgId, opts = {}) {
+    const base = resolvePipelineBaseUrl({}, opts).replace(/\/+$/, '');
+    let rubricId;
+    try {
+        const fx = await getOrgFewshot(pool, orgId);
+        rubricId = fx && fx.rubric_id ? fx.rubric_id : `inline-org${orgId}`;
+    } catch {
+        rubricId = `inline-org${orgId}`;
+    }
+    try {
+        const resp = await fetch(`${base}/v2/mtg-rag/${encodeURIComponent(rubricId)}/coverage`, {
+            signal: AbortSignal.timeout(15000),
+        });
+        const j = await resp.json().catch(() => ({}));
+        return {
+            rubric_id: rubricId,
+            indexed_count: Number(j.indexed_count || 0),
+            consultation_ids: Array.isArray(j.consultation_ids) ? j.consultation_ids.map((x) => String(x)) : [],
+        };
+    } catch (e) {
+        return { rubric_id: rubricId, indexed_count: 0, consultation_ids: [], error: String((e && e.message) || e) };
+    }
 }
