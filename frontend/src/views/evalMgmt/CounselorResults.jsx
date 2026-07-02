@@ -3,7 +3,7 @@
 //         강점·개선(항목 평균), 배정된 코칭(/api/coaching/mine).
 //         감정·대화 품질(/api/me/ta-metrics): 부정발화·금칙어=03 tb_ta_rslt, 회복률=05 qa_call_recovery. (미연동 시 mock 폴백)
 import React, { useState, useEffect, useMemo } from 'react';
-import { Icon, Gauge, Spark, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod, openInWindow } from './ui';
+import { Icon, Gauge, Spark, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod, openInWindow, openCallDetail } from './ui';
 import { scoreClass, TUTOR_SCENARIOS } from './mockData';
 import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
 import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
@@ -180,10 +180,19 @@ function CounselorCoachingCard({ g, onArchive }) {
                         <Icon name="flag" size={9} />배정 근거
                     </span>
                     {g.reasons.slice(0, 2).map((r) => (
-                        <span key={r.callId} className="pill" title={r.note || ''} style={{ background: 'white', border: '1px solid var(--border)', color: 'var(--ink-600)', fontSize: 9.5, fontWeight: 600, gap: 5 }}>
+                        <button
+                            key={r.callId}
+                            type="button"
+                            className="pill"
+                            onClick={() => openCallDetail(r.callId)}
+                            title={`상담 QA 분석 상세 보기${r.callNo ? ` · #${r.callNo}` : ''}`}
+                            style={{ background: 'white', border: '1px solid var(--border)', color: 'var(--ink-600)', fontSize: 9.5, fontWeight: 600, gap: 5, cursor: 'pointer' }}
+                        >
                             {String(r.date || '').slice(0, 10)}
+                            {r.callNo && <span className="mono muted-text" style={{ fontSize: 9 }}>#{r.callNo}</span>}
                             <b style={{ color: 'var(--ink-900)' }}>{r.score != null ? `${Number(r.score).toFixed(0)}점` : '-'}</b>
-                        </span>
+                            <Icon name="external-link" size={9} style={{ color: 'var(--ink-400)' }} />
+                        </button>
                     ))}
                     {g.reasons.length > 2 && <span className="muted-text" style={{ fontSize: 9.5 }}>외 {g.reasons.length - 2}건</span>}
                 </div>

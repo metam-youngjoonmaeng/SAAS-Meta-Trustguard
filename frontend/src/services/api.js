@@ -130,7 +130,7 @@ export async function fetchCoaching() {
 }
 
 // 관리자 — 코칭 배정 생성. body: { title, targetType, channel, members, items, scenarios, reasons }.
-//   reasons: [{ memberId, callIds: [qa_call_id...], note }] — 배정 근거(문제 콜), 선택.
+//   reasons: [{ memberId, callIds: [qa_call_id...] }] — 배정 근거(문제 콜), 선택.
 export async function createCoaching(payload) {
     return request('/api/coaching', { method: 'POST', body: JSON.stringify(payload || {}) });
 }

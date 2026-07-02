@@ -53,6 +53,23 @@ export function openInWindow({ name, title, width, height, render }) {
     win.focus();
 }
 
+// 콜 QA 분석 상세(#/detail/{qaId})를 새 탭으로 연다.
+// 배정 모달 등 별도 팝업(about:blank)에서 호출돼도 동작하도록 opener(메인 앱) URL 기준으로 연다.
+// 새 탭은 같은 세션 쿠키를 공유하므로 인증 유지. (앱은 최초 로드 시 해시 라우팅을 적용한다.)
+export function openCallDetail(qaId) {
+    if (typeof window === 'undefined' || qaId == null || qaId === '') return;
+    let base = window.location;
+    try {
+        if (window.opener && !window.opener.closed && window.opener.location && window.opener.location.origin) {
+            base = window.opener.location;
+        }
+    } catch {
+        /* cross-origin 은 우리 구조상 없음 — 현재 창 기준으로 폴백 */
+    }
+    const url = `${base.origin}${base.pathname}${base.search}#/detail/${encodeURIComponent(qaId)}`;
+    window.open(url, '_blank', 'noopener');
+}
+
 // ─────────────────────────────────────────────────────
 // Icon — 'chevron-right' → <ChevronRight/> (lucide-react)
 // ─────────────────────────────────────────────────────

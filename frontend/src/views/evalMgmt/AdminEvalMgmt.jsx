@@ -1,7 +1,7 @@
 // 관리자/슈퍼관리자 — 평가 관리 (디자인 프로토타입 etc/pages-admin.jsx 의 AdminEvalMgmt 외 포팅)
 // 평가 목록·필터·승인(AdminResults) + 코칭 배정(CoachingPanel/Carousel/MiniCard/DetailModal/CreateModal)
 import React, { useState, useEffect } from 'react';
-import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod, openInWindow } from './ui';
+import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod, openInWindow, openCallDetail } from './ui';
 import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, scenById, catMeta } from './mockData';
 import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, archiveCoaching, fetchCoachingHistory, updateReviewStatus, deleteCalls, fetchAgentCalls } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
@@ -642,13 +642,18 @@ function CoachingDetailModal({ g, members, onClose, onAssign, onUnassign, onRemo
                                         </div>
                                         <div style={{ display: 'grid', gap: 4 }}>
                                             {rs.map((r) => (
-                                                <div key={r.callId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', background: 'var(--background-soft)', borderRadius: 8 }}>
+                                                <div
+                                                    key={r.callId}
+                                                    onClick={() => openCallDetail(r.callId)}
+                                                    title="상담 QA 분석 상세 보기"
+                                                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', background: 'var(--background-soft)', borderRadius: 8, cursor: 'pointer' }}
+                                                >
                                                     <span style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'nowrap' }}>{String(r.date || '').slice(0, 16).replace('T', ' ')}</span>
                                                     {r.channel && <ChannelChip channel={r.channel} />}
-                                                    {r.note
-                                                        ? <span className="muted-text" style={{ fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>“{r.note}”</span>
-                                                        : <span style={{ flex: 1 }} />}
+                                                    {r.callNo && <span className="mono muted-text" style={{ fontSize: 10.5, whiteSpace: 'nowrap' }}>#{r.callNo}</span>}
+                                                    <span style={{ flex: 1 }} />
                                                     <span className={`score-chip ${scoreClass(r.score)}`} style={{ fontSize: 10.5, flexShrink: 0 }}>{r.score != null ? Number(r.score).toFixed(1) : '-'}</span>
+                                                    <Icon name="external-link" size={12} style={{ color: 'var(--ink-400)', flexShrink: 0 }} />
                                                 </div>
                                             ))}
                                         </div>
@@ -753,7 +758,7 @@ function CoachingHistoryModal({ onClose, windowed = false }) {
 }
 
 // 배정 근거용 — 한 상담사의 콜 이력 피커. 저점수 우선 정렬 · 인/아웃 필터 · 기간(기본 이번 달) · 15개씩 페이징 · lazy(펼칠 때만 로드).
-function MemberCallPicker({ agentId, picks, note, onToggleCall, onNote }) {
+function MemberCallPicker({ agentId, picks, onToggleCall }) {
     const LIMIT = 15;
     const [period, setPeriod] = useState(() => defaultPeriod('month'));  // 기본: 이번 달(날짜 수정 가능)
     const [io, setIo] = useState('');           // '' 전체 | 'I' 인바운드 | 'O' 아웃바운드
@@ -798,19 +803,26 @@ function MemberCallPicker({ agentId, picks, note, onToggleCall, onNote }) {
                 {!loading && data.items.map((c) => {
                     const on = !!picks[c.id];
                     return (
-                        <button
+                        <div
                             key={c.id}
-                            onClick={() => onToggleCall(c)}
-                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', border: on ? '1px solid var(--primary)' : '1px solid transparent', borderRadius: 8, background: on ? 'var(--primary-soft)' : 'transparent' }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', border: on ? '1px solid var(--primary)' : '1px solid transparent', borderRadius: 8, background: on ? 'var(--primary-soft)' : 'transparent' }}
                         >
-                            <div style={{ width: 17, height: 17, borderRadius: 5, flexShrink: 0, border: on ? 'none' : '1.5px solid var(--border-strong)', background: on ? 'var(--primary)' : 'transparent', color: 'white', display: 'grid', placeItems: 'center' }}>
-                                {on && <Icon name="check" size={12} />}
+                            {/* 체크(선택) 영역 */}
+                            <div onClick={() => onToggleCall(c)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                                <div style={{ width: 17, height: 17, borderRadius: 5, flexShrink: 0, border: on ? 'none' : '1.5px solid var(--border-strong)', background: on ? 'var(--primary)' : 'transparent', color: 'white', display: 'grid', placeItems: 'center' }}>
+                                    {on && <Icon name="check" size={12} />}
+                                </div>
+                                <span style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'nowrap' }}>{String(c.date || '').slice(0, 16).replace('T', ' ')}</span>
+                                {c.channel && <ChannelChip channel={c.channel} />}
+                                {c.callNo && <span className="mono muted-text" style={{ fontSize: 10.5, whiteSpace: 'nowrap' }}>#{c.callNo}</span>}
+                                <span style={{ flex: 1 }} />
+                                <span className={`score-chip ${scoreClass(c.score)}`} style={{ fontSize: 10.5, flexShrink: 0 }}>{c.score != null ? Number(c.score).toFixed(1) : '-'}</span>
                             </div>
-                            <span style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'nowrap' }}>{String(c.date || '').slice(0, 16).replace('T', ' ')}</span>
-                            {c.channel && <ChannelChip channel={c.channel} />}
-                            <span style={{ flex: 1 }} />
-                            <span className={`score-chip ${scoreClass(c.score)}`} style={{ fontSize: 10.5, flexShrink: 0 }}>{c.score != null ? Number(c.score).toFixed(1) : '-'}</span>
-                        </button>
+                            {/* 상담 QA 분석 상세(새 탭) */}
+                            <button className="icon-btn" title="상담 QA 분석 상세 보기" onClick={() => openCallDetail(c.id)} style={{ flexShrink: 0, width: 26, height: 26 }}>
+                                <Icon name="external-link" size={13} />
+                            </button>
+                        </div>
                     );
                 })}
             </div>
@@ -823,9 +835,6 @@ function MemberCallPicker({ agentId, picks, note, onToggleCall, onNote }) {
                     <button className="icon-btn" disabled={page >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))} title="다음"><Icon name="chevron-right" size={14} /></button>
                 </div>
             )}
-
-            {/* 메모(선택) */}
-            <input className="text-input" value={note || ''} onChange={(e) => onNote(e.target.value)} placeholder="메모(선택) — 왜 문제였는지" style={{ fontSize: 12.5 }} />
         </div>
     );
 }
@@ -857,14 +866,10 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
     }, [selected]);
 
     const toggleReasonCall = (mid, call) => setReasonSel((m) => {
-        const cur = m[mid] || { picks: {}, note: '' };
+        const cur = m[mid] || { picks: {} };
         const picks = { ...cur.picks };
         if (picks[call.id]) delete picks[call.id]; else picks[call.id] = call;
-        return { ...m, [mid]: { ...cur, picks } };
-    });
-    const setReasonNote = (mid, note) => setReasonSel((m) => {
-        const cur = m[mid] || { picks: {}, note: '' };
-        return { ...m, [mid]: { ...cur, note } };
+        return { ...m, [mid]: { picks } };
     });
 
     // 집중 영역은 편집 가능 — 프리셋에서 시드 후 추가/이름수정/삭제.
@@ -910,7 +915,7 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
         const p = areas.find((a) => a.key === focus);
         // 배정 근거(선택) — 콜을 1건 이상 고른 상담사만 전송.
         const reasons = Object.entries(reasonSel)
-            .map(([mid, v]) => ({ memberId: Number(mid), callIds: Object.keys(v.picks || {}), note: (v.note || '').trim() }))
+            .map(([mid, v]) => ({ memberId: Number(mid), callIds: Object.keys(v.picks || {}) }))
             .filter((r) => r.callIds.length > 0);
         onCreate({
             key: 'c-' + Date.now(),
@@ -1017,7 +1022,7 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
                         <div style={{ display: 'grid', gap: 8 }}>
                             {selected.map((mid) => {
                                 const a = agents.find((x) => x.user_id === mid);
-                                const sel = reasonSel[mid] || { picks: {}, note: '' };
+                                const sel = reasonSel[mid] || { picks: {} };
                                 const n = Object.keys(sel.picks).length;
                                 const open = openMember === mid;
                                 return (
@@ -1039,9 +1044,7 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
                                                 <MemberCallPicker
                                                     agentId={mid}
                                                     picks={sel.picks}
-                                                    note={sel.note}
                                                     onToggleCall={(c) => toggleReasonCall(mid, c)}
-                                                    onNote={(v) => setReasonNote(mid, v)}
                                                 />
                                             </div>
                                         )}
