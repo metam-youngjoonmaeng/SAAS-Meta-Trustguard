@@ -173,6 +173,21 @@ function CounselorCoachingCard({ g, onArchive }) {
                     {overflow > 0 && <span className="pill" style={{ background: 'transparent', color: 'var(--ink-400)', fontSize: 10, fontWeight: 600, border: 'none' }}>… 외 {overflow}건</span>}
                 </div>
             )}
+            {/* 배정 근거 — 이 코칭이 배정된 계기가 된 "내 콜"(본인 것만 노출). 근거 없으면 미표시. */}
+            {Array.isArray(g.reasons) && g.reasons.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '7px 9px', background: 'var(--background-soft)', borderRadius: 9 }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--ink-400)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                        <Icon name="flag" size={9} />배정 근거
+                    </span>
+                    {g.reasons.slice(0, 2).map((r) => (
+                        <span key={r.callId} className="pill" title={r.note || ''} style={{ background: 'white', border: '1px solid var(--border)', color: 'var(--ink-600)', fontSize: 9.5, fontWeight: 600, gap: 5 }}>
+                            {String(r.date || '').slice(0, 10)}
+                            <b style={{ color: 'var(--ink-900)' }}>{r.score != null ? `${Number(r.score).toFixed(0)}점` : '-'}</b>
+                        </span>
+                    ))}
+                    {g.reasons.length > 2 && <span className="muted-text" style={{ fontSize: 9.5 }}>외 {g.reasons.length - 2}건</span>}
+                </div>
+            )}
             <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 8, paddingTop: 11, borderTop: '1px solid var(--border)' }}>
                 <span className="muted-text" style={{ fontSize: 11 }}>{allDone ? '모두 완료' : `남은 ${totalScen - doneCount}개`}</span>
                 <button className="btn-mini primary" style={{ marginLeft: 'auto', flexShrink: 0, background: allDone ? '#2f9759' : undefined, borderColor: allDone ? '#2f9759' : undefined }} onClick={startLearning}>

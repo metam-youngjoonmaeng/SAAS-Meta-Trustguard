@@ -625,6 +625,40 @@ function CoachingDetailModal({ g, members, onClose, onAssign, onUnassign, onRemo
                     </div>
                 </div>
 
+                {/* 배정 근거 — 멤버별 문제 콜(관리자는 전원 열람). 근거 없는 배정은 섹션 미노출. */}
+                {Array.isArray(g.reasons) && g.reasons.length > 0 && (
+                    <div className="field">
+                        <span className="field-label">배정 근거 · 문제 콜 {g.reasons.length}건</span>
+                        <div style={{ display: 'grid', gap: 8 }}>
+                            {members.map((m) => {
+                                const rs = g.reasons.filter((r) => r.memberUserId === m.user_id);
+                                if (!rs.length) return null;
+                                return (
+                                    <div key={m.user_id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                            <Avatar id={m.av} name={m.name} />
+                                            <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-900)' }}>{m.name}</span>
+                                            <span className="muted-text" style={{ fontSize: 11 }}>· 콜 {rs.length}건</span>
+                                        </div>
+                                        <div style={{ display: 'grid', gap: 4 }}>
+                                            {rs.map((r) => (
+                                                <div key={r.callId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', background: 'var(--background-soft)', borderRadius: 8 }}>
+                                                    <span style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'nowrap' }}>{String(r.date || '').slice(0, 16).replace('T', ' ')}</span>
+                                                    {r.channel && <ChannelChip channel={r.channel} />}
+                                                    {r.note
+                                                        ? <span className="muted-text" style={{ fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>“{r.note}”</span>
+                                                        : <span style={{ flex: 1 }} />}
+                                                    <span className={`score-chip ${scoreClass(r.score)}`} style={{ fontSize: 10.5, flexShrink: 0 }}>{r.score != null ? Number(r.score).toFixed(1) : '-'}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 <div className="field">
                     <span className="field-label">개선 액션 아이템 · {g.items.length}</span>
                     <div style={{ display: 'grid', gap: 8 }}>
