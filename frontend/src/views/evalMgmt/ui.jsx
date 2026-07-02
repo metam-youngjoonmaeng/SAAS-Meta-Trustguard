@@ -53,21 +53,24 @@ export function openInWindow({ name, title, width, height, render }) {
     win.focus();
 }
 
-// 콜 QA 분석 상세(#/detail/{qaId})를 새 탭으로 연다.
-// 배정 모달 등 별도 팝업(about:blank)에서 호출돼도 동작하도록 opener(메인 앱) URL 기준으로 연다.
-// 새 탭은 같은 세션 쿠키를 공유하므로 인증 유지. (앱은 최초 로드 시 해시 라우팅을 적용한다.)
+// 콜 QA 분석 상세(#/detail/{qaId})로 이동한다.
+// ICS 임베드 세션 마커는 sessionStorage(탭 전용)라, 새 탭/새 창으로 열면 마커가 없어
+// _staleIcsDirect 로 판정돼 로그인 화면이 뜬다. → 이미 인증된 기존 창에서 in-place 이동한다.
+//   · 배정 모달 등 팝업에서 호출 시: opener(메인 앱)를 상세로 이동 + 포커스.
+//   · 그 외(메인 창): 현재 창에서 해시 이동(기존 상세 열기와 동일).
 export function openCallDetail(qaId) {
     if (typeof window === 'undefined' || qaId == null || qaId === '') return;
-    let base = window.location;
+    const hash = `#/detail/${encodeURIComponent(qaId)}`;
     try {
-        if (window.opener && !window.opener.closed && window.opener.location && window.opener.location.origin) {
-            base = window.opener.location;
+        if (window.opener && !window.opener.closed) {
+            window.opener.location.hash = hash;
+            window.opener.focus();
+            return;
         }
     } catch {
-        /* cross-origin 은 우리 구조상 없음 — 현재 창 기준으로 폴백 */
+        /* cross-origin 은 우리 구조상 없음 — 현재 창 폴백 */
     }
-    const url = `${base.origin}${base.pathname}${base.search}#/detail/${encodeURIComponent(qaId)}`;
-    window.open(url, '_blank', 'noopener');
+    window.location.hash = hash;
 }
 
 // ─────────────────────────────────────────────────────
