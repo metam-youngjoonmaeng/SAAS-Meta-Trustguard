@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Loader2, Pause, Play, RefreshCw, ChevronDown, ListChecks, Terminal, Sparkles } from 'lucide-react';
+import { Loader2, Pause, Play, RefreshCw, ChevronDown, ListChecks, Terminal, Sparkles, Wand2 } from 'lucide-react';
 import Header from '../components/Header';
-import { fetchAuditLogs, fetchAppLogsRecent, fetchRagLogRecent } from '../services/api';
+import { fetchAuditLogs, fetchAppLogsRecent, fetchRagLogRecent, fetchSkillLogRecent } from '../services/api';
 
 const POLL_INTERVAL_MS = 5000;
 const PAGE_SIZE = 100;
@@ -934,14 +934,157 @@ function RagLogBody({ entries, error }) {
     );
 }
 
+/* ── LLM 스킬 학습 로그 패널 (백엔드 인메모리 링버퍼) ──────────────
+ * 스킬 학습(수집→생성→활성화) 단계별 로그를 5초 폴링으로 표시 — RagLogPanel 미러.
+ * 그룹핑 없이 최신순 플랫 리스트. error 단계 행은 붉은 톤.
+ */
+const SKILL_STAGE_META = {
+    collect: { label: '수집', cls: 'bg-blue-50 text-blue-700' },
+    generate: { label: '생성', cls: 'bg-amber-50 text-amber-700' },
+    activate: { label: '활성화', cls: 'bg-indigo-50 text-indigo-700' },
+    done: { label: '완료', cls: 'bg-green-50 text-green-700' },
+    error: { label: '오류', cls: 'bg-red-50 text-red-700' },
+};
+
+function SkillLogPanel() {
+    const [entries, setEntries] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [paused, setPaused] = useState(false);
+
+    async function load() {
+        try {
+            // fetchSkillLogRecent 는 이미 entries 배열을 반환(api.js) — 재언랩 금지(이중 언랩 시 항상 [])
+            const rows = await fetchSkillLogRecent({ limit: PAGE_SIZE });
+            setEntries(Array.isArray(rows) ? rows : []);
+            setError(null);
+        } catch (e) {
+            setError(e?.message || '스킬 로그 로드 실패');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        load();
+    }, []);
+
+    useEffect(() => {
+        if (paused) return;
+        const id = setInterval(load, POLL_INTERVAL_MS);
+        return () => clearInterval(id);
+    }, [paused]);
+
+    const sorted = [...entries].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+    return (
+        <>
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-[12px] text-[#667085]">
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${paused ? 'bg-gray-400' : 'bg-green-500 animate-pulse'}`} />
+                        {paused ? '갱신 일시정지' : `자동 갱신 중 (${POLL_INTERVAL_MS / 1000}초)`}
+                    </span>
+                    <span>·</span>
+                    <span>총 {entries.length}건 표시</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setPaused((v) => !v)}
+                        className="inline-flex items-center gap-1.5 h-[34px] px-3.5 rounded-full border border-[#E4E7EC] bg-white text-[12.5px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer"
+                    >
+                        {paused ? <Play size={12} /> : <Pause size={12} />}
+                        {paused ? '재개' : '일시정지'}
+                    </button>
+                    <button
+                        onClick={load}
+                        className="inline-flex items-center gap-1.5 h-[34px] px-3.5 rounded-full bg-[#055AAF] text-white text-[12.5px] font-semibold hover:bg-[#1E70E0] shadow-sm cursor-pointer"
+                    >
+                        <RefreshCw size={12} /> 새로고침
+                    </button>
+                </div>
+            </div>
+
+            {loading ? (
+                <div className="flex justify-center py-12">
+                    <Loader2 className="h-5 w-5 animate-spin text-[#667085]" />
+                </div>
+            ) : (
+                <>
+                    {error && <p className="text-sm text-[#D92D20]">{error}</p>}
+                    {sorted.length === 0 ? (
+                        <div className="bg-white border border-[#E4E7EC] rounded-xl px-4 py-10 text-center text-sm text-[#667085]">
+                            표시할 스킬 학습 기록이 없습니다. (배치관리 '스킬배치' 또는 LLM 스킬 관리에서 학습을 실행하면 기록됩니다.)
+                        </div>
+                    ) : (
+                        <div className="bg-white border border-[#E4E7EC] rounded-xl overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-[#E4E7EC] bg-[#F9FAFB]">
+                                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[140px]">시각</th>
+                                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[90px]">브랜드</th>
+                                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[90px]">단계</th>
+                                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider">내용</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[#E4E7EC]">
+                                    {sorted.map((e, idx) => {
+                                        const stage = SKILL_STAGE_META[e.stage] || { label: e.stage || '—', cls: 'bg-gray-100 text-gray-600' };
+                                        const isErr = e.stage === 'error';
+                                        const changedCount = Array.isArray(e.items_changed) ? e.items_changed.length : null;
+                                        return (
+                                            <tr key={`${e.ts || 'na'}-${idx}`} className={`align-top ${isErr ? 'bg-red-50/60' : 'hover:bg-[#F9FAFB]'}`}>
+                                                <td className="px-3 py-2 text-[11.5px] text-[#667085] tabular-nums font-mono">{fmtRagTime(e.ts)}</td>
+                                                <td className="px-3 py-2 text-[12px] text-[#101828] tabular-nums">{e.org_id != null ? `org ${e.org_id}` : '—'}</td>
+                                                <td className="px-3 py-2">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${stage.cls}`}>{stage.label}</span>
+                                                </td>
+                                                <td className="px-3 py-2">
+                                                    <span className={`text-[12px] ${isErr ? 'text-[#B42318]' : 'text-[#475467]'}`}>{e.message || e.error || '—'}</span>
+                                                    <span className="inline-flex flex-wrap items-center gap-1 ml-2 align-middle">
+                                                        {e.source && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#F2F4F7] text-[#667085]">{e.source}</span>
+                                                        )}
+                                                        {e.case_count != null && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700">케이스 {e.case_count}건</span>
+                                                        )}
+                                                        {changedCount != null && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-700">항목 {changedCount}개</span>
+                                                        )}
+                                                        {e.version_id && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#F2F4F7] text-[#475467]">{e.version_id}</span>
+                                                        )}
+                                                    </span>
+                                                    {isErr && e.error && e.error !== e.message && (
+                                                        <div className="mt-0.5 text-[11px] text-[#B42318] break-all">{e.error}</div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </>
+            )}
+        </>
+    );
+}
+
 /* ── 페이지 컨테이너 + 서브탭 ────────────────────────────── */
-// RAG·사전(백엔드) 탭은 개발/실험 기능 — 기본 숨김(커밋 상태). 로컬 개발 시 .env.local 에
+// RAG·사전 / LLM 스킬(백엔드) 탭은 개발/실험 기능 — 기본 숨김(커밋 상태). 로컬 개발 시 .env.local 에
 // NEXT_PUBLIC_SHOW_RAG=1 을 주면 노출(활성화). 미설정(운영/공유)에서는 탭 자체가 렌더되지 않음.
 const SHOW_RAG_DEV = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_SHOW_RAG === '1';
 const TABS = [
     { id: 'audit', label: '사용자 활동 (Audit)', icon: ListChecks },
     { id: 'app', label: '서버 로그 (App)', icon: Terminal },
-    ...(SHOW_RAG_DEV ? [{ id: 'rag', label: 'RAG · 사전 (백엔드)', icon: Sparkles }] : []),
+    ...(SHOW_RAG_DEV
+        ? [
+              { id: 'rag', label: 'RAG · 사전 (백엔드)', icon: Sparkles },
+              { id: 'skill', label: 'LLM 스킬 (백엔드)', icon: Wand2 },
+          ]
+        : []),
 ];
 
 const Logs = () => {
@@ -956,7 +1099,9 @@ const Logs = () => {
                         ? `사용자 활동 audit — 최근 ${VIEW_WINDOW_DAYS}일 이내 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (DB 보관 3일).`
                         : activeTab === 'app'
                           ? `서버 application 로그 — 오늘 ${APP_LOG_LIMIT}줄을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (파일 보관 3일).`
-                          : `RAG few-shot 골든 / 금지어·사전 매칭 로그 — 백엔드 인메모리 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (평가 시 disable_rag=false 필요).`
+                          : activeTab === 'skill'
+                            ? `LLM 스킬 학습(수집→생성→활성화) 단계별 로그 — 백엔드 인메모리 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신.`
+                            : `RAG few-shot 골든 / 금지어·사전 매칭 로그 — 백엔드 인메모리 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (평가 시 disable_rag=false 필요).`
                 }
                 actions={null}
             />
@@ -983,7 +1128,7 @@ const Logs = () => {
             </div>
 
             <div className="space-y-3">
-                {activeTab === 'audit' ? <AuditPanel /> : activeTab === 'app' ? <AppPanel /> : <RagLogPanel />}
+                {activeTab === 'audit' ? <AuditPanel /> : activeTab === 'app' ? <AppPanel /> : activeTab === 'skill' ? <SkillLogPanel /> : <RagLogPanel />}
             </div>
         </div>
     );

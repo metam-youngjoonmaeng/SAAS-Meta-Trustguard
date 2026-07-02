@@ -668,6 +668,50 @@ export async function saveRagFewshotConfig(config) {
     return data?.config && typeof data.config === 'object' ? data.config : {};
 }
 
+/* ── LLM 스킬 학습(검수 정정 기반 평가 룰 overlay) ───────────────
+ * 검수자가 '낮음'/'높음' 정정 판단을 내린 케이스로 브랜드(rubric_id)별·평가항목별
+ * 보완 룰(overlay md)을 LLM 으로 학습 — qa-pipeline mtg-skill API 를 서버가 프록시.
+ * run/status 체인은 골든셋 학습(runGoldenLearn/fetchGoldenLearnStatus)과 동형 미러.
+ */
+// 스킬 학습 수동 트리거(백그라운드 실행) — 즉시 { ok, started, org_id } 반환. 진행/결과는 status 폴링.
+export async function runSkillLearn() {
+    return request('/api/skill-learn/run', { method: 'POST' });
+}
+// 스킬 학습 잡 상태 — { state:'running'|'done'|'error'|'idle', result:{ ok, rubric_id, version_id, case_count, items_changed, activated, error? } }.
+export async function fetchSkillLearnStatus() {
+    return request('/api/skill-learn/status');
+}
+// 스킬 버전 목록(최신순) — { ok, rubric_id, active_version_id, excluded_items:[int],
+//   versions:[{ version_id, label, created_at, model_id, case_count, items_changed:[int], item_count, source }] }.
+export async function fetchSkillVersions() {
+    return request('/api/skill-learn/versions');
+}
+// 스킬 버전 상세("어떻게 생성했는지" 화면 데이터 소스) — { ok, rubric_id, version_id, label, created_at, model_id,
+//   parent_version_id, case_count, active, items:[{ item_number, item_name, changed, overlay_md, cases:[...] }] }.
+export async function fetchSkillVersionDetail(versionId) {
+    if (!versionId) throw new Error('versionId is required');
+    return request(`/api/skill-learn/versions/${encodeURIComponent(versionId)}`);
+}
+// 스킬 버전 활성화/롤백 — version_id=null 이면 전체 비활성화(스킬 끄기). 응답 { ok, rubric_id, active_version_id }.
+export async function activateSkillVersion(versionId) {
+    return request('/api/skill-learn/activate', {
+        method: 'POST',
+        body: JSON.stringify({ version_id: versionId ?? null }),
+    });
+}
+/* ── LLM 스킬 학습 로그(서버 인메모리 링버퍼) ─────────────────────
+ * 엔트리: { ts, org_id, source, stage:'collect'|'generate'|'activate'|'done'|'error',
+ *          message, rubric_id?, version_id?, case_count?, items_changed?, error? }
+ * → entries 배열만 반환(없으면 빈 배열) — fetchRagLogRecent 미러(호출부 재언랩 금지).
+ */
+export async function fetchSkillLogRecent({ limit = 100 } = {}) {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    const qs = params.toString();
+    const data = await request(`/api/skill-log/recent${qs ? `?${qs}` : ''}`);
+    return Array.isArray(data?.entries) ? data.entries : [];
+}
+
 /* ── 알림(수신자별 영구 알림) ───────────────────────────────────
  * 검수 워크플로우 이벤트(최종승인·수정반영)를 수신자(상담사) 단위로 영구 저장/조회.
  * 본인에게 온 알림만 반환(세션 스코프). scope: 'all'(기본) | 'current'(안읽음만).

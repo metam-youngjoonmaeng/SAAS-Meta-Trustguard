@@ -21,7 +21,8 @@ import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
 import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult, fetchGoldenIndexCoverage } from './qaPipelineIngest.mjs';
 import { loadRagFewshotConfig, saveRagFewshotConfig } from './ragFewshotConfig.mjs';
-import { startIcsQaPoller, startGoldenLearnScheduler, triggerGoldenLearn } from './icsQaPoller.mjs';
+import { startIcsQaPoller, startGoldenLearnScheduler, triggerGoldenLearn, startSkillLearnScheduler, triggerSkillLearn } from './icsQaPoller.mjs';
+import { fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion, pushSkillSettings } from './skillLearn.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
 import { taEnabled, fetchTaMetricsByUids, fetchSegmentSentimentsByUids } from './taSource.mjs';
@@ -78,6 +79,20 @@ function pushRagLog(entry) {
     if (!entry || typeof entry !== 'object') return;
     RAG_LOG.push({ ts: Date.now(), ...entry });
     if (RAG_LOG.length > RAG_LOG_MAX) RAG_LOG.shift();
+}
+
+/* ── [LLM 스킬 로그, additive] 스킬 학습 체인(수집→생성→활성화) 인메모리 링버퍼 — RAG_LOG 미러 ──
+ * DB 미적재(스키마 불변). 레코드 계약:
+ *   { ts, org_id, source, stage, message,
+ *     rubric_id?, version_id?, case_count?, items_changed?, error? }
+ *   stage ∈ collect|generate|activate|done|error · org_id 필수(로그 탭 브랜드 필터용).
+ * 상한 500(초과분 shift). GET /api/skill-log/recent 가 최신순 반환. */
+const SKILL_LOG = [];
+const SKILL_LOG_MAX = 500;
+function pushSkillLog(entry) {
+    if (!entry || typeof entry !== 'object') return;
+    SKILL_LOG.push({ ts: Date.now(), ...entry });
+    if (SKILL_LOG.length > SKILL_LOG_MAX) SKILL_LOG.shift();
 }
 
 function orderNoPct(orderNos, rows) {
@@ -4847,6 +4862,15 @@ app.put('/api/batch/config', requireAdmin, async (req, res) => {
         //   이름을 organizations.rag_fewshot_item_names 로 동기화 → 그 항목만 평가 시 few-shot RAG 사용
         //   (getOrgFewshot 게이트). 색인(golden.excluded→allowed_items)과 동일 체크박스가 구동.
         await syncRagFewshotFromGolden(orgId, config).catch(() => {});
+        // LLM 스킬 '적용 평가 항목'(config.skill.excluded, order_no) → 파이프라인 스킬 설정
+        //   (PUT /v2/mtg-skill/{rubric}/settings, item_number) 동기화 — fire-and-forget(실패해도 저장은 성공).
+        if (orgId !== 0 && config.skill && Array.isArray(config.skill.excluded)) {
+            pushSkillSettings(pool, orgId, config.skill.excluded)
+                .then((r) => {
+                    if (r && r.ok === false) logger.warn(`[skill-learn] 설정 동기화 실패(org=${orgId}): ${r.error || '미상'}`);
+                })
+                .catch((e) => logger.warn(`[skill-learn] 설정 동기화 실패(org=${orgId}): ${e?.message || e}`));
+        }
         res.json({ ok: true, org_id: orgId });
     } catch (e) {
         console.error('PUT /api/batch/config error:', e?.message || e);
@@ -5071,6 +5095,201 @@ app.get('/api/golden-learn/coverage', requireAdmin, async (req, res) => {
     } catch (e) {
         res.status(500).json({ message: String(e?.message || e) });
     }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// LLM 스킬 학습 (skillLearn) — 검수 정정('낮음'/'높음') 케이스 기반 항목별 보완 룰(overlay) 생성.
+//   골든 학습(golden-learn) 체인 미러. 실행 상태는 인메모리(스키마 불변), 버전 저장·활성화는
+//   qa-pipeline(/v2/mtg-skill/*) 담당 — MTG 는 수집·프록시·로그만.
+// ───────────────────────────────────────────────────────────────────────────
+const skillLearnStatus = new Map(); // org_id -> { state:'running'|'done'|'error', source, started_at, finished_at, result, error }
+
+// 스킬 학습 결과 → 상태 Map + 스킬 로그 반영(수동/스케줄 공용).
+function recordSkillLearnResult(orgId, source, result, startedAt = null) {
+    const prev = skillLearnStatus.get(orgId) || {};
+    const ok = result?.ok === true;
+    skillLearnStatus.set(orgId, {
+        state: ok ? 'done' : 'error',
+        source,
+        started_at: startedAt ?? prev.started_at ?? null,
+        finished_at: Date.now(),
+        result,
+        error: ok ? null : (result?.error || null),
+    });
+    if (ok) {
+        if (result.activated && result.version_id) {
+            pushSkillLog({ org_id: orgId, source, stage: 'activate', message: `버전 활성화 — ${result.version_id}`, rubric_id: result.rubric_id, version_id: result.version_id });
+        }
+        pushSkillLog({
+            org_id: orgId,
+            source,
+            stage: 'done',
+            message: `스킬 학습 완료 — 버전 ${result.version_id ?? '-'} · 항목 ${(result.items_changed || []).length}개 갱신`,
+            rubric_id: result.rubric_id ?? null,
+            version_id: result.version_id ?? null,
+            case_count: result.case_count ?? null,
+            items_changed: result.items_changed || [],
+        });
+    } else {
+        pushSkillLog({
+            org_id: orgId,
+            source,
+            stage: 'error',
+            message: `스킬 학습 실패 — ${result?.error || '미상'}`,
+            rubric_id: result?.rubric_id ?? null,
+            case_count: result?.case_count ?? null,
+            error: result?.error || null,
+        });
+    }
+}
+
+// runSkillLearn onProgress → 스킬 로그 단계 전이 적재 + 상태 Map 실시간 단계 반영(수동/스케줄 공용).
+//   status.stage / status.stage_message 를 갱신해 '지금 실행' 화면 폴링이 진행 단계를 표시.
+//   collect 시작 로그는 호출측이 적재(중복 방지) — 여기선 상태 stage 만 갱신.
+function skillLearnProgressLogger(orgId, source) {
+    return (p) => {
+        if (!p || typeof p !== 'object') return;
+        const prev = skillLearnStatus.get(orgId) || {};
+        if (p.stage === 'collect') {
+            if (prev.state === 'running') {
+                skillLearnStatus.set(orgId, { ...prev, stage: 'collect', stage_message: '검수 정정 케이스 수집 중…' });
+            }
+        } else if (p.stage === 'generate') {
+            // 학습 대상 항목 breakdown(어떤 항목·정정 몇 건) → 진행 메시지에 노출.
+            const items = Array.isArray(p.target_items) ? p.target_items : [];
+            const names = items.map((t) => `${t.item_name} ${t.count}건`);
+            const shown = names.slice(0, 5).join(', ');
+            const more = names.length > 5 ? ` 외 ${names.length - 5}개` : '';
+            const brief = items.length
+                ? `${items.length}개 항목 (${shown}${more})`
+                : `정정 케이스 ${p.case_count ?? '?'}건`;
+            if (prev.state === 'running') {
+                skillLearnStatus.set(orgId, {
+                    ...prev,
+                    stage: 'generate',
+                    stage_message: `보완 룰 생성 중 — ${brief}`,
+                    case_count: p.case_count ?? null,
+                    target_items: items,
+                });
+            }
+            pushSkillLog({ org_id: orgId, source, stage: 'generate', message: `overlay 생성 요청 — 정정 케이스 ${p.case_count ?? '?'}건${items.length ? ` · ${items.length}개 항목` : ''}`, case_count: p.case_count ?? null });
+        }
+    };
+}
+
+// POST /api/skill-learn/run — 스킬 학습 수동 트리거(백그라운드). 즉시 응답({started:true}) 후
+//   triggerSkillLearn → runSkillLearn: 정정 케이스 수집 → 백엔드 POST /v2/mtg-skill/{rubric_id}/generate.
+//   진행/결과는 GET /api/skill-learn/status 로 폴링. golden-learn/run 미러.
+app.post('/api/skill-learn/run', requireAdmin, async (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
+    if (orgId === null || orgId === undefined) {
+        res.status(400).json({ message: 'active brand context required' });
+        return;
+    }
+    const cur = skillLearnStatus.get(orgId);
+    if (cur && cur.state === 'running') {
+        res.json({ ok: true, started: true, already_running: true, org_id: orgId });
+        return;
+    }
+    const startedAt = Date.now();
+    skillLearnStatus.set(orgId, { state: 'running', source: 'manual', started_at: startedAt, stage: 'collect', stage_message: '검수 정정 케이스 수집 중…' });
+    pushSkillLog({ org_id: orgId, source: 'manual', stage: 'collect', message: '스킬 학습 시작 — 검수 정정 케이스 수집' });
+    // 백그라운드 실행 — 즉시 응답(프록시/브라우저 타임아웃 회피). 결과는 status 로 확인.
+    (async () => {
+        try {
+            const result = await triggerSkillLearn(pool, orgId, {
+                source: 'manual',
+                onProgress: skillLearnProgressLogger(orgId, 'manual'),
+            });
+            recordSkillLearnResult(orgId, 'manual', result, startedAt);
+            await insertQaAuditLog(pool, {
+                req,
+                action: 'SKILL_LEARN_RUN',
+                resource_type: 'skill_learn',
+                resource_id: String(orgId),
+                http_method: 'POST',
+                http_path: '/api/skill-learn/run',
+                detail_json: JSON.stringify(result),
+                success: result.ok,
+            }).catch(() => {});
+        } catch (e) {
+            console.error('skill-learn background error:', e?.message || e);
+            skillLearnStatus.set(orgId, { state: 'error', source: 'manual', started_at: startedAt, finished_at: Date.now(), error: String(e?.message || e) });
+            pushSkillLog({ org_id: orgId, source: 'manual', stage: 'error', message: `스킬 학습 실패 — ${String(e?.message || e)}`, error: String(e?.message || e) });
+        }
+    })();
+    res.json({ ok: true, started: true, org_id: orgId });
+});
+
+// GET /api/skill-learn/status — 활성 브랜드의 스킬 학습 잡 최신 상태(폴링용).
+app.get('/api/skill-learn/status', requireAdmin, (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
+    if (orgId === null || orgId === undefined) {
+        res.status(400).json({ message: 'active brand context required' });
+        return;
+    }
+    res.json(skillLearnStatus.get(orgId) || { state: 'idle' });
+});
+
+// GET /api/skill-learn/versions — 스킬 버전 목록 프록시(org→rubric_id 해석 후 파이프라인 조회).
+app.get('/api/skill-learn/versions', requireAdmin, async (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
+    if (orgId === null || orgId === undefined) {
+        res.status(400).json({ message: 'active brand context required' });
+        return;
+    }
+    res.json(await fetchSkillVersions(pool, orgId));
+});
+
+// GET /api/skill-learn/versions/:versionId — 스킬 버전 상세(overlay md + 생성 근거 케이스) 프록시.
+app.get('/api/skill-learn/versions/:versionId', requireAdmin, async (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
+    if (orgId === null || orgId === undefined) {
+        res.status(400).json({ message: 'active brand context required' });
+        return;
+    }
+    res.json(await fetchSkillVersionDetail(pool, orgId, String(req.params.versionId || '')));
+});
+
+// POST /api/skill-learn/activate — 스킬 버전 활성화/롤백. body {version_id} (null=전체 비활성) 프록시.
+app.post('/api/skill-learn/activate', requireAdmin, async (req, res) => {
+    const orgId = resolveActiveOrgId(req, { strict: true });
+    if (orgId === null || orgId === undefined) {
+        res.status(400).json({ message: 'active brand context required' });
+        return;
+    }
+    const versionId = req.body && req.body.version_id != null ? String(req.body.version_id) : null;
+    const result = await activateSkillVersion(pool, orgId, versionId);
+    if (result && result.ok) {
+        pushSkillLog({
+            org_id: orgId,
+            source: 'manual',
+            stage: 'activate',
+            message: versionId ? `버전 활성화 — ${versionId}` : '스킬 비활성화(active 버전 해제)',
+            rubric_id: result.rubric_id ?? null,
+            version_id: versionId,
+        });
+    }
+    res.json(result);
+});
+
+// GET /api/skill-log/recent — 스킬 학습 로그 조회(rag-log/recent 미러, 인메모리 링버퍼).
+//   limit(기본 100, 1~500) · within_minutes(기본 60분) 밖은 컷. 최신순 {entries} 래핑.
+//   브랜드 격리: super_admin 은 전체, 그 외는 세션 org_id 엔트리만(org 미지정 관리자는 전체).
+app.get('/api/skill-log/recent', requireAdmin, (req, res) => {
+    let limit = Number(req.query.limit);
+    if (!Number.isFinite(limit) || limit <= 0) limit = 100;
+    limit = Math.min(Math.max(1, Math.trunc(limit)), SKILL_LOG_MAX);
+    let withinMin = Number(req.query.within_minutes);
+    if (!Number.isFinite(withinMin) || withinMin <= 0) withinMin = 60;
+    const cutoff = Date.now() - withinMin * 60 * 1000;
+    let rows = SKILL_LOG.filter((e) => (e.ts || 0) >= cutoff);
+    if (req.session?.role !== 'super_admin' && req.session?.org_id != null) {
+        rows = rows.filter((e) => Number(e.org_id) === Number(req.session.org_id));
+    }
+    // 최신순(ts 내림차순) — 원본 링버퍼는 변형하지 않도록 복사 후 정렬.
+    const entries = rows.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, limit);
+    res.json({ entries });
 });
 
 // GET /api/batch/eval-items — ② '적용 평가 항목' 칩용. 실제 평가된 항목(order_no+item) 집합.
@@ -5426,6 +5645,16 @@ bootstrap()
                     });
                     notifyGoldenLearnComplete(orgId, result, { source: 'schedule' }).catch(() => {});
                 },
+            });
+            // LLM 스킬 학습 스케줄러 — 골든 스케줄러 미러(브랜드별 skillFreq hourly/daily 발화).
+            //   자동 발화도 skillLearnStatus(수동과 동일 채널) + 스킬 로그(SKILL_LOG)에 반영.
+            startSkillLearnScheduler(pool, {
+                onRunStart: (orgId) => {
+                    skillLearnStatus.set(orgId, { state: 'running', source: 'schedule', started_at: Date.now(), stage: 'collect', stage_message: '검수 정정 케이스 수집 중…' });
+                    pushSkillLog({ org_id: orgId, source: 'schedule', stage: 'collect', message: '정기 스킬 학습 시작 — 검수 정정 케이스 수집' });
+                },
+                onProgress: (orgId, p) => skillLearnProgressLogger(orgId, 'schedule')(p),
+                onRunDone: (orgId, result) => recordSkillLearnResult(orgId, 'schedule', result),
             });
             // AICC MQTT 실시간 STT 스트림 — finish 시 그 콜 즉시 QA 적재(폴러 안전망 병행). MQTT_HOST 미설정 시 no-op.
             startMqttListener(pool, { ingestStandardCallFromQaPipeline });

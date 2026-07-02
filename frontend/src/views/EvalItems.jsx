@@ -8,6 +8,7 @@ import {
     fetchGoldenCasesByItem, removeGoldenSet,
     fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, deleteEvalItemDef, fetchEvalItemHistory,
     fetchPentagonAxes, savePentagonAxis, createPentagonAxis,
+    fetchSkillVersions, fetchSkillVersionDetail,
 } from '../services/api';
 import {
     Plus,
@@ -22,6 +23,7 @@ import {
     History,
     CheckCircle2,
     AlertTriangle,
+    Wand2,
 } from 'lucide-react';
 
 // ============================================================
@@ -53,7 +55,7 @@ const PENTAGON_MOCK_DESC = {
     '발화 안정성':      '발음·속도·억양 등 발화 안정성 종합',
 };
 
-const EvalItems = ({ activeBrandId }) => {
+const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
     const brandConfig = useMemo(() => getBrandConfig(activeBrandId), [activeBrandId]);
     // 레거시(신한1/한화2/코오롱3)=정적 체크리스트, 신규 브랜드(id≥4)=DB(eval_item_defs '기본') 기반 동적.
     const dynamic = isDynamicChecklistBrand(activeBrandId);
@@ -180,7 +182,7 @@ const EvalItems = ({ activeBrandId }) => {
                 className="grid gap-5"
                 style={{
                     gridTemplateColumns: '320px minmax(0, 1fr)',
-                    height: 'calc(100vh - 220px)',
+                    height: `calc(100vh - ${220 + topOffset}px)`,
                     minHeight: 600,
                 }}
             >
@@ -548,6 +550,11 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
                     label="골든셋 사례"
                     count={goldenLoading ? null : goldenCases.length}
                 />
+                <PreviewTab
+                    active={tab === 'skill'}
+                    onClick={() => setTab('skill')}
+                    label="스킬셋"
+                />
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 min-h-0">
@@ -574,7 +581,7 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
 ※ 출력 형식(JSON)·점수 산술 규칙·자기 검증·공통 정책은 백엔드가 자동 부착합니다.`}</pre>
                         </div>
                     </div>
-                ) : (
+                ) : tab === 'golden' ? (
                     <GoldenSetPreview
                         cases={goldenCases}
                         loading={goldenLoading}
@@ -587,6 +594,8 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
                             ));
                         }}
                     />
+                ) : (
+                    <SkillSetPreview item={item} />
                 )}
             </div>
         </div>
@@ -820,6 +829,228 @@ function GoldenSetPreview({ cases, loading, error, onDelete }) {
                 </ModalShell>
             )}
         </>
+    );
+}
+
+/* ── 항목별 스킬셋(학습된 보완 룰) 미리보기 ────────────────────
+   활성 스킬 버전 상세를 받아 이 항목(item_name 매칭)의 overlay 룰 +
+   생성 근거(검수 정정 케이스)를 표시. 버전 활성화/롤백/이력은
+   'AI QA 항목관리 > LLM 스킬 관리' 탭에서 다룬다(여기는 조회 전용). */
+
+function SkillDirectionBadge({ direction }) {
+    const meta =
+        direction === '낮음'
+            ? { bg: '#EFF8FF', fg: '#175CD3', bd: '#B2DDFF', label: '낮음 · AI 과소평가' }
+            : direction === '높음'
+              ? { bg: '#FFF6ED', fg: '#C4320A', bd: '#FFD6AE', label: '높음 · AI 과대평가' }
+              : { bg: '#F2F4F7', fg: '#667085', bd: '#E4E7EC', label: direction || '—' };
+    return (
+        <span
+            className="text-[10.5px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
+            style={{ background: meta.bg, color: meta.fg, border: `1px solid ${meta.bd}` }}
+        >
+            {meta.label}
+        </span>
+    );
+}
+
+function SkillCaseField({ label, text, boxed }) {
+    if (!text) return null;
+    return (
+        <div className="mt-2">
+            <div className="text-[9.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-1">{label}</div>
+            <div
+                className={`text-[11.5px] text-[#475467] leading-relaxed whitespace-pre-wrap break-words max-h-[150px] overflow-y-auto ${
+                    boxed ? 'bg-[#FAFBFC] px-2.5 py-1.5 rounded-md' : ''
+                }`}
+            >
+                {text}
+            </div>
+        </div>
+    );
+}
+
+function SkillSetPreview({ item }) {
+    // 버전 목록(rubric 단위, 항목 무관) + 활성 버전. 사용자가 아무 버전이나 골라 이 항목의 룰을 조회.
+    const [versions, setVersions] = useState([]);
+    const [activeId, setActiveId] = useState(null);
+    const [selectedVersionId, setSelectedVersionId] = useState(null);
+    const [listLoading, setListLoading] = useState(true);
+    const [listError, setListError] = useState(null);
+    // 선택 버전 상세 → 이 항목(item_name 매칭) overlay/케이스
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [detailError, setDetailError] = useState(null);
+    const [overlay, setOverlay] = useState(null);
+    const [cases, setCases] = useState([]);
+    const [changed, setChanged] = useState(false);
+    const [found, setFound] = useState(false);
+
+    // 1) 버전 목록 로드 — 기본 선택 = 활성 버전(없으면 최신). 스킬셋 탭 열 때만 마운트되어 지연 로드.
+    useEffect(() => {
+        let cancelled = false;
+        setListLoading(true);
+        setListError(null);
+        (async () => {
+            try {
+                const list = await fetchSkillVersions();
+                if (cancelled) return;
+                const vs = Array.isArray(list?.versions) ? list.versions : [];
+                const act = list?.active_version_id ?? null;
+                setVersions(vs);
+                setActiveId(act);
+                setSelectedVersionId(act || vs[0]?.version_id || null);
+                setListLoading(false);
+            } catch (e) {
+                if (!cancelled) { setListError(e?.message || '스킬 버전을 불러오지 못했습니다.'); setListLoading(false); }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [item.order_no, item.item]);
+
+    // 2) 선택 버전 상세 → 이 항목 overlay/케이스. item_name 매칭(MTG 동적 브랜드는 양쪽 모두
+    //    eval_item_defs 에서 파생돼 명칭 일치).
+    useEffect(() => {
+        if (!selectedVersionId) {
+            setOverlay(null); setCases([]); setChanged(false); setFound(false);
+            return undefined;
+        }
+        let cancelled = false;
+        setDetailLoading(true);
+        setDetailError(null);
+        (async () => {
+            try {
+                const detail = await fetchSkillVersionDetail(selectedVersionId);
+                if (cancelled) return;
+                const detailItems = Array.isArray(detail?.items) ? detail.items : [];
+                const norm = (s) => String(s || '').trim();
+                const match = detailItems.find((it) => norm(it.item_name) === norm(item.item));
+                setOverlay(match?.overlay_md || null);
+                setCases(Array.isArray(match?.cases) ? match.cases : []);
+                setChanged(Boolean(match?.changed));
+                setFound(Boolean(match));
+                setDetailLoading(false);
+            } catch (e) {
+                if (!cancelled) { setDetailError(e?.message || '버전 상세를 불러오지 못했습니다.'); setDetailLoading(false); }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [selectedVersionId, item.item]);
+
+    if (listLoading) {
+        return (
+            <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
+                <div className="text-[12.5px] text-[#667085]">불러오는 중…</div>
+            </div>
+        );
+    }
+    if (listError) {
+        return (
+            <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#FDA29B] bg-[#FFFBFA]">
+                <div className="text-[12.5px] text-[#B42318]">{listError}</div>
+            </div>
+        );
+    }
+    if (versions.length === 0) {
+        return (
+            <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
+                <Wand2 size={18} className="text-[#98A2B3] mx-auto mb-2" />
+                <div className="text-[12.5px] text-[#667085]">학습된 스킬 버전이 없습니다</div>
+                <div className="text-[11.5px] text-[#98A2B3] mt-1">상단 ‘LLM 스킬 관리’ 탭에서 학습하면 버전이 생성됩니다</div>
+            </div>
+        );
+    }
+
+    const isActiveSel = selectedVersionId === activeId;
+    const fmtOpt = (v) => {
+        const when = formatGoldenAddedAt(v.created_at);
+        return `${v.version_id}${when ? ` · ${when}` : ''}${v.version_id === activeId ? ' · 활성' : ''}`;
+    };
+
+    return (
+        <div className="flex flex-col gap-4">
+            {/* 버전 선택 — 활성/과거 버전 자유 조회 */}
+            <div className="flex items-center gap-2 flex-wrap pb-3 border-b border-[#F2F4F7]">
+                <span className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase">버전</span>
+                <select
+                    value={selectedVersionId || ''}
+                    onChange={(e) => setSelectedVersionId(e.target.value)}
+                    className="h-[30px] px-2 max-w-full rounded-md border border-[#D0D5DD] bg-white text-[12px] text-[#344054] cursor-pointer"
+                >
+                    {versions.map((v) => (
+                        <option key={v.version_id} value={v.version_id}>{fmtOpt(v)}</option>
+                    ))}
+                </select>
+                {isActiveSel ? (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#ECFDF3] text-[#067647] border border-[#ABEFC6]">활성 · 평가 적용 중</span>
+                ) : (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#F2F4F7] text-[#667085] border border-[#E4E7EC]">조회용 · 비활성</span>
+                )}
+                {activeId && !isActiveSel && (
+                    <button
+                        type="button"
+                        onClick={() => setSelectedVersionId(activeId)}
+                        className="text-[11px] font-semibold text-[#055AAF] hover:underline cursor-pointer"
+                    >
+                        활성 버전으로
+                    </button>
+                )}
+            </div>
+
+            {/* 선택 버전의 이 항목 상세 */}
+            {detailLoading ? (
+                <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
+                    <div className="text-[12.5px] text-[#667085]">불러오는 중…</div>
+                </div>
+            ) : detailError ? (
+                <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#FDA29B] bg-[#FFFBFA]">
+                    <div className="text-[12.5px] text-[#B42318]">{detailError}</div>
+                </div>
+            ) : !found || !overlay ? (
+                <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
+                    <Wand2 size={18} className="text-[#98A2B3] mx-auto mb-2" />
+                    <div className="text-[12.5px] text-[#667085]">이 버전에는 이 항목의 보완 룰이 없습니다</div>
+                    <div className="text-[11.5px] text-[#98A2B3] mt-1">다른 버전을 선택하거나, 검수 정정(낮음/높음)이 쌓이면 학습됩니다</div>
+                </div>
+            ) : (
+                <>
+                    <div>
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase">학습된 보완 룰 (overlay)</div>
+                            {changed ? (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#ECFDF3] text-[#067647] border border-[#ABEFC6]">이번 버전 갱신</span>
+                            ) : (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#F2F4F7] text-[#667085] border border-[#E4E7EC]">이전 버전 룰 승계</span>
+                            )}
+                        </div>
+                        <pre className="text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3 max-h-[40vh] overflow-auto">{overlay}</pre>
+                    </div>
+                    <div>
+                        <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2 inline-flex items-center gap-1">
+                            <Sparkles size={10} />생성 근거 · 투입 검수 정정 케이스{cases.length > 0 ? ` (${cases.length})` : ''}
+                        </div>
+                        {cases.length === 0 ? (
+                            <div className="text-[12px] text-[#98A2B3] italic">이번 버전에 투입된 케이스 없음 — 이전 버전 룰을 그대로 승계했습니다.</div>
+                        ) : (
+                            <div className="grid gap-2.5">
+                                {cases.map((c, i) => (
+                                    <div key={`${c.consultation_id || 'na'}-${i}`} className="p-4 rounded-xl bg-white border border-[#E4E7EC]">
+                                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                                            <span className="text-[12px] font-bold text-[#101828] font-mono">상담 {c.consultation_id || '—'}</span>
+                                            <SkillDirectionBadge direction={c.direction} />
+                                            <span className="text-[11.5px] font-bold text-[#475467] tabular-nums">AI 점수 {c.ai_score ?? '—'} / {c.max_score ?? '—'}</span>
+                                            {c.call_datetime && <span className="ml-auto text-[11px] text-[#98A2B3] tabular-nums">{c.call_datetime}</span>}
+                                        </div>
+                                        <SkillCaseField label="AI 판정 사유" text={c.ai_reason} />
+                                        <SkillCaseField label="근거 발화 발췌" text={c.evidence} boxed />
+                                        <SkillCaseField label="검수 사유 (콜 단위)" text={c.call_reason} />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
+        </div>
     );
 }
 

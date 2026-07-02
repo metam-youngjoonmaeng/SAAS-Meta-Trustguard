@@ -5,10 +5,11 @@ import Brands from './views/Brands';
 import Users from './views/Users';
 import Logs from './views/Logs';
 import Notifications from './views/Notifications';
-import EvalItems from './views/EvalItems';
+import EvalItemsHub from './views/EvalItemsHub';
 import Stats from './views/Stats';
 import EvalMgmt from './views/EvalMgmt';
 import BatchManage from './views/evalMgmt/BatchManage';
+import SkillPromptManage from './views/SkillPromptManage';
 import Sidebar from './components/Sidebar';
 import Nav from './components/Nav';
 import ProfileModal from './components/ProfileModal';
@@ -37,6 +38,7 @@ const EVAL_ITEMS_HASH = '#/admin/eval-items';
 const STATS_HASH = '#/admin/stats';
 const EVAL_MGMT_HASH = '#/eval-mgmt';
 const BATCH_HASH = '#/admin/batch';
+const SKILL_PROMPTS_HASH = '#/admin/skill-prompts';
 
 function parseRouteFromHash() {
     if (typeof window === 'undefined') {
@@ -73,6 +75,9 @@ function parseRouteFromHash() {
     }
     if (raw === '#/admin/batch') {
         return { tab: 'admin-batch', qaId: null };
+    }
+    if (raw === '#/admin/skill-prompts') {
+        return { tab: 'skill-prompts', qaId: null };
     }
     return { tab: 'dashboard', qaId: null };
 }
@@ -507,6 +512,7 @@ function App() {
         else if (tab === 'stats') navigateHash(STATS_HASH);
         else if (tab === 'eval-mgmt') navigateHash(EVAL_MGMT_HASH);
         else if (tab === 'admin-batch') navigateHash(BATCH_HASH);
+        else if (tab === 'skill-prompts') navigateHash(SKILL_PROMPTS_HASH);
     };
 
     // 상세에서 "목록으로" / 브레드크럼 부모 클릭 → 진입했던 탭으로 복귀(없으면 평가 리스트).
@@ -616,7 +622,7 @@ function App() {
                     </div>
                 )}
                 {activeTab === 'eval-items' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
-                    <EvalItems activeBrandId={selectedBrandId} />
+                    <EvalItemsHub activeBrandId={selectedBrandId} />
                 )}
                 {activeTab === 'eval-items' && !(currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
                     <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
@@ -627,6 +633,14 @@ function App() {
                     <div className="w-full"><div className="tg-eval"><BatchManage role={currentUser?.role} /></div></div>
                 )}
                 {activeTab === 'admin-batch' && !(currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
+                    <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
+                        <p className="text-sm text-[#667085]">admin 권한이 필요합니다.</p>
+                    </div>
+                )}
+                {activeTab === 'skill-prompts' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
+                    <div className="w-full"><div className="tg-eval"><SkillPromptManage /></div></div>
+                )}
+                {activeTab === 'skill-prompts' && !(currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
                     <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
                         <p className="text-sm text-[#667085]">admin 권한이 필요합니다.</p>
                     </div>
