@@ -1555,7 +1555,9 @@ export async function ingestStandardCallFromQaPipeline(pool, call, opts = {}) {
  */
 export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
     const dryRun = !!opts.dryRun;
-    const base = resolvePipelineBaseUrl({}, opts).replace(/\/+$/, '');
+    // 골든 학습은 call 컨텍스트가 없어 EC2 타깃을 기본으로 명시 — 평가(index.js pipeline_target:'ec2')와
+    // 동일 백엔드로 색인해야 검색 시 정합. 로컬 실험은 QA_PIPELINE_FORCE_LOCAL=1 이 이 분기보다 우선.
+    const base = resolvePipelineBaseUrl({ pipeline_target: 'ec2' }, opts).replace(/\/+$/, '');
 
     // ① rubric_id (평가 시점 검색 키와 동일 규칙 — 색인↔검색 정합)
     let rubricId;
@@ -1702,7 +1704,8 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
 //   받아온다. 호출측(index.js)이 이를 PG qa_golden_set.created_at 과 조인해 "며칠까지 학습됐나"를 산출.
 //   rubric_id 는 색인 시(ingestGoldenSetToRag)와 동일 규칙(getOrgFewshot → inline-org{N})으로 맞춰 정합.
 export async function fetchGoldenIndexCoverage(pool, orgId, opts = {}) {
-    const base = resolvePipelineBaseUrl({}, opts).replace(/\/+$/, '');
+    // 색인(ingestGoldenSetToRag)과 동일 백엔드를 봐야 "미학습 N건" 카운트가 정확 — EC2 타깃 기본.
+    const base = resolvePipelineBaseUrl({ pipeline_target: 'ec2' }, opts).replace(/\/+$/, '');
     let rubricId;
     try {
         const fx = await getOrgFewshot(pool, orgId);
