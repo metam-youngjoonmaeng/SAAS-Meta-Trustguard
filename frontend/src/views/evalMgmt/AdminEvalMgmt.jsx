@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod, openInWindow } from './ui';
 import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, scenById, catMeta } from './mockData';
-import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, archiveCoaching, fetchCoachingHistory, updateReviewStatus, deleteCalls } from '../../services/api';
+import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, archiveCoaching, fetchCoachingHistory, updateReviewStatus, deleteCalls, fetchAgentCalls } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
 import { DEFAULT_TOTAL_MAX } from '../../constants';
 
@@ -718,6 +718,84 @@ function CoachingHistoryModal({ onClose, windowed = false }) {
     );
 }
 
+// 배정 근거용 — 한 상담사의 콜 이력 피커. 저점수 우선 정렬 · 인/아웃 필터 · 기간(기본 이번 달) · 15개씩 페이징 · lazy(펼칠 때만 로드).
+function MemberCallPicker({ agentId, picks, note, onToggleCall, onNote }) {
+    const LIMIT = 15;
+    const [period, setPeriod] = useState(() => defaultPeriod('month'));  // 기본: 이번 달(날짜 수정 가능)
+    const [io, setIo] = useState('');           // '' 전체 | 'I' 인바운드 | 'O' 아웃바운드
+    const [page, setPage] = useState(1);
+    const [data, setData] = useState({ items: [], total: 0 });
+    const [loading, setLoading] = useState(false);
+
+    const ymd = (d) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '');
+
+    // 필터 바뀌면 1페이지로.
+    useEffect(() => { setPage(1); }, [agentId, io, period]);
+
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        fetchAgentCalls(agentId, { from: ymd(period.start), to: ymd(period.end), io, sort: 'score', page, limit: LIMIT })
+            .then((res) => { if (!cancelled) setData({ items: res.items || [], total: res.total || 0 }); })
+            .catch(() => { if (!cancelled) setData({ items: [], total: 0 }); })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [agentId, io, period, page]);
+
+    const pages = Math.max(1, Math.ceil((data.total || 0) / LIMIT));
+
+    return (
+        <div style={{ display: 'grid', gap: 10 }}>
+            {/* 필터: 기간 + 채널(인/아웃) */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                <PeriodPicker value={period} onChange={setPeriod} />
+                <div className="seg">
+                    {[['', '전체'], ['I', '인바운드'], ['O', '아웃바운드']].map(([k, lbl]) => (
+                        <button key={k || 'all'} className={`seg-btn ${io === k ? 'active' : ''}`} onClick={() => setIo(k)}>{lbl}</button>
+                    ))}
+                </div>
+                <span className="muted-text" style={{ fontSize: 11, marginLeft: 'auto' }}>저점수 우선 · {data.total}건</span>
+            </div>
+
+            {/* 콜 목록(스크롤) */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: 10, maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 2, padding: 6, background: 'white' }}>
+                {loading && <div className="muted-text" style={{ fontSize: 12, padding: '14px 6px', textAlign: 'center' }}>불러오는 중…</div>}
+                {!loading && data.items.length === 0 && <div className="muted-text" style={{ fontSize: 12, padding: '14px 6px', textAlign: 'center' }}>해당 기간의 평가된 콜이 없습니다.</div>}
+                {!loading && data.items.map((c) => {
+                    const on = !!picks[c.id];
+                    return (
+                        <button
+                            key={c.id}
+                            onClick={() => onToggleCall(c)}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', border: on ? '1px solid var(--primary)' : '1px solid transparent', borderRadius: 8, background: on ? 'var(--primary-soft)' : 'transparent' }}
+                        >
+                            <div style={{ width: 17, height: 17, borderRadius: 5, flexShrink: 0, border: on ? 'none' : '1.5px solid var(--border-strong)', background: on ? 'var(--primary)' : 'transparent', color: 'white', display: 'grid', placeItems: 'center' }}>
+                                {on && <Icon name="check" size={12} />}
+                            </div>
+                            <span style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'nowrap' }}>{String(c.date || '').slice(0, 16).replace('T', ' ')}</span>
+                            {c.channel && <ChannelChip channel={c.channel} />}
+                            <span style={{ flex: 1 }} />
+                            <span className={`score-chip ${scoreClass(c.score)}`} style={{ fontSize: 10.5, flexShrink: 0 }}>{c.score != null ? Number(c.score).toFixed(1) : '-'}</span>
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* 페이지네이션 */}
+            {pages > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                    <button className="icon-btn" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} title="이전"><Icon name="chevron-left" size={14} /></button>
+                    <span className="muted-text" style={{ fontSize: 11.5 }}>{page} / {pages}</span>
+                    <button className="icon-btn" disabled={page >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))} title="다음"><Icon name="chevron-right" size={14} /></button>
+                </div>
+            )}
+
+            {/* 메모(선택) */}
+            <input className="text-input" value={note || ''} onChange={(e) => onNote(e.target.value)} placeholder="메모(선택) — 왜 문제였는지" style={{ fontSize: 12.5 }} />
+        </div>
+    );
+}
+
 function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false }) {
     const [targetType, setTargetType] = useState('group');
     const [channel, setChannel] = useState('call');   // 학습 채널 — 'call'(전화) | 'chat'(채팅). Tutor 딥링크 mode 로 전달.
@@ -726,6 +804,34 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
     const [items, setItems] = useState([]);
     const [scenarios, setScenarios] = useState([]);
     const [scenCat, setScenCat] = useState('order');
+    // 배정 근거(선택) — { [memberId]: { picks: {callId: callObj}, note } }. 상담사별 개별.
+    const [reasonSel, setReasonSel] = useState({});
+    const [openMember, setOpenMember] = useState(null);  // 한 번에 한 명만 펼침
+
+    // 대상에서 빠진 상담사의 근거는 정리, 펼침도 동기화(단일 선택이면 자동 펼침).
+    useEffect(() => {
+        setReasonSel((m) => {
+            const next = {};
+            for (const id of selected) if (m[id]) next[id] = m[id];
+            return Object.keys(next).length === Object.keys(m).length ? m : next;
+        });
+        setOpenMember((o) => {
+            if (selected.length === 1) return selected[0];
+            if (o != null && !selected.includes(o)) return null;
+            return o;
+        });
+    }, [selected]);
+
+    const toggleReasonCall = (mid, call) => setReasonSel((m) => {
+        const cur = m[mid] || { picks: {}, note: '' };
+        const picks = { ...cur.picks };
+        if (picks[call.id]) delete picks[call.id]; else picks[call.id] = call;
+        return { ...m, [mid]: { ...cur, picks } };
+    });
+    const setReasonNote = (mid, note) => setReasonSel((m) => {
+        const cur = m[mid] || { picks: {}, note: '' };
+        return { ...m, [mid]: { ...cur, note } };
+    });
 
     // 집중 영역은 편집 가능 — 프리셋에서 시드 후 추가/이름수정/삭제.
     const [areas, setAreas] = useState(() => Object.entries(COACH_PRESETS).map(([k, p]) => ({ key: k, ...p })));
@@ -768,6 +874,10 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
     const submit = () => {
         if (!canSave) return;
         const p = areas.find((a) => a.key === focus);
+        // 배정 근거(선택) — 콜을 1건 이상 고른 상담사만 전송.
+        const reasons = Object.entries(reasonSel)
+            .map(([mid, v]) => ({ memberId: Number(mid), callIds: Object.keys(v.picks || {}), note: (v.note || '').trim() }))
+            .filter((r) => r.callIds.length > 0);
         onCreate({
             key: 'c-' + Date.now(),
             title: p.title,
@@ -780,6 +890,7 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
             members: selected,
             targetType,
             channel,
+            reasons,
             assigned: true,
             assignedBy: '관리자',
             assignedAt: formatDateTime(new Date()).slice(0, 10),
@@ -863,6 +974,49 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
                         })}
                     </div>
                 </div>
+
+                {/* 배정 근거 (선택) — 상담사별 문제 콜. 그룹이라도 근거는 본인만 열람. */}
+                {selected.length > 0 && (
+                    <div className="field">
+                        <span className="field-label">배정 근거 <span className="muted-text" style={{ fontWeight: 600 }}>(선택)</span></span>
+                        <span className="field-hint" style={{ marginBottom: 8 }}>상담사별로 문제였던 콜을 선택하세요. 그룹이라도 근거 콜은 해당 상담사 본인만 볼 수 있습니다.</span>
+                        <div style={{ display: 'grid', gap: 8 }}>
+                            {selected.map((mid) => {
+                                const a = agents.find((x) => x.user_id === mid);
+                                const sel = reasonSel[mid] || { picks: {}, note: '' };
+                                const n = Object.keys(sel.picks).length;
+                                const open = openMember === mid;
+                                return (
+                                    <div key={mid} style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                                        <button
+                                            onClick={() => setOpenMember(open ? null : mid)}
+                                            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit', background: open ? 'var(--background-soft)' : 'white', border: 'none', textAlign: 'left' }}
+                                        >
+                                            <Avatar id={a?.av} name={a?.name || String(mid)} />
+                                            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-900)' }}>{a?.name || `상담사 ${mid}`}</span>
+                                            {n > 0
+                                                ? <span className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700 }}>근거 {n}건</span>
+                                                : <span className="muted-text" style={{ fontSize: 11 }}>근거 없음</span>}
+                                            <span style={{ flex: 1 }} />
+                                            <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} style={{ color: 'var(--ink-400)' }} />
+                                        </button>
+                                        {open && (
+                                            <div style={{ padding: '10px 11px', borderTop: '1px solid var(--border)' }}>
+                                                <MemberCallPicker
+                                                    agentId={mid}
+                                                    picks={sel.picks}
+                                                    note={sel.note}
+                                                    onToggleCall={(c) => toggleReasonCall(mid, c)}
+                                                    onNote={(v) => setReasonNote(mid, v)}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {/* 집중 영역 (편집 가능) */}
                 <div className="field">

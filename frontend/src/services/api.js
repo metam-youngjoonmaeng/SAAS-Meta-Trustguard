@@ -129,9 +129,25 @@ export async function fetchCoaching() {
     return request('/api/coaching');
 }
 
-// 관리자 — 코칭 배정 생성. body: { title, targetType, channel, members, items, scenarios }.
+// 관리자 — 코칭 배정 생성. body: { title, targetType, channel, members, items, scenarios, reasons }.
+//   reasons: [{ memberId, callIds: [qa_call_id...], note }] — 배정 근거(문제 콜), 선택.
 export async function createCoaching(payload) {
     return request('/api/coaching', { method: 'POST', body: JSON.stringify(payload || {}) });
+}
+
+// 관리자 — 특정 상담사의 콜 이력(배정 근거 콜 피커). 저점수 우선 정렬·페이징.
+//   opts: { from, to(YYYY-MM-DD), io('I'|'O'|''), sort('score'|'date'), page, limit }
+//   응답: { total, page, limit, items:[{ id, date, score, uid, callNo, ioDivi, channel }] }
+export async function fetchAgentCalls(agentId, { from, to, io, sort, page, limit } = {}) {
+    if (agentId == null) throw new Error('agentId is required');
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
+    if (io) qs.set('io', io);
+    if (sort) qs.set('sort', sort);
+    if (page) qs.set('page', String(page));
+    if (limit) qs.set('limit', String(limit));
+    return request(`/api/agents/${encodeURIComponent(agentId)}/calls?${qs.toString()}`);
 }
 
 // 관리자 — 코칭 배정 삭제.
