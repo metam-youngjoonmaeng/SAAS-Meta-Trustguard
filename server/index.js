@@ -4248,6 +4248,74 @@ function toCoachingRow(row) {
     };
 }
 
+/* ── 코칭 배정 근거용: 특정 상담사의 콜 이력(페이징) ───────────────
+ * GET /api/agents/:agentId/calls  (관리자 전용)
+ * 배정 모달에서 "이 상담사의 어떤 콜이 문제였나"를 고르기 위한 경량 피커 소스.
+ *   query: from,to(YYYY-MM-DD, CDATE 기준 포함) · io('I'|'O') · sort('score'|'date') · page · limit(기본15)
+ *   기본 정렬 = 저점수(코칭구간) 우선. org 스코프. /api/calls 와 동일 유니버스(평가된 콜).
+ * ────────────────────────────────────────────────────────── */
+app.get('/api/agents/:agentId/calls', requireAdmin, async (req, res) => {
+    try {
+        const agentId = Number(req.params.agentId);
+        if (!Number.isFinite(agentId)) {
+            res.status(400).json({ message: 'invalid agentId' });
+            return;
+        }
+        const orgId = resolveActiveOrgId(req);
+        const params = [agentId];
+        const conds = [`c.agent_user_id = $1`];
+        if (orgId != null) { params.push(orgId); conds.push(`c.org_id = $${params.length}`); }
+        const io = String(req.query.io || '').toUpperCase();
+        if (io === 'I' || io === 'O') { params.push(io); conds.push(`c.io_divi = $${params.length}`); }
+        const from = String(req.query.from || '').trim();
+        const to = String(req.query.to || '').trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(from)) { params.push(from); conds.push(`left(c."CDATE",10) >= $${params.length}`); }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(to)) { params.push(to); conds.push(`left(c."CDATE",10) <= $${params.length}`); }
+        // 평가된 콜만(= /api/calls 유니버스). 포기호/미응대 제외.
+        conds.push(`(
+            EXISTS (SELECT 1 FROM qa_evaluation_rows er    WHERE er."ID" = c."ID")
+         OR EXISTS (SELECT 1 FROM qa_consumer_eval_rows cr WHERE cr."ID" = c."ID")
+         OR EXISTS (SELECT 1 FROM qa_checklist_rows kr     WHERE kr."ID" = c."ID")
+        )`);
+        conds.push(`EXISTS (SELECT 1 FROM qa_conversations q WHERE q."ID" = c."ID" AND q.speaker = '상담사')`);
+        const where = `WHERE ${conds.join(' AND ')}`;
+        const order = req.query.sort === 'date'
+            ? `c."CDATE" DESC`
+            : `c."TOTAL_SCORE" ASC NULLS LAST, c."CDATE" DESC`;   // 기본: 저점수 우선
+        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 15));
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const offset = (page - 1) * limit;
+
+        const { rows: cnt } = await pool.query(`SELECT COUNT(*)::int AS n FROM qa_calls c ${where}`, params);
+        const total = cnt[0]?.n || 0;
+        const itemsParams = params.slice();
+        itemsParams.push(limit, offset);
+        const { rows } = await pool.query(
+            `SELECT c."ID" AS id, c."CDATE" AS date, c."TOTAL_SCORE" AS score,
+                    c."UID" AS uid, c."CALL_SEQ" AS call_no, c.io_divi AS io_divi
+               FROM qa_calls c ${where}
+              ORDER BY ${order}
+              LIMIT $${itemsParams.length - 1} OFFSET $${itemsParams.length}`,
+            itemsParams
+        );
+        res.json({
+            total, page, limit,
+            items: rows.map((r) => ({
+                id: r.id,
+                date: r.date,
+                score: r.score == null ? null : Number(r.score),
+                uid: r.uid,
+                callNo: r.call_no,
+                ioDivi: r.io_divi,
+                channel: r.io_divi === 'I' ? 'inbound' : r.io_divi === 'O' ? 'outbound' : null,
+            })),
+        });
+    } catch (error) {
+        console.error('GET /api/agents/:agentId/calls error:', error);
+        res.status(500).json({ message: 'Failed to load agent calls.' });
+    }
+});
+
 app.get('/api/coaching', requireAdmin, async (req, res) => {
     try {
         const orgId = resolveActiveOrgId(req);
@@ -4267,6 +4335,35 @@ app.get('/api/coaching', requireAdmin, async (req, res) => {
               ORDER BY g.created_at DESC`,
             params
         );
+        // 배정 근거(문제 콜) — 관리자는 전 멤버 근거 열람. 멤버별로 묶어 상세 모달에서 표시.
+        const reasonsByAssignment = new Map();
+        const _rids = rows.map((r) => r.id);
+        if (_rids.length) {
+            const { rows: rrows } = await pool.query(
+                `SELECT r.assignment_id, r.member_user_id, r.qa_call_id, r.note,
+                        COALESCE(c."CDATE", r.call_date) AS date,
+                        COALESCE(c."TOTAL_SCORE", r.score) AS score,
+                        c."UID" AS uid, c."CALL_SEQ" AS call_no, c.io_divi
+                   FROM public.coaching_assignment_reasons r
+                   LEFT JOIN public.qa_calls c ON c."ID" = r.qa_call_id
+                  WHERE r.assignment_id = ANY($1::bigint[])
+                  ORDER BY score ASC NULLS LAST`,
+                [_rids]
+            );
+            for (const rr of rrows) {
+                if (!reasonsByAssignment.has(rr.assignment_id)) reasonsByAssignment.set(rr.assignment_id, []);
+                reasonsByAssignment.get(rr.assignment_id).push({
+                    memberUserId: rr.member_user_id,
+                    callId: rr.qa_call_id,
+                    date: rr.date,
+                    score: rr.score == null ? null : Number(rr.score),
+                    uid: rr.uid,
+                    callNo: rr.call_no,
+                    channel: rr.io_divi === 'I' ? 'inbound' : rr.io_divi === 'O' ? 'outbound' : null,
+                    note: rr.note || null,
+                });
+            }
+        }
         // 진행률 — 멤버별 튜터(02) 완료 조회 후 '전원 완료' 집계. 튜터 미연동/실패 시 진행률 미상(null) → X(정리) 미노출.
         const out = await Promise.all(rows.map(async (row) => {
             const base = toCoachingRow(row);
@@ -4285,6 +4382,7 @@ app.get('/api/coaching', requireAdmin, async (req, res) => {
                 membersTotal,
                 membersDone: measurable ? membersDone : null,
                 allDone: measurable && membersTotal > 0 && membersDone === membersTotal,
+                reasons: reasonsByAssignment.get(row.id) || [],  // 멤버별 배정 근거(콜)
             };
         }));
         res.json(out);
@@ -4399,6 +4497,7 @@ app.post('/api/coaching', requireAdmin, async (req, res) => {
         // 배정 시나리오는 개수 제한 없음(관리자가 많이 줄 수 있음). 튜터가 한 번에 3개씩 소거하며 진행.
         const scenarios = Array.isArray(b.scenarios) ? b.scenarios.map((x) => String(x)).filter(Boolean) : [];
         const channel = b.channel === 'chat' ? 'chat' : 'call';
+        const reasons = Array.isArray(b.reasons) ? b.reasons : [];   // [{memberId, callIds[], note}] — 배정 근거(선택)
         if (!title) {
             res.status(400).json({ message: 'title is required' });
             return;
@@ -4408,14 +4507,48 @@ app.post('/api/coaching', requireAdmin, async (req, res) => {
             return;
         }
         const orgId = resolveActiveOrgId(req);
-        const { rows } = await pool.query(
-            `INSERT INTO public.coaching_assignments
-                 (org_id, title, target_type, members, action_items, scenario_codes, channel, assigned_by_user_id)
-             VALUES ($1, $2, $3, $4::int[], $5::text[], $6::text[], $7, $8)
-             RETURNING *`,
-            [orgId, title, targetType, members, items, scenarios, channel, req.session?.user_id ?? null]
-        );
-        const created = rows[0];
+        // 배정 + 근거를 한 트랜잭션으로. 근거 콜은 "그 상담사(agent_user_id) 것"인지 검증 후에만 저장.
+        const client = await pool.connect();
+        let created;
+        try {
+            await client.query('BEGIN');
+            const ins = await client.query(
+                `INSERT INTO public.coaching_assignments
+                     (org_id, title, target_type, members, action_items, scenario_codes, channel, assigned_by_user_id)
+                 VALUES ($1, $2, $3, $4::int[], $5::text[], $6::text[], $7, $8)
+                 RETURNING *`,
+                [orgId, title, targetType, members, items, scenarios, channel, req.session?.user_id ?? null]
+            );
+            created = ins.rows[0];
+            for (const r of reasons) {
+                const memberId = Number(r?.memberId);
+                if (!Number.isFinite(memberId) || !members.includes(memberId)) continue;   // 대상에 없는 멤버 무시
+                const callIds = Array.isArray(r?.callIds) ? r.callIds.map((x) => String(x)).filter(Boolean) : [];
+                if (!callIds.length) continue;
+                const note = r?.note != null && String(r.note).trim() ? String(r.note).trim() : null;
+                // 소유 검증 + 표시 스냅샷: 이 콜들이 정말 memberId 상담사의 콜인지(agent_user_id) 확인.
+                const vparams = [callIds, memberId];
+                let vsql = `SELECT "ID" AS id, "CDATE" AS date, "TOTAL_SCORE" AS score
+                              FROM public.qa_calls WHERE "ID" = ANY($1::text[]) AND agent_user_id = $2`;
+                if (orgId != null) { vparams.push(orgId); vsql += ` AND org_id = $3`; }
+                const { rows: valid } = await client.query(vsql, vparams);
+                for (const vc of valid) {
+                    await client.query(
+                        `INSERT INTO public.coaching_assignment_reasons
+                             (assignment_id, member_user_id, qa_call_id, note, call_date, score)
+                         VALUES ($1, $2, $3, $4, $5, $6)
+                         ON CONFLICT (assignment_id, member_user_id, qa_call_id) DO NOTHING`,
+                        [created.id, memberId, vc.id, note, vc.date, vc.score]
+                    );
+                }
+            }
+            await client.query('COMMIT');
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
         // 배정 대상 상담사에게 코칭 배정 알림.
         for (const memberId of members) {
             await createNotification(pool, {
@@ -4550,6 +4683,34 @@ app.get('/api/coaching/mine', async (req, res) => {
               ORDER BY g.created_at DESC`,
             [uid]
         );
+        // 본인 근거(문제 콜) — member_user_id = 본인 인 것만 조회(프라이버시). 콜 삭제 시 스냅샷 폴백.
+        const reasonsByAssignment = new Map();
+        const _rids = rows.map((r) => r.id);
+        if (_rids.length) {
+            const { rows: rrows } = await pool.query(
+                `SELECT r.assignment_id, r.qa_call_id, r.note,
+                        COALESCE(c."CDATE", r.call_date) AS date,
+                        COALESCE(c."TOTAL_SCORE", r.score) AS score,
+                        c."UID" AS uid, c."CALL_SEQ" AS call_no, c.io_divi
+                   FROM public.coaching_assignment_reasons r
+                   LEFT JOIN public.qa_calls c ON c."ID" = r.qa_call_id
+                  WHERE r.member_user_id = $1 AND r.assignment_id = ANY($2::bigint[])
+                  ORDER BY score ASC NULLS LAST`,
+                [uid, _rids]
+            );
+            for (const rr of rrows) {
+                if (!reasonsByAssignment.has(rr.assignment_id)) reasonsByAssignment.set(rr.assignment_id, []);
+                reasonsByAssignment.get(rr.assignment_id).push({
+                    callId: rr.qa_call_id,
+                    date: rr.date,
+                    score: rr.score == null ? null : Number(rr.score),
+                    uid: rr.uid,
+                    callNo: rr.call_no,
+                    channel: rr.io_divi === 'I' ? 'inbound' : rr.io_divi === 'O' ? 'outbound' : null,
+                    note: rr.note || null,
+                });
+            }
+        }
         // 카드 진행률/완료(취소선)용 — 본인이 그 채널로 배정 이후 완료한 시나리오 코드(튜터 02 연동, 미연동/실패 시 빈 배열).
         const loginId = req.session?.login_id || null;
         const out = await Promise.all(rows.map(async (row) => {
@@ -4589,6 +4750,7 @@ app.get('/api/coaching/mine', async (req, res) => {
                 ...base,
                 completed: comp?.completed || [], done, total,
                 scoreBefore: before, scoreAfter: after, hasAfter: after != null,
+                reasons: reasonsByAssignment.get(row.id) || [],  // 배정 근거(본인 콜만)
                 memberArchived,  // 본인이 보드에서 치움 → 보드 제외, 코칭 이력엔 유지
             };
         }));
