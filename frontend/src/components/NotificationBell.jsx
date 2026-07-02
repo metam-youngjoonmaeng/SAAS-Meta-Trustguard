@@ -12,8 +12,8 @@ import {
     fetchMyCoaching,
 } from '../services/api';
 import { buildTutorLink } from '../utils/coachingTutorLink';
-import { openCallDetail } from '../views/evalMgmt/ui';
-import { TUTOR_SCENARIOS } from '../views/evalMgmt/mockData';
+import { openCallDetail, Modal, Icon } from '../views/evalMgmt/ui';
+import { scenById, catMeta, scoreClass } from '../views/evalMgmt/mockData';
 
 // 알림 타입 → 배지/아이콘.
 const TYPE_META = {
@@ -48,6 +48,7 @@ function fmtTime(ts) {
 
 // 새로 배정된 코칭 플랜 팝업 — 코칭 배정 알림 클릭 시. 내 평가결과로 튕기지 않고
 // 무엇을 새로 받았는지(집중영역·시나리오·액션·배정 근거) 바로 보여준다.
+// 앱 공용 Modal + 디자인 토큰(.field/.pill/var(--...))로 코칭 상세 모달과 톤 통일.
 function CoachingPlanModal({ coaching, onClose }) {
     const g = coaching || {};
     const isChat = g.channel === 'chat';
@@ -60,85 +61,94 @@ function CoachingPlanModal({ coaching, onClose }) {
         if (typeof window !== 'undefined') window.open(link, '_blank', 'noopener');
     };
     return (
-        <div className="fixed inset-0 z-[210] flex items-center justify-center p-4" onClick={onClose}>
-            <div className="absolute inset-0 bg-black/30" />
-            <div className="relative bg-white rounded-2xl shadow-2xl w-[520px] max-w-[94vw] max-h-[88vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                {/* 헤더 */}
-                <div className="flex items-center gap-2 px-5 py-4 border-b border-[#E4E7EC]">
-                    <span className="inline-grid place-items-center w-8 h-8 rounded-lg bg-[#F4F3FF] text-[#5925DC] shrink-0"><GraduationCap size={16} /></span>
-                    <div className="min-w-0">
-                        <div className="text-[11px] font-bold text-[#5925DC]">새로 배정된 코칭</div>
-                        <div className="text-[15px] font-bold text-[#101828] truncate">{g.title || '코칭'}</div>
-                    </div>
-                    <span className={`ml-auto shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${isChat ? 'bg-[#EEF6EE] text-[#3A7A3A] border-[#CFE9D9]' : 'bg-[#EEF4FB] text-[#055AAF] border-[#BFD4F2]'}`}>{isChat ? '채팅' : '전화'}</span>
-                    <button type="button" onClick={onClose} className="p-1 text-[#98A2B3] hover:text-[#475467]"><X size={18} /></button>
-                </div>
-
-                {/* 본문 */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                    <div className="text-[12px] text-[#667085]">{g.assignedBy ? `${g.assignedBy} 배정` : '관리자 배정'}{g.assignedAt ? ` · ${g.assignedAt}` : ''}</div>
-
-                    {items.length > 0 && (
-                        <div>
-                            <div className="text-[11px] font-bold uppercase tracking-wide text-[#98A2B3] mb-2">개선 액션 아이템</div>
-                            <div className="space-y-1.5">
-                                {items.map((it, i) => (
-                                    <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-[#F9FAFB] text-[12.5px] text-[#344054] leading-relaxed">
-                                        <CheckCircle2 size={13} className="text-[#5925DC] shrink-0 mt-0.5" /><span>{it}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {scenarios.length > 0 && (
-                        <div>
-                            <div className="text-[11px] font-bold uppercase tracking-wide text-[#98A2B3] mb-2">Tutor 시나리오 · {scenarios.length}개</div>
-                            <div className="flex flex-wrap gap-1.5">
-                                {scenarios.map((code) => {
-                                    const s = TUTOR_SCENARIOS.find((x) => x.code === code) || { code, title: code };
-                                    return (
-                                        <span key={code} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-[#F4F3FF] border border-[#D9D6FE] text-[11.5px] text-[#344054]">
-                                            <span className="font-mono font-bold text-[#5925DC] text-[10px]">{s.code}</span>{s.title}
-                                        </span>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {reasons.length > 0 && (
-                        <div>
-                            <div className="text-[11px] font-bold uppercase tracking-wide text-[#98A2B3] mb-2">배정 근거 · 내 콜 {reasons.length}건</div>
-                            <div className="space-y-1.5">
-                                {reasons.map((r) => (
-                                    <button
-                                        key={r.callId}
-                                        type="button"
-                                        onClick={() => openCallDetail(r.callId)}
-                                        title="상담 QA 분석 상세 보기"
-                                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[#F9FAFB] hover:bg-[#F2F4F7] transition-colors text-left"
-                                    >
-                                        <span className="text-[12px] text-[#344054] whitespace-nowrap">{String(r.date || '').slice(0, 16).replace('T', ' ')}</span>
-                                        {r.callNo && <span className="font-mono text-[10.5px] text-[#98A2B3] whitespace-nowrap">#{r.callNo}</span>}
-                                        <span className="flex-1" />
-                                        <b className="text-[12px] text-[#101828]">{r.score != null ? `${Number(r.score).toFixed(0)}점` : '-'}</b>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* 푸터 */}
-                <div className="flex items-center gap-2 px-5 py-4 border-t border-[#E4E7EC]">
-                    <button type="button" onClick={onClose} className="px-3.5 py-2 rounded-lg border border-[#E4E7EC] text-[13px] font-semibold text-[#475467] hover:bg-[#F9FAFB]">닫기</button>
-                    <button type="button" onClick={startLearning} className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#5925DC] text-white text-[13px] font-semibold hover:opacity-90">
-                        <GraduationCap size={14} />학습 시작
+        <Modal
+            title={g.title || '새로 배정된 코칭'}
+            onClose={onClose}
+            width={560}
+            foot={
+                <>
+                    <button className="btn-mini" onClick={onClose}>닫기</button>
+                    <button className="btn-mini primary" onClick={startLearning}>
+                        <Icon name="graduation-cap" size={11} />학습 시작
                     </button>
+                </>
+            }
+        >
+            <div style={{ display: 'grid', gap: 18 }}>
+                {/* 헤더 요약 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--primary-soft)', color: 'var(--primary)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                        <Icon name="graduation-cap" size={21} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700 }}>새 코칭</span>
+                            <span className="pill" style={{ background: isChat ? '#eef6ee' : 'var(--primary-soft)', color: isChat ? '#3a7a3a' : 'var(--primary)', fontSize: 10.5, fontWeight: 700 }}>
+                                <Icon name={isChat ? 'message-square' : 'phone'} size={9} />{isChat ? '채팅' : '전화'}
+                            </span>
+                        </div>
+                        <div className="muted-text" style={{ fontSize: 12, marginTop: 6 }}>{g.assignedBy ? `${g.assignedBy} 배정` : '관리자 배정'}{g.assignedAt ? ` · ${g.assignedAt}` : ''}</div>
+                    </div>
                 </div>
+
+                {items.length > 0 && (
+                    <div className="field">
+                        <span className="field-label">개선 액션 아이템 · {items.length}</span>
+                        <div style={{ display: 'grid', gap: 8 }}>
+                            {items.map((it, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '10px 12px', background: 'var(--background-soft)', borderRadius: 9 }}>
+                                    <div style={{ width: 18, height: 18, borderRadius: 5, border: '1.5px solid var(--primary)', color: 'var(--primary)', display: 'grid', placeItems: 'center', flexShrink: 0, marginTop: 1 }}>
+                                        <Icon name="check" size={11} />
+                                    </div>
+                                    <span style={{ fontSize: 12.5, color: 'var(--ink-700)', lineHeight: 1.45 }}>{it}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {scenarios.length > 0 && (
+                    <div className="field">
+                        <span className="field-label">Tutor 시나리오 · {scenarios.length}개</span>
+                        <div style={{ display: 'grid', gap: 6 }}>
+                            {scenarios.map((code) => {
+                                const s = scenById(code);
+                                const cm = s ? catMeta(s.cat) : null;
+                                return (
+                                    <div key={code} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid var(--border)', background: 'var(--primary-soft)', borderRadius: 10 }}>
+                                        <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', width: 28, flexShrink: 0 }}>{s ? s.code : code}</span>
+                                        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--ink-900)' }}>{s ? s.title : code}</span>
+                                        {cm && <span className="pill" style={{ background: 'white', color: cm.color, fontSize: 10, fontWeight: 700, border: `1px solid ${cm.color}33` }}>{cm.label}</span>}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {reasons.length > 0 && (
+                    <div className="field">
+                        <span className="field-label">배정 근거 · 내 콜 {reasons.length}건</span>
+                        <div style={{ display: 'grid', gap: 6 }}>
+                            {reasons.map((r) => (
+                                <div
+                                    key={r.callId}
+                                    onClick={() => openCallDetail(r.callId)}
+                                    title="상담 QA 분석 상세 보기"
+                                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--background-soft)', borderRadius: 8, cursor: 'pointer' }}
+                                >
+                                    <span style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'nowrap' }}>{String(r.date || '').slice(0, 16).replace('T', ' ')}</span>
+                                    {r.callNo && <span className="mono muted-text" style={{ fontSize: 10.5, whiteSpace: 'nowrap' }}>#{r.callNo}</span>}
+                                    <span style={{ flex: 1 }} />
+                                    <span className={`score-chip ${scoreClass(r.score)}`} style={{ fontSize: 10.5, flexShrink: 0 }}>{r.score != null ? Number(r.score).toFixed(1) : '-'}</span>
+                                    <Icon name="external-link" size={12} style={{ color: 'var(--ink-400)', flexShrink: 0 }} />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
-        </div>
+        </Modal>
     );
 }
 
