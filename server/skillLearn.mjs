@@ -230,7 +230,7 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
         byItem[c.item_number].count += 1;
     }
     const targetItems = Object.values(byItem).sort((a, b) => a.item_number - b.item_number);
-    emit({ stage: 'generate', case_count: cases.length, target_items: targetItems });
+    emit({ stage: 'generate', case_count: cases.length, target_items: targetItems, rubric_id: rubricId });
     let resp;
     let j = {};
     try {
@@ -268,6 +268,18 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
     };
     if (!ok) result.error = safeStr(j.error).trim() || `http_${resp.status}`;
     return result;
+}
+
+/**
+ * 스킬 생성 진행률 프록시 — 파이프라인 status 의 generating {done,total} 반환.
+ * 생성 중이 아니거나(필드 부재) 조회 실패면 null — 호출측(status 라우트)이 진행바 생략.
+ */
+export async function fetchSkillGenProgress(rubricId, opts = {}) {
+    if (!rubricId) return null;
+    const base = resolveSkillBaseUrl(opts);
+    const j = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/status`);
+    const g = j && typeof j === 'object' ? j.generating : null;
+    return g && typeof g === 'object' && g.total ? g : null;
 }
 
 /** 파이프라인 JSON 호출 공통 — 실패/비-JSON 도 throw 없이 {ok:false, error} 로 수렴(무회귀). */

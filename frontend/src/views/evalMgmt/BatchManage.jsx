@@ -716,6 +716,7 @@ export default function BatchManage() {
     //   1초 폴링해 결과 확인(골든 runGoldenPoll 미러). 검수자 '낮음/높음' 정정 케이스가 학습 입력.
     const [skillRunning, setSkillRunning] = useState(false);
     const [skillMsg, setSkillMsg] = useState(null);
+    const [skillProgress, setSkillProgress] = useState(null); // { done, total } — 파이프라인 항목별 생성 진행률
     // 진행 폴링 루프 — runGoldenPoll 미러(1초 간격, 최대 600회). 종료 시 결과 메시지 + 버튼 재활성.
     const runSkillPoll = useCallback(() => {
         let tries = 0;
@@ -726,11 +727,13 @@ export default function BatchManage() {
                 s = await fetchSkillLearnStatus();
             } catch {
                 setSkillMsg('학습 진행 중 (상태 확인 불가) — 실시간 로그에서 확인하세요.');
+                setSkillProgress(null);
                 setSkillRunning(false);
                 return;
             }
             if (s?.state === 'running' && tries < 600) {
                 if (s.stage_message) setSkillMsg(s.stage_message); // 진행 단계 실시간 표시(수집→생성)
+                setSkillProgress(s.progress && s.progress.total ? s.progress : null); // 항목별 생성 진행바
                 setTimeout(poll, 1000);
                 return;
             }
@@ -739,7 +742,9 @@ export default function BatchManage() {
                 if (rs.ok === false) {
                     setSkillMsg(rs.error === 'no_correction_cases'
                         ? '정정 케이스(낮음/높음) 없음 — 검수 확정 후 다시 실행'
-                        : `학습 실패: ${rs.error || '오류'}`);
+                        : rs.error === 'no_new_cases'
+                            ? '변경된 정정 케이스 없음 — 마지막 학습과 동일하여 생략(LLM 미호출)'
+                            : `학습 실패: ${rs.error || '오류'}`);
                 } else {
                     const n = Array.isArray(rs.items_changed) ? rs.items_changed.length : (rs.items_changed ?? 0);
                     setSkillMsg(`스킬 학습 완료 · ${rs.version_id || '?'} · 항목 ${n}개 갱신${rs.activated ? '·활성화' : ''}`);
@@ -747,17 +752,20 @@ export default function BatchManage() {
             } else if (s?.state === 'error') {
                 setSkillMsg(s.error === 'no_correction_cases'
                     ? '정정 케이스(낮음/높음) 없음 — 검수 확정 후 다시 실행'
-                    : '학습 실패: ' + (s.error || '오류'));
+                    : s.error === 'no_new_cases'
+                        ? '변경된 정정 케이스 없음 — 마지막 학습과 동일하여 생략(LLM 미호출)'
+                        : '학습 실패: ' + (s.error || '오류'));
             } else {
                 setSkillMsg(null);
             }
+            setSkillProgress(null);
             setSkillRunning(false);
             setSkillCovNonce((n) => n + 1); // 마지막 학습 시각 갱신
         };
         setTimeout(poll, 1000);
     }, []);
     const handleSkillRun = useCallback(async () => {
-        setSkillRunning(true); setSkillMsg('학습 시작 중…');
+        setSkillRunning(true); setSkillMsg('학습 시작 중…'); setSkillProgress(null);
         try {
             await saveBatchConfig(config);   // 변경한 주기/시각/제외 항목 저장 후 실행
             const r = await runSkillLearn();  // 즉시 반환(백그라운드 시작)
@@ -773,6 +781,24 @@ export default function BatchManage() {
             setSkillRunning(false);
         }
     }, [config, runSkillPoll]);
+
+    // 마운트 복원(스킬) — 골든 마운트 복원(아래 goldenLearnStatus useEffect) 미러. 다른 화면을
+    //   다녀와(BatchManage 언마운트) '실행 중' 표시가 사라져도, 서버에 진행 중 스킬 학습이 있으면
+    //   표시·폴링을 재개한다. 백엔드 skillLearnStatus 가 정본이라 로컬 state 유실과 무관하게 복원.
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const s = await fetchSkillLearnStatus();
+                if (!alive || s?.state !== 'running') return;
+                setSkillRunning(true);
+                setSkillMsg(s.stage_message || '학습 진행 중…');
+                if (s.progress && s.progress.total) setSkillProgress(s.progress);
+                runSkillPoll();
+            } catch { /* 상태 확인 실패는 무시(복원 생략) */ }
+        })();
+        return () => { alive = false; };
+    }, [runSkillPoll]);
 
     // 골든셋 학습 '지금 실행' — 우리 스케줄 저장 후 에이전트 학습 즉시 1회 트리거(콜 재평가 아님).
     const [goldenRunning, setGoldenRunning] = useState(false);
@@ -1172,15 +1198,18 @@ export default function BatchManage() {
                                 {scope.goldenFreq === 'daily' && (
                                     <input type="time" value={scope.goldenTime} onChange={(e) => setSk('goldenTime', e.target.value)} style={{ ...bInput, width: 150 }} />
                                 )}
-                                <button
-                                    type="button"
-                                    onClick={handleGoldenRun}
-                                    disabled={goldenRunning}
-                                    title="현재 학습 주기/시각을 저장하고 골든셋 학습을 즉시 1회 트리거"
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '8px 14px', borderRadius: 9, fontWeight: 700, fontSize: 12.5, cursor: goldenRunning ? 'default' : 'pointer', fontFamily: 'inherit', opacity: goldenRunning ? 0.6 : 1 }}
-                                >
-                                    <Icon name="play" size={14} />{goldenRunning ? '실행 중…' : '지금 실행'}
-                                </button>
+                                {/* '지금 실행'은 수동 주기일 때만 노출 — 매시간/매일은 스케줄러가 자동 실행하므로 수동 트리거 숨김(스킬배치와 동일). */}
+                                {scope.goldenFreq === 'manual' && (
+                                    <button
+                                        type="button"
+                                        onClick={handleGoldenRun}
+                                        disabled={goldenRunning}
+                                        title="현재 학습 주기/시각을 저장하고 골든셋 학습을 즉시 1회 트리거"
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '8px 14px', borderRadius: 9, fontWeight: 700, fontSize: 12.5, cursor: goldenRunning ? 'default' : 'pointer', fontFamily: 'inherit', opacity: goldenRunning ? 0.6 : 1 }}
+                                    >
+                                        <Icon name="play" size={14} />{goldenRunning ? '실행 중…' : '지금 실행'}
+                                    </button>
+                                )}
                                 {goldenMsg && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{goldenMsg}</span>}
                             </div>
                             {goldenProgress && goldenProgress.total ? (
@@ -1233,8 +1262,8 @@ export default function BatchManage() {
                                 </div>
                             ) : null}
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
-                                {scope.goldenFreq === 'daily' ? `매일 ${scope.goldenTime}(KST)에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.` : scope.goldenFreq === 'hourly' ? '매시간 정각에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.' : "자동 실행 없이 '지금 실행'으로만 즉시 학습합니다."}
-                                {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다. '지금 실행'은 저장 후 즉시 1회 수동 학습합니다.
+                                {scope.goldenFreq === 'daily' ? `매일 ${scope.goldenTime}(KST)에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.` : scope.goldenFreq === 'hourly' ? '매시간 정각에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.' : "자동 실행 없이 '지금 실행'으로만 즉시 학습합니다. '지금 실행'은 저장 후 즉시 1회 수동 학습합니다."}
+                                {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다.
                             </div>
                         </div>
                     </div>
@@ -1331,6 +1360,28 @@ export default function BatchManage() {
                                 )}
                                 {skillMsg && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{skillMsg}</span>}
                             </div>
+                            {/* 항목별 overlay 생성 진행바 — 파이프라인 status.generating {done,total} 프록시(골든 진행바 미러). */}
+                            {skillProgress && skillProgress.total ? (
+                                <div style={{ marginTop: 12 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-700)' }}>
+                                            보완 룰 생성 중… {skillProgress.done ?? 0}/{skillProgress.total} 항목
+                                        </span>
+                                        <span style={{ fontSize: 11.5, color: 'var(--ink-500)', fontVariantNumeric: 'tabular-nums' }}>
+                                            {Math.min(100, Math.round(((skillProgress.done ?? 0) / skillProgress.total) * 100))}%
+                                        </span>
+                                    </div>
+                                    <div style={{ height: 8, borderRadius: 6, background: 'var(--border-soft)', overflow: 'hidden' }}>
+                                        <div style={{
+                                            height: '100%',
+                                            width: `${Math.min(100, Math.round(((skillProgress.done ?? 0) / skillProgress.total) * 100))}%`,
+                                            background: 'var(--primary)',
+                                            borderRadius: 6,
+                                            transition: 'width 0.4s ease',
+                                        }} />
+                                    </div>
+                                </div>
+                            ) : null}
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
                                 {scope.skillFreq === 'daily' ? `매일 ${scope.skillTime}(KST)에 서버 스케줄러가 브랜드별 스킬 학습(검토 내역 기반)을 자동 실행합니다.` : scope.skillFreq === 'hourly' ? '매시간 정각에 서버 스케줄러가 브랜드별 스킬 학습(검토 내역 기반)을 자동 실행합니다.' : "자동 실행 없이 '지금 실행'으로만 즉시 학습합니다."}
                                 {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다.

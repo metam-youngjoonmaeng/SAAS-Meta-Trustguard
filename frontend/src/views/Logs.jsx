@@ -942,6 +942,7 @@ const SKILL_STAGE_META = {
     collect: { label: '수집', cls: 'bg-blue-50 text-blue-700' },
     generate: { label: '생성', cls: 'bg-amber-50 text-amber-700' },
     activate: { label: '활성화', cls: 'bg-indigo-50 text-indigo-700' },
+    apply: { label: '평가 적용', cls: 'bg-purple-50 text-purple-700' },
     done: { label: '완료', cls: 'bg-green-50 text-green-700' },
     error: { label: '오류', cls: 'bg-red-50 text-red-700' },
 };

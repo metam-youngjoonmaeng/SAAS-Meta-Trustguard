@@ -22,7 +22,7 @@ import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
 import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult, fetchGoldenIndexCoverage } from './qaPipelineIngest.mjs';
 import { loadRagFewshotConfig, saveRagFewshotConfig } from './ragFewshotConfig.mjs';
 import { startIcsQaPoller, startGoldenLearnScheduler, triggerGoldenLearn, startSkillLearnScheduler, triggerSkillLearn } from './icsQaPoller.mjs';
-import { fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion, pushSkillSettings } from './skillLearn.mjs';
+import { fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion, pushSkillSettings, fetchSkillGenProgress } from './skillLearn.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
 import { taEnabled, fetchTaMetricsByUids, fetchSegmentSentimentsByUids } from './taSource.mjs';
@@ -3925,8 +3925,15 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
     const ragOrgId = Number.isFinite(callOrgId) ? callOrgId : undefined;
     // 파이프라인이 forward 한 원 resp(있으면) — 금지어 추출용. onProgress(type==='result') 로 도착.
     let capturedRawResp = null;
+    // [LLM 스킬 로그, additive] 평가 중 항목별 스킬 overlay 적용 이벤트 집계 — 잡 완료 시 1건 요약 적재.
+    const skillOverlayEvents = [];
     const onProgress = (ev) => {
         if (!ev || typeof ev !== 'object') return;
+        // 신규: LLM 스킬 overlay 적용 라이브 이벤트 — 잡 단위 집계(개별 push 는 링버퍼 노이즈).
+        if (ev.type === 'skill_overlay') {
+            if (ev.data && typeof ev.data === 'object') skillOverlayEvents.push(ev.data);
+            return;
+        }
         // 신규: RAG few-shot hit 라이브 이벤트 → 계약 레코드(kind:'rag') 적재. (기존 status 흐름 불변)
         if (ev.type === 'rag_hits') {
             try {
@@ -4076,6 +4083,25 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
                 }
             } catch {
                 /* 금지어 추출/적재 실패는 평가에 영향 없음 */
+            }
+            // [LLM 스킬 로그, additive] 평가 시 스킬 overlay 적용 요약 — 항목별 이벤트를 1건으로 집계.
+            //   이벤트 자체가 없으면(스킬 게이트 비활성 콜) 적재하지 않음 — 허위 '미적용' 노이즈 방지.
+            try {
+                if (skillOverlayEvents.length) {
+                    const applied = skillOverlayEvents.filter((e) => e && e.applied);
+                    const vid = (skillOverlayEvents.find((e) => e && e.version_id) || {}).version_id || null;
+                    pushSkillLog({
+                        org_id: ragOrgId,
+                        source: 'evaluate',
+                        stage: 'apply',
+                        message: `평가 ${result.qa_id ?? job.qa_id} — 스킬 overlay 주입 ${applied.length}/${skillOverlayEvents.length}개 항목${vid ? ` · 버전 ${vid}` : ''}${applied.length === 0 ? ' (활성 버전에 해당 항목 룰 없음)' : ''}`,
+                        qa_id: result.qa_id ?? job.qa_id,
+                        version_id: vid,
+                        items_changed: applied.map((e) => Number(e.item_number)).filter(Number.isFinite),
+                    });
+                }
+            } catch {
+                /* 스킬 로그 적재 실패는 평가에 영향 없음 */
             }
             await insertQaAuditLog(pool, {
                 req,
@@ -5108,14 +5134,29 @@ const skillLearnStatus = new Map(); // org_id -> { state:'running'|'done'|'error
 function recordSkillLearnResult(orgId, source, result, startedAt = null) {
     const prev = skillLearnStatus.get(orgId) || {};
     const ok = result?.ok === true;
+    // 무해 종료(정정 케이스 없음 · 무변경 생략) — 실패가 아닌 '생략' 의미론: state done + 로그 done.
+    const benign = !ok && (result?.error === 'no_correction_cases' || result?.error === 'no_new_cases');
     skillLearnStatus.set(orgId, {
-        state: ok ? 'done' : 'error',
+        state: ok || benign ? 'done' : 'error',
         source,
         started_at: startedAt ?? prev.started_at ?? null,
         finished_at: Date.now(),
         result,
         error: ok ? null : (result?.error || null),
     });
+    if (benign) {
+        pushSkillLog({
+            org_id: orgId,
+            source,
+            stage: 'done',
+            message: result?.error === 'no_new_cases'
+                ? '변경 없음 — 마지막 학습과 동일한 정정 케이스, 학습 생략(LLM 미호출)'
+                : '정정 케이스(낮음/높음) 없음 — 학습 생략',
+            rubric_id: result?.rubric_id ?? null,
+            case_count: result?.case_count ?? null,
+        });
+        return;
+    }
     if (ok) {
         if (result.activated && result.version_id) {
             pushSkillLog({ org_id: orgId, source, stage: 'activate', message: `버전 활성화 — ${result.version_id}`, rubric_id: result.rubric_id, version_id: result.version_id });
@@ -5170,6 +5211,8 @@ function skillLearnProgressLogger(orgId, source) {
                     stage_message: `보완 룰 생성 중 — ${brief}`,
                     case_count: p.case_count ?? null,
                     target_items: items,
+                    // 진행률 프록시 키 — status 라우트가 파이프라인 generating {done,total} 조회에 사용.
+                    rubric_id: p.rubric_id ?? prev.rubric_id ?? null,
                 });
             }
             pushSkillLog({ org_id: orgId, source, stage: 'generate', message: `overlay 생성 요청 — 정정 케이스 ${p.case_count ?? '?'}건${items.length ? ` · ${items.length}개 항목` : ''}`, case_count: p.case_count ?? null });
@@ -5222,13 +5265,25 @@ app.post('/api/skill-learn/run', requireAdmin, async (req, res) => {
 });
 
 // GET /api/skill-learn/status — 활성 브랜드의 스킬 학습 잡 최신 상태(폴링용).
-app.get('/api/skill-learn/status', requireAdmin, (req, res) => {
+//   generate 단계 진행 중이면 파이프라인 status 의 generating {done,total} 을 progress 로 동봉
+//   → 프론트 진행바(골든 진행바 미러). 프록시 실패는 progress 생략(상태 응답 무영향).
+app.get('/api/skill-learn/status', requireAdmin, async (req, res) => {
     const orgId = resolveActiveOrgId(req, { strict: true });
     if (orgId === null || orgId === undefined) {
         res.status(400).json({ message: 'active brand context required' });
         return;
     }
-    res.json(skillLearnStatus.get(orgId) || { state: 'idle' });
+    const entry = skillLearnStatus.get(orgId) || { state: 'idle' };
+    if (entry.state === 'running' && entry.stage === 'generate' && entry.rubric_id) {
+        try {
+            const g = await fetchSkillGenProgress(entry.rubric_id);
+            if (g) {
+                res.json({ ...entry, progress: { done: g.done ?? 0, total: g.total ?? null } });
+                return;
+            }
+        } catch { /* 진행률 조회 실패 — progress 없이 상태만 */ }
+    }
+    res.json(entry);
 });
 
 // GET /api/skill-learn/versions — 스킬 버전 목록 프록시(org→rubric_id 해석 후 파이프라인 조회).
