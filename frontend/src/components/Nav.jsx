@@ -1,6 +1,7 @@
 import React from 'react';
 import { Clock3, ShieldCheck, Shield, Headset, Home, ChevronRight } from 'lucide-react';
 import NotificationBell from './NotificationBell';
+import OrgSwitcher from './OrgSwitcher';
 /* SAMPLE_UPLOAD_FEATURE */ import SampleUploadModal from './SampleUploadModal';
 
 // 원본: 01-AI-Tutor-dev/frontend/components/nav.tsx
@@ -125,6 +126,7 @@ const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, 
                         {user && activeTab === 'dashboard' && (
                             <SampleUploadModal onUploaded={onSampleUploaded} />
                         )}
+                        {user && <OrgSwitcher />}
                         {user && <NotificationBell />}
                         {user && (
                             <button

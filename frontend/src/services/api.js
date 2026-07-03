@@ -83,6 +83,28 @@ export async function logout(loginId) {
     });
 }
 
+// 다중 소속(02/03 동일) — 내 조직 멤버십 목록.
+export async function fetchMyMemberships() {
+    return request('/api/auth/memberships');
+}
+
+// 활성 조직 전환. 서버 세션 org/role 교체 + 프론트 actor 캐시(role/org)도 동기화.
+// (호출부는 성공 후 window.location.reload() 로 전 화면을 새 org 로 재조회하는 것을 권장.)
+export async function switchOrg(traineeId) {
+    const res = await request('/api/auth/switch-org', {
+        method: 'POST',
+        body: JSON.stringify({ trainee_id: traineeId }),
+    });
+    try {
+        syncStoredActor({ org_id: res.org_id ?? null, role: res.role });
+        // super_admin 은 org 스코프가 X-Active-Brand-Id 헤더 기반 → 전환한 org 로 활성 브랜드도 맞춤.
+        if (res.role === 'super_admin' && typeof window !== 'undefined' && window.localStorage && res.org_id != null) {
+            window.localStorage.setItem(QA_ACTIVE_BRAND_KEY, String(res.org_id));
+        }
+    } catch { /* 캐시 동기화 실패는 무시(리로드로 서버기준 복구) */ }
+    return res;
+}
+
 export async function fetchCalls() {
     return request('/api/calls');
 }
