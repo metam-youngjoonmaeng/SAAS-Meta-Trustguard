@@ -561,6 +561,7 @@ function createSession(user) {
         display_name: user.display_name,
         role: user.role,
         org_id: user.org_id ?? null,
+        trainee_id: user.trainee_id ?? null,   // 활성 멤버십 id(다중소속 전환용). 미상이면 null → org_id 로 대체 매칭.
         expires_at: Date.now() + SESSION_TTL_MS,
     });
     return token;
@@ -1100,6 +1101,21 @@ app.post('/api/auth/login', async (req, res) => {
             detail_json: JSON.stringify({ user_id: row.user_id, role: row.role }),
             success: true,
         });
+        // 활성 멤버십 id 확정(다중소속 전환용) — admin_users VIEW 와 동일 우선순위.
+        try {
+            const { rows: tr } = await pool.query(
+                `SELECT id FROM public.trainee_registrations
+                  WHERE user_id = $1
+                  ORDER BY (id = (SELECT last_active_trainee_id FROM public.users WHERE id = $1)) DESC NULLS LAST,
+                           (status = 'active') DESC, id ASC
+                  LIMIT 1`,
+                [row.user_id]
+            );
+            row.trainee_id = tr[0]?.id ?? null;
+            if (row.trainee_id != null) {
+                await pool.query('UPDATE public.users SET last_active_trainee_id = $1 WHERE id = $2', [row.trainee_id, row.user_id]);
+            }
+        } catch (e) { console.error('active membership resolve error:', e); }
         const sessionToken = createSession(row);
         res.json({
             ok: true,
@@ -1152,6 +1168,76 @@ app.post('/api/auth/logout', async (req, res) => {
     } catch (error) {
         console.error('POST /api/auth/logout error:', error);
         res.status(500).json({ message: 'Failed to end session.' });
+    }
+});
+
+// ── 다중 소속(02/03 동일) — 내 멤버십 목록 + 조직 전환 ──────────
+// GET /api/auth/memberships: 로그인 사용자의 active 멤버십(조직×역할) 목록. current=현재 활성.
+app.get('/api/auth/memberships', async (req, res) => {
+    const uid = req.session?.user_id;
+    if (uid == null) { res.json([]); return; }
+    try {
+        const { rows } = await pool.query(
+            `SELECT t.id AS trainee_id, t.org_id, o.name AS org_name,
+                    t.role::text AS role, t.department
+               FROM public.trainee_registrations t
+               LEFT JOIN public.organizations o ON o.id = t.org_id
+              WHERE t.user_id = $1 AND t.status = 'active'
+              ORDER BY (t.id = (SELECT last_active_trainee_id FROM public.users WHERE id = $1)) DESC NULLS LAST,
+                       t.id ASC`,
+            [uid]
+        );
+        const activeTid = req.session.trainee_id ?? null;
+        const activeOrg = req.session.org_id ?? null;
+        res.json(rows.map((r) => ({
+            ...r,
+            // 현재 활성: 세션의 trainee_id 우선, 없으면 org_id 로 매칭(폴백).
+            current: activeTid != null ? r.trainee_id === activeTid : r.org_id === activeOrg,
+        })));
+    } catch (error) {
+        console.error('GET /api/auth/memberships error:', error);
+        res.status(500).json({ message: 'Failed to load memberships.' });
+    }
+});
+
+// POST /api/auth/switch-org { trainee_id }: 본인 소유 active 멤버십으로 활성 전환.
+//   users.last_active_trainee_id 갱신 + 현재 세션의 org_id/role/trainee_id 교체(다음 로그인도 유지).
+app.post('/api/auth/switch-org', async (req, res) => {
+    const uid = req.session?.user_id;
+    if (uid == null) { res.status(401).json({ message: 'not authenticated' }); return; }
+    const traineeId = Number(req.body?.trainee_id);
+    if (!Number.isFinite(traineeId)) { res.status(400).json({ message: 'trainee_id required' }); return; }
+    try {
+        const { rows } = await pool.query(
+            `SELECT t.id, t.org_id, t.role::text AS role, t.department, o.name AS org_name
+               FROM public.trainee_registrations t
+               LEFT JOIN public.organizations o ON o.id = t.org_id
+              WHERE t.id = $1 AND t.user_id = $2 AND t.status = 'active'`,
+            [traineeId, uid]
+        );
+        if (!rows.length) { res.status(403).json({ message: '해당 조직 멤버십에 접근 권한이 없습니다.' }); return; }
+        const m = rows[0];
+        await pool.query('UPDATE public.users SET last_active_trainee_id = $1 WHERE id = $2', [traineeId, uid]);
+        // 세션은 sessionStore 객체 참조 → 필드 갱신이 그대로 저장됨.
+        if (req.session) {
+            req.session.org_id = m.org_id;
+            req.session.role = m.role;
+            req.session.trainee_id = m.id;
+        }
+        await insertQaAuditLog(pool, {
+            req,
+            action: AUDIT_ACTION.BRAND_SWITCH || 'BRAND_SWITCH',
+            resource_type: 'trainee_registration',
+            resource_id: String(traineeId),
+            http_method: 'POST',
+            http_path: '/api/auth/switch-org',
+            detail_json: JSON.stringify({ org_id: m.org_id, role: m.role }),
+            success: true,
+        });
+        res.json({ ok: true, trainee_id: m.id, org_id: m.org_id, org_name: m.org_name, role: m.role, department: m.department });
+    } catch (error) {
+        console.error('POST /api/auth/switch-org error:', error);
+        res.status(500).json({ message: 'Failed to switch organization.' });
     }
 });
 
