@@ -1123,6 +1123,119 @@ export function createBrandRouter(pool) {
         }
     });
 
+    // ── 멤버십(다중 소속) 관리 ─────────────────────────────────
+    // 한 유저(users.id)가 여러 조직에 소속 가능(02/03 동일). trainee_registrations 를 직접 다룬다.
+
+    // GET /api/admin/users/:userId/memberships — 해당 유저의 멤버십(조직×역할) 목록.
+    router.get('/admin/users/:userId/memberships', requireSuperAdmin, async (req, res) => {
+        const userId = Number(req.params.userId);
+        if (!Number.isFinite(userId)) { res.status(400).json({ message: 'invalid userId' }); return; }
+        try {
+            const { rows } = await pool.query(
+                `SELECT t.id AS trainee_id, t.org_id, o.name AS org_name, t.role::text AS role,
+                        t.department, t.status,
+                        (t.id = u.last_active_trainee_id) AS is_active_membership
+                   FROM public.trainee_registrations t
+                   LEFT JOIN public.organizations o ON o.id = t.org_id
+                   LEFT JOIN public.users u ON u.id = t.user_id
+                  WHERE t.user_id = $1
+                  ORDER BY (t.status = 'active') DESC, t.id ASC`,
+                [userId]
+            );
+            res.json(rows);
+        } catch (err) {
+            console.error('GET memberships error:', err);
+            res.status(500).json({ message: 'Failed to load memberships.' });
+        }
+    });
+
+    // POST /api/admin/users/:userId/memberships { org_id, role, department } — 기존 유저를 새 조직에 소속(멤버십 추가).
+    router.post('/admin/users/:userId/memberships', requireSuperAdmin, async (req, res) => {
+        const userId = Number(req.params.userId);
+        const orgId = Number(req.body?.org_id);
+        const role = ['agent', 'admin', 'super_admin'].includes(req.body?.role) ? req.body.role : 'agent';
+        const department = req.body?.department == null ? null : String(req.body.department).trim() || null;
+        if (!Number.isFinite(userId) || !Number.isFinite(orgId)) {
+            res.status(400).json({ message: 'userId / org_id 필수' });
+            return;
+        }
+        try {
+            const { rows: urows } = await pool.query('SELECT id, name FROM public.users WHERE id = $1', [userId]);
+            if (!urows.length) { res.status(404).json({ message: '사용자를 찾을 수 없습니다' }); return; }
+            const { rows: orows } = await pool.query('SELECT id FROM public.organizations WHERE id = $1', [orgId]);
+            if (!orows.length) { res.status(404).json({ message: '조직을 찾을 수 없습니다' }); return; }
+            const { rows: dup } = await pool.query(
+                'SELECT 1 FROM public.trainee_registrations WHERE user_id = $1 AND org_id = $2 LIMIT 1',
+                [userId, orgId]
+            );
+            if (dup.length) { res.status(409).json({ message: '이미 해당 조직에 소속되어 있습니다' }); return; }
+            const { rows: ins } = await pool.query(
+                `INSERT INTO public.trainee_registrations (user_id, org_id, name, department, role, status)
+                 VALUES ($1, $2, $3, $4, $5::public.userrole, 'active')
+                 RETURNING id AS trainee_id, org_id, role::text AS role, department, status`,
+                [userId, orgId, urows[0].name, department, role]
+            );
+            await insertQaAuditLog(pool, {
+                req,
+                action: 'USER_MEMBERSHIP_ADD',
+                resource_type: 'trainee_registration',
+                resource_id: String(ins[0].trainee_id),
+                http_method: 'POST',
+                http_path: `/api/admin/users/${userId}/memberships`,
+                detail_json: JSON.stringify({ user_id: userId, org_id: orgId, role }),
+                success: true,
+            });
+            res.status(201).json(ins[0]);
+        } catch (err) {
+            console.error('POST memberships error:', err);
+            res.status(500).json({ message: 'Failed to add membership.' });
+        }
+    });
+
+    // DELETE /api/admin/users/:userId/memberships/:traineeId — 멤버십 제거(마지막 1개는 불가).
+    router.delete('/admin/users/:userId/memberships/:traineeId', requireSuperAdmin, async (req, res) => {
+        const userId = Number(req.params.userId);
+        const traineeId = Number(req.params.traineeId);
+        if (!Number.isFinite(userId) || !Number.isFinite(traineeId)) { res.status(400).json({ message: 'invalid id' }); return; }
+        try {
+            const { rows: mine } = await pool.query(
+                'SELECT id FROM public.trainee_registrations WHERE id = $1 AND user_id = $2',
+                [traineeId, userId]
+            );
+            if (!mine.length) { res.status(404).json({ message: '멤버십을 찾을 수 없습니다' }); return; }
+            const { rows: cnt } = await pool.query(
+                'SELECT count(*)::int AS n FROM public.trainee_registrations WHERE user_id = $1',
+                [userId]
+            );
+            if ((cnt[0]?.n || 0) <= 1) { res.status(400).json({ message: '마지막 소속은 제거할 수 없습니다(계정 삭제를 사용하세요)' }); return; }
+            await pool.query('DELETE FROM public.trainee_registrations WHERE id = $1', [traineeId]);
+            // 활성 포인터가 방금 지운 멤버십이면 남은 것 중 하나로 재지정(FK ON DELETE SET NULL 후 보정).
+            await pool.query(
+                `UPDATE public.users u
+                    SET last_active_trainee_id = (
+                        SELECT t.id FROM public.trainee_registrations t
+                         WHERE t.user_id = u.id
+                         ORDER BY (t.status='active') DESC, t.id ASC LIMIT 1
+                    )
+                  WHERE u.id = $1 AND u.last_active_trainee_id IS NULL`,
+                [userId]
+            );
+            await insertQaAuditLog(pool, {
+                req,
+                action: 'USER_MEMBERSHIP_REMOVE',
+                resource_type: 'trainee_registration',
+                resource_id: String(traineeId),
+                http_method: 'DELETE',
+                http_path: `/api/admin/users/${userId}/memberships/${traineeId}`,
+                success: true,
+            });
+            res.json({ ok: true });
+        } catch (err) {
+            console.error('DELETE membership error:', err);
+            res.status(500).json({ message: 'Failed to remove membership.' });
+        }
+    });
+
     // ── 감사 로그 ───────────────────────────────────────────
 
     // GET /api/admin/audit-logs?limit=100&before=<audit_id>&action=<filter>
