@@ -587,6 +587,21 @@ export async function resetUserPassword(id) {
     });
 }
 
+// ── 유저 멤버십(다중 소속) 관리 (super_admin 전용) ──
+export async function fetchUserMemberships(userId) {
+    return request(`/api/admin/users/${encodeURIComponent(userId)}/memberships`);
+}
+export async function addUserMembership(userId, body) {
+    return request(`/api/admin/users/${encodeURIComponent(userId)}/memberships`, {
+        method: 'POST', body: JSON.stringify(body || {}),
+    });
+}
+export async function removeUserMembership(userId, traineeId) {
+    return request(`/api/admin/users/${encodeURIComponent(userId)}/memberships/${encodeURIComponent(traineeId)}`, {
+        method: 'DELETE',
+    });
+}
+
 /* ── 본인 프로필 (셀프-편집) ───────────────────────────────────
  * 신규 사용자는 초기 비밀번호 발급 + must_change_password=true 로 시작.
  * 본인은 다음만 변경 가능: display_name, password, profile_image.

@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom';
 import {
     Plus, Pencil, Trash2, Loader2, X, ShieldCheck, MoreVertical,
     Upload, ChevronDown, Search, Users as UsersIcon, Activity, UserMinus, ShieldAlert,
-    KeyRound,
+    KeyRound, Building2,
 } from 'lucide-react';
 import Header from '../components/Header';
 import {
     fetchUsers, createUser, updateUser, deleteUser, resetUserPassword,
     fetchOrganizations, fetchAuditLogs,
+    fetchUserMemberships, addUserMembership, removeUserMembership,
 } from '../services/api';
 import { getBrandConfig } from '../constants';
 
@@ -147,7 +148,7 @@ function RoleChip({ role }) {
 const ROW_MENU_WIDTH = 140;
 const ROW_MENU_HEIGHT_EST = 130;
 
-function RowMenu({ onEdit, onResetPw, onDelete, disabled }) {
+function RowMenu({ onEdit, onResetPw, onManageOrgs, onDelete, disabled }) {
     const [open, setOpen] = useState(false);
     const [coords, setCoords] = useState({ top: 0, left: 0 });
     const btnRef = useRef(null);
@@ -239,6 +240,17 @@ function RowMenu({ onEdit, onResetPw, onDelete, disabled }) {
                     >
                         <KeyRound size={12} /> 비번 재설정
                     </button>
+                    {onManageOrgs && (
+                        <button
+                            onClick={() => {
+                                setOpen(false);
+                                onManageOrgs();
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-[#101828] hover:bg-[#F9FAFB] cursor-pointer"
+                        >
+                            <Building2 size={12} /> 소속 관리
+                        </button>
+                    )}
                     <div className="my-1 border-t border-[#E4E7EC]" />
                     <button
                         onClick={() => {
@@ -680,6 +692,120 @@ function InitialPasswordModal({ user, initialPassword, onClose, mode }) {
 }
 
 // ── 로그인 이력 탭 ──────────────────────────────────────────
+// ── 소속(다중 멤버십) 관리 모달 ─────────────────────────────
+// 기존 유저를 여러 조직에 소속시킨다(= 내비 조직 전환의 대상 생성). super_admin 전용.
+const ROLE_LABEL_M = { agent: '상담사', admin: '관리자', super_admin: '슈퍼관리자' };
+function MembershipsModal({ user, brands, onClose, onChanged }) {
+    const [rows, setRows] = useState(null);   // null=로딩
+    const [busy, setBusy] = useState(false);
+    const [err, setErr] = useState('');
+    const [orgId, setOrgId] = useState('');
+    const [role, setRole] = useState('agent');
+    const [dept, setDept] = useState('');
+
+    const load = () => {
+        fetchUserMemberships(user.user_id)
+            .then((d) => setRows(Array.isArray(d) ? d : []))
+            .catch(() => { setRows([]); setErr('멤버십 목록을 불러오지 못했습니다.'); });
+    };
+    useEffect(load, [user.user_id]);
+
+    const memberOrgIds = new Set((rows || []).map((r) => r.org_id));
+    const availBrands = (brands || []).filter((b) => !memberOrgIds.has(b.id));
+
+    const add = async () => {
+        if (!orgId || busy) return;
+        setBusy(true); setErr('');
+        try {
+            await addUserMembership(user.user_id, { org_id: Number(orgId), role, department: dept || null });
+            setOrgId(''); setDept(''); setRole('agent');
+            load(); onChanged && onChanged();
+        } catch (e) { setErr(e?.message || '소속 추가에 실패했습니다.'); }
+        finally { setBusy(false); }
+    };
+    const remove = async (tid) => {
+        if (busy || !window.confirm('이 소속을 제거할까요?')) return;
+        setBusy(true); setErr('');
+        try { await removeUserMembership(user.user_id, tid); load(); onChanged && onChanged(); }
+        catch (e) { setErr(e?.message || '소속 제거에 실패했습니다.'); }
+        finally { setBusy(false); }
+    };
+
+    return createPortal(
+        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4" onClick={onClose}>
+            <div className="absolute inset-0 bg-black/30" />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-[520px] max-w-[94vw] max-h-[88vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-2 px-5 py-4 border-b border-[#E4E7EC]">
+                    <Building2 size={16} className="text-[#055AAF]" />
+                    <h3 className="text-base font-bold text-[#101828] truncate">소속 관리 · {user.display_name || user.login_id}</h3>
+                    <button type="button" onClick={onClose} className="ml-auto p-1 text-[#98A2B3] hover:text-[#475467]"><X size={18} /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                    {err && <div className="text-[13px] text-[#B42318]">{err}</div>}
+                    <div className="space-y-2">
+                        {rows === null && <div className="text-[13px] text-[#98A2B3]">불러오는 중…</div>}
+                        {rows && rows.length === 0 && <div className="text-[13px] text-[#98A2B3]">소속이 없습니다.</div>}
+                        {rows && rows.map((r) => (
+                            <div key={r.trainee_id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[#E4E7EC]">
+                                <Building2 size={15} className="text-[#667085] shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[13px] font-semibold text-[#101828] truncate">
+                                        {r.org_name || `조직 ${r.org_id}`}
+                                        {r.is_active_membership && <span className="ml-2 text-[10px] font-bold text-[#5925DC]">현재 활성</span>}
+                                    </div>
+                                    <div className="text-[11px] text-[#667085]">
+                                        {ROLE_LABEL_M[r.role] || r.role}{r.department ? ` · ${r.department}` : ''}{r.status !== 'active' ? ` · ${r.status}` : ''}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => remove(r.trainee_id)}
+                                    disabled={busy || (rows && rows.length <= 1)}
+                                    title={rows && rows.length <= 1 ? '마지막 소속은 제거할 수 없습니다(계정 삭제를 사용하세요)' : '소속 제거'}
+                                    className="p-1.5 rounded-md text-[#98A2B3] hover:text-[#D92D20] hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="border-t border-[#F2F4F7] pt-4">
+                        <div className="text-[11px] font-bold uppercase tracking-wide text-[#98A2B3] mb-2">새 소속 추가</div>
+                        {availBrands.length === 0 ? (
+                            <div className="text-[13px] text-[#98A2B3]">추가할 수 있는 조직이 없습니다(모든 조직에 소속됨).</div>
+                        ) : (
+                            <>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <select value={orgId} onChange={(e) => { setOrgId(e.target.value); setDept(''); }} className={FLD_INPUT}>
+                                        <option value="">조직 선택</option>
+                                        {availBrands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                    </select>
+                                    <select value={role} onChange={(e) => setRole(e.target.value)} className={FLD_INPUT}>
+                                        <option value="agent">상담사</option>
+                                        <option value="admin">관리자</option>
+                                        <option value="super_admin">슈퍼관리자</option>
+                                    </select>
+                                    <select value={dept} onChange={(e) => setDept(e.target.value)} disabled={!orgId} className={FLD_INPUT}>
+                                        <option value="">부서(선택)</option>
+                                        {deptOptionsFor(Number(orgId), dept).map((d) => <option key={d} value={d}>{d}</option>)}
+                                    </select>
+                                </div>
+                                <button type="button" onClick={add} disabled={busy || !orgId} className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#055AAF] text-white text-[13px] font-semibold hover:opacity-90 disabled:opacity-50">
+                                    {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}소속 추가
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+                <div className="flex items-center px-5 py-4 border-t border-[#E4E7EC]">
+                    <button type="button" onClick={onClose} className="ml-auto px-3.5 py-2 rounded-lg border border-[#E4E7EC] text-[13px] font-semibold text-[#475467] hover:bg-[#F9FAFB]">닫기</button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+}
+
 function LoginHistoryTab() {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -755,6 +881,7 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
     const [roleFilter, setRoleFilter] = useState('all'); // all | admin | super_admin
     const [sortBy, setSortBy] = useState('last_login'); // last_login | name | created
     const [modalState, setModalState] = useState({ open: false, target: null });
+    const [orgModal, setOrgModal] = useState({ open: false, user: null });
     const [saving, setSaving] = useState(false);
     const [selected, setSelected] = useState(new Set());
     const [bulkOpen, setBulkOpen] = useState(false);
@@ -1197,6 +1324,7 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                                             disabled={!isSuperAdmin}
                                                             onEdit={() => setModalState({ open: true, target: u })}
                                                             onResetPw={() => handleResetPw(u)}
+                                                            onManageOrgs={() => setOrgModal({ open: true, user: u })}
                                                             onDelete={() => !isMe && handleDelete(u)}
                                                         />
                                                     </td>
@@ -1249,6 +1377,15 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                     onSave={handleBulkSave}
                     onClose={() => setBulkOpen(false)}
                     saving={bulkSaving}
+                />
+            )}
+
+            {orgModal.open && orgModal.user && (
+                <MembershipsModal
+                    user={orgModal.user}
+                    brands={brands}
+                    onClose={() => setOrgModal({ open: false, user: null })}
+                    onChanged={load}
                 />
             )}
 
