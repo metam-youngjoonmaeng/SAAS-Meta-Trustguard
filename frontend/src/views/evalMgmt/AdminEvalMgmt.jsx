@@ -1199,6 +1199,8 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
 // ─────────────────────────────────────────────────────
 // 평가목록 체크박스 선택 보존 키 — 상세(#/detail) 왕복 시 컴포넌트가 언마운트돼도 유지.
 // sessionStorage(탭 단위, 탭 닫으면 자동 해제). 쿠키/localStorage 대신 SPA 내 화면 전환 보존용.
+const SELECTED_KEY = 'tg.evalMgmt.adminResults.selected';
+
 function AdminResults({ embedded, beforeList, results = [], loading = false, onReload }) {
     const [period, setPeriod] = useState(defaultPeriod('7d'));
     const [channel, setChannel] = useState('all');
@@ -1206,6 +1208,11 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
     const [approval, setApproval] = useState('all');
     const [approvedIds, setApprovedIds] = useState(() => new Set());
     const [scoreRange, setScoreRange] = useState('all');
+    // 체크박스 선택 — 원하는 건만 골라 Download(내보내기)용. 상세 왕복 보존 위해 sessionStorage 초기화.
+    const [selected, setSelected] = useState(() => {
+        try { return new Set(JSON.parse(sessionStorage.getItem(SELECTED_KEY) || '[]')); }
+        catch { return new Set(); }
+    });
     const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
     const [drawerId, setDrawerId] = useState(null);
     const [colFilters, setColFilters] = useState({});  // 헤더 엑셀식 필터: 컬럼키 → 제외 Set
@@ -1215,6 +1222,12 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
     useEffect(() => {
         setApprovedIds(new Set(results.filter((r) => r.approved).map((r) => r.id)));
     }, [results]);
+
+    // 선택 변경 시 sessionStorage 동기화 → 상세(#/detail) 다녀와도 체크 유지.
+    useEffect(() => {
+        try { sessionStorage.setItem(SELECTED_KEY, JSON.stringify([...selected])); }
+        catch { /* storage 불가 환경 무시 */ }
+    }, [selected]);
 
     // 행 클릭 → 기존 평가리스트의 실제 "상세 QA 분석" 화면(#/detail/{qa_id}, Detail.jsx)으로 이동.
     // 앱 전체가 단일 해시라우팅 SPA 라, hash 만 바꾸면 App 이 Detail 로 전환한다.
@@ -1310,11 +1323,22 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
             <Icon name="chevron-down" size={11} />
         );
 
-    const drawerItem = drawerId ? results.find((r) => r.id === drawerId) : null;
-    const COLS = '96px 108px 168px 88px 84px 1fr 64px 112px 104px 30px';
+    const toggle = (id) => {
+        setSelected((prev) => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+    const toggleAll = () => {
+        setSelected((prev) => (prev.size === filtered.length ? new Set() : new Set(filtered.map((r) => r.id))));
+    };
 
-    // 평가목록 내보내기 — 현재 필터된 목록을 CSV/Excel 로 저장(형식 선택 팝업). 화면 컬럼과 동일.
-    const buildExportRows = () => filtered.map((r) => ({
+    const drawerItem = drawerId ? results.find((r) => r.id === drawerId) : null;
+    const COLS = '36px 96px 108px 168px 88px 84px 1fr 64px 112px 104px 30px';
+
+    // 평가목록 내보내기 — 체크한 건만(없으면 전체 필터결과) CSV/Excel 로 저장. 화면 컬럼과 동일.
+    const buildExportRows = (src) => src.map((r) => ({
         '상담일시': r.callDatetime ? formatDateTime(r.callDatetime) : `${r.date} ${r.time}`,
         '상담번호': r.sessionId,
         '상담사': r.name,
@@ -1327,7 +1351,9 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
     }));
     const exportDownload = (fmt) => {
         setDlOpen(false);
-        const rows = buildExportRows();
+        // 체크한 건이 있으면 그것만, 없으면 현재 필터된 전체.
+        const src = selected.size > 0 ? filtered.filter((r) => selected.has(r.id)) : filtered;
+        const rows = buildExportRows(src);
         if (!rows.length) { alert('내보낼 데이터가 없습니다.'); return; }
         const now = new Date();
         const p = (n) => String(n).padStart(2, '0');
@@ -1459,13 +1485,15 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                     <div className="sub" style={{ marginLeft: 12 }}>{filtered.length}건 표시 중</div>
                     <div style={{ marginLeft: 'auto', position: 'relative' }}>
                         <button className="btn-mini" onClick={() => setDlOpen((v) => !v)}>
-                            <Icon name="download" />Download
+                            <Icon name="download" />Download{selected.size > 0 ? ` (${selected.size})` : ''}
                         </button>
                         {dlOpen && (
                             <>
                                 <div onClick={() => setDlOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
                                 <div className="panel" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 50, padding: 4, minWidth: 172, boxShadow: '0 10px 28px rgba(16,24,40,0.16)' }}>
-                                    <div style={{ padding: '6px 10px 4px', fontSize: 11.5, color: 'var(--ink-500)', fontWeight: 700 }}>파일 형식 선택</div>
+                                    <div style={{ padding: '6px 10px 4px', fontSize: 11.5, color: 'var(--ink-500)', fontWeight: 700 }}>
+                                        {selected.size > 0 ? `선택 ${selected.size}건` : `전체 ${filtered.length}건`} 내보내기 · 형식 선택
+                                    </div>
                                     <button className="btn-mini" style={{ width: '100%', justifyContent: 'flex-start', border: 0, background: 'transparent' }} onClick={() => exportDownload('excel')}>
                                         <Icon name="download" />Excel (.xlsx)
                                     </button>
@@ -1479,6 +1507,9 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                 </div>
                 <div>
                     <div className="tbl-head tc" style={{ gridTemplateColumns: COLS, borderTop: 0, overflow: 'visible' }}>
+                        <div style={{ display: 'grid', placeItems: 'center' }} title="전체 선택/해제">
+                            <input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={toggleAll} style={{ cursor: 'pointer' }} />
+                        </div>
                         <div style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => sortBy('date')}>
                             상담일시 <SortIcon k="date" />
                         </div>
@@ -1500,7 +1531,10 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                     <div style={{ maxHeight: 430, overflowY: 'auto' }}>
                         {filtered.map((r) => {
                             return (
-                                <div key={r.id} className="tbl-row clickable tc" onClick={() => openDetail(r.id)} style={{ gridTemplateColumns: COLS }}>
+                                <div key={r.id} className="tbl-row clickable tc" onClick={() => openDetail(r.id)} style={{ gridTemplateColumns: COLS, background: selected.has(r.id) ? 'var(--primary-soft)' : undefined }}>
+                                    <div style={{ display: 'grid', placeItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                        <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} style={{ cursor: 'pointer' }} />
+                                    </div>
                                     {(() => {
                                         const full = r.callDatetime ? formatDateTime(r.callDatetime) : `${r.date} ${r.time}`;
                                         const [d, t] = full.split(' ');
