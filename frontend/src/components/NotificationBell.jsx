@@ -58,7 +58,9 @@ function CoachingPlanModal({ coaching, onClose }) {
     const link = buildTutorLink(g);
     const startLearning = () => {
         if (!link) { alert('튜터 학습 앱 주소가 설정되지 않았습니다. 관리자에게 문의하세요.'); return; }
-        if (typeof window !== 'undefined') window.open(link, '_blank', 'noopener');
+        // 새 탭/팝업 대신 현재 탭에서 튜터로 이동(ICS 임베드 시 내부 전환). 복귀는 브라우저 뒤로가기.
+        // CounselorResults 의 startLearning(915a707) 과 동작 통일.
+        if (typeof window !== 'undefined') window.location.assign(link);
     };
     return (
         <Modal

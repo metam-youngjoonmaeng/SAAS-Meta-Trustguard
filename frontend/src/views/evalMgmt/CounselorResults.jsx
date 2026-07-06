@@ -82,7 +82,8 @@ function CounselorCoachingCard({ g, onArchive }) {
     const tutorLink = buildTutorLink(g);
     const startLearning = () => {
         if (!tutorLink) { alert('튜터 학습 앱 주소가 설정되지 않았습니다. 관리자에게 문의하세요.'); return; }
-        if (typeof window !== 'undefined') window.open(tutorLink, '_blank', 'noopener');
+        // 새 탭/팝업 대신 현재 탭에서 튜터로 이동(외부 새 창 미오픈). 복귀는 브라우저 뒤로가기.
+        if (typeof window !== 'undefined') window.location.assign(tutorLink);
     };
     const MAX_CHIPS = 4;
     const overflow = scenarios.length > MAX_CHIPS ? scenarios.length - (MAX_CHIPS - 1) : 0;
