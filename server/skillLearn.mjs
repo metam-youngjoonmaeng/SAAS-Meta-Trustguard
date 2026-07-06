@@ -52,6 +52,81 @@ async function resolveSkillRubricId(pool, orgId) {
     }
 }
 
+/** 루브릭 파일스토어 등록(멱등) — 파이프라인 load_rubric 게이트 충족용. 항목 없으면 false. */
+async function registerRubricForOrg(pool, orgId, rubricId, base) {
+    const { rubric } = await buildRubricFromDefs(pool, orgId);
+    if (!rubric || !(rubric.items && rubric.items.length)) return false;
+    const resp = await fetch(`${base}/v2/rubrics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...rubric, rubric_id: rubricId, name: rubric.name || `org${orgId}` }),
+        signal: AbortSignal.timeout(RUBRIC_REGISTER_TIMEOUT_MS),
+    });
+    return resp.ok;
+}
+
+/**
+ * 격리키 변경 자동 이관(auto-heal) — RAG few-shot 설정 저장/해제로 rubric_id 해석이 바뀌면
+ * (예: inline-org42 → rbrc_org42) 기존 스킬 버전이 옛 키 아래 미아가 된다. 현재 키에 버전이
+ * 없을 때 옛 후보 키(qa_skill_memory 의 이 org 행 + 규칙상 두 형태)를 뒤져 버전이 있으면
+ * 파이프라인 adopt 로 스토어를 통째 이관하고 qa_skill_memory 행 키도 승계한다.
+ * @returns {Promise<boolean>} 이관 발생 여부
+ */
+async function adoptLegacySkillStore(pool, orgId, rubricId, base, { register = true } = {}) {
+    const candidates = new Set([`rbrc_org${orgId}`, `inline-org${orgId}`]);
+    try {
+        const { rows } = await pool.query('SELECT rubric_id FROM public.qa_skill_memory WHERE org_id = $1', [orgId]);
+        for (const r of rows) candidates.add(safeStr(r.rubric_id).trim());
+    } catch {
+        /* 메모리 테이블 조회 실패 — 규칙 후보만으로 진행 */
+    }
+    candidates.delete(rubricId);
+    candidates.delete('');
+    for (const cand of candidates) {
+        const alt = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(cand)}/versions`);
+        if (!Array.isArray(alt?.versions) || !alt.versions.length) continue;
+        // 새 키가 루브릭 레지스트리에 없으면 /versions 가 rubric_not_found 라 등록을 선행(멱등).
+        //   등록 불가(항목 없음 — 예: 삭제된 브랜드)면 이관해도 새 키로 조회가 안 되므로 중단.
+        if (register) {
+            try {
+                const registered = await registerRubricForOrg(pool, orgId, rubricId, base);
+                if (!registered) {
+                    logger.warn(`[skill-learn] rubric 등록 불가(org ${orgId} 항목 없음) — 격리키 이관 생략`);
+                    continue;
+                }
+            } catch (e) {
+                logger.warn(`[skill-learn] 이관 전 rubric 등록 실패 — 격리키 이관 생략: ${e?.message || e}`);
+                continue;
+            }
+        }
+        const mig = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/adopt`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from_rubric_id: cand }),
+        });
+        if (mig?.ok) {
+            // 메모리 행 키 승계 — 새 키 행이 이미 있으면(학습이 새 키로 이미 돈 경우) 보존, 옛 행 유지.
+            try {
+                await pool.query(
+                    `UPDATE public.qa_skill_memory
+                        SET rubric_id = $2,
+                            memory = jsonb_set(memory, '{rubric_id}', to_jsonb($2::text))
+                      WHERE rubric_id = $1
+                        AND NOT EXISTS (SELECT 1 FROM public.qa_skill_memory m2 WHERE m2.rubric_id = $2)`,
+                    [cand, rubricId]
+                );
+            } catch (e) {
+                logger.warn(`[skill-learn] 메모리 키 이관 실패(버전 이관은 유효): ${e?.message || e}`);
+            }
+            logger.info(
+                `[skill-learn] 스킬 스토어 격리키 이관 — org ${orgId}: ${cand} → ${rubricId} (버전 ${mig.version_count ?? '?'}개)`
+            );
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * order_no → item_number/만점 맵 — ingestGoldenSetToRag 의 매핑 로직 동일 미러.
  * buildRubricFromDefs 는 items[].eval_item_number 를 부여하지 않고(백엔드 normalize_rubric 이
@@ -154,6 +229,42 @@ export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMI
  * @returns {Promise<{ok:boolean, org_id:number, rubric_id:string, version_id?:string|null,
  *                    case_count:number, items_changed?:Array, activated?:boolean, error?:string}>}
  */
+/**
+ * qa_skill_memory 에서 브랜드 메모리(memory.json 전체 blob) 로드 — 부재/오류 시 빈 골격.
+ * 파이프라인 load_memory(rubric_id) 와 정합하는 스키마({schema_version, rubric_id, items}).
+ */
+async function loadSkillMemory(pool, rubricId) {
+    try {
+        const { rows } = await pool.query('SELECT memory FROM public.qa_skill_memory WHERE rubric_id = $1', [rubricId]);
+        const mem = rows[0]?.memory;
+        if (mem && typeof mem === 'object' && !Array.isArray(mem)) return mem;
+    } catch (e) {
+        logger.warn(`[skill-learn] 메모리 로드 실패(빈 골격으로 진행): ${e?.message || e}`);
+    }
+    return { schema_version: 1, rubric_id: rubricId, items: {} };
+}
+
+/**
+ * 학습 응답의 최종 메모리(blob)를 qa_skill_memory 에 UPSERT — rubric_id 단위 통째 교체.
+ * 쓰기 주체가 학습 마감 1회뿐 + 동시 학습 already_running 가드라 blob 통째 저장이라도 경합 없음.
+ */
+async function saveSkillMemory(pool, rubricId, orgId, memory) {
+    if (!memory || typeof memory !== 'object' || Array.isArray(memory)) return false;
+    try {
+        await pool.query(
+            `INSERT INTO public.qa_skill_memory (rubric_id, org_id, memory, updated_at)
+                 VALUES ($1, $2, $3::jsonb, now())
+             ON CONFLICT (rubric_id) DO UPDATE
+                SET memory = EXCLUDED.memory, org_id = EXCLUDED.org_id, updated_at = now()`,
+            [rubricId, orgId, JSON.stringify(memory)]
+        );
+        return true;
+    } catch (e) {
+        logger.warn(`[skill-learn] 메모리 저장 실패(학습 결과는 유효): ${e?.message || e}`);
+        return false;
+    }
+}
+
 export async function runSkillLearn(pool, orgId, opts = {}) {
     const source = opts.source || 'manual';
     const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
@@ -187,6 +298,14 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
         });
     } catch (e) {
         logger.warn(`[skill-learn] rubric 등록 실패(무시 — generate 응답에서 확인): ${e?.message || e}`);
+    }
+
+    // 격리키 변경 자동 이관 — 옛 키에 미아가 된 버전/메모리를 현재 키로 승계(부모 lineage 유지).
+    //   위에서 등록을 이미 마쳤으므로 register:false.
+    try {
+        await adoptLegacySkillStore(pool, orgId, rubricId, base, { register: false });
+    } catch (e) {
+        logger.warn(`[skill-learn] 격리키 이관 시도 실패(신규 키로 진행): ${e?.message || e}`);
     }
 
     // ③ 정정 케이스 수집 — order_no→item_number 매핑 불가(비활성/미존재 항목) 행은 제외.
@@ -231,6 +350,11 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
     }
     const targetItems = Object.values(byItem).sort((a, b) => a.item_number - b.item_number);
     emit({ stage: 'generate', case_count: cases.length, target_items: targetItems, rubric_id: rubricId });
+
+    // 메모리 소유 = MTG DB(qa_skill_memory). 누적 메모리를 동봉 → 파이프라인이 학습 입력으로 사용,
+    //   응답 memory 로 최종본을 돌려받아 DB 에 UPSERT(SSOT). 로드 실패해도 빈 골격으로 진행(무해).
+    const skillMemory = await loadSkillMemory(pool, rubricId);
+
     let resp;
     let j = {};
     try {
@@ -242,6 +366,7 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
                 label: `${source} ${kstNowLabel()}`,
                 auto_activate: true,
                 excluded_items: excludedItems,
+                memory: skillMemory,
                 cases,
             }),
             signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
@@ -255,6 +380,13 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
         return { ok: false, org_id: orgId, rubric_id: rubricId, case_count: cases.length, error: String(e?.message || e) };
     }
     const ok = j.ok === true;
+    // 응답 최종 메모리(blob) 를 DB 로 영속. ok 여부로 게이트하지 않는 것은 의도적:
+    //   · 에러 경로(생성 예외)는 파이프라인이 memory 를 아예 미첨부 → 여기 도달해도 j.memory 부재.
+    //   · ok:false=no_eligible(학습 자격 미달)이라도 유입 케이스 누적분은 저장돼야 다음 배치 자격의
+    //     토대가 됨(파일 기반 _persist_mem_best_effort 와 동일 의미). blob 은 항상 입력 ⊇ 라 손실 없음.
+    if (j.memory && typeof j.memory === 'object') {
+        await saveSkillMemory(pool, rubricId, orgId, j.memory);
+    }
     const result = {
         ok,
         org_id: orgId,
@@ -299,11 +431,21 @@ async function pipelineJson(url, init = {}) {
     }
 }
 
-/** 버전 목록 프록시 — GET /v2/mtg-skill/{rubric}/versions. */
+/** 버전 목록 프록시 — GET /v2/mtg-skill/{rubric}/versions. 현재 키에 버전이 없으면
+ *  옛 격리키 이관(auto-heal)을 시도한 뒤 재조회 — 키 변경으로 미아가 된 버전 복구. */
 export async function fetchSkillVersions(pool, orgId, opts = {}) {
     const base = resolveSkillBaseUrl(opts);
     const rubricId = await resolveSkillRubricId(pool, orgId);
-    const j = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions`);
+    let j = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions`);
+    if (!Array.isArray(j?.versions) || !j.versions.length) {
+        try {
+            if (await adoptLegacySkillStore(pool, orgId, rubricId, base)) {
+                j = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions`);
+            }
+        } catch (e) {
+            logger.warn(`[skill-learn] 격리키 이관 시도 실패(현재 키 결과 반환): ${e?.message || e}`);
+        }
+    }
     return { org_id: orgId, rubric_id: rubricId, ...j };
 }
 

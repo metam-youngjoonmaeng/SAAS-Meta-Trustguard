@@ -5,6 +5,7 @@
 // 디자인은 BatchManage 관행(.tg-eval 토큰 + panel/panel-head + 인라인 스타일) 재사용.
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon, PageHead } from './evalMgmt/ui';
+import { DiffText } from './EvalItems'; // 평가항목 변경이력과 동일한 GitHub식 diff 렌더러 재사용
 import {
     fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion,
     fetchSkillLearnStatus,
@@ -78,9 +79,12 @@ function SkillCaseCard({ c }) {
 }
 
 // 항목 아코디언 — 항목명(#item_number) + changed 배지, 펼치면 overlay md(pre) + 생성 근거 케이스 카드.
-function SkillItemAccordion({ item }) {
+function SkillItemAccordion({ item, prevOverlay, hasParent }) {
     const [open, setOpen] = useState(false);
     const cases = Array.isArray(item.cases) ? item.cases : [];
+    const curOverlay = item.overlay_md || '';
+    const prevOv = prevOverlay || '';
+    const overlayChanged = hasParent && prevOv !== curOverlay; // 이전 버전 대비 룰 변경 여부
     return (
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'white' }}>
             <button
@@ -106,15 +110,34 @@ function SkillItemAccordion({ item }) {
             </button>
             {open && (
                 <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)' }}>
-                    <div style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--ink-400)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 5 }}>
-                        학습된 보완 룰 (overlay md)
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                        <div style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--ink-400)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                            보완 룰 변경 {hasParent ? '(이전 버전 → 이번 버전)' : '(최초 버전)'}
+                        </div>
+                        {hasParent && (
+                            overlayChanged
+                                ? <span style={{ fontSize: 10, fontWeight: 700, color: '#067647', background: '#ECFDF3', border: '1px solid #ABEFC6', padding: '0 7px', borderRadius: 999 }}>변경됨</span>
+                                : <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-400)', background: 'var(--muted)', border: '1px solid var(--border)', padding: '0 7px', borderRadius: 999 }}>이전 버전과 동일</span>
+                        )}
                     </div>
-                    {item.overlay_md ? (
-                        <pre style={{ margin: 0, fontSize: 11.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflowY: 'auto', background: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', color: 'var(--ink-800)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-                            {item.overlay_md}
-                        </pre>
-                    ) : (
+                    {!curOverlay && !prevOv ? (
                         <div style={{ fontSize: 12, color: 'var(--ink-400)' }}>overlay 내용이 비어 있습니다.</div>
+                    ) : (
+                        /* 평가항목 변경이력과 동일한 GitHub식 2단 diff — 삭제=빨강(이전 칸) / 추가=초록(이번 칸). */
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                            <div style={{ padding: '6px 10px', background: 'var(--muted)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', fontSize: 9.5, fontWeight: 800, color: 'var(--ink-500)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                                이전 버전 {hasParent ? '' : '(없음)'}
+                            </div>
+                            <div style={{ padding: '6px 10px', background: '#EEF4FB', borderBottom: '1px solid var(--border)', fontSize: 9.5, fontWeight: 800, color: '#055AAF', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                                이번 버전 {item.changed ? '(갱신)' : '(승계)'}
+                            </div>
+                            <div style={{ padding: '10px 12px', borderRight: '1px solid var(--border)', background: 'white', fontSize: 11.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 340, overflowY: 'auto', color: 'var(--ink-700)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                                <DiffText value={hasParent ? prevOv : ''} other={curOverlay} mode="before" />
+                            </div>
+                            <div style={{ padding: '10px 12px', background: 'white', fontSize: 11.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 340, overflowY: 'auto', color: 'var(--ink-900)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                                <DiffText value={curOverlay} other={hasParent ? prevOv : ''} mode="after" />
+                            </div>
+                        </div>
                     )}
                     <div style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--ink-400)', letterSpacing: '0.06em', textTransform: 'uppercase', margin: '14px 0 6px' }}>
                         생성 근거 — 투입 검수 정정 케이스
@@ -144,6 +167,7 @@ const SkillPromptManage = () => {
     // 버전 상세
     const [selectedId, setSelectedId] = useState(null);
     const [detail, setDetail] = useState(null);
+    const [prevMap, setPrevMap] = useState({}); // 부모 버전 항목별 overlay_md (item_number → md) — diff 근거
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState(null);
     // 학습 진행 표시 — 이 탭은 조회·활성화 전용(수동 트리거는 'AI 평가 배치 > 스킬배치').
@@ -189,12 +213,25 @@ const SkillPromptManage = () => {
     const openDetail = useCallback(async (versionId) => {
         setSelectedId(versionId);
         setDetail(null);
+        setPrevMap({});
         setDetailError(null);
         setDetailLoading(true);
         try {
             const r = await fetchSkillVersionDetail(versionId);
             if (r?.ok === false) throw new Error(r?.error || '상세 로드 실패');
             setDetail(r);
+            // 부모(직전) 버전의 항목별 overlay 를 당겨 diff(이전→이번) 렌더 근거로 사용.
+            //   부모 없음(최초 버전)/로드 실패 시 prevMap 비움 → 전부 신규(초록)로 표시.
+            if (r.parent_version_id) {
+                try {
+                    const p = await fetchSkillVersionDetail(r.parent_version_id);
+                    if (p?.ok !== false && Array.isArray(p?.items)) {
+                        const map = {};
+                        for (const it of p.items) map[it.item_number] = it.overlay_md || '';
+                        setPrevMap(map);
+                    }
+                } catch { /* 부모 로드 실패는 diff 없이 이번 버전 overlay 만 신규로 표시 */ }
+            }
         } catch (e) {
             setDetailError(e?.message || '상세 로드 실패');
         } finally {
@@ -473,7 +510,12 @@ const SkillPromptManage = () => {
                                 {Array.isArray(detail.items) && detail.items.length > 0 ? (
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
                                         {detail.items.map((it) => (
-                                            <SkillItemAccordion key={it.item_number} item={it} />
+                                            <SkillItemAccordion
+                                                key={it.item_number}
+                                                item={it}
+                                                prevOverlay={prevMap[it.item_number]}
+                                                hasParent={!!detail.parent_version_id}
+                                            />
                                         ))}
                                     </div>
                                 ) : (
