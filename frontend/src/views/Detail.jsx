@@ -45,6 +45,8 @@ function reviewTooltip(call, status) {
 const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }) => {
     // 골드셋 등록/해제는 관리자(admin/super_admin)만. 상담사는 버튼 미노출(서버도 403).
     const canManageGold = role === 'admin' || role === 'super_admin';
+    // 관리자 코멘트 입력/수정/삭제도 관리자(admin/super_admin)만. 상담사는 조회만(편집 UI 미노출).
+    const canEditComments = role === 'admin' || role === 'super_admin';
     // 브랜드별 Pentagon 라벨/키 lookup. 신한=컬렉션 5축, 한화=고객센터 5축.
     // (사용자 생성 트랙 축은 analysis 로드 후 아래에서 카테고리명으로 재도출 — PENTAGON_KEYS/LABELS)
     const brandConfig = useMemo(() => getBrandConfig(activeBrandId), [activeBrandId]);
@@ -1222,6 +1224,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                             adminComments.map((c, i) => (
                                                 <div key={i} className="bg-white p-4 rounded-xl border border-[#D0D5DD] shadow-sm relative overflow-hidden group">
                                                     <div className="absolute top-0 left-0 bottom-0 w-1 bg-[#055AAF]"></div>
+                                                    {canEditComments && (
                                                     <button
                                                         onClick={() => {
                                                             if (selectedCommentIdx === i) {
@@ -1235,6 +1238,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                         className={`absolute top-3 right-3 w-4 h-4 rounded border ${selectedCommentIdx === i ? 'bg-[#055AAF] border-[#055AAF]' : 'border-[#D0D5DD] bg-white'}`}
                                                         aria-label="코멘트 선택"
                                                     />
+                                                    )}
                                                     <div className="flex justify-between items-center mb-2">
                                                         <span className="text-[10px] font-extrabold text-[#101828]">{c.author || 'QA 매니저'}</span>
                                                         <span className="text-[9px] text-[#98A2B3]">{formatDateTime(c.created_at)}</span>
@@ -1251,6 +1255,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                         )}
                                     </div>
 
+                                    {canEditComments && (
                                     <div className="p-4 border-t border-[#E4E7EC] bg-white">
                                         <textarea
                                             className="w-full p-3 bg-[#F9FAFB] border border-[#D0D5DD] rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#055AAF]/20 focus:border-[#055AAF] transition-all resize-none mb-3"
@@ -1313,6 +1318,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                             </button>
                                         </div>
                                     </div>
+                                    )}
                                 </div>
                             </div>
                             :

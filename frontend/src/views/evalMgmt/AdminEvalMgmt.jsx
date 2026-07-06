@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { Icon, PageHead, PeriodPicker, Modal, Gauge, StatusPill, ScoreBreakdown, Avatar, ChannelChip, ColumnFilter, defaultPeriod, openInWindow, openCallDetail } from './ui';
 import { DIMENSIONS, scoreClass, fmtNum, TUTOR_CATEGORIES, TUTOR_SCENARIOS, COUNSELORS, scenById, catMeta } from './mockData';
-import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, archiveCoaching, fetchCoachingHistory, updateReviewStatus, deleteCalls, fetchAgentCalls } from '../../services/api';
+import { fetchCalls, fetchAgents, fetchCoaching, createCoaching, deleteCoaching, archiveCoaching, fetchCoachingHistory, fetchAgentCalls } from '../../services/api';
 import { formatDateTime } from '../../utils/formatters';
 import { DEFAULT_TOTAL_MAX } from '../../constants';
+import * as XLSX from 'xlsx';
 
 // 점수 구간(우수/보통/코칭) 임계값은 활성 브랜드 만점(콜 total_max 최대값) 기준 90%/75% 로
 // AdminResults 내부에서 동적 산출. 사용자 생성 평가 트랙(임의 만점)도 자동 반영 — 고정 80 폴백 제거.
@@ -1207,7 +1208,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
     const [approval, setApproval] = useState('all');
     const [approvedIds, setApprovedIds] = useState(() => new Set());
     const [scoreRange, setScoreRange] = useState('all');
-    // 체크박스 선택 — 상세 왕복 보존을 위해 sessionStorage 에서 초기화.
+    // 체크박스 선택 — 원하는 건만 골라 Download(내보내기)용. 상세 왕복 보존 위해 sessionStorage 초기화.
     const [selected, setSelected] = useState(() => {
         try { return new Set(JSON.parse(sessionStorage.getItem(SELECTED_KEY) || '[]')); }
         catch { return new Set(); }
@@ -1215,6 +1216,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
     const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
     const [drawerId, setDrawerId] = useState(null);
     const [colFilters, setColFilters] = useState({});  // 헤더 엑셀식 필터: 컬럼키 → 제외 Set
+    const [dlOpen, setDlOpen] = useState(false);        // Download(내보내기) 형식 선택 팝업
 
     // 실데이터 로드 후 최종승인 상태(review_status='completed') 시드.
     useEffect(() => {
@@ -1303,69 +1305,6 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
             return sort.dir === 'asc' ? cmp : -cmp;
         });
 
-    const toggle = (id) => {
-        const next = new Set(selected);
-        next.has(id) ? next.delete(id) : next.add(id);
-        setSelected(next);
-    };
-    // 목록 일괄 승인(검토요청 건만) — 단건 승인/반려/확정취소 등 상세 액션은 상세화면 ReviewActionBar 로 이동.
-    const approveSelected = async () => {
-        const selectedIds = [...selected];
-        if (!selectedIds.length) return;
-        // 상담사 1차 제출(review_done) 건만 승인 가능 — 나머지는 건너뛰고 안내.
-        const byId = new Map((results || []).map((r) => [r.id, r]));
-        const ids = selectedIds.filter((id) => byId.get(id)?.reviewStatus === 'review_done');
-        const skipped = selectedIds.length - ids.length;
-        if (!ids.length) {
-            alert('승인 가능한 건이 없습니다. 상담사 1차 자체평가(검토요청)가 완료된 건만 승인할 수 있습니다.');
-            return;
-        }
-        setApprovedIds((s) => {
-            const n = new Set(s);
-            ids.forEach((id) => n.add(id));
-            return n;
-        });
-        const failed = [];
-        for (const id of ids) {
-            try {
-                await updateReviewStatus(id, 'approved');
-            } catch {
-                failed.push(id);
-            }
-        }
-        if (failed.length) {
-            setApprovedIds((s) => {
-                const n = new Set(s);
-                failed.forEach((id) => n.delete(id));
-                return n;
-            });
-        }
-        if (failed.length || skipped) {
-            alert(`${failed.length ? `${failed.length}건 승인 실패. ` : ''}${skipped ? `${skipped}건은 상담사 평가 대기라 건너뜀.` : ''}`.trim());
-        }
-    };
-    const toggleAll = () => {
-        if (selected.size === filtered.length) setSelected(new Set());
-        else setSelected(new Set(filtered.map((r) => r.id)));
-    };
-    // 선택 건 삭제(관리자) — DELETE /api/calls { ids } 단일 요청(서버 트랜잭션, 자식 테이블 CASCADE).
-    //   되돌릴 수 없는 작업이라 확인창 필수. 완료 후 서버 재조회(onReload)로 목록 갱신.
-    const removeSelected = async () => {
-        const selectedIds = [...selected];
-        if (!selectedIds.length) return;
-        if (typeof window !== 'undefined' &&
-            !window.confirm(`선택한 ${selectedIds.length}건의 평가를 삭제할까요?\n평가·분석·대화 등 관련 데이터가 모두 삭제되며 되돌릴 수 없습니다.`)) {
-            return;
-        }
-        try {
-            await deleteCalls(selectedIds);
-            setSelected(new Set());
-            if (typeof onReload === 'function') await onReload();
-        } catch (e) {
-            console.error('평가 삭제 실패:', e);
-            alert(`삭제에 실패했습니다. ${e?.message || ''}`.trim());
-        }
-    };
 
     const avgScore = filtered.length ? Math.round((filtered.reduce((s, r) => s + r.score, 0) / filtered.length) * 10) / 10 : 0;
     const excellent = filtered.filter((r) => r.score >= SCORE_HIGH).length;
@@ -1384,24 +1323,67 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
             <Icon name="chevron-down" size={11} />
         );
 
+    const toggle = (id) => {
+        setSelected((prev) => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+    const toggleAll = () => {
+        setSelected((prev) => (prev.size === filtered.length ? new Set() : new Set(filtered.map((r) => r.id))));
+    };
+
     const drawerItem = drawerId ? results.find((r) => r.id === drawerId) : null;
     const COLS = '36px 96px 108px 168px 88px 84px 1fr 64px 112px 104px 30px';
+
+    // 평가목록 내보내기 — 체크한 건만(없으면 전체 필터결과) CSV/Excel 로 저장. 화면 컬럼과 동일.
+    const buildExportRows = (src) => src.map((r) => ({
+        '상담일시': r.callDatetime ? formatDateTime(r.callDatetime) : `${r.date} ${r.time}`,
+        '상담번호': r.sessionId,
+        '상담사': r.name,
+        '상담사코드': r.counselor || '',
+        '채널': r.channel,
+        '부서': r.team,
+        '카테고리': r.category,
+        '점수': r.score,
+        '승인': approvedIds.has(r.id) ? '승인' : '대기',
+    }));
+    const exportDownload = (fmt) => {
+        setDlOpen(false);
+        // 체크한 건이 있으면 그것만, 없으면 현재 필터된 전체.
+        const src = selected.size > 0 ? filtered.filter((r) => selected.has(r.id)) : filtered;
+        const rows = buildExportRows(src);
+        if (!rows.length) { alert('내보낼 데이터가 없습니다.'); return; }
+        const now = new Date();
+        const p = (n) => String(n).padStart(2, '0');
+        const fname = `평가목록_${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}_${p(now.getHours())}${p(now.getMinutes())}`;
+        if (fmt === 'csv') {
+            const headers = Object.keys(rows[0]);
+            const esc = (v) => { const s = String(v ?? ''); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+            const csv = [headers.join(','), ...rows.map((row) => headers.map((h) => esc(row[h])).join(','))].join('\r\n');
+            const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });  // BOM: Excel 한글 정합
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `${fname}.csv`; a.click();
+            URL.revokeObjectURL(url);
+        } else {
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '평가목록');
+            XLSX.writeFile(wb, `${fname}.xlsx`);
+        }
+    };
 
     return (
         <div>
             {embedded ? (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 18 }}>
                     <PeriodPicker value={period} onChange={setPeriod} />
-                    <button className="btn-mini">
-                        <Icon name="download" />CSV
-                    </button>
                 </div>
             ) : (
                 <PageHead eyebrow="관리자 · 평가 결과" title="조직 전체 평가 데이터" sub="모든 채널·부서·상담사의 평가를 검색, 필터링, 분석합니다.">
                     <PeriodPicker value={period} onChange={setPeriod} />
-                    <button className="btn-mini">
-                        <Icon name="download" />CSV
-                    </button>
                     <button className="btn-mini">
                         <Icon name="users" />코치 배정
                     </button>
@@ -1493,33 +1475,6 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                 </div>
             </div>
 
-            {/* Bulk action toolbar */}
-            {selected.size > 0 && (
-                <div className="panel" style={{ marginBottom: 14, padding: '12px 18px', background: 'var(--brand-navy)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>
-                        <span className="mono" style={{ fontSize: 16, fontWeight: 800, marginRight: 4 }}>{selected.size}</span>건 선택됨
-                    </span>
-                    <button className="btn-mini" onClick={approveSelected} style={{ background: 'rgba(255,255,255,0.16)', borderColor: 'rgba(255,255,255,0.3)', color: 'white' }}>
-                        <Icon name="check" />선택 승인
-                    </button>
-                    <button className="btn-mini" style={{ background: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.22)', color: 'white' }}>
-                        <Icon name="user-plus" />코치 배정
-                    </button>
-                    <button className="btn-mini" style={{ background: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.22)', color: 'white' }}>
-                        <Icon name="play" />재평가
-                    </button>
-                    <button className="btn-mini" style={{ background: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.22)', color: 'white' }}>
-                        <Icon name="download" />CSV 내보내기
-                    </button>
-                    <button className="btn-mini" onClick={removeSelected} style={{ background: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.22)', color: 'white' }}>
-                        <Icon name="trash-2" />삭제
-                    </button>
-                    <button onClick={() => setSelected(new Set())} style={{ marginLeft: 'auto', background: 'transparent', border: 0, color: 'rgba(255,255,255,0.7)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
-                        선택 해제
-                    </button>
-                </div>
-            )}
-
             {/* 코칭 배정 (평가 목록 바로 위) */}
             {beforeList}
 
@@ -1528,10 +1483,31 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                 <div className="panel-head">
                     <h3>평가 목록</h3>
                     <div className="sub" style={{ marginLeft: 12 }}>{filtered.length}건 표시 중</div>
+                    <div style={{ marginLeft: 'auto', position: 'relative' }}>
+                        <button className="btn-mini" onClick={() => setDlOpen((v) => !v)}>
+                            <Icon name="download" />Download{selected.size > 0 ? ` (${selected.size})` : ''}
+                        </button>
+                        {dlOpen && (
+                            <>
+                                <div onClick={() => setDlOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                                <div className="panel" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 50, padding: 4, minWidth: 172, boxShadow: '0 10px 28px rgba(16,24,40,0.16)' }}>
+                                    <div style={{ padding: '6px 10px 4px', fontSize: 11.5, color: 'var(--ink-500)', fontWeight: 700 }}>
+                                        {selected.size > 0 ? `선택 ${selected.size}건` : `전체 ${filtered.length}건`} 내보내기 · 형식 선택
+                                    </div>
+                                    <button className="btn-mini" style={{ width: '100%', justifyContent: 'flex-start', border: 0, background: 'transparent' }} onClick={() => exportDownload('excel')}>
+                                        <Icon name="download" />Excel (.xlsx)
+                                    </button>
+                                    <button className="btn-mini" style={{ width: '100%', justifyContent: 'flex-start', border: 0, background: 'transparent' }} onClick={() => exportDownload('csv')}>
+                                        <Icon name="download" />CSV (.csv)
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
                 <div>
                     <div className="tbl-head tc" style={{ gridTemplateColumns: COLS, borderTop: 0, overflow: 'visible' }}>
-                        <div style={{ display: 'grid', placeItems: 'center' }}>
+                        <div style={{ display: 'grid', placeItems: 'center' }} title="전체 선택/해제">
                             <input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={toggleAll} style={{ cursor: 'pointer' }} />
                         </div>
                         <div style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => sortBy('date')}>
