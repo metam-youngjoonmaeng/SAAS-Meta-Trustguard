@@ -51,6 +51,13 @@
   --warning-border:      #fedf89;          /* warning banner border */
   --warning-ink:         #b54708;          /* warning ink */
 
+  /* AI 스킬 관리 페이지 토큰(성공/골드) */
+  --success:      #16a34a;
+  --success-soft: #ecfdf3;
+  --gold:         #f59e0b;
+  --gold-ink:     #b45309;
+  --gold-fill:    #fde68a;
+
   /* Emotion (real-time customer affect during call) */
   --emotion-angry:      #ef4444;          /* 분노 */
   --emotion-frustrated: #eab308;          /* 좌절 */
@@ -844,3 +851,16 @@
 .tg-eval .reveal-up { animation: none; }
 .tg-eval .hover-lift:hover { transform: none; }
 }
+
+/* ─────────────── AI 스킬 관리 — 조밀 행 리스트(스킬셋/골든셋) ─────────────── */
+.tg-eval .row-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.tg-eval .row-table thead th {
+  background: var(--background-soft);
+  border-bottom: 1px solid var(--border); padding: 8px 10px;
+  font-size: 11px; font-weight: 600; color: var(--ink-500); text-align: center; white-space: nowrap;
+}
+.tg-eval .row-table tbody td { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; text-align: center; }
+.tg-eval .row-tr { cursor: pointer; transition: background var(--t-base); }
+.tg-eval .row-tr:hover { background: var(--background-soft); }
+.tg-eval .row-sub td { border-bottom: 1px solid var(--border-soft); padding-top: 0; }
+.tg-eval .icon-del:hover { background: var(--destructive-soft); color: var(--destructive); }
