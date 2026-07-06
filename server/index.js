@@ -1454,6 +1454,11 @@ app.get('/api/stats', async (req, res) => {
         const deptRaw = String(req.query.department || '').trim();
         const department = deptRaw && deptRaw.toLowerCase() !== 'all' ? deptRaw : null;
 
+        // ICS 원천 CDATE(텍스트)에 MySQL 제로날짜('0000-00-00 00:00:00')·빈문자열이 섞여
+        // Postgres timestamp/date 캐스트가 실패(500)한다 → 캐스트 전 NULL 로 무력화(=미날짜 콜은 기간집계 제외).
+        const CDATE_TS = `NULLIF(NULLIF(NULLIF(c."CDATE", ''), '0000-00-00 00:00:00'), '0000-00-00')::timestamp`;
+        const CDATE_DT = `NULLIF(NULLIF(NULLIF(c."CDATE", ''), '0000-00-00 00:00:00'), '0000-00-00')::date`;
+
         // 공통 스코프(WHERE) 빌더 — is_sandbox 제외 + org + (상담사 본인필터) + 선택 부서.
         // 반환: { where, params } — alias 'c'.
         const buildScope = ({ withDept = false } = {}) => {
@@ -1468,7 +1473,7 @@ app.get('/api/stats', async (req, res) => {
         // 1) 기간 앵커 = 스코프 내 최신 콜 날짜
         const scopeAll = buildScope();
         const anchorRes = await pool.query(
-            `SELECT MAX(c."CDATE"::timestamp)::date AS anchor FROM qa_calls c ${scopeAll.where}`,
+            `SELECT MAX(${CDATE_TS})::date AS anchor FROM qa_calls c ${scopeAll.where}`,
             scopeAll.params
         );
         const anchor = anchorRes.rows[0]?.anchor || null;
@@ -1479,8 +1484,8 @@ app.get('/api/stats', async (req, res) => {
             return;
         }
         // 창 경계 SQL 조각(앵커 기준 상대창). 현재창 [start, anchor], 직전창 [prevStart, start)
-        const winCur = `c."CDATE"::date BETWEEN ($A::date - ($D - 1)) AND $A::date`;
-        const winPrev = `c."CDATE"::date BETWEEN ($A::date - (2*$D - 1)) AND ($A::date - $D)`;
+        const winCur = `${CDATE_DT} BETWEEN ($A::date - ($D - 1)) AND $A::date`;
+        const winPrev = `${CDATE_DT} BETWEEN ($A::date - (2*$D - 1)) AND ($A::date - $D)`;
         const bind = (sql, params) => {
             params.push(anchor); const a = `$${params.length}`;
             params.push(periodDays); const d = `$${params.length}`;
@@ -1575,10 +1580,10 @@ app.get('/api/stats', async (req, res) => {
         // 5) 일별 추이(현재창)
         const sc5 = buildScope({ withDept: true });
         const daily = (await pool.query(
-            `SELECT c."CDATE"::date AS date,
+            `SELECT ${CDATE_DT} AS date,
                     ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS avg, COUNT(*) AS count
                FROM qa_calls c ${sc5.where} AND ${bind(winCur, sc5.params)}
-              GROUP BY c."CDATE"::date ORDER BY 1`,
+              GROUP BY ${CDATE_DT} ORDER BY 1`,
             sc5.params
         )).rows.map((r) => ({ date: r.date, avg: Number(r.avg), count: Number(r.count) }));
 
