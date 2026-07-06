@@ -8,6 +8,7 @@ import {
     fetchGoldenCasesByItem, removeGoldenSet,
     fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, deleteEvalItemDef, fetchEvalItemHistory,
     fetchPentagonAxes, savePentagonAxis, createPentagonAxis,
+    fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion,
 } from '../services/api';
 import {
     Plus,
@@ -22,6 +23,7 @@ import {
     History,
     CheckCircle2,
     AlertTriangle,
+    Wand2,
 } from 'lucide-react';
 
 // ============================================================
@@ -53,7 +55,7 @@ const PENTAGON_MOCK_DESC = {
     '발화 안정성':      '발음·속도·억양 등 발화 안정성 종합',
 };
 
-const EvalItems = ({ activeBrandId }) => {
+const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
     const brandConfig = useMemo(() => getBrandConfig(activeBrandId), [activeBrandId]);
     // 레거시(신한1/한화2/코오롱3)=정적 체크리스트, 신규 브랜드(id≥4)=DB(eval_item_defs '기본') 기반 동적.
     const dynamic = isDynamicChecklistBrand(activeBrandId);
@@ -180,7 +182,7 @@ const EvalItems = ({ activeBrandId }) => {
                 className="grid gap-5"
                 style={{
                     gridTemplateColumns: '320px minmax(0, 1fr)',
-                    height: 'calc(100vh - 220px)',
+                    height: `calc(100vh - ${220 + topOffset}px)`,
                     minHeight: 600,
                 }}
             >
@@ -516,13 +518,17 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
                 ) : (
                     <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#F2F4F7] text-[#667085]">비활성</span>
                 )}
-                <button
-                    type="button"
-                    onClick={onEdit}
-                    className="ml-auto h-[32px] px-3.5 rounded-full bg-[#055AAF] text-white text-[12px] font-semibold hover:bg-[#1E70E0] shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                    <Edit3 size={12} />편집하기
-                </button>
+                {/* 스킬셋 탭은 학습된 보완 룰(읽기 전용) 뷰라 편집 대상 아님 → 편집하기 숨김.
+                    편집(항목 평가 설명·점수 기준)은 개요/골든셋 탭에서만 노출. */}
+                {tab !== 'skill' && (
+                    <button
+                        type="button"
+                        onClick={onEdit}
+                        className="ml-auto h-[32px] px-3.5 rounded-full bg-[#055AAF] text-white text-[12px] font-semibold hover:bg-[#1E70E0] shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                        <Edit3 size={12} />편집하기
+                    </button>
+                )}
             </div>
 
             <div className="px-5 py-2.5 bg-[#FAFBFC] border-b border-[#F2F4F7] flex items-center gap-3 flex-wrap text-[12px] text-[#667085]">
@@ -547,6 +553,11 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
                     onClick={() => setTab('golden')}
                     label="골든셋 사례"
                     count={goldenLoading ? null : goldenCases.length}
+                />
+                <PreviewTab
+                    active={tab === 'skill'}
+                    onClick={() => setTab('skill')}
+                    label="스킬셋"
                 />
             </div>
 
@@ -574,7 +585,7 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
 ※ 출력 형식(JSON)·점수 산술 규칙·자기 검증·공통 정책은 백엔드가 자동 부착합니다.`}</pre>
                         </div>
                     </div>
-                ) : (
+                ) : tab === 'golden' ? (
                     <GoldenSetPreview
                         cases={goldenCases}
                         loading={goldenLoading}
@@ -587,6 +598,8 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
                             ));
                         }}
                     />
+                ) : (
+                    <SkillSetPreview item={item} />
                 )}
             </div>
         </div>
@@ -823,6 +836,228 @@ function GoldenSetPreview({ cases, loading, error, onDelete }) {
     );
 }
 
+/* ── 항목별 스킬셋(학습된 보완 룰) 미리보기 ────────────────────
+   활성 스킬 버전 상세를 받아 이 항목(item_name 매칭)의 overlay 룰 +
+   생성 근거(검수 정정 케이스)를 표시. 버전 활성화/롤백/이력은
+   'AI QA 항목관리 > LLM 스킬 관리' 탭에서 다룬다(여기는 조회 전용). */
+
+function SkillDirectionBadge({ direction }) {
+    const meta =
+        direction === '낮음'
+            ? { bg: '#EFF8FF', fg: '#175CD3', bd: '#B2DDFF', label: '낮음 · AI 과소평가' }
+            : direction === '높음'
+              ? { bg: '#FFF6ED', fg: '#C4320A', bd: '#FFD6AE', label: '높음 · AI 과대평가' }
+              : { bg: '#F2F4F7', fg: '#667085', bd: '#E4E7EC', label: direction || '—' };
+    return (
+        <span
+            className="text-[10.5px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
+            style={{ background: meta.bg, color: meta.fg, border: `1px solid ${meta.bd}` }}
+        >
+            {meta.label}
+        </span>
+    );
+}
+
+function SkillCaseField({ label, text, boxed }) {
+    if (!text) return null;
+    return (
+        <div className="mt-2">
+            <div className="text-[9.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-1">{label}</div>
+            <div
+                className={`text-[11.5px] text-[#475467] leading-relaxed whitespace-pre-wrap break-words max-h-[150px] overflow-y-auto ${
+                    boxed ? 'bg-[#FAFBFC] px-2.5 py-1.5 rounded-md' : ''
+                }`}
+            >
+                {text}
+            </div>
+        </div>
+    );
+}
+
+function SkillSetPreview({ item }) {
+    // 버전 목록(rubric 단위, 항목 무관) + 활성 버전. 사용자가 아무 버전이나 골라 이 항목의 룰을 조회.
+    const [versions, setVersions] = useState([]);
+    const [activeId, setActiveId] = useState(null);
+    const [selectedVersionId, setSelectedVersionId] = useState(null);
+    const [listLoading, setListLoading] = useState(true);
+    const [listError, setListError] = useState(null);
+    // 선택 버전 상세 → 이 항목(item_name 매칭) overlay/케이스
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [detailError, setDetailError] = useState(null);
+    const [overlay, setOverlay] = useState(null);
+    const [cases, setCases] = useState([]);
+    const [changed, setChanged] = useState(false);
+    const [found, setFound] = useState(false);
+
+    // 1) 버전 목록 로드 — 기본 선택 = 활성 버전(없으면 최신). 스킬셋 탭 열 때만 마운트되어 지연 로드.
+    useEffect(() => {
+        let cancelled = false;
+        setListLoading(true);
+        setListError(null);
+        (async () => {
+            try {
+                const list = await fetchSkillVersions();
+                if (cancelled) return;
+                const vs = Array.isArray(list?.versions) ? list.versions : [];
+                const act = list?.active_version_id ?? null;
+                setVersions(vs);
+                setActiveId(act);
+                setSelectedVersionId(act || vs[0]?.version_id || null);
+                setListLoading(false);
+            } catch (e) {
+                if (!cancelled) { setListError(e?.message || '스킬 버전을 불러오지 못했습니다.'); setListLoading(false); }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [item.order_no, item.item]);
+
+    // 2) 선택 버전 상세 → 이 항목 overlay/케이스. item_name 매칭(MTG 동적 브랜드는 양쪽 모두
+    //    eval_item_defs 에서 파생돼 명칭 일치).
+    useEffect(() => {
+        if (!selectedVersionId) {
+            setOverlay(null); setCases([]); setChanged(false); setFound(false);
+            return undefined;
+        }
+        let cancelled = false;
+        setDetailLoading(true);
+        setDetailError(null);
+        (async () => {
+            try {
+                const detail = await fetchSkillVersionDetail(selectedVersionId);
+                if (cancelled) return;
+                const detailItems = Array.isArray(detail?.items) ? detail.items : [];
+                const norm = (s) => String(s || '').trim();
+                const match = detailItems.find((it) => norm(it.item_name) === norm(item.item));
+                setOverlay(match?.overlay_md || null);
+                setCases(Array.isArray(match?.cases) ? match.cases : []);
+                setChanged(Boolean(match?.changed));
+                setFound(Boolean(match));
+                setDetailLoading(false);
+            } catch (e) {
+                if (!cancelled) { setDetailError(e?.message || '버전 상세를 불러오지 못했습니다.'); setDetailLoading(false); }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [selectedVersionId, item.item]);
+
+    if (listLoading) {
+        return (
+            <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
+                <div className="text-[12.5px] text-[#667085]">불러오는 중…</div>
+            </div>
+        );
+    }
+    if (listError) {
+        return (
+            <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#FDA29B] bg-[#FFFBFA]">
+                <div className="text-[12.5px] text-[#B42318]">{listError}</div>
+            </div>
+        );
+    }
+    if (versions.length === 0) {
+        return (
+            <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
+                <Wand2 size={18} className="text-[#98A2B3] mx-auto mb-2" />
+                <div className="text-[12.5px] text-[#667085]">학습된 스킬 버전이 없습니다</div>
+                <div className="text-[11.5px] text-[#98A2B3] mt-1">상단 ‘LLM 스킬 관리’ 탭에서 학습하면 버전이 생성됩니다</div>
+            </div>
+        );
+    }
+
+    const isActiveSel = selectedVersionId === activeId;
+    const fmtOpt = (v) => {
+        const when = formatGoldenAddedAt(v.created_at);
+        return `${v.version_id}${when ? ` · ${when}` : ''}${v.version_id === activeId ? ' · 활성' : ''}`;
+    };
+
+    return (
+        <div className="flex flex-col gap-4">
+            {/* 버전 선택 — 활성/과거 버전 자유 조회 */}
+            <div className="flex items-center gap-2 flex-wrap pb-3 border-b border-[#F2F4F7]">
+                <span className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase">버전</span>
+                <select
+                    value={selectedVersionId || ''}
+                    onChange={(e) => setSelectedVersionId(e.target.value)}
+                    className="h-[30px] px-2 max-w-full rounded-md border border-[#D0D5DD] bg-white text-[12px] text-[#344054] cursor-pointer"
+                >
+                    {versions.map((v) => (
+                        <option key={v.version_id} value={v.version_id}>{fmtOpt(v)}</option>
+                    ))}
+                </select>
+                {isActiveSel ? (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#ECFDF3] text-[#067647] border border-[#ABEFC6]">활성 · 평가 적용 중</span>
+                ) : (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#F2F4F7] text-[#667085] border border-[#E4E7EC]">조회용 · 비활성</span>
+                )}
+                {activeId && !isActiveSel && (
+                    <button
+                        type="button"
+                        onClick={() => setSelectedVersionId(activeId)}
+                        className="text-[11px] font-semibold text-[#055AAF] hover:underline cursor-pointer"
+                    >
+                        활성 버전으로
+                    </button>
+                )}
+            </div>
+
+            {/* 선택 버전의 이 항목 상세 */}
+            {detailLoading ? (
+                <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
+                    <div className="text-[12.5px] text-[#667085]">불러오는 중…</div>
+                </div>
+            ) : detailError ? (
+                <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#FDA29B] bg-[#FFFBFA]">
+                    <div className="text-[12.5px] text-[#B42318]">{detailError}</div>
+                </div>
+            ) : !found || !overlay ? (
+                <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
+                    <Wand2 size={18} className="text-[#98A2B3] mx-auto mb-2" />
+                    <div className="text-[12.5px] text-[#667085]">이 버전에는 이 항목의 보완 룰이 없습니다</div>
+                    <div className="text-[11.5px] text-[#98A2B3] mt-1">다른 버전을 선택하거나, 검수 정정(낮음/높음)이 쌓이면 학습됩니다</div>
+                </div>
+            ) : (
+                <>
+                    <div>
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase">학습된 보완 룰 (overlay)</div>
+                            {changed ? (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#ECFDF3] text-[#067647] border border-[#ABEFC6]">이번 버전 갱신</span>
+                            ) : (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#F2F4F7] text-[#667085] border border-[#E4E7EC]">이전 버전 룰 승계</span>
+                            )}
+                        </div>
+                        <pre className="text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3 max-h-[40vh] overflow-auto">{overlay}</pre>
+                    </div>
+                    <div>
+                        <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2 inline-flex items-center gap-1">
+                            <Sparkles size={10} />생성 근거 · 투입 검수 정정 케이스{cases.length > 0 ? ` (${cases.length})` : ''}
+                        </div>
+                        {cases.length === 0 ? (
+                            <div className="text-[12px] text-[#98A2B3] italic">이번 버전에 투입된 케이스 없음 — 이전 버전 룰을 그대로 승계했습니다.</div>
+                        ) : (
+                            <div className="grid gap-2.5">
+                                {cases.map((c, i) => (
+                                    <div key={`${c.consultation_id || 'na'}-${i}`} className="p-4 rounded-xl bg-white border border-[#E4E7EC]">
+                                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                                            <span className="text-[12px] font-bold text-[#101828] font-mono">상담 {c.consultation_id || '—'}</span>
+                                            <SkillDirectionBadge direction={c.direction} />
+                                            <span className="text-[11.5px] font-bold text-[#475467] tabular-nums">AI 점수 {c.ai_score ?? '—'} / {c.max_score ?? '—'}</span>
+                                            {c.call_datetime && <span className="ml-auto text-[11px] text-[#98A2B3] tabular-nums">{c.call_datetime}</span>}
+                                        </div>
+                                        <SkillCaseField label="AI 판정 사유" text={c.ai_reason} />
+                                        <SkillCaseField label="근거 발화 발췌" text={c.evidence} boxed />
+                                        <SkillCaseField label="검수 사유 (콜 단위)" text={c.call_reason} />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
 /* ── 변경 이력 ─────────────────────────────────────────────── */
 
 const CHANGE_TYPE_LABEL = {
@@ -839,6 +1074,8 @@ const CHANGE_TYPE_LABEL = {
     // 펜타곤 축 전용 change_type (pentagon_axis_change_log)
     label_rename:            '축 이름 변경',
     description_update:      '축 설명 수정',
+    // LLM 스킬 버전(검수 정정 학습 보완 룰) — 파이프라인 스토어(fetchSkillVersions) 병합 표시
+    skill_version:           'LLM 스킬 학습 (보완 룰)',
 };
 
 const FIELD_LABEL = {
@@ -913,27 +1150,130 @@ function HistoryModal({ departments = [], onClose }) {
         return map;
     }, [entries]);
 
+    // LLM 스킬 버전 이력 — 브랜드 전역이라 필터와 무관하게 1회 로드(프록시 실패 시 평가항목 이력만 표시).
+    const [skillMeta, setSkillMeta] = useState(null);     // { active_version_id, versions }
+    const [skillDetails, setSkillDetails] = useState({}); // version_id → { loading, error, hasParent, parentId, items }
+    const [skillMode, setSkillMode] = useState(false);    // 'LLM 스킬 관리' 모드 — 스킬 버전만 + 활성화/롤백 노출
+    const [skillActBusy, setSkillActBusy] = useState(false);
+    const loadSkillVersions = useCallback(async () => {
+        try {
+            const r = await fetchSkillVersions();
+            if (!r?.ok) return;
+            setSkillMeta({
+                active_version_id: r.active_version_id ?? null,
+                versions: Array.isArray(r.versions) ? r.versions : [],
+            });
+        } catch { /* 스킬 프록시 실패 — 평가항목 이력만 표시 */ }
+    }, []);
+    useEffect(() => { loadSkillVersions(); }, [loadSkillVersions]);
+
+    // 활성화/롤백/비활성화 — LLM 스킬 관리 모드 전용 액션(적용 후 목록 재조회로 활성 배지 동기화).
+    const handleSkillActivate = useCallback(async (versionId) => {
+        if (skillActBusy) return;
+        const isActive = skillMeta?.active_version_id === versionId;
+        const msg = isActive
+            ? '이 버전을 비활성화할까요?\n활성 버전이 없으면 평가 시 스킬 보완 룰이 적용되지 않습니다.'
+            : `${versionId} 버전을 활성화할까요?\n평가 시 이 버전의 보완 룰이 적용됩니다.`;
+        if (!window.confirm(msg)) return;
+        setSkillActBusy(true);
+        try {
+            const r = await activateSkillVersion(isActive ? null : versionId);
+            if (r?.ok === false) throw new Error(r?.error || '요청 실패');
+            await loadSkillVersions();
+        } catch (e) {
+            window.alert(e?.message || '활성화 요청에 실패했습니다.');
+        } finally {
+            setSkillActBusy(false);
+        }
+    }, [skillActBusy, skillMeta, loadSkillVersions]);
+
+    // 표시 목록 — 일반 모드=평가항목 변경 이력만, 스킬 관리 모드=LLM 스킬 버전만(최신순).
+    //   스킬 버전은 기본 타임라인에 섞지 않는다(우측 'LLM 스킬 관리' 버튼으로만 진입).
+    const mergedEntries = useMemo(() => {
+        if (skillMode) {
+            return (skillMeta?.versions || [])
+                .map((v) => ({
+                    source: 'skill', id: v.version_id, change_type: 'skill_version',
+                    changed_at: v.created_at, skill: v,
+                }))
+                .sort((a, b) => new Date(b.changed_at) - new Date(a.changed_at));
+        }
+        return entries;
+    }, [entries, skillMeta, skillMode]);
+
+    // 스킬 버전 펼침 시 상세 lazy 로드 — 부모 버전 overlay 를 당겨 이전→이번 diff 근거로 사용.
+    const loadSkillDiff = useCallback(async (versionId) => {
+        setSkillDetails((m) => ({ ...m, [versionId]: { loading: true } }));
+        try {
+            const d = await fetchSkillVersionDetail(versionId);
+            if (d?.ok === false) throw new Error(d?.error || '버전 상세 조회 실패');
+            const prevMap = {};
+            if (d.parent_version_id) {
+                try {
+                    const p = await fetchSkillVersionDetail(d.parent_version_id);
+                    if (p?.ok !== false && Array.isArray(p?.items)) {
+                        for (const it of p.items) prevMap[it.item_number] = it.overlay_md || '';
+                    }
+                } catch { /* 부모 로드 실패 — 전부 신규(초록)로 표시 */ }
+            }
+            const items = (Array.isArray(d.items) ? d.items : []).map((it) => ({
+                item_number: it.item_number,
+                item_name: it.item_name,
+                cur: it.overlay_md || '',
+                prev: prevMap[it.item_number] ?? '',
+                changed: it.changed !== false,
+            }));
+            setSkillDetails((m) => ({
+                ...m,
+                [versionId]: { loading: false, hasParent: !!d.parent_version_id, parentId: d.parent_version_id || null, items },
+            }));
+        } catch (e) {
+            setSkillDetails((m) => ({ ...m, [versionId]: { loading: false, error: e?.message || '조회 실패' } }));
+        }
+    }, []);
+
     return (
         <ModalShell title="평가항목 변경 이력" onClose={onClose} widthClass="max-w-[920px]">
-            {/* 필터 바 */}
+            {/* 필터 바 — 우측 'LLM 스킬 관리' 토글: 스킬 버전만 모아 활성화/롤백 관리 */}
             <div className="px-6 py-3 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-2 flex-wrap text-[12px]">
-                <span className="text-[10.5px] font-bold text-[#667085] tracking-[0.06em] uppercase mr-1">부서</span>
-                <button type="button" onClick={() => setDeptFilter('')} className={chipBtn(deptFilter === '')}>전체</button>
-                {departments.map((d) => (
-                    <button key={d} type="button" onClick={() => setDeptFilter(d)} className={chipBtn(deptFilter === d)}>{d}</button>
-                ))}
-                <span className="w-px h-4 bg-[#E4E7EC] mx-1.5" />
-                <span className="text-[10.5px] font-bold text-[#667085] tracking-[0.06em] uppercase mr-1">변경 종류</span>
-                <select
-                    value={typeFilter}
-                    onChange={(e) => setTypeFilter(e.target.value)}
-                    className="h-[30px] px-2 rounded-md border border-[#E4E7EC] bg-white text-[12px] cursor-pointer"
+                {skillMode ? (
+                    <span className="text-[11.5px] text-[#667085]">
+                        LLM 스킬 학습 버전 — 이전 버전 대비 변경 확인 · 활성화/롤백 관리
+                    </span>
+                ) : (
+                    <>
+                        <span className="text-[10.5px] font-bold text-[#667085] tracking-[0.06em] uppercase mr-1">부서</span>
+                        <button type="button" onClick={() => setDeptFilter('')} className={chipBtn(deptFilter === '')}>전체</button>
+                        {departments.map((d) => (
+                            <button key={d} type="button" onClick={() => setDeptFilter(d)} className={chipBtn(deptFilter === d)}>{d}</button>
+                        ))}
+                        <span className="w-px h-4 bg-[#E4E7EC] mx-1.5" />
+                        <span className="text-[10.5px] font-bold text-[#667085] tracking-[0.06em] uppercase mr-1">변경 종류</span>
+                        <select
+                            value={typeFilter}
+                            onChange={(e) => setTypeFilter(e.target.value)}
+                            className="h-[30px] px-2 rounded-md border border-[#E4E7EC] bg-white text-[12px] cursor-pointer"
+                        >
+                            <option value="">전체</option>
+                            {Object.entries(CHANGE_TYPE_LABEL)
+                                .filter(([k]) => k !== 'skill_version') /* 스킬 버전은 관리 모드 전용 */
+                                .map(([k, label]) => (
+                                    <option key={k} value={k}>{label}</option>
+                                ))}
+                        </select>
+                    </>
+                )}
+                <button
+                    type="button"
+                    onClick={() => { setExpanded(null); setSkillMode(!skillMode); }}
+                    className={`ml-auto h-[30px] px-3 rounded-md border text-[12px] font-bold cursor-pointer ${
+                        skillMode
+                            ? 'bg-[#6941C6] border-[#6941C6] text-white'
+                            : 'bg-white border-[#D6BBFB] text-[#6941C6] hover:bg-[#F4F0FF]'
+                    }`}
                 >
-                    <option value="">전체</option>
-                    {Object.entries(CHANGE_TYPE_LABEL).map(([k, label]) => (
-                        <option key={k} value={k}>{label}</option>
-                    ))}
-                </select>
+                    {skillMode ? '← 전체 이력' : 'LLM 스킬 관리'}
+                </button>
             </div>
 
             <div className="px-6 py-5 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 140px)' }}>
@@ -945,14 +1285,114 @@ function HistoryModal({ departments = [], onClose }) {
                     <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#FDA29B] bg-[#FFFBFA]">
                         <div className="text-[12.5px] text-[#B42318]">{error}</div>
                     </div>
-                ) : entries.length === 0 ? (
+                ) : mergedEntries.length === 0 ? (
                     <div className="py-12 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
                         <Info size={20} className="text-[#98A2B3] mx-auto mb-2" />
-                        <div className="text-[12.5px] text-[#667085]">변경 이력이 없습니다</div>
+                        <div className="text-[12.5px] text-[#667085]">
+                            {skillMode ? '학습된 LLM 스킬 버전이 없습니다' : '변경 이력이 없습니다'}
+                        </div>
                     </div>
                 ) : (
                     <div className="grid gap-2.5">
-                        {entries.map((entry) => {
+                        {mergedEntries.map((entry) => {
+                            // LLM 스킬 버전 entry — 항목별 overlay 를 이전 버전 대비 GitHub식 2단 diff 로 표시.
+                            if (entry.source === 'skill') {
+                                const v = entry.skill;
+                                const rowKey = `skill-${v.version_id}`;
+                                const isOpen = expanded === rowKey;
+                                const det = skillDetails[v.version_id];
+                                const isActive = skillMeta?.active_version_id === v.version_id;
+                                return (
+                                    <div key={rowKey} className="rounded-xl bg-white border border-[#E4E7EC]">
+                                        {/* 헤더 — 관리 버튼(활성화/롤백)을 품어야 해서 button 중첩 대신 div+onClick */}
+                                        <div
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => {
+                                                setExpanded(isOpen ? null : rowKey);
+                                                if (!isOpen && !det) loadSkillDiff(v.version_id);
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    setExpanded(isOpen ? null : rowKey);
+                                                    if (!isOpen && !det) loadSkillDiff(v.version_id);
+                                                }
+                                            }}
+                                            className="w-full px-4 py-3 flex items-center gap-3 text-left cursor-pointer hover:bg-[#FAFBFC] rounded-xl"
+                                        >
+                                            <ChevronRight
+                                                size={14}
+                                                className={`text-[#98A2B3] transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`}
+                                            />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-[12.5px] font-bold text-[#101828] truncate">LLM 스킬 보완 룰 {v.version_id}</span>
+                                                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#F4F0FF] text-[#6941C6]">LLM 스킬</span>
+                                                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#EEF4FB] text-[#055AAF]">{CHANGE_TYPE_LABEL.skill_version}</span>
+                                                    {isActive && (
+                                                        <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#ECFDF3] text-[#067647]">활성</span>
+                                                    )}
+                                                </div>
+                                                <div className="text-[11px] text-[#667085] mt-0.5">
+                                                    {formatChangedAt(v.created_at)} · 정정 케이스 {v.case_count ?? 0}건 · 항목 {(v.items_changed || []).length}개 갱신
+                                                </div>
+                                            </div>
+                                            {skillMode && (
+                                                <span className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                    {isActive ? (
+                                                        <button
+                                                            type="button"
+                                                            disabled={skillActBusy}
+                                                            onClick={() => handleSkillActivate(v.version_id)}
+                                                            className="h-[28px] px-2.5 rounded-md border border-[#E4E7EC] bg-white text-[11.5px] font-bold text-[#475467] cursor-pointer hover:bg-[#FAFBFC] disabled:opacity-50"
+                                                        >
+                                                            비활성화
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            disabled={skillActBusy}
+                                                            onClick={() => handleSkillActivate(v.version_id)}
+                                                            className="h-[28px] px-2.5 rounded-md border border-[#6941C6] bg-[#6941C6] text-[11.5px] font-bold text-white cursor-pointer hover:bg-[#53389E] disabled:opacity-50"
+                                                        >
+                                                            이 버전 활성화
+                                                        </button>
+                                                    )}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {isOpen && (
+                                            <div className="px-4 pb-4">
+                                                {!det || det.loading ? (
+                                                    <div className="text-[11.5px] text-[#667085] px-3 py-2">불러오는 중…</div>
+                                                ) : det.error ? (
+                                                    <div className="text-[11.5px] text-[#B42318] px-3 py-2">{det.error}</div>
+                                                ) : !det.items.length ? (
+                                                    <div className="text-[11.5px] italic text-[#98A2B3] px-3 py-2">항목 overlay 가 없습니다.</div>
+                                                ) : (
+                                                    det.items.map((it) => (
+                                                        <div key={it.item_number} className="grid gap-0 rounded-lg border border-[#E4E7EC] overflow-hidden mb-2.5 last:mb-0" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                                                            <div className="px-3 py-2 bg-[#FAFBFC] border-r border-[#E4E7EC] text-[10.5px] font-bold text-[#667085] tracking-[0.06em] uppercase">
+                                                                {it.item_name} · 이전 버전 {det.hasParent ? `(${det.parentId})` : '(없음)'}
+                                                            </div>
+                                                            <div className="px-3 py-2 bg-[#EEF4FB] text-[10.5px] font-bold text-[#055AAF] tracking-[0.06em] uppercase">
+                                                                {it.item_name} · 이번 버전 {it.changed ? '(갱신)' : '(승계)'}
+                                                            </div>
+                                                            <div className="px-3 py-2.5 text-[12px] text-[#475467] leading-relaxed whitespace-pre-wrap border-r border-[#E4E7EC] bg-white" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                                                                <DiffText value={det.hasParent ? it.prev : ''} other={it.cur} mode="before" />
+                                                            </div>
+                                                            <div className="px-3 py-2.5 text-[12px] text-[#101828] leading-relaxed whitespace-pre-wrap bg-white" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                                                                <DiffText value={it.cur} other={det.hasParent ? it.prev : ''} mode="after" />
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            }
                             const rowKey = `${entry.source || 'eval_item'}-${entry.id}`;
                             const isOpen = expanded === rowKey;
                             const label = CHANGE_TYPE_LABEL[entry.change_type] || entry.change_type;
@@ -1089,7 +1529,8 @@ function diffOps(aStr, bStr) {
 }
 
 // 변경 강조 텍스트. mode='before' → 삭제분 빨강, mode='after' → 추가분 초록. 반대편 변경분은 숨김.
-function DiffText({ value, other, mode }) {
+// LLM 스킬 버전 diff(SkillPromptManage)에서도 동일 형식으로 재사용하도록 export.
+export function DiffText({ value, other, mode }) {
     const cur = value === null || value === undefined ? '' : String(value);
     if (cur === '') return <span className="italic text-[#98A2B3]">(없음)</span>;
     const oth = other === null || other === undefined ? '' : String(other);
