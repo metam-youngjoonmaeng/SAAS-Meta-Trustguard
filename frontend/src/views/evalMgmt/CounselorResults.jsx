@@ -3,7 +3,7 @@
 //         강점·개선(항목 평균), 배정된 코칭(/api/coaching/mine).
 //         감정·대화 품질(/api/me/ta-metrics): 부정발화·금칙어=03 tb_ta_rslt, 회복률=05 qa_call_recovery. (미연동 시 mock 폴백)
 import React, { useState, useEffect, useMemo } from 'react';
-import { Icon, Gauge, Spark, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod, openInWindow, openCallDetail } from './ui';
+import { Icon, Gauge, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod, openInWindow, openCallDetail } from './ui';
 import { scoreClass, TUTOR_SCENARIOS } from './mockData';
 import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
 import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
@@ -291,6 +291,53 @@ function ItemScoreBreakdown({ items }) {
     );
 }
 
+// 최근 점수 추이 미니 차트 — 점별 점수 수치 + 첫/중간/끝 날짜(MM/DD) 표기(QA 피드백: 수치·날짜 없어 파악 곤란).
+// 공용 Spark 는 라벨 미지원이라 이 화면 전용으로 대체. points = [{ score, date('YYYY-MM-DD') }] 시간 오름차순.
+function TrendSpark({ points, color = 'var(--primary)', height = 92, width = 220 }) {
+    const w = width;
+    const h = height;
+    const padX = 12, top = 16, bottom = 16;
+    const scores = points.map((p) => p.score);
+    const max = Math.max(...scores);
+    const min = Math.min(...scores);
+    const range = max - min || 1;
+    const stepX = (w - padX * 2) / (points.length - 1);
+    const xy = points.map((p, i) => [padX + i * stepX, top + (1 - (p.score - min) / range) * (h - top - bottom)]);
+    const path = `M ${xy.map(([x, y]) => `${x},${y}`).join(' L ')}`;
+    const area = `${path} L ${w - padX},${h - bottom + 6} L ${padX},${h - bottom + 6} Z`;
+    // 날짜 라벨은 겹침 방지로 첫/끝(+5점 이상이면 중간)만.
+    const dateIdx = new Set([0, points.length - 1, ...(points.length >= 5 ? [Math.floor((points.length - 1) / 2)] : [])]);
+    const md = (d) => (d && d.length >= 10 ? `${d.slice(5, 7)}/${d.slice(8, 10)}` : '');
+    return (
+        <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+            <defs>
+                <linearGradient id="trendSparkFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+                    <stop offset="100%" stopColor={color} stopOpacity="0" />
+                </linearGradient>
+            </defs>
+            <path d={area} fill="url(#trendSparkFill)" />
+            <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            {xy.map(([x, y], i) => (
+                <g key={i}>
+                    <circle cx={x} cy={y} r="2.6" fill="white" stroke={color} strokeWidth="1.6" />
+                    <text x={x} y={y - 6} textAnchor="middle" style={{ fontSize: 9, fontWeight: 700, fill: 'var(--ink-700)' }}>{points[i].score}</text>
+                    {dateIdx.has(i) && (
+                        <text
+                            x={x}
+                            y={h - 3}
+                            textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}
+                            style={{ fontSize: 8.5, fill: 'var(--ink-400)' }}
+                        >
+                            {md(points[i].date)}
+                        </text>
+                    )}
+                </g>
+            ))}
+        </svg>
+    );
+}
+
 // 감정·대화 품질 카드 (부정비율 / 회복률 / 금칙어) — 03 TA + 05 qa_call_recovery 실연동(미연동/무데이터 시 mock 폴백).
 function QualityCard({ tone, icon, label, desc, ring, center, delta, footer, hero }) {
     const TONES = {
@@ -428,7 +475,24 @@ export default function CounselorResults() {
     const scored = myEvals.filter((r) => Number.isFinite(r.score) && r.score > 0);
     const myAvg = scored.length ? Math.round((scored.reduce((a, r) => a + r.score, 0) / scored.length) * 10) / 10 : null;
     const bestScore = scored.length ? Math.max(...scored.map((r) => r.score)) : null;
-    const myTrend = [...scored].reverse().map((r) => r.score).slice(-7);
+    // 추이 차트용 — 최근 7건(시간 오름차순), 점수+날짜 동반(수치·날짜 라벨 표기).
+    const myTrend = [...scored].reverse().slice(-7).map((r) => ({ score: r.score, date: r.date }));
+    // 개인 성장 추세 — 최근 7일 vs 직전 7일 평균 점수 차(앵커=본인 최신 콜 시각, 과거 시드 데이터도 표시되게).
+    // 비교 구간 중 한쪽이라도 콜이 없으면 null(표시 생략). 팀 내 순위 대신 노출(상담사 위축감 방지, 본인 추세 강조).
+    const weekDelta = (() => {
+        const dated = scored.filter((r) => r.callDatetime || r.date);
+        if (!dated.length) return null;
+        const ts = (r) => new Date(r.callDatetime || r.date).getTime();
+        const valid = dated.filter((r) => Number.isFinite(ts(r)));
+        if (!valid.length) return null;
+        const anchor = Math.max(...valid.map(ts));
+        const DAY = 24 * 3600 * 1000;
+        const cur = valid.filter((r) => anchor - ts(r) < 7 * DAY);
+        const prev = valid.filter((r) => { const d = anchor - ts(r); return d >= 7 * DAY && d < 14 * DAY; });
+        if (!cur.length || !prev.length) return null;
+        const avg = (a) => a.reduce((s, r) => s + r.score, 0) / a.length;
+        return Math.round((avg(cur) - avg(prev)) * 10) / 10;
+    })();
 
     // 항목별 평균(로드된 breakdown 집계) → 강점/개선. 실제 항목명(label) 기준으로 묶는다.
     const dimAverages = useMemo(() => {
@@ -483,7 +547,13 @@ export default function CounselorResults() {
                     <div className="eyebrow" style={{ marginBottom: 6 }}>This Week</div>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 8 }}>
                         <span style={{ fontSize: 36, fontWeight: 800, letterSpacing: '-0.02em' }}>{gradeLabel}</span>
-                        <span className="pill blue"><Icon name="trending-up" size={12} />+3.2점 vs 지난주</span>
+                        {/* 개인 성장 추세(실데이터) — 하락도 담담한 톤(gray)으로. 비교 데이터 없으면 미표시. */}
+                        {weekDelta != null && (
+                            <span className={`pill ${weekDelta >= 0 ? 'blue' : 'gray'}`}>
+                                <Icon name={weekDelta >= 0 ? 'trending-up' : 'trending-down'} size={12} />
+                                지난주 대비 {weekDelta >= 0 ? '+' : ''}{weekDelta}점
+                            </span>
+                        )}
                     </div>
                     <div className="muted-text" style={{ fontSize: 13.5, marginBottom: 16, maxWidth: 520, lineHeight: 1.55 }}>
                         {loading ? '평가 데이터를 불러오는 중…'
@@ -497,9 +567,14 @@ export default function CounselorResults() {
                             <div className="muted-text" style={{ fontSize: 11.5 }}>최고 점수</div>
                             <div className="mono" style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink-900)' }}>{bestScore ?? '–'}</div>
                         </div>
+                        {/* 개인 성장 추세(실계산) — 비교 데이터 없으면 '–'.
+                            팀 내 순위는 비노출 결정(상담사 위축감 방지) — 서버 /api/me/rank 는 존치(재노출 대비). */}
                         <div>
-                            <div className="muted-text" style={{ fontSize: 11.5 }}>팀 내 순위</div>
-                            <div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>1<span style={{ fontSize: 14, color: 'var(--ink-500)', fontWeight: 600, marginLeft: 2 }}>위 / 6명</span></div>
+                            <div className="muted-text" style={{ fontSize: 11.5 }}>지난주 대비</div>
+                            <div className="mono" style={{ fontSize: 22, fontWeight: 800, color: weekDelta == null ? 'var(--ink-400)' : weekDelta >= 0 ? 'var(--primary)' : 'var(--ink-700)' }}>
+                                {weekDelta == null ? '–' : `${weekDelta >= 0 ? '+' : ''}${weekDelta}`}
+                                {weekDelta != null && <span style={{ fontSize: 14, color: 'var(--ink-500)', fontWeight: 600, marginLeft: 2 }}>점</span>}
+                            </div>
                         </div>
                         <div>
                             <div className="muted-text" style={{ fontSize: 11.5 }}>평가 받은 통화</div>
@@ -507,9 +582,9 @@ export default function CounselorResults() {
                         </div>
                     </div>
                 </div>
-                <div style={{ width: 220 }}>
+                <div style={{ width: 520 }}>
                     <div className="muted-text" style={{ fontSize: 11.5, marginBottom: 6 }}>최근 점수 추이</div>
-                    {myTrend.length > 1 ? <Spark data={myTrend} color="var(--primary)" height={80} /> : <div className="muted-text" style={{ fontSize: 12 }}>추이 표시에 2건 이상 필요</div>}
+                    {myTrend.length > 1 ? <TrendSpark points={myTrend} height={130} width={520} /> : <div className="muted-text" style={{ fontSize: 12 }}>추이 표시에 2건 이상 필요</div>}
                 </div>
             </div>
 
@@ -591,7 +666,7 @@ export default function CounselorResults() {
                             <Icon name="graduation-cap" size={13} />
                         </div>
                         <h3>배정된 코칭 플랜</h3>
-                        <span className="muted-text" style={{ fontSize: 12 }}>· 코치가 직접 지정한 학습 커리큘럼</span>
+                        <span className="muted-text" style={{ fontSize: 12 }}>· 관리자가 직접 지정한 학습 커리큘럼</span>
                     </div>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                         {boardCoaching.length > 0 && (
