@@ -363,27 +363,50 @@ function App() {
         if (!isAuthenticated || !currentUser) return;
         let cancelled = false;
         (async () => {
+            // 비-super_admin(관리자/상담사)은 서버가 세션 org 로 데이터를 강제 스코프하므로
+            // 활성 브랜드도 본인 소속으로 고정. (잔존 QA_ACTIVE_BRAND_KEY 가 다른 브랜드를
+            // 가리키면 "데이터=본인 브랜드, 평가체계 컬럼=다른 브랜드" 불일치가 나던 문제 방지.
+            // 상담사는 아래 /api/admin/organizations 가 403 이라 목록 기반 보정도 불가능.)
+            const pinned = currentUser.role !== 'super_admin' && currentUser.org_id != null
+                ? Number(currentUser.org_id)
+                : null;
+            let brandSettled = false; // 이 effect 에서 활성 브랜드를 새로 확정했는지 — 확정 시 콜 재조회 필요.
+            if (pinned != null && pinned !== selectedBrandId) {
+                setSelectedBrandId(pinned);
+                window.localStorage.setItem(QA_ACTIVE_BRAND_KEY, String(pinned));
+                brandSettled = true;
+            }
             try {
                 const list = await fetchOrganizations();
                 if (cancelled) return;
                 setBrands(list);
-                const validIds = new Set(list.map((b) => b.id));
-                let nextId = selectedBrandId;
-                if (!nextId || !validIds.has(nextId)) {
-                    nextId = currentUser.org_id && validIds.has(currentUser.org_id)
-                        ? currentUser.org_id
-                        : (list[0]?.id ?? null);
-                }
-                if (nextId !== selectedBrandId) {
-                    setSelectedBrandId(nextId);
-                    if (nextId != null) {
-                        window.localStorage.setItem(QA_ACTIVE_BRAND_KEY, String(nextId));
-                    } else {
-                        window.localStorage.removeItem(QA_ACTIVE_BRAND_KEY);
+                if (pinned == null) { // 본인 소속 고정 대상은 목록 기반 보정 생략
+                    const validIds = new Set(list.map((b) => b.id));
+                    let nextId = selectedBrandId;
+                    if (!nextId || !validIds.has(nextId)) {
+                        nextId = currentUser.org_id && validIds.has(currentUser.org_id)
+                            ? currentUser.org_id
+                            : (list[0]?.id ?? null);
+                    }
+                    if (nextId !== selectedBrandId) {
+                        setSelectedBrandId(nextId);
+                        if (nextId != null) {
+                            window.localStorage.setItem(QA_ACTIVE_BRAND_KEY, String(nextId));
+                        } else {
+                            window.localStorage.removeItem(QA_ACTIVE_BRAND_KEY);
+                        }
+                        brandSettled = true;
                     }
                 }
             } catch (err) {
+                // 상담사(agent)는 조직 목록 API 권한이 없어 여기로 옴 — 고정값(pinned)으로 이미 정합.
                 console.error('브랜드 목록 로딩 오류:', err);
+            }
+            // 활성 브랜드가 이 effect 에서 확정/변경됐으면 콜 목록 재조회 — 로그인 직후 브랜드
+            // 미확정 상태로 불러온 전체(전 브랜드) 콜이 화면에 남는 문제 방지(super_admin 포함).
+            // (사이드바 수동 전환은 handleBrandChange 가 자체 재조회하므로 여기선 자동 확정 경로만 커버)
+            if (!cancelled && brandSettled) {
+                try { await refreshCalls(); } catch { /* 실패 시 기존 목록 유지 */ }
             }
         })();
         return () => {
@@ -569,7 +592,10 @@ function App() {
                     onTabClick={handleSidebarTabClick}
                 />
                 <main className="app-shell-main">
-                <PageContainer key={activeTab}>
+                {/* key 에 활성 브랜드 포함 — 브랜드 전환 시 현재 탭 전체 리마운트로 자체 fetch 뷰
+                    (상담사 평가관리·배치·사용자 등)도 새 브랜드 데이터로 즉시 재조회. 이전 브랜드의
+                    필터/선택 상태가 남지 않는 효과 겸함. (새로고침해야 반영되던 문제 fix) */}
+                <PageContainer key={`${activeTab}:${selectedBrandId ?? 'all'}`}>
                 {activeTab === 'dashboard' && (
                     <Dashboard
                         calls={calls}
