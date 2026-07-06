@@ -21,6 +21,7 @@ import { icsEnabled, listCompletedCalls, fetchTranscript, maxCompletedEndDate, g
 import { applyManualReviewStamps } from './manualReview.mjs';
 import { logger } from './logger.mjs';
 import { ingestGoldenSetToRag } from './qaPipelineIngest.mjs';
+import { runSkillLearn } from './skillLearn.mjs';
 
 function env(key, def = '') {
     return String(process.env[key] ?? def).trim();
@@ -228,6 +229,26 @@ function dueForScheduledStamp(projCd, freq, time) {
     return true;
 }
 
+/**
+ * LLM 스킬 "학습 배치" 주기(freq/time) — 검수 정정 기반 스킬 학습을 언제 트리거할지. (골든과 별개)
+ * config.scope.skillFreq/skillTime 에 저장. 미설정 시 manual(자동 트리거 없음) 기본 → 기존 브랜드 무영향.
+ * @returns {Promise<{freq:string, time:string}>}  freq ∈ hourly|daily|manual
+ */
+async function readSkillSchedule(pool, orgId) {
+    try {
+        const { rows } = await pool.query(
+            `SELECT config FROM public.qa_batch_configs
+              WHERE org_id = ANY($1) ORDER BY (org_id = $2) DESC LIMIT 1`,
+            [[orgId, 0], orgId]
+        );
+        const scope = rows[0]?.config?.scope || {};
+        return { freq: scope.skillFreq || 'manual', time: scope.skillTime || '02:00' };
+    } catch (e) {
+        logger.warn(`[ics-qa] 스킬 배치주기 조회 실패(${e?.message || e}) — manual 기본`);
+        return { freq: 'manual', time: '02:00' };
+    }
+}
+
 // 골든셋 학습 배치 — 전용 스케줄러(startGoldenLearnScheduler)가 브랜드별 마커맵으로 같은 구간 1회만 발화.
 const _lastGoldenKey = new Map(); // 'org:'+orgId → 마지막 골든셋 학습 실행 구간키
 function dueForGoldenLearn(markerKey, freq, time) {
@@ -247,6 +268,28 @@ function dueForGoldenLearn(markerKey, freq, time) {
     }
     if (_lastGoldenKey.get(markerKey) === key) return false;
     _lastGoldenKey.set(markerKey, key);
+    return true;
+}
+
+// LLM 스킬 학습 배치 — 골든과 분리된 전용 마커맵(같은 구간 1회만 발화, 판정 로직은 골든 미러).
+const _lastSkillKey = new Map(); // 'org:'+orgId → 마지막 스킬 학습 실행 구간키
+function dueForSkillLearn(markerKey, freq, time) {
+    const kst = new Date(Date.now() + 9 * 3600 * 1000);
+    const dateKey = kst.toISOString().slice(0, 10);
+    const hour = kst.getUTCHours();
+    const min = kst.getUTCMinutes();
+    let key;
+    if (freq === 'hourly') {
+        key = `${dateKey} ${String(hour).padStart(2, '0')}`;
+    } else if (freq === 'daily') {
+        const [th, tm] = String(time || '02:00').split(':').map((n) => Number(n) || 0);
+        if (hour < th || (hour === th && min < tm)) return false;
+        key = dateKey;
+    } else {
+        return false; // manual 은 정기 패스 대상 아님
+    }
+    if (_lastSkillKey.get(markerKey) === key) return false;
+    _lastSkillKey.set(markerKey, key);
     return true;
 }
 
@@ -354,6 +397,92 @@ export function startGoldenLearnScheduler(pool, hooks = {}) {
     // 부트 직후 1회 즉시 확인 + 이후 주기 실행.
     tick();
     const timer = setInterval(tick, GOLDEN_LEARN_INTERVAL_MS);
+    timer.unref?.();
+    return { stop: () => clearInterval(timer) };
+}
+
+/**
+ * LLM 스킬 학습 트리거 — 검수 정정('낮음'/'높음') 케이스를 모아 백엔드에 항목별 보완 룰(overlay)
+ * 생성을 위임하는 단일 창구. 실제 본체는 skillLearn.runSkillLearn (케이스 수집 → POST
+ * /v2/mtg-skill/{rubric_id}/generate — 버전 저장·활성화는 qa-pipeline 담당, MTG DB 는 SELECT 만).
+ * 호출원: 전용 스케줄러(startSkillLearnScheduler) + 수동(POST /api/skill-learn/run).
+ * @returns {Promise<{ok:boolean, org_id:number, rubric_id?:string, version_id?:string|null,
+ *                    case_count?:number, items_changed?:Array, activated?:boolean, error?:string}>}
+ */
+export async function triggerSkillLearn(pool, orgId, opts = {}) {
+    const tag = `org=${orgId}${opts.source ? ` (${opts.source})` : ''}`;
+    try {
+        const result = await runSkillLearn(pool, orgId, { source: opts.source, onProgress: opts.onProgress });
+        logger.info(
+            `[skill-learn] ${tag} — 케이스 ${result.case_count ?? '?'}건 → rubric=${result.rubric_id}` +
+                ` version=${result.version_id ?? '-'} changed=${(result.items_changed || []).length}` +
+                ` activated=${!!result.activated} ok=${result.ok}${result.error ? ` error=${result.error}` : ''}`
+        );
+        return { ...result, org_id: orgId, source: opts.source };
+    } catch (e) {
+        logger.error(`[skill-learn] ${tag} 트리거 실패: ${e?.message || e}`);
+        return { ok: false, error: String(e?.message || e), org_id: orgId, source: opts.source };
+    }
+}
+
+// 스킬 학습 전용 스케줄러 주기(약 60초). 골든 스케줄러·ICS 폴링 주기와 독립.
+const SKILL_LEARN_INTERVAL_MS = 60000;
+
+/**
+ * LLM 스킬 학습 전용 스케줄러 — startGoldenLearnScheduler 미러(자체 60초 타이머, 마커맵만 분리).
+ * 매 틱마다 qa_batch_configs 에서 config.scope.skillFreq ∈ {hourly,daily} 로 명시된 모든
+ * 브랜드(org_id<>0)를 조회하고, 브랜드별 freq/time(readSkillSchedule)으로 dueForSkillLearn 판정
+ * → 충족 org 만 triggerSkillLearn 발화. skillFreq 미설정 브랜드(기본 manual)는 자동 발화 안 함.
+ * 한 org 실패가 전체를 멈추지 않게 org 별 try/catch. 부트 직후 1회 즉시 + 이후 주기 실행.
+ * 재기동 시 인메모리 마커(_lastSkillKey) 리셋으로 같은 버킷 재발화 가능하나, 생성은 새 버전
+ * 추가일 뿐(활성 버전 교체) 평가 정합을 깨지 않는다.
+ *
+ * hooks(선택) — 자동 발화를 대시보드에 노출하기 위한 UI 콜백(골든 hooks 패턴 미러):
+ *   onRunStart(orgId, sched)  발화 직전 — index.js 가 skillLearnStatus=running + 로그 적재.
+ *   onProgress(orgId, p)      단계 전이({stage:'collect'|'generate', ...}) — 스킬 로그 적재.
+ *   onRunDone(orgId, result)  완료 — skillLearnStatus=done/error + 로그 적재.
+ * 훅 예외는 학습 자체에 영향 주지 않게 삼킨다.
+ * @returns {{stop: () => void}}
+ */
+export function startSkillLearnScheduler(pool, hooks = {}) {
+    let running = false;
+    const tick = async () => {
+        if (running) return; // 직전 틱이 끝나지 않았으면 건너뜀(동시중복 방지)
+        running = true;
+        try {
+            const { rows } = await pool.query(
+                `SELECT org_id FROM public.qa_batch_configs
+                  WHERE org_id <> 0 AND (config #>> '{scope,skillFreq}') IN ('hourly', 'daily')`
+            );
+            for (const row of rows) {
+                const orgId = row.org_id;
+                try {
+                    const sched = await readSkillSchedule(pool, orgId);
+                    if ((sched.freq === 'hourly' || sched.freq === 'daily') && dueForSkillLearn(`org:${orgId}`, sched.freq, sched.time)) {
+                        const label = sched.freq === 'daily' ? `매일 ${sched.time}` : '매시간';
+                        logger.info(`[skill-learn] org=${orgId}: [${label}] 정기 학습 트리거 발화`);
+                        try { hooks.onRunStart?.(orgId, sched); } catch { /* UI 훅 실패는 학습에 무영향 */ }
+                        const result = await triggerSkillLearn(pool, orgId, {
+                            source: `schedule:${sched.freq}`,
+                            onProgress: typeof hooks.onProgress === 'function' ? (p) => hooks.onProgress(orgId, p) : undefined,
+                        });
+                        try { hooks.onRunDone?.(orgId, result); } catch { /* UI 훅 실패는 학습에 무영향 */ }
+                    }
+                } catch (e) {
+                    logger.warn(`[skill-learn] org=${orgId} 정기 학습 패스 실패: ${e?.message || e}`);
+                }
+            }
+        } catch (e) {
+            logger.warn(`[skill-learn] 스케줄러 대상 조회 실패: ${e?.message || e}`);
+        } finally {
+            running = false;
+        }
+    };
+
+    logger.info('[skill-learn] 스킬 학습 스케줄러 활성 — 60초 주기(브랜드별 skillFreq hourly/daily 발화)');
+    // 부트 직후 1회 즉시 확인 + 이후 주기 실행.
+    tick();
+    const timer = setInterval(tick, SKILL_LEARN_INTERVAL_MS);
     timer.unref?.();
     return { stop: () => clearInterval(timer) };
 }

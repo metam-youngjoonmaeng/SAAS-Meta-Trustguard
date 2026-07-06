@@ -8,6 +8,7 @@ import {
     fetchBatchConfig, saveBatchConfig, previewBatch, fetchBatchEvalItems,
     fetchBatchPrompt, saveBatchPrompt, rejudgeConfidence, fetchRejudgeStatus, fetchBatchPromptHistory,
     runBatchNow, runGoldenLearn, fetchGoldenLearnStatus, fetchGoldenLearnCoverage,
+    runSkillLearn, fetchSkillLearnStatus, fetchSkillVersions,
 } from '../../services/api';
 
 // 작은 입력 컨트롤 공통 스타일
@@ -577,6 +578,8 @@ export default function BatchManage() {
     const [evalItems, setEvalItems] = useState([]); // 실제 평가된 항목(order_no+item) — ② 적용 항목 칩
     const [goldenExcluded, setGoldenExcluded] = useState(new Set()); // 골든셋 학습 제외 평가항목 order_no (평가배치 excluded 와 독립)
     const toggleGoldenExcluded = (key) => setGoldenExcluded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
+    const [skillExcluded, setSkillExcluded] = useState(new Set()); // 스킬 적용 제외 평가항목 order_no (골든 excluded 와 독립)
+    const toggleSkillExcluded = (key) => setSkillExcluded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
     // ④ 근속
     const [tenure, setTenure] = useState({ junior: true, juniorMonths: 6, senior: true, seniorYears: 5 });
@@ -588,7 +591,7 @@ export default function BatchManage() {
     const setBk = (k, v) => setBias((s) => ({ ...s, [k]: v }));
 
     // 공통 범위 / 스케줄
-    const [scope, setScope] = useState({ minMin: 3, maxMin: 60, freq: 'daily', time: '02:00', goldenFreq: 'manual', goldenTime: '02:00' });
+    const [scope, setScope] = useState({ minMin: 3, maxMin: 60, freq: 'daily', time: '02:00', goldenFreq: 'manual', goldenTime: '02:00', skillFreq: 'manual', skillTime: '02:00' });
     const setSk = (k, v) => setScope((s) => ({ ...s, [k]: v }));
 
     // ── 실연동: 저장된 설정 로드 + 서버 미리보기(예상 대상 실수치) + 저장 ─────────────
@@ -603,13 +606,17 @@ export default function BatchManage() {
     //   반드시 그 effect 보다 먼저 선언(TDZ ReferenceError 회피 — 매 렌더 deps 평가 시점 초기화 완료 보장).
     const [goldenCoverage, setGoldenCoverage] = useState(null);
     const [goldenCovNonce, setGoldenCovNonce] = useState(0);
+    // 스킬 학습 최신 버전(=마지막 학습 시각) — 스킬 탭 진입 + 학습 실행 후(nonce) 로드. 골든 coverage 미러.
+    const [skillLastRun, setSkillLastRun] = useState(null);
+    const [skillCovNonce, setSkillCovNonce] = useState(0);
 
     // 현재 화면 state → 서버 config 직렬화(Set→배열).
     // '점수·표본 검증'(①) 통합: 무작위·고점(bias)은 카드 마스터(on.quality)와 동행 — 카드를 켜면 함께 적용.
     const config = useMemo(() => ({
         on: { ...on, bias: on.quality }, quality: q, confidence: { ...c, excluded: Array.from(excluded) }, tenure, bias, scope,
         golden: { excluded: Array.from(goldenExcluded) },
-    }), [on, q, c, excluded, tenure, bias, scope, goldenExcluded]);
+        skill: { excluded: Array.from(skillExcluded) },
+    }), [on, q, c, excluded, tenure, bias, scope, goldenExcluded, skillExcluded]);
 
     // 마운트 시 저장된 설정 1회 로드(있으면 state 복원).
     useEffect(() => {
@@ -630,6 +637,7 @@ export default function BatchManage() {
                     if (cfg.bias) setBias((s) => ({ ...s, ...cfg.bias }));
                     if (cfg.scope) setScope((s) => ({ ...s, ...cfg.scope }));
                     if (cfg.golden && Array.isArray(cfg.golden.excluded)) setGoldenExcluded(new Set(cfg.golden.excluded));
+                    if (cfg.skill && Array.isArray(cfg.skill.excluded)) setSkillExcluded(new Set(cfg.skill.excluded));
                 }
             })
             .catch(() => {})
@@ -651,6 +659,18 @@ export default function BatchManage() {
         fetchGoldenLearnCoverage().then((res) => { if (alive && res && !res.message) setGoldenCoverage(res); }).catch(() => {});
         return () => { alive = false; };
     }, [batchView, goldenCovNonce]);
+
+    // 스킬 학습 최신 버전(마지막 학습 시각) — 스킬 탭 진입 시 + 학습 실행 후(nonce) 로드. 골든 미러.
+    useEffect(() => {
+        if (batchView !== 'skill') return undefined;
+        let alive = true;
+        fetchSkillVersions().then((res) => {
+            if (!alive) return;
+            const latest = res?.ok && Array.isArray(res.versions) && res.versions.length ? res.versions[0] : null;
+            setSkillLastRun(latest);
+        }).catch(() => {});
+        return () => { alive = false; };
+    }, [batchView, skillCovNonce]);
 
     // config 변경 → 디바운스 후 서버 미리보기 갱신(실데이터 예상 대상).
     useEffect(() => {
@@ -690,6 +710,95 @@ export default function BatchManage() {
             setRunning(false);
         }
     }, [config]);
+
+    // 스킬 학습 '지금 실행' — 스킬배치 설정(주기/시각/제외 항목) 저장 후 브랜드별·항목별 스킬(평가 룰)
+    //   학습을 즉시 1회 트리거. runSkillLearn 은 백그라운드 실행(즉시 반환) → fetchSkillLearnStatus 를
+    //   1초 폴링해 결과 확인(골든 runGoldenPoll 미러). 검수자 '낮음/높음' 정정 케이스가 학습 입력.
+    const [skillRunning, setSkillRunning] = useState(false);
+    const [skillMsg, setSkillMsg] = useState(null);
+    const [skillProgress, setSkillProgress] = useState(null); // { done, total } — 파이프라인 항목별 생성 진행률
+    // 진행 폴링 루프 — runGoldenPoll 미러(1초 간격, 최대 600회). 종료 시 결과 메시지 + 버튼 재활성.
+    const runSkillPoll = useCallback(() => {
+        let tries = 0;
+        const poll = async () => {
+            tries += 1;
+            let s = null;
+            try {
+                s = await fetchSkillLearnStatus();
+            } catch {
+                setSkillMsg('학습 진행 중 (상태 확인 불가) — 실시간 로그에서 확인하세요.');
+                setSkillProgress(null);
+                setSkillRunning(false);
+                return;
+            }
+            if (s?.state === 'running' && tries < 600) {
+                if (s.stage_message) setSkillMsg(s.stage_message); // 진행 단계 실시간 표시(수집→생성)
+                setSkillProgress(s.progress && s.progress.total ? s.progress : null); // 항목별 생성 진행바
+                setTimeout(poll, 1000);
+                return;
+            }
+            if (s?.state === 'done') {
+                const rs = s.result || {};
+                if (rs.ok === false) {
+                    setSkillMsg(rs.error === 'no_correction_cases'
+                        ? '정정 케이스(낮음/높음) 없음 — 검수 확정 후 다시 실행'
+                        : rs.error === 'no_new_cases'
+                            ? '변경된 정정 케이스 없음 — 마지막 학습과 동일하여 생략(LLM 미호출)'
+                            : `학습 실패: ${rs.error || '오류'}`);
+                } else {
+                    const n = Array.isArray(rs.items_changed) ? rs.items_changed.length : (rs.items_changed ?? 0);
+                    setSkillMsg(`스킬 학습 완료 · ${rs.version_id || '?'} · 항목 ${n}개 갱신${rs.activated ? '·활성화' : ''}`);
+                }
+            } else if (s?.state === 'error') {
+                setSkillMsg(s.error === 'no_correction_cases'
+                    ? '정정 케이스(낮음/높음) 없음 — 검수 확정 후 다시 실행'
+                    : s.error === 'no_new_cases'
+                        ? '변경된 정정 케이스 없음 — 마지막 학습과 동일하여 생략(LLM 미호출)'
+                        : '학습 실패: ' + (s.error || '오류'));
+            } else {
+                setSkillMsg(null);
+            }
+            setSkillProgress(null);
+            setSkillRunning(false);
+            setSkillCovNonce((n) => n + 1); // 마지막 학습 시각 갱신
+        };
+        setTimeout(poll, 1000);
+    }, []);
+    const handleSkillRun = useCallback(async () => {
+        setSkillRunning(true); setSkillMsg('학습 시작 중…'); setSkillProgress(null);
+        try {
+            await saveBatchConfig(config);   // 변경한 주기/시각/제외 항목 저장 후 실행
+            const r = await runSkillLearn();  // 즉시 반환(백그라운드 시작)
+            if (!r?.started) {
+                setSkillMsg('학습 트리거 실패: ' + (r?.error || r?.message || '시작할 수 없습니다.'));
+                setSkillRunning(false);
+                return;
+            }
+            setSkillMsg('백그라운드 학습 진행 중…');
+            runSkillPoll();
+        } catch (e) {
+            setSkillMsg('실행 실패: ' + (e?.message || '오류'));
+            setSkillRunning(false);
+        }
+    }, [config, runSkillPoll]);
+
+    // 마운트 복원(스킬) — 골든 마운트 복원(아래 goldenLearnStatus useEffect) 미러. 다른 화면을
+    //   다녀와(BatchManage 언마운트) '실행 중' 표시가 사라져도, 서버에 진행 중 스킬 학습이 있으면
+    //   표시·폴링을 재개한다. 백엔드 skillLearnStatus 가 정본이라 로컬 state 유실과 무관하게 복원.
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const s = await fetchSkillLearnStatus();
+                if (!alive || s?.state !== 'running') return;
+                setSkillRunning(true);
+                setSkillMsg(s.stage_message || '학습 진행 중…');
+                if (s.progress && s.progress.total) setSkillProgress(s.progress);
+                runSkillPoll();
+            } catch { /* 상태 확인 실패는 무시(복원 생략) */ }
+        })();
+        return () => { alive = false; };
+    }, [runSkillPoll]);
 
     // 골든셋 학습 '지금 실행' — 우리 스케줄 저장 후 에이전트 학습 즉시 1회 트리거(콜 재평가 아님).
     const [goldenRunning, setGoldenRunning] = useState(false);
@@ -852,6 +961,7 @@ export default function BatchManage() {
             <Tabs value={batchView} onChange={setBatchView} items={[
                 { key: 'eval', label: '평가배치' },
                 { key: 'golden', label: '골든셋배치' },
+                { key: 'skill', label: '스킬배치' },
             ]} />
 
             {batchView === 'eval' && (
@@ -1088,15 +1198,18 @@ export default function BatchManage() {
                                 {scope.goldenFreq === 'daily' && (
                                     <input type="time" value={scope.goldenTime} onChange={(e) => setSk('goldenTime', e.target.value)} style={{ ...bInput, width: 150 }} />
                                 )}
-                                <button
-                                    type="button"
-                                    onClick={handleGoldenRun}
-                                    disabled={goldenRunning}
-                                    title="현재 학습 주기/시각을 저장하고 골든셋 학습을 즉시 1회 트리거"
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '8px 14px', borderRadius: 9, fontWeight: 700, fontSize: 12.5, cursor: goldenRunning ? 'default' : 'pointer', fontFamily: 'inherit', opacity: goldenRunning ? 0.6 : 1 }}
-                                >
-                                    <Icon name="play" size={14} />{goldenRunning ? '실행 중…' : '지금 실행'}
-                                </button>
+                                {/* '지금 실행'은 수동 주기일 때만 노출 — 매시간/매일은 스케줄러가 자동 실행하므로 수동 트리거 숨김(스킬배치와 동일). */}
+                                {scope.goldenFreq === 'manual' && (
+                                    <button
+                                        type="button"
+                                        onClick={handleGoldenRun}
+                                        disabled={goldenRunning}
+                                        title="현재 학습 주기/시각을 저장하고 골든셋 학습을 즉시 1회 트리거"
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '8px 14px', borderRadius: 9, fontWeight: 700, fontSize: 12.5, cursor: goldenRunning ? 'default' : 'pointer', fontFamily: 'inherit', opacity: goldenRunning ? 0.6 : 1 }}
+                                    >
+                                        <Icon name="play" size={14} />{goldenRunning ? '실행 중…' : '지금 실행'}
+                                    </button>
+                                )}
                                 {goldenMsg && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{goldenMsg}</span>}
                             </div>
                             {goldenProgress && goldenProgress.total ? (
@@ -1149,8 +1262,8 @@ export default function BatchManage() {
                                 </div>
                             ) : null}
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
-                                {scope.goldenFreq === 'daily' ? `매일 ${scope.goldenTime}(KST)에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.` : scope.goldenFreq === 'hourly' ? '매시간 정각에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.' : "자동 실행 없이 '지금 실행'으로만 즉시 학습합니다."}
-                                {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다. '지금 실행'은 저장 후 즉시 1회 수동 학습합니다.
+                                {scope.goldenFreq === 'daily' ? `매일 ${scope.goldenTime}(KST)에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.` : scope.goldenFreq === 'hourly' ? '매시간 정각에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.' : "자동 실행 없이 '지금 실행'으로만 즉시 학습합니다. '지금 실행'은 저장 후 즉시 1회 수동 학습합니다."}
+                                {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다.
                             </div>
                         </div>
                     </div>
@@ -1207,6 +1320,130 @@ export default function BatchManage() {
                             <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 10, lineHeight: 1.5 }}>
                                 골든셋 학습은 <b>전체 평가항목</b>을 색인합니다. 여기서 <b>체크한 항목만 평가 시 RAG(골든셋 few-shot)를 사용</b>하고,
                                 해제한 항목은 평가 시 RAG를 쓰지 않습니다(색인은 그대로 유지 → 나중에 켜면 즉시 반영). 아래 ‘배치 저장’으로 저장됩니다.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {batchView === 'skill' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
+                    {/* 스킬 학습 배치 — 검토 내역에서 브랜드별·평가항목별 스킬(평가 룰 overlay)을 학습. 골든셋배치와 동일 구조. */}
+                    <div className="panel" style={{ padding: 0 }}>
+                        <div className="panel-head">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Icon name="sparkles" size={15} style={{ color: 'var(--ink-500)' }} />
+                                <h3>스킬 학습 배치</h3>
+                            </div>
+                            <span className="muted-text" style={{ fontSize: 12, marginLeft: 'auto' }}>검토 내역에서 브랜드별·평가항목별 스킬(평가 룰)을 학습하는 시각을 우리가 지정 · 과거 콜 재평가 아님</span>
+                        </div>
+                        <div style={{ padding: 18 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 8 }}>학습 주기</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                <Segment value={scope.skillFreq} onChange={(v) => setSk('skillFreq', v)} options={[
+                                    { v: 'hourly', label: '매시간' }, { v: 'daily', label: '매일' }, { v: 'manual', label: '수동' },
+                                ]} />
+                                {scope.skillFreq === 'daily' && (
+                                    <input type="time" value={scope.skillTime} onChange={(e) => setSk('skillTime', e.target.value)} style={{ ...bInput, width: 150 }} />
+                                )}
+                                {/* '지금 실행'은 수동 주기일 때만 노출 — 매시간/매일은 스케줄러가 자동 실행하므로 수동 트리거 숨김. */}
+                                {scope.skillFreq === 'manual' && (
+                                    <button
+                                        type="button"
+                                        onClick={handleSkillRun}
+                                        disabled={skillRunning}
+                                        title="현재 학습 주기/시각을 저장하고 스킬 학습을 즉시 1회 트리거"
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '8px 14px', borderRadius: 9, fontWeight: 700, fontSize: 12.5, cursor: skillRunning ? 'default' : 'pointer', fontFamily: 'inherit', opacity: skillRunning ? 0.6 : 1 }}
+                                    >
+                                        <Icon name="play" size={14} />{skillRunning ? '실행 중…' : '지금 실행'}
+                                    </button>
+                                )}
+                                {skillMsg && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{skillMsg}</span>}
+                            </div>
+                            {/* 항목별 overlay 생성 진행바 — 파이프라인 status.generating {done,total} 프록시(골든 진행바 미러). */}
+                            {skillProgress && skillProgress.total ? (
+                                <div style={{ marginTop: 12 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-700)' }}>
+                                            보완 룰 생성 중… {skillProgress.done ?? 0}/{skillProgress.total} 항목
+                                        </span>
+                                        <span style={{ fontSize: 11.5, color: 'var(--ink-500)', fontVariantNumeric: 'tabular-nums' }}>
+                                            {Math.min(100, Math.round(((skillProgress.done ?? 0) / skillProgress.total) * 100))}%
+                                        </span>
+                                    </div>
+                                    <div style={{ height: 8, borderRadius: 6, background: 'var(--border-soft)', overflow: 'hidden' }}>
+                                        <div style={{
+                                            height: '100%',
+                                            width: `${Math.min(100, Math.round(((skillProgress.done ?? 0) / skillProgress.total) * 100))}%`,
+                                            background: 'var(--primary)',
+                                            borderRadius: 6,
+                                            transition: 'width 0.4s ease',
+                                        }} />
+                                    </div>
+                                </div>
+                            ) : null}
+                            <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
+                                {scope.skillFreq === 'daily' ? `매일 ${scope.skillTime}(KST)에 서버 스케줄러가 브랜드별 스킬 학습(검토 내역 기반)을 자동 실행합니다.` : scope.skillFreq === 'hourly' ? '매시간 정각에 서버 스케줄러가 브랜드별 스킬 학습(검토 내역 기반)을 자동 실행합니다.' : "자동 실행 없이 '지금 실행'으로만 즉시 학습합니다."}
+                                {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다.
+                            </div>
+                            <div style={{ fontSize: 11.5, color: 'var(--ink-500)', marginTop: 8, fontVariantNumeric: 'tabular-nums' }}>
+                                마지막 학습 <b style={{ color: 'var(--ink-800)' }}>{(skillLastRun && fmtIndexedAt(skillLastRun.created_at)) || '미학습'}</b>
+                                {skillLastRun?.version_id && <span style={{ color: 'var(--ink-400)' }}> · {skillLastRun.version_id}</span>}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 스킬 적용 평가 항목 — 항목별 스킬 on/off (골든셋배치와 동일 UX, 선택은 독립) */}
+                    <div className="panel" style={{ padding: 0 }}>
+                        <div className="panel-head">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Icon name="list-checks" size={15} style={{ color: 'var(--ink-500)' }} />
+                                <h3>적용 평가 항목</h3>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
+                                <span className="muted-text" style={{ fontSize: 12 }}>체크한 항목만 평가 시 스킬 사용 ({Math.max(0, evalItems.length - skillExcluded.size)}/{evalItems.length})</span>
+                                {evalItems.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSkillExcluded(skillExcluded.size === 0 ? new Set(evalItems.map((it) => it.order_no)) : new Set())}
+                                        title={skillExcluded.size === 0 ? '전 항목 스킬 끄기' : '전 항목 스킬 켜기'}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'white', color: 'var(--ink-600)', fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                    >
+                                        <Icon name={skillExcluded.size === 0 ? 'minus' : 'check'} size={12} />
+                                        {skillExcluded.size === 0 ? '모두 끄기' : '모두 켜기'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        <div style={{ padding: 18 }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                                {evalItems.length === 0 && (
+                                    <span style={{ fontSize: 12, color: 'var(--ink-400)' }}>평가된 콜이 없어 항목이 비어 있습니다.</span>
+                                )}
+                                {evalItems.map((it) => {
+                                    const incl = !skillExcluded.has(it.order_no);
+                                    return (
+                                        <button
+                                            key={it.order_no}
+                                            type="button"
+                                            onClick={() => toggleSkillExcluded(it.order_no)}
+                                            title={`${it.calls}콜 평가됨`}
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 9999,
+                                                border: `1px solid ${incl ? 'var(--primary-soft-border)' : 'var(--border)'}`,
+                                                background: incl ? 'var(--primary-soft-flat)' : 'white',
+                                                color: incl ? 'var(--primary)' : 'var(--ink-400)',
+                                                fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+                                                textDecoration: incl ? 'none' : 'line-through',
+                                            }}
+                                        >
+                                            <Icon name={incl ? 'check' : 'minus'} size={11} />{it.item}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 10, lineHeight: 1.5 }}>
+                                체크한 항목만 평가 시 <b>학습된 스킬(평가 룰 overlay)</b>을 적용하고, 해제한 항목은 스킬을 쓰지 않습니다. 아래 ‘배치 저장’으로 저장됩니다.
                             </div>
                         </div>
                     </div>

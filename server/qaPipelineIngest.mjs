@@ -33,7 +33,7 @@ const DEFAULT_LOCAL_FORCE_URL = 'http://host.docker.internal:8081';
 const EVALUATE_TIMEOUT_MS = 600_000; // 600초
 
 /** 평가 백엔드 base URL 해석 — opts.baseUrl > call.pipeline_target('ec2') > env > 로컬 기본값 */
-function resolvePipelineBaseUrl(call, opts = {}) {
+export function resolvePipelineBaseUrl(call, opts = {}) {
     if (opts.baseUrl) return opts.baseUrl;
     // 로컬 실험 강제 — env QA_PIPELINE_FORCE_LOCAL=1 이면 call.pipeline_target('ec2') 를 무시하고
     // 무조건 로컬로. 대시보드 옛 번들이 ec2 를 보내도 로컬로 강제됨.
@@ -540,6 +540,15 @@ export async function callQaPipelineStream(call, { baseUrl } = {}, onProgress = 
                     if (typeof onProgress === 'function') {
                         try {
                             onProgress({ type: 'rag_hits', data: ev.data });
+                        } catch {
+                            /* 진행상황 콜백 오류는 평가에 영향 없음 */
+                        }
+                    }
+                } else if (ev.event === 'skill_overlay_ready') {
+                    // LLM 스킬 overlay 라이브 (item별 SSE) — 평가에 스킬 룰이 실제 주입됐는지 관측.
+                    if (typeof onProgress === 'function') {
+                        try {
+                            onProgress({ type: 'skill_overlay', data: ev.data });
                         } catch {
                             /* 진행상황 콜백 오류는 평가에 영향 없음 */
                         }
@@ -1644,11 +1653,18 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
 
     // ④ 색인 위임 (dry_run 지원) — 진행바용 청크 분할.
     //   백엔드 /v2/mtg-rag/{rubric}/examples 는 examples 배열 길이 무관하게 처리하고, dedup(skip_existing)은
-    //   호출별 existing_external_ids 조회라 청크로 나눠도 멱등·결과 동일. examples 를 GOLDEN_LEARN_CHUNK(기본 5)
+    //   호출별 existing_external_ids 조회라 청크로 나눠도 멱등·결과 동일. examples 를 GOLDEN_LEARN_CHUNK
     //   건씩 순차 POST 하고, 각 청크 후 opts.onProgress({processed,total,saved,skipped,failed})로 진척을 올려
     //   프론트 진행바가 실시간 반영되게 한다. 단일 POST 대비 라운드트립만 늘 뿐(임베딩은 어차피 건별) 부담 미미.
+    //   ★ 청크 크기 = 색인 병렬도. 백엔드 ingest_examples 는 청크(examples) 내부를 body.concurrency 만큼
+    //   요약(Haiku)+임베딩(Titan) 병렬 처리하므로, 청크가 작으면(과거 5) 그만큼만 병렬 → 병렬도 낭비.
+    //   기본 100 — 상한 4중 검증 완료: 코드 세마포어 배치 미적용(per-loop) · Haiku/Titan boto3 클라이언트
+    //   pool=500 · AWS 쿼터(Haiku 10k RPM/5M TPM, Titan 6k RPM/300k TPM) 대비 100건 버스트는 수% 수준 ·
+    //   양 클라이언트 retries(adaptive/standard ×4) 내장으로 순간 스로틀 자동 백오프. 벽시계는 가장 느린
+    //   요약 1건(~10~20s) ≪ 청크 타임아웃 600s. 진행바는 청크당 1회 갱신(대형 셋에서만 중간 진척 표시).
+    //   전사가 매우 길어 요청 body 가 과대해지면 GOLDEN_LEARN_CHUNK 로 낮춰 조절.
     const timeoutMs = Number(process.env.GOLDEN_LEARN_TIMEOUT_MS || '600000') || 600000;
-    const chunkSize = Math.max(1, Number(process.env.GOLDEN_LEARN_CHUNK || '5') || 5);
+    const chunkSize = Math.max(1, Number(process.env.GOLDEN_LEARN_CHUNK || '100') || 100);
     const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
     const total = examples.length;
     const agg = { saved: 0, skipped: 0, failed: 0, invalid: 0, filtered: 0 };
@@ -1662,7 +1678,7 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
         const resp = await fetch(`${base}/v2/mtg-rag/${encodeURIComponent(rubricId)}/examples`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ org_id: orgId, dry_run: dryRun, examples: chunk, ...(allowedItems ? { allowed_items: allowedItems } : {}) }),
+            body: JSON.stringify({ org_id: orgId, dry_run: dryRun, examples: chunk, concurrency: chunk.length, ...(allowedItems ? { allowed_items: allowedItems } : {}) }),
             signal: AbortSignal.timeout(timeoutMs),
         });
         lastStatus = resp.status;
