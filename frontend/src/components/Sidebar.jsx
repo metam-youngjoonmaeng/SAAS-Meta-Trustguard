@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Building2, Users, Terminal, Bell, Bot, BarChart3, ClipboardCheck, Star, Filter, Sparkles } from 'lucide-react';
+import { Home, Building2, Users, Terminal, Bell, Bot, BarChart3, ClipboardCheck, Star, Filter, ListChecks } from 'lucide-react';
 import { PRODUCT_NAME } from '../branding';
 import BrandSelector from './BrandSelector';
 
@@ -32,8 +32,8 @@ const ADMIN_NAV_GROUPS = [
         section: '운영관리',
         items: [
             { label: '상담사 QA관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
-            { label: '평가항목 관리', tab: 'eval-items', Icon: Bot },
-            { label: 'AI 스킬 관리', tab: 'skills', Icon: Sparkles },
+            { label: '평가항목 관리', tab: 'eval-items', Icon: ListChecks },
+            { label: 'AI 스킬 관리', tab: 'skills', Icon: Bot },
             { label: '사용자 관리', tab: 'users', Icon: Users },
         ],
     },
@@ -58,8 +58,8 @@ const SUPER_ADMIN_NAV_GROUPS = [
         section: '운영관리',
         items: [
             { label: '상담사 QA관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
-            { label: '평가항목 관리', tab: 'eval-items', Icon: Bot },
-            { label: 'AI 스킬 관리', tab: 'skills', Icon: Sparkles },
+            { label: '평가항목 관리', tab: 'eval-items', Icon: ListChecks },
+            { label: 'AI 스킬 관리', tab: 'skills', Icon: Bot },
             { label: '사용자 관리', tab: 'users', Icon: Users },
             { label: '브랜드 관리', tab: 'brands', Icon: Building2 },
         ],
