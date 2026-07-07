@@ -3,9 +3,63 @@
 // 스킬셋: 수기평가에서 '동일'이 아닌(높음/낮음) 판정 누적 → 평가 프롬프트 보정 문구
 // 최종 프롬프트 = 기본 프롬프트 + (반영된) 스킬셋 보정 + 골든셋 few-shot
 // etc/pages-skills.jsx 프로토타입 이식(1단계 UI). 스타일은 .tg-eval 스코프(evalMgmt.css) 재사용.
-import React, { useState as useState_sk, useMemo as useMemo_sk } from 'react';
+import React, { useState as useState_sk, useMemo as useMemo_sk, useEffect } from 'react';
 import { Icon, PageHead } from './evalMgmt/ui';
-import { DIM_GROUPS, DIMENSIONS, MANUAL_JUDGMENTS, GOLDEN_SET, BASE_PROMPTS } from './skills/skillsData';
+import { fetchEvalItemDefs, fetchGoldenCasesByItem, removeGoldenSet, fetchSkillset, removeSkillset } from '../services/api';
+
+// ── 실데이터 매핑 헬퍼 (서버 응답 → 화면 행) ─────────────
+// CDATE 'YYYYMMDDHHMMSS'(ICS) 또는 ISO → 'YYYY-MM-DD HH:MM'
+function fmtCdate(v) {
+  if (!v) return '—';
+  const s = String(v);
+  const m = s.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}`;
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  return s;
+}
+// 점수 → 골든셋 outcome(색): 90+ 모범 · 80+ 양호 · 60+ 주의 · 그 외 위반
+function outcomeOf(score) {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return 'mid';
+  if (n >= 90) return 'good';
+  if (n >= 80) return 'mid';
+  if (n >= 60) return 'warn';
+  return 'bad';
+}
+function mapSkillEntry(e) {
+  return {
+    id: `${e.qa_id}#${e.order_no}`,
+    dim: e.order_no,
+    sessionId: e.qa_id,
+    date: fmtCdate(e.call_datetime),
+    agent: e.display_name || e.login_id || '—',
+    utterances: e.agent_utterance ? [e.agent_utterance] : [],
+    aiScore: e.ai_eval,
+    judgment: e.direction,          // '높음' | '낮음'
+    reason: e.reason_text || '',
+    judge: 'admin', judgeName: '검수자',
+    qaId: e.qa_id, orderNo: e.order_no,
+  };
+}
+function mapGoldEntry(e) {
+  return {
+    id: e.golden_id,
+    dim: e.order_no,
+    callId: e.qa_id,
+    date: fmtCdate(e.call_datetime),
+    agent: e.display_name || e.login_id || '—',
+    utterances: e.agent_utterance ? [e.agent_utterance] : [],
+    aiScore: e.score, manualScore: e.score,
+    outcome: outcomeOf(e.score),
+    reason: e.reason_text || '',
+    addedBy: '검수자',
+    qaId: e.qa_id, orderNo: e.order_no,
+  };
+}
 
 const OUTCOME_META = {
   good: { label: '모범', color: 'var(--success)', bg: 'var(--success-soft)' },
@@ -14,11 +68,10 @@ const OUTCOME_META = {
   bad:  { label: '위반', color: 'var(--destructive-ink)', bg: 'var(--destructive-soft)' },
 };
 
-// 반영된 판정 → 보정 문구 초안 생성
+// 수기 판정(높음/낮음) → 보정 문구 초안 생성 (스킬셋 전체 반영)
 function buildCorrections(judgments) {
-  const reflected = judgments.filter(j => j.reflected);
-  const up = reflected.filter(j => j.judgment === '높음');   // AI가 낮게 줌 → 더 후하게
-  const down = reflected.filter(j => j.judgment === '낮음'); // AI 과대평가 → 더 엄격하게
+  const up = judgments.filter(j => j.judgment === '높음');   // AI가 낮게 줌 → 더 후하게
+  const down = judgments.filter(j => j.judgment === '낮음'); // AI 과대평가 → 더 엄격하게
   const lines = [];
   if (up.length) {
     lines.push({
@@ -164,7 +217,7 @@ function SkillsetTab({ judgments, onDelete }) {
                     <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-400)' }}>{j.aiScore}</span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 5, fontSize: 10.5, fontWeight: 800, padding: '1px 6px', borderRadius: 9999, background: dirBg, color: dirColor }}><Icon name={isUp ? 'trending-up' : 'trending-down'} size={10} />{j.judgment}</span>
                   </td>
-                  <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}><DeleteIcon onClick={() => onDelete(j.id)} /></td>
+                  <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}><DeleteIcon onClick={() => onDelete(j)} /></td>
                 </tr>
                 {open && (
                   <tr className="row-sub">
@@ -245,7 +298,7 @@ function GoldenTab({ cases, onDelete }) {
                       <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-900)' }}>{c.manualScore}</span>
                     </span>
                   </td>
-                  <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}><DeleteIcon onClick={() => onDelete(c.id)} /></td>
+                  <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}><DeleteIcon onClick={() => onDelete(c)} /></td>
                 </tr>
                 {open && (
                   <tr className="row-sub">
@@ -310,28 +363,57 @@ function renderPromptWithHighlights(base, finalText) {
 
 // ── 메인 페이지 ───────────────────────────────────────
 function AdminSkills() {
-  const [selDim, setSelDim] = useState_sk(DIMENSIONS[0].key);
+  const [items, setItems] = useState_sk([]);        // 평가항목(좌측) — /api/admin/eval-items
+  const [selDim, setSelDim] = useState_sk(null);    // 선택 항목 order_no
   const [tab, setTab] = useState_sk('skillset');
-  const [delSkill, setDelSkill] = useState_sk(() => new Set());
-  const [delGold, setDelGold] = useState_sk(() => new Set());
+  const [skillAll, setSkillAll] = useState_sk([]);  // 스킬셋 전체(항목 무관) — /api/skillset
+  const [goldAll, setGoldAll] = useState_sk([]);    // 골든셋 전체 — /api/golden-set
+  const [loading, setLoading] = useState_sk(true);
+  const [err, setErr] = useState_sk('');
 
-  const allJudgments = (MANUAL_JUDGMENTS || []).filter(j => !delSkill.has(j.id));
-  const allGolden = (GOLDEN_SET || []).filter(g => !delGold.has(g.id));
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true); setErr('');
+        const [ev, sk, gd] = await Promise.all([
+          fetchEvalItemDefs(),        // { items: [{ order_no, category, item, prompt_template }] }
+          fetchSkillset(),            // { entries: [...] }  (전 항목)
+          fetchGoldenCasesByItem(),   // { entries: [...] }  (전 항목)
+        ]);
+        if (!alive) return;
+        const evItems = (ev?.items || []).map(r => ({ key: r.order_no, label: r.item, group: r.category, base: r.prompt_template }));
+        setItems(evItems);
+        setSkillAll((sk?.entries || []).map(mapSkillEntry));
+        setGoldAll((gd?.entries || []).map(mapGoldEntry));
+        setSelDim(cur => (cur != null ? cur : (evItems[0]?.key ?? null)));
+      } catch (e) {
+        if (alive) setErr(e?.message || '데이터를 불러오지 못했습니다.');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
-  const dim = DIMENSIONS.find(d => d.key === selDim);
-  const dimGroup = DIM_GROUPS.find(g => g.key === dim.group);
-  const dimJudgments = allJudgments.filter(j => j.dim === selDim);
-  const dimGolden = allGolden.filter(g => g.dim === selDim);
-  const corrections = buildCorrections(dimJudgments.filter(j => j.reflected));
-  const base = (BASE_PROMPTS || {})[selDim] || '이 항목을 평가 기준에 따라 0~100점으로 평가하세요.';
+  const dim = items.find(d => d.key === selDim) || null;
+  const dimJudgments = skillAll.filter(j => j.dim === selDim);
+  const dimGolden = goldAll.filter(g => g.dim === selDim);
+  const corrections = buildCorrections(dimJudgments);
+  const base = dim?.base || '이 항목을 평가 기준에 따라 0~100점으로 평가하세요.';
 
-  const deleteSkill = (id) => setDelSkill(s => new Set(s).add(id));
-  const deleteGold = (id) => setDelGold(s => new Set(s).add(id));
+  const deleteSkill = async (row) => {
+    try { await removeSkillset(row.qaId, row.orderNo); setSkillAll(s => s.filter(x => x.id !== row.id)); }
+    catch (e) { /* 무시(다음 진입 시 재조회로 정합) */ }
+  };
+  const deleteGold = async (row) => {
+    try { await removeGoldenSet(row.qaId, row.orderNo); setGoldAll(g => g.filter(x => x.id !== row.id)); }
+    catch (e) { /* 무시 */ }
+  };
 
   const countFor = (key) => ({
-    skill: allJudgments.filter(j => j.dim === key).length,
-    reflected: allJudgments.filter(j => j.dim === key && j.reflected).length,
-    gold: allGolden.filter(g => g.dim === key).length,
+    skill: skillAll.filter(j => j.dim === key).length,
+    gold: goldAll.filter(g => g.dim === key).length,
   });
 
   const TABS = [
@@ -339,22 +421,32 @@ function AdminSkills() {
     { k: 'golden',   label: `골든셋 ${dimGolden.length}` },
   ];
 
+  const HEAD_SUB = '평가 항목별로 골든셋(정답 사례)과 스킬셋(높음/낮음 보정)을 관리해 LLM 평가 정확도를 높입니다.';
+  if (loading || err || !dim) {
+    return (
+      <div className="tg-eval">
+        <PageHead title="AI 스킬 관리" sub={HEAD_SUB} />
+        <div style={{ padding: '64px 0', textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>
+          {loading ? '불러오는 중…' : err ? `오류: ${err}` : '평가 항목이 없습니다.'}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="tg-eval">
-      <PageHead title="AI 스킬 관리"
-                sub="평가 항목별로 골든셋(정답 사례)과 스킬셋(높음/낮음 보정)을 관리해 LLM 평가 정확도를 높입니다." />
+      <PageHead title="AI 스킬 관리" sub={HEAD_SUB} />
 
       <div className="grid grid-list-detail" style={{ gridTemplateColumns: '290px minmax(0, 1fr)', alignItems: 'stretch', height: 'calc(100vh - 230px)', minHeight: 560 }}>
         {/* 좌측: 평가 항목 목록 */}
         <div className="panel" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div className="panel-head" style={{ flexShrink: 0 }}>
             <h3 style={{ whiteSpace: 'nowrap' }}>평가 항목</h3>
-            <span className="muted-text" style={{ whiteSpace: 'nowrap' }}>{DIMENSIONS.length}개</span>
+            <span className="muted-text" style={{ whiteSpace: 'nowrap' }}>{items.length}개</span>
           </div>
           <div style={{ padding: '8px', flex: 1, overflowY: 'auto' }}>
-            {DIMENSIONS.map((d, idx) => {
+            {items.map((d, idx) => {
               const on = selDim === d.key;
-              const g = DIM_GROUPS.find(x => x.key === d.group);
               const c = countFor(d.key);
               return (
                 <button key={d.key} onClick={() => setSelDim(d.key)}
@@ -368,7 +460,7 @@ function AdminSkills() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                       <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink-400)' }}>#{String(idx + 1).padStart(2, '0')}</span>
-                      <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ink-400)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g?.label}</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ink-400)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.group}</span>
                     </div>
                     <div style={{ fontSize: 13.5, fontWeight: on ? 700 : 600, color: on ? 'var(--primary)' : 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.label}</div>
                   </div>
@@ -378,8 +470,8 @@ function AdminSkills() {
                         <Icon name="star" size={10} style={{ fill: 'var(--gold-fill)', color: 'var(--gold)' }} />{c.gold}
                       </span>
                     )}
-                    {c.reflected > 0 && (
-                      <span title="반영된 스킬셋" style={{ minWidth: 18, textAlign: 'center', fontSize: 10.5, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, background: on ? 'var(--primary-soft-flat)' : 'var(--muted)', color: on ? 'var(--primary)' : 'var(--ink-500)' }}>{c.reflected}</span>
+                    {c.skill > 0 && (
+                      <span title="스킬셋(수기 정정)" style={{ minWidth: 18, textAlign: 'center', fontSize: 10.5, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, background: on ? 'var(--primary-soft-flat)' : 'var(--muted)', color: on ? 'var(--primary)' : 'var(--ink-500)' }}>{c.skill}</span>
                     )}
                     <Icon name="chevron-right" size={15} style={{ color: on ? 'var(--primary)' : 'var(--ink-300)' }} />
                   </span>
@@ -393,7 +485,7 @@ function AdminSkills() {
         <div className="panel" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div className="panel-head" style={{ flexShrink: 0 }}>
             <h3>{dim.label}</h3>
-            <span style={{ fontSize: 12, color: 'var(--ink-400)', fontWeight: 600, whiteSpace: 'nowrap' }}>{dimGroup?.label}</span>
+            <span style={{ fontSize: 12, color: 'var(--ink-400)', fontWeight: 600, whiteSpace: 'nowrap' }}>{dim.group}</span>
             {corrections.length > 0 && (
               <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 9999, background: 'var(--primary-soft)', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
                 <Icon name="refresh-cw" size={11} />프롬프트 자동 반영 중
