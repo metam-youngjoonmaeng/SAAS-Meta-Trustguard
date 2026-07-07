@@ -67,6 +67,15 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
 
     return (
         <div className="space-y-3.5">
+            {/* AI 교체 연출 — 보라 하이라이트가 서서히 빠지는 스윕 + 아이콘 팝 + 기존 줄 페이드 */}
+            <style>{`
+                @keyframes aiFillSweep { 0% { background-color: #EFE9FE; box-shadow: 0 0 0 3px rgba(105,65,198,.18); } 100% { background-color: #FCFAFF; box-shadow: none; } }
+                @keyframes aiIconPop { 0% { transform: translateY(-50%) scale(0) rotate(-30deg); opacity: 0; } 60% { transform: translateY(-50%) scale(1.3) rotate(8deg); opacity: 1; } 100% { transform: translateY(-50%) scale(1) rotate(0deg); opacity: 1; } }
+                @keyframes aiFadeSlide { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+                .ai-filled-input { animation: aiFillSweep 1.4s ease-out; }
+                .ai-filled-icon { animation: aiIconPop .5s ease-out; }
+                .ai-orig-line { animation: aiFadeSlide .45s ease-out; }
+            `}</style>
             {/* 만점 */}
             <div className="flex items-center gap-2">
                 <span className="text-[13px] font-medium text-[#344054] w-10">만점</span>
@@ -135,12 +144,13 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
                                                 value={s.desc}
                                                 onChange={(e) => setRow(i, { desc: e.target.value })}
                                                 placeholder="예) 인사 + 소속·성명 + 도입 멘트 모두 양호"
-                                                className={`form-input-pretty w-full ${aiReplaced ? 'pl-7 border-[#C7B8F5] bg-[#FCFAFF]' : ''}`}
+                                                className={`form-input-pretty w-full ${aiReplaced ? 'ai-filled-input border-[#C7B8F5] bg-[#FCFAFF]' : ''}`}
+                                                style={aiReplaced ? { paddingLeft: 30 } : undefined}
                                             />
                                             {aiReplaced && (
                                                 <Sparkles
                                                     size={13}
-                                                    className="absolute left-2 top-1/2 -translate-y-1/2 text-[#6941C6] pointer-events-none"
+                                                    className="ai-filled-icon absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6941C6] pointer-events-none"
                                                     title="AI 가 작성한 문구"
                                                 />
                                             )}
@@ -155,7 +165,7 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
                                         </button>
                                     </div>
                                     {aiReplaced && (
-                                        <div className="mt-1 ml-[100px] mr-10 flex items-start gap-2">
+                                        <div className="ai-orig-line mt-1 ml-[100px] mr-10 flex items-start gap-2">
                                             <span className="text-[11px] text-[#98A2B3] leading-relaxed flex-1">
                                                 기존: {orig.trim() || '(빈 조건)'}
                                             </span>
