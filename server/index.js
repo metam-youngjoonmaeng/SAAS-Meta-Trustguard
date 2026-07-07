@@ -19,7 +19,7 @@ import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChe
 /* SAMPLE_UPLOAD_FEATURE */ import { ingestSampleToDb, clearSamplesFromDb } from './sampleIngest.mjs';
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
-import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult, fetchGoldenIndexCoverage } from './qaPipelineIngest.mjs';
+import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult, fetchGoldenIndexCoverage, resolvePipelineBaseUrl } from './qaPipelineIngest.mjs';
 import { loadRagFewshotConfig, saveRagFewshotConfig } from './ragFewshotConfig.mjs';
 import { startIcsQaPoller, startGoldenLearnScheduler, triggerGoldenLearn, startSkillLearnScheduler, triggerSkillLearn } from './icsQaPoller.mjs';
 import { fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion, pushSkillSettings, fetchSkillGenProgress } from './skillLearn.mjs';
@@ -3032,6 +3032,56 @@ app.get('/api/admin/eval-item-versions', async (req, res) => {
     } catch (error) {
         console.error('GET /api/admin/eval-item-versions error:', error);
         res.status(500).json({ message: 'Failed to load eval item versions.' });
+    }
+});
+
+// POST /api/admin/eval-items/compose-prompt — AI 프롬프트 다듬기(평가항목 편집 모달).
+// 러프 설명 초안 + 폼 상태(항목명/채점방식/만점/점수 단계)를 파이프라인 /v2/mtg-prompt/compose 로
+// 프록시(스킬 학습과 동일 base 해석 — EC2 타깃 기본, QA_PIPELINE_FORCE_LOCAL 우선).
+// DB 무접촉 — 생성 결과는 프론트 검토 모달에서 관리자가 확인·수정 후 기존 저장 경로로만 반영.
+const COMPOSE_PROMPT_TIMEOUT_MS = 120_000; // Haiku 단발 + 파이프라인 내부 1회 재시도 여유
+app.post('/api/admin/eval-items/compose-prompt', requireAdmin, async (req, res) => {
+    const b = req.body || {};
+    const draft = typeof b.criterion_draft === 'string' ? b.criterion_draft.trim() : '';
+    if (!draft) {
+        res.status(400).json({ message: 'criterion_draft(설명 초안)가 필요합니다.' });
+        return;
+    }
+    const payload = {
+        item_name: typeof b.item_name === 'string' ? b.item_name : '',
+        category: typeof b.category === 'string' ? b.category : '',
+        scoring_type: b.scoring_type === 'yes_no' ? 'yes_no' : 'numeric',
+        max_score: Number.isFinite(Number(b.max_score)) && b.max_score !== null && b.max_score !== '' ? Number(b.max_score) : null,
+        steps: Array.isArray(b.steps)
+            ? b.steps
+                  .map((s) => ({ score: Number(s?.score), condition: typeof s?.condition === 'string' ? s.condition : '' }))
+                  .filter((s) => Number.isFinite(s.score))
+            : [],
+        criterion_draft: draft,
+        yn_criteria_draft: typeof b.yn_criteria_draft === 'string' ? b.yn_criteria_draft : '',
+    };
+    try {
+        const base = resolvePipelineBaseUrl({ pipeline_target: 'ec2' }, {}).replace(/\/+$/, '');
+        const resp = await fetch(`${base}/v2/mtg-prompt/compose`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(COMPOSE_PROMPT_TIMEOUT_MS),
+        });
+        let j = null;
+        try {
+            j = await resp.json();
+        } catch {
+            /* 비-JSON 응답 */
+        }
+        if (j && typeof j === 'object') {
+            res.json(j); // ok:false(파이프라인 graceful 오류) 도 본문 그대로 전달 — 프론트 모달이 표기
+            return;
+        }
+        res.json({ ok: false, error: `http_${resp.status}` });
+    } catch (err) {
+        console.error('POST /api/admin/eval-items/compose-prompt error:', err);
+        res.json({ ok: false, error: String(err?.message || err) });
     }
 });
 
