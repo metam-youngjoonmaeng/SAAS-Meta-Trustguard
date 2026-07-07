@@ -187,7 +187,7 @@ function SkillsetTab({ judgments, onDelete }) {
 
       <table className="row-table">
         <colgroup>
-          <col style={{ width: 24 }} /><col style={{ width: 112 }} /><col style={{ width: 118 }} /><col style={{ width: 84 }} /><col /><col style={{ width: 96 }} /><col style={{ width: 34 }} />
+          <col style={{ width: 24 }} /><col style={{ width: 222 }} /><col style={{ width: 118 }} /><col style={{ width: 84 }} /><col /><col style={{ width: 96 }} /><col style={{ width: 34 }} />
         </colgroup>
         <thead>
           <tr>
@@ -204,7 +204,7 @@ function SkillsetTab({ judgments, onDelete }) {
               <React.Fragment key={j.id}>
                 <tr className="row-tr" onClick={() => setOpenId(open ? null : j.id)}>
                   <td style={{ textAlign: 'center' }}><Icon name={open ? 'chevron-down' : 'chevron-right'} size={13} style={{ color: 'var(--ink-300)' }} /></td>
-                  <td style={{ textAlign: 'left' }}><span className="mono" style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-900)' }}>{j.sessionId}</span></td>
+                  <td style={{ textAlign: 'left', overflow: 'hidden' }}><span className="mono" title={j.sessionId} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, fontWeight: 700, color: 'var(--ink-900)' }}>{j.sessionId}</span></td>
                   <td style={{ textAlign: 'left' }}><span style={{ fontSize: 11.5, color: 'var(--ink-500)', whiteSpace: 'nowrap' }}>{j.date}</span></td>
                   <td style={{ textAlign: 'left' }}><span style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'nowrap' }}>{j.agent}</span></td>
                   <td style={{ textAlign: 'left' }}>
@@ -268,7 +268,7 @@ function GoldenTab({ cases, onDelete }) {
       </div>
       <table className="row-table">
         <colgroup>
-          <col style={{ width: 24 }} /><col style={{ width: 112 }} /><col style={{ width: 118 }} /><col style={{ width: 84 }} /><col /><col style={{ width: 72 }} /><col style={{ width: 34 }} />
+          <col style={{ width: 24 }} /><col style={{ width: 222 }} /><col style={{ width: 118 }} /><col style={{ width: 84 }} /><col /><col style={{ width: 72 }} /><col style={{ width: 34 }} />
         </colgroup>
         <thead>
           <tr>
@@ -283,7 +283,7 @@ function GoldenTab({ cases, onDelete }) {
               <React.Fragment key={c.id}>
                 <tr className="row-tr" onClick={() => setOpenId(open ? null : c.id)}>
                   <td style={{ textAlign: 'center' }}><Icon name={open ? 'chevron-down' : 'chevron-right'} size={13} style={{ color: 'var(--ink-300)' }} /></td>
-                  <td style={{ textAlign: 'left' }}><span className="mono" style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-900)' }}>{c.callId}</span></td>
+                  <td style={{ textAlign: 'left', overflow: 'hidden' }}><span className="mono" title={c.callId} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, fontWeight: 700, color: 'var(--ink-900)' }}>{c.callId}</span></td>
                   <td style={{ textAlign: 'left' }}><span style={{ fontSize: 11.5, color: 'var(--ink-500)', whiteSpace: 'nowrap' }}>{c.date}</span></td>
                   <td style={{ textAlign: 'left' }}><span style={{ fontSize: 12, color: 'var(--ink-700)', whiteSpace: 'nowrap' }}>{c.agent}</span></td>
                   <td style={{ textAlign: 'left' }}>
