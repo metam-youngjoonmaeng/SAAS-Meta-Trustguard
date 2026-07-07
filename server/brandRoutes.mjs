@@ -807,6 +807,11 @@ export function createBrandRouter(pool) {
             if (callCount > 0) {
                 await client.query('DELETE FROM public.qa_calls WHERE org_id = $1', [id]);
             }
+            // FK 없는 브랜드별 부속 행 명시 정리 — qa_batch_configs(배치·골든/스킬 학습주기 설정),
+            // qa_skill_memory(스킬 학습 메모리). 잔존 시 고아 설정이 스케줄러 자동 발화를 계속
+            // 트리거(예: 삭제 브랜드 goldenFreq=hourly → 매시 no_rubric_items 실패 알림).
+            await client.query('DELETE FROM public.qa_batch_configs WHERE org_id = $1', [id]);
+            await client.query('DELETE FROM public.qa_skill_memory WHERE org_id = $1', [id]);
             await client.query('DELETE FROM public.organizations WHERE id = $1', [id]);
             await client.query('COMMIT');
             await insertQaAuditLog(pool, {
