@@ -269,6 +269,101 @@ async function saveSkillMemory(pool, rubricId, orgId, memory) {
     }
 }
 
+/* ── 스킬셋 버전 DB 영속(qa_skill_versions) ─────────────────────────────
+ * 배경(2026-07-07): 스킬 버전·룰 원문은 파이프라인 디스크 파일로만 저장되어 배포 스왑 시
+ * 소실(org4 사고). 변이(학습/활성화/설정) 후 파이프라인 store-dump 를 받아 PG 에 통째 보관하고,
+ * 파이프라인 스토어가 비어 있으면 보관본을 store-restore 로 되밀어 자가 복원한다.
+ * 소유 모델은 qa_skill_memory 와 동일 — DB(=이 서버의 PG)가 생존 계층, 파이프라인 파일은 작업 사본. */
+
+let _skillVersionsTableReady = null;
+function ensureSkillVersionsTable(pool) {
+    // 런타임 멱등 보장 — docker/init 은 새 볼륨에만 실행되므로 기존 환경(10.13/운영)은 여기서 생성.
+    if (!_skillVersionsTableReady) {
+        _skillVersionsTableReady = pool
+            .query(
+                `CREATE TABLE IF NOT EXISTS public.qa_skill_versions (
+                     rubric_id  text PRIMARY KEY,
+                     org_id     integer REFERENCES public.organizations(id) ON DELETE CASCADE,
+                     store      jsonb NOT NULL DEFAULT '{}',
+                     updated_at timestamptz NOT NULL DEFAULT now()
+                 )`
+            )
+            .catch((e) => {
+                _skillVersionsTableReady = null; // 다음 호출에서 재시도
+                throw e;
+            });
+    }
+    return _skillVersionsTableReady;
+}
+
+/** PG 보관본({store, files, manifests}) 로드 — 부재/오류 시 null. */
+async function loadSkillStoreBackup(pool, rubricId) {
+    try {
+        await ensureSkillVersionsTable(pool);
+        const { rows } = await pool.query('SELECT store FROM public.qa_skill_versions WHERE rubric_id = $1', [rubricId]);
+        const s = rows[0]?.store;
+        if (s && typeof s === 'object' && !Array.isArray(s)) return s;
+    } catch (e) {
+        logger.warn(`[skill-learn] 스킬셋 보관본 로드 실패: ${e?.message || e}`);
+    }
+    return null;
+}
+
+/** 파이프라인 store-dump → PG 통째 upsert. 버전 0건 dump 는 저장하지 않음(빈 스토어가 보관본을 덮는 사고 방지). */
+async function persistSkillStore(pool, orgId, rubricId, base) {
+    try {
+        const dump = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/store-dump`);
+        if (dump?.ok !== true || !dump.store || !Array.isArray(dump.store.versions) || !dump.store.versions.length) {
+            return false;
+        }
+        await ensureSkillVersionsTable(pool);
+        await pool.query(
+            `INSERT INTO public.qa_skill_versions (rubric_id, org_id, store, updated_at)
+                 VALUES ($1, $2, $3::jsonb, now())
+             ON CONFLICT (rubric_id) DO UPDATE
+                SET store = EXCLUDED.store, org_id = EXCLUDED.org_id, updated_at = now()`,
+            [rubricId, orgId, JSON.stringify({ store: dump.store, files: dump.files || {}, manifests: dump.manifests || {} })]
+        );
+        return true;
+    } catch (e) {
+        logger.warn(`[skill-learn] 스킬셋 DB 영속 실패(기능 무영향): ${e?.message || e}`);
+        return false;
+    }
+}
+
+/** 파이프라인 버전 0건 & PG 보관본 존재 → store-restore 자가 복원. 복원했으면 true. */
+async function restoreSkillStoreIfEmpty(pool, rubricId, base) {
+    const cur = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions`);
+    if (Array.isArray(cur?.versions) && cur.versions.length) return false;
+    const backup = await loadSkillStoreBackup(pool, rubricId);
+    if (!backup?.store || !Array.isArray(backup.store.versions) || !backup.store.versions.length) return false;
+    const r = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/store-restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backup),
+    });
+    const restored = r?.ok === true && Array.isArray(r.restored_versions) && r.restored_versions.length > 0;
+    if (restored) {
+        logger.info(`[skill-learn] 스킬셋 자가 복원 — ${rubricId}: ${r.restored_versions.join(', ')}`);
+    }
+    return restored;
+}
+
+/** 보관본이 파이프라인 스토어와 어긋나면(버전 수/active) dump 재보관 — 조회 경로 백필(기존 버전 소급 보관). */
+async function persistSkillStoreIfStale(pool, orgId, rubricId, base, versionsResp) {
+    try {
+        const liveCount = Array.isArray(versionsResp?.versions) ? versionsResp.versions.length : 0;
+        if (!liveCount) return;
+        const backup = await loadSkillStoreBackup(pool, rubricId);
+        const savedCount = Array.isArray(backup?.store?.versions) ? backup.store.versions.length : 0;
+        const savedActive = backup?.store?.active_version_id ?? null;
+        if (savedCount === liveCount && String(savedActive ?? '') === String(versionsResp?.active_version_id ?? '')) return;
+        await persistSkillStore(pool, orgId, rubricId, base);
+    } catch (e) {
+        logger.warn(`[skill-learn] 스킬셋 백필 저장 실패(조회 무영향): ${e?.message || e}`);
+    }
+}
+
 export async function runSkillLearn(pool, orgId, opts = {}) {
     const source = opts.source || 'manual';
     const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
@@ -310,6 +405,14 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
         await adoptLegacySkillStore(pool, orgId, rubricId, base, { register: false });
     } catch (e) {
         logger.warn(`[skill-learn] 격리키 이관 시도 실패(신규 키로 진행): ${e?.message || e}`);
+    }
+
+    // 스킬셋 자가 복원 — 배포 스왑 등으로 파이프라인 스토어가 비었으면 PG 보관본을 되밀어
+    //   버전 lineage(v1→v2…)를 이어서 학습(끊긴 채 새 v1 이 생기는 것 방지).
+    try {
+        await restoreSkillStoreIfEmpty(pool, rubricId, base);
+    } catch (e) {
+        logger.warn(`[skill-learn] 스킬셋 복원 시도 실패(현재 스토어로 진행): ${e?.message || e}`);
     }
 
     // ③ 정정 케이스 수집 — order_no→item_number 매핑 불가(비활성/미존재 항목) 행은 제외.
@@ -391,6 +494,10 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
     if (j.memory && typeof j.memory === 'object') {
         await saveSkillMemory(pool, rubricId, orgId, j.memory);
     }
+    // 스킬셋(버전·룰 원문) DB 영속 — 학습 성공 시 dump 를 PG 에 보관(배포 스왑 생존 계층).
+    if (ok) {
+        await persistSkillStore(pool, orgId, rubricId, base);
+    }
     const result = {
         ok,
         org_id: orgId,
@@ -450,6 +557,18 @@ export async function fetchSkillVersions(pool, orgId, opts = {}) {
             logger.warn(`[skill-learn] 격리키 이관 시도 실패(현재 키 결과 반환): ${e?.message || e}`);
         }
     }
+    // 여전히 비어 있으면 PG 보관본 자가 복원(배포 스왑으로 파일이 소실된 경우) 후 재조회.
+    if (!Array.isArray(j?.versions) || !j.versions.length) {
+        try {
+            if (await restoreSkillStoreIfEmpty(pool, rubricId, base)) {
+                j = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions`);
+            }
+        } catch (e) {
+            logger.warn(`[skill-learn] 스킬셋 복원 시도 실패(현재 키 결과 반환): ${e?.message || e}`);
+        }
+    }
+    // 백필 — DB 영속 도입 전 생성된 버전도 조회 시점에 보관본으로 소급 저장(어긋날 때만 dump).
+    await persistSkillStoreIfStale(pool, orgId, rubricId, base, j);
     return { org_id: orgId, rubric_id: rubricId, ...j };
 }
 
@@ -472,6 +591,10 @@ export async function activateSkillVersion(pool, orgId, versionId, opts = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ version_id: versionId ?? null }),
     });
+    // 활성 상태 변경도 보관본에 반영(복원 시 활성 버전까지 승계).
+    if (j?.ok === true) {
+        await persistSkillStore(pool, orgId, rubricId, base);
+    }
     return { org_id: orgId, rubric_id: rubricId, ...j };
 }
 
@@ -499,5 +622,9 @@ export async function pushSkillSettings(pool, orgId, excludedOrders, opts = {}) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ excluded_items: excludedItems }),
     });
+    // 제외 설정도 store.json 에 저장되므로 보관본 갱신(버전 0건이면 persist 가 자체 스킵).
+    if (j?.ok === true) {
+        await persistSkillStore(pool, orgId, rubricId, base);
+    }
     return { org_id: orgId, rubric_id: rubricId, excluded_items: excludedItems, ...j };
 }
