@@ -115,6 +115,52 @@ export default function AiPromptCompose({
                 </div>
             </div>
             {error && <div className="mb-1.5 text-[11.5px] text-[#B42318]">{error}</div>}
+            {/* 생성 중 오버레이 — 편집 창 전체 위에 스피너 링 + 펄스 ✦ + 도트(재생성 시 검토 모달 위에도 노출). */}
+            {composing &&
+                typeof document !== 'undefined' &&
+                createPortal(
+                    <div
+                        className="fixed inset-0 z-[1200] flex items-center justify-center px-4"
+                        style={{ background: 'rgba(15,23,42,0.38)' }}
+                    >
+                        <style>{`
+                            @keyframes aiComposeSpin { to { transform: rotate(360deg); } }
+                            @keyframes aiComposePulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.82); opacity: 0.6; } }
+                            @keyframes aiComposeDot { 0%, 60%, 100% { transform: translateY(0); opacity: .35; } 30% { transform: translateY(-3px); opacity: 1; } }
+                            .ai-compose-ring { animation: aiComposeSpin 1.1s linear infinite; }
+                            .ai-compose-core { animation: aiComposePulse 1.6s ease-in-out infinite; }
+                            .ai-compose-dot { display: inline-block; animation: aiComposeDot 1.2s ease-in-out infinite; }
+                        `}</style>
+                        <div className="bg-white rounded-2xl shadow-xl px-8 py-7 w-[320px] flex flex-col items-center text-center">
+                            <div className="relative w-14 h-14 mb-3.5">
+                                <div
+                                    className="ai-compose-ring absolute inset-0 rounded-full"
+                                    style={{
+                                        background:
+                                            'conic-gradient(from 0deg, #6941C6, #9E77ED 40%, rgba(158,119,237,0.06) 75%, #6941C6)',
+                                        WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px))',
+                                        mask: 'radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px))',
+                                    }}
+                                />
+                                <Sparkles size={22} className="ai-compose-core absolute inset-0 m-auto text-[#6941C6]" />
+                            </div>
+                            <div className="text-[14px] font-bold text-[#101828]">
+                                AI 프롬프트 다듬는 중
+                                <span className="ml-0.5 text-[#6941C6]">
+                                    <span className="ai-compose-dot">.</span>
+                                    <span className="ai-compose-dot" style={{ animationDelay: '.15s' }}>.</span>
+                                    <span className="ai-compose-dot" style={{ animationDelay: '.3s' }}>.</span>
+                                </span>
+                            </div>
+                            <div className="mt-1.5 text-[11.5px] text-[#667085] leading-relaxed">
+                                초안을 분석해 판정 기준과 절차를 구성하고 있어요.
+                                <br />
+                                보통 10~20초 정도 걸립니다.
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )}
             {result && (
                 <ReviewModal
                     key={result._nonce}

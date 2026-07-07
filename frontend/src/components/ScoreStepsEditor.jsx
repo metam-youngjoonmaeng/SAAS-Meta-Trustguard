@@ -67,12 +67,12 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
 
     return (
         <div className="space-y-3.5">
-            {/* AI 교체 연출 — 보라 하이라이트가 서서히 빠지는 스윕 + 아이콘 팝 + 기존 줄 페이드 */}
+            {/* AI 교체 연출 — 흰색에서 보라(#EFE9FE)로 천천히 페이드인한 뒤 영구 유지 + 아이콘 팝 + 기존 줄 페이드 */}
             <style>{`
-                @keyframes aiFillSweep { 0% { background-color: #EFE9FE; box-shadow: 0 0 0 3px rgba(105,65,198,.18); } 100% { background-color: #FCFAFF; box-shadow: none; } }
+                @keyframes aiFillSweep { 0% { background-color: #FFFFFF; border-color: #E4E7EC; } 100% { background-color: #EFE9FE; border-color: #C7B8F5; } }
                 @keyframes aiIconPop { 0% { transform: translateY(-50%) scale(0) rotate(-30deg); opacity: 0; } 60% { transform: translateY(-50%) scale(1.3) rotate(8deg); opacity: 1; } 100% { transform: translateY(-50%) scale(1) rotate(0deg); opacity: 1; } }
                 @keyframes aiFadeSlide { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
-                .ai-filled-input { animation: aiFillSweep 1.4s ease-out; }
+                .ai-filled-input { animation: aiFillSweep 2.4s ease-in-out; }
                 .ai-filled-icon { animation: aiIconPop .5s ease-out; }
                 .ai-orig-line { animation: aiFadeSlide .45s ease-out; }
             `}</style>
@@ -144,13 +144,17 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
                                                 value={s.desc}
                                                 onChange={(e) => setRow(i, { desc: e.target.value })}
                                                 placeholder="예) 인사 + 소속·성명 + 도입 멘트 모두 양호"
-                                                className={`form-input-pretty w-full ${aiReplaced ? 'ai-filled-input border-[#C7B8F5] bg-[#FCFAFF]' : ''}`}
-                                                style={aiReplaced ? { paddingLeft: 30 } : undefined}
+                                                className={`form-input-pretty w-full ${aiReplaced ? 'ai-filled-input' : ''}`}
+                                                style={
+                                                    aiReplaced
+                                                        ? { paddingLeft: 30, backgroundColor: '#EFE9FE', borderColor: '#C7B8F5' }
+                                                        : undefined
+                                                }
                                             />
                                             {aiReplaced && (
                                                 <Sparkles
                                                     size={13}
-                                                    className="ai-filled-icon absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6941C6] pointer-events-none"
+                                                    className="ai-filled-icon absolute left-2.5 top-1/2 -translate-y-1/2 text-[#DC6803] pointer-events-none"
                                                     title="AI 가 작성한 문구"
                                                 />
                                             )}
