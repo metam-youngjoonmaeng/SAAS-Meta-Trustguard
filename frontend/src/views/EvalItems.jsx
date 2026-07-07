@@ -5,7 +5,6 @@ import { PRODUCT_NAME } from '../branding';
 import { getBrandConfig, isDynamicChecklistBrand, buildChecklistTemplateFromDefs } from '../constants';
 import ScoreStepsEditor, { parseSteps, assembleSteps, stepsMaxMismatch } from '../components/ScoreStepsEditor';
 import {
-    fetchGoldenCasesByItem, removeGoldenSet,
     fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, deleteEvalItemDef, fetchEvalItemHistory,
     fetchPentagonAxes, savePentagonAxis, createPentagonAxis,
     fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion,
@@ -15,8 +14,6 @@ import {
     ChevronRight,
     Save,
     Info,
-    Sparkles,
-    Star,
     Edit3,
     Trash2,
     X,
@@ -471,41 +468,8 @@ function AxisRow({ axisNo, label, selected, onSelect, onEdit }) {
 
 /* ── 우측 미리보기 ────────────────────────────────────────────── */
 
-function ItemPreview({ item, activeBrandId, def, onEdit }) {
+function ItemPreview({ item, def, onEdit }) {
     const maxPoints = parsePoints(item.validation_time);
-    const [tab, setTab] = useState('overview'); // 'overview' | 'golden'
-    const [goldenCases, setGoldenCases] = useState([]);
-    const [goldenLoading, setGoldenLoading] = useState(false);
-    const [goldenError, setGoldenError] = useState(null);
-
-    // 골든셋은 DB 연동(api.fetchGoldenCasesByItem). Mock 데이터 절대 사용 금지.
-    useEffect(() => {
-        let cancelled = false;
-        setGoldenLoading(true);
-        setGoldenError(null);
-        fetchGoldenCasesByItem({
-            orderNo: item.order_no,
-            category: item.category,
-            item: item.item,
-        })
-            .then((res) => {
-                if (cancelled) return;
-                setGoldenCases(Array.isArray(res?.entries) ? res.entries : []);
-            })
-            .catch((err) => {
-                if (cancelled) return;
-                setGoldenCases([]);
-                setGoldenError(err?.message || '골든셋 사례를 불러오지 못했습니다.');
-            })
-            .finally(() => {
-                if (cancelled) return;
-                setGoldenLoading(false);
-            });
-        return () => { cancelled = true; };
-    }, [item.order_no, item.category, item.item, activeBrandId]);
-
-    // 항목 바뀌면 탭 기본값(개요)으로 복귀
-    useEffect(() => { setTab('overview'); }, [item.order_no]);
 
     return (
         <div className="bg-white border border-[#E4E7EC] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
@@ -536,24 +500,8 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
                 <MetaPair label="Pentagon" value={def?.pentagon_axis || '매핑 없음'} />
             </div>
 
-            {/* 탭 */}
-            <div className="flex px-5 border-b border-[#E4E7EC]">
-                <PreviewTab
-                    active={tab === 'overview'}
-                    onClick={() => setTab('overview')}
-                    label="개요"
-                />
-                <PreviewTab
-                    active={tab === 'golden'}
-                    onClick={() => setTab('golden')}
-                    label="골든셋 사례"
-                    count={goldenLoading ? null : goldenCases.length}
-                />
-            </div>
-
             <div className="flex-1 overflow-y-auto p-5 min-h-0">
-                {tab === 'overview' ? (
-                    <div className="flex flex-col gap-5 h-full min-h-0">
+                <div className="flex flex-col gap-5 h-full min-h-0">
                         <div className="flex-1 min-h-0 overflow-y-auto">
                             <PreviewSection title="항목 평가 설명">
                                 {def?.criterion ? (
@@ -574,48 +522,9 @@ function ItemPreview({ item, activeBrandId, def, onEdit }) {
 
 ※ 출력 형식(JSON)·점수 산술 규칙·자기 검증·공통 정책은 백엔드가 자동 부착합니다.`}</pre>
                         </div>
-                    </div>
-                ) : (
-                    <GoldenSetPreview
-                        cases={goldenCases}
-                        loading={goldenLoading}
-                        error={goldenError}
-                        onDelete={async (c) => {
-                            await removeGoldenSet(c.qa_id, c.order_no);
-                            setGoldenCases((prev) => prev.filter((x) =>
-                                (x.golden_id ?? `${x.qa_id}-${x.order_no}`) !==
-                                (c.golden_id ?? `${c.qa_id}-${c.order_no}`)
-                            ));
-                        }}
-                    />
-                )}
+                </div>
             </div>
         </div>
-    );
-}
-
-function PreviewTab({ active, onClick, label, count }) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            className={`relative py-3 mr-6 text-[13px] inline-flex items-center gap-2 transition-colors border-b-2 -mb-px cursor-pointer ${
-                active
-                    ? 'text-[#055AAF] font-bold border-[#055AAF]'
-                    : 'text-[#667085] font-semibold border-transparent hover:text-[#101828]'
-            }`}
-        >
-            <span>{label}</span>
-            {count !== undefined && count !== null && (
-                <span
-                    className={`tabular-nums px-1.5 py-0.5 rounded-full text-[10.5px] font-bold min-w-[18px] text-center ${
-                        active ? 'bg-[#EEF4FB] text-[#055AAF]' : 'bg-[#F2F4F7] text-[#667085]'
-                    }`}
-                >
-                    {count}
-                </span>
-            )}
-        </button>
     );
 }
 
@@ -689,139 +598,6 @@ function MetaPair({ label, value }) {
 
 function MetaDivider() {
     return <span className="w-px h-3 bg-[#E4E7EC]" />;
-}
-
-function formatGoldenAddedAt(value) {
-    if (!value) return '';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '';
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mi = String(d.getMinutes()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-}
-
-function GoldenSetPreview({ cases, loading, error, onDelete }) {
-    const [confirmTarget, setConfirmTarget] = useState(null);
-    const [deleting, setDeleting] = useState(false);
-    const [deleteError, setDeleteError] = useState(null);
-
-    if (loading) {
-        return (
-            <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
-                <div className="text-[12.5px] text-[#667085]">불러오는 중…</div>
-            </div>
-        );
-    }
-    if (error) {
-        return (
-            <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#FDA29B] bg-[#FFFBFA]">
-                <div className="text-[12.5px] text-[#B42318]">{error}</div>
-            </div>
-        );
-    }
-    if (!cases || cases.length === 0) {
-        return (
-            <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
-                <Star size={18} className="text-[#98A2B3] mx-auto mb-2" />
-                <div className="text-[12.5px] text-[#667085]">등록된 사례가 없습니다</div>
-            </div>
-        );
-    }
-    return (
-        <>
-            <div className="grid gap-2.5">
-                {cases.map((c) => (
-                    <div
-                        key={c.golden_id ?? `${c.qa_id}-${c.order_no}`}
-                        className="grid gap-4 p-4 rounded-xl bg-white border border-[#E4E7EC]"
-                        style={{ gridTemplateColumns: '1fr 140px' }}
-                    >
-                        <div className="min-w-0">
-                            <div className="text-[10px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-1.5">발화 내용</div>
-                            <div
-                                className="px-3 py-2.5 text-[12.5px] text-[#475467] italic leading-relaxed rounded-r-lg mb-2.5"
-                                style={{ background: '#FAFBFC', borderLeft: '3px solid #D0D5DD' }}
-                            >
-                                "{c.agent_utterance}"
-                            </div>
-                            <div className="text-[10px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-1 inline-flex items-center gap-1">
-                                <Sparkles size={10} />AI 평가 사유
-                            </div>
-                            <div className="text-[12.5px] text-[#475467] leading-relaxed">{c.reason_text}</div>
-                            {(c.display_name || c.login_id || c.created_at) && (
-                                <div className="mt-2.5 pt-2 border-t border-[#F2F4F7] text-[10.5px] text-[#98A2B3]">
-                                    {(c.display_name || c.login_id || '알 수 없음')}
-                                    {c.created_at && (
-                                        <span className="ml-1.5 tabular-nums">· {formatGoldenAddedAt(c.created_at)}</span>
-                                    )}
-                                    <span className="ml-1">추가</span>
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex flex-col gap-2 self-start">
-                            <div className="flex flex-col gap-0.5 px-3 py-2 rounded-lg bg-[#F9FAFB] border border-[#E4E7EC]">
-                                <div className="text-[9.5px] font-bold text-center text-[#667085] inline-flex items-center justify-center gap-1">
-                                    <Star size={9} className="text-[#98A2B3]" />평가 일치
-                                </div>
-                                <div className="text-center font-mono text-[16px] font-bold text-[#344054] tabular-nums">
-                                    {c.score}
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => { setDeleteError(null); setConfirmTarget(c); }}
-                                className="inline-flex items-center justify-center gap-1 h-[28px] px-3 rounded-lg border border-red-200 bg-white text-[12px] font-semibold text-red-600 hover:bg-red-50 cursor-pointer"
-                            >
-                                <Trash2 size={11} /> 삭제
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {confirmTarget && (
-                <ModalShell title="골든셋 사례 삭제" onClose={() => !deleting && setConfirmTarget(null)} widthClass="max-w-[440px]">
-                    <div className="px-6 py-5 space-y-3">
-                        <div className="text-[13px] text-[#344054] leading-relaxed">
-                            한번 삭제한 골든셋은 <span className="font-bold text-[#D92D20]">복구할 수 없습니다</span>.<br />
-                            정말 삭제하시겠습니까?
-                        </div>
-                        <div
-                            className="px-3 py-2.5 text-[12px] text-[#475467] italic leading-relaxed rounded-r-lg truncate"
-                            style={{ background: '#FAFBFC', borderLeft: '3px solid #D0D5DD' }}
-                            title={confirmTarget.agent_utterance}
-                        >
-                            "{confirmTarget.agent_utterance}"
-                        </div>
-                        {deleteError && (
-                            <div className="text-[12px] text-[#B42318]">{deleteError}</div>
-                        )}
-                    </div>
-                    <ModalFooter
-                        onCancel={() => !deleting && setConfirmTarget(null)}
-                        primaryLabel={deleting ? '삭제 중…' : '삭제'}
-                        primaryTone="danger"
-                        onPrimary={async () => {
-                            if (deleting) return;
-                            setDeleting(true);
-                            setDeleteError(null);
-                            try {
-                                await onDelete(confirmTarget);
-                                setConfirmTarget(null);
-                            } catch (err) {
-                                setDeleteError(err?.message || '삭제에 실패했습니다.');
-                            } finally {
-                                setDeleting(false);
-                            }
-                        }}
-                    />
-                </ModalShell>
-            )}
-        </>
-    );
 }
 
 /* ── 변경 이력 ─────────────────────────────────────────────── */
