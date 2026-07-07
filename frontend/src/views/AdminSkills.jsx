@@ -1,11 +1,13 @@
 // AI 스킬 관리 — 평가 항목별로 골든셋(정답 사례)과 스킬셋(높음/낮음 보정)을 관리.
 // 골든셋: 평가리스트에서 '골든셋'으로 체크한 사례 → few-shot 주입
 // 스킬셋: 수기평가에서 '동일'이 아닌(높음/낮음) 판정 누적 → 평가 프롬프트 보정 문구
-// 최종 프롬프트 = 기본 프롬프트 + (반영된) 스킬셋 보정 + 골든셋 few-shot
+// 실제 최종 프롬프트 = 기본 프롬프트(평가항목 관리) + 스킬셋 보정 + 골든셋 few-shot.
+// 단, 이 화면의 '최종 평가 프롬프트' 박스는 기본 프롬프트를 중복 표시하지 않고 스킬셋 보정·골든셋 레이어만 보여준다.
 // etc/pages-skills.jsx 프로토타입 이식(1단계 UI). 스타일은 .tg-eval 스코프(evalMgmt.css) 재사용.
 import React, { useState as useState_sk, useMemo as useMemo_sk, useEffect } from 'react';
 import { Icon, PageHead } from './evalMgmt/ui';
-import { fetchEvalItemDefs, fetchGoldenCasesByItem, removeGoldenSet, fetchSkillset, removeSkillset } from '../services/api';
+import { fetchEvalItemDefs, fetchGoldenCasesByItem, removeGoldenSet, fetchSkillset, removeSkillset, fetchSkillVersions, fetchSkillVersionDetail } from '../services/api';
+import { HistoryModal } from './EvalItems';   // 변경이력(스킬 버전 이력 + 활성화/롤백) 재사용
 
 // ── 실데이터 매핑 헬퍼 (서버 응답 → 화면 행) ─────────────
 // CDATE 'YYYYMMDDHHMMSS'(ICS) 또는 ISO → 'YYYY-MM-DD HH:MM'
@@ -34,6 +36,7 @@ function mapSkillEntry(e) {
   return {
     id: `${e.qa_id}#${e.order_no}`,
     dim: e.order_no,
+    itemName: e.item,               // 현재 항목명 매칭용(루브릭 교체 잔재 배제)
     sessionId: e.qa_id,
     date: fmtCdate(e.call_datetime),
     agent: e.display_name || e.login_id || '—',
@@ -49,6 +52,7 @@ function mapGoldEntry(e) {
   return {
     id: e.golden_id,
     dim: e.order_no,
+    itemName: e.item,               // 현재 항목명 매칭용
     callId: e.qa_id,
     date: fmtCdate(e.call_datetime),
     agent: e.display_name || e.login_id || '—',
@@ -68,47 +72,10 @@ const OUTCOME_META = {
   bad:  { label: '위반', color: 'var(--destructive-ink)', bg: 'var(--destructive-soft)' },
 };
 
-// 수기 판정(높음/낮음) → 보정 문구 초안 생성 (스킬셋 전체 반영)
-function buildCorrections(judgments) {
-  const up = judgments.filter(j => j.judgment === '높음');   // AI가 낮게 줌 → 더 후하게
-  const down = judgments.filter(j => j.judgment === '낮음'); // AI 과대평가 → 더 엄격하게
-  const lines = [];
-  if (up.length) {
-    lines.push({
-      dir: 'up',
-      title: '다음과 같은 경우 과소평가하지 마세요 (점수를 낮게 주지 말 것)',
-      items: up.map(j => j.reason),
-    });
-  }
-  if (down.length) {
-    lines.push({
-      dir: 'down',
-      title: '다음과 같은 경우 관대하게 평가하지 마세요 (점수를 높게 주지 말 것)',
-      items: down.map(j => j.reason),
-    });
-  }
-  return lines;
-}
+// 항목명 정규화 — 스킬 버전(overlay)의 item_name 과 평가항목(item) 매칭용 (EvalItems 와 동일 규칙).
+function normName(s) {
+  return String(s || '').trim();
 
-// 기본 프롬프트 = 항목 설명(criterion) + 점수단계(prompt_template).
-// 실제 평가엔진 루브릭(rubricSync)이 criteria_full + prompt_template 둘 다 LLM 에 주입하므로 동일하게 합친다.
-function composeBase(criterion, promptTemplate) {
-  return [criterion, promptTemplate].map(s => (s || '').trim()).filter(Boolean).join('\n\n');
-}
-
-function composeFinalPrompt(base, corrections, goldenCount) {
-  let out = base || '';
-  if (corrections.length) {
-    out += '\n\n[검수자 보정 기준 — 수기평가 학습 반영]';
-    corrections.forEach(c => {
-      out += `\n\n· ${c.title}`;
-      c.items.forEach(it => { out += `\n   - ${it}`; });
-    });
-  }
-  if (goldenCount > 0) {
-    out += `\n\n[참고 사례]\n유사한 골든셋 사례 ${goldenCount}건이 few-shot 예시로 자동 주입됩니다.`;
-  }
-  return out;
 }
 
 // 발화내용 헬퍼 — utterances 배열 또는 excerpt 문자열 모두 지원
@@ -335,35 +302,55 @@ function GoldenTab({ cases, onDelete }) {
 }
 
 // ── 최종 프롬프트 탭 ──────────────────────────────────
-function FinalPromptTab({ base, corrections, goldenCount }) {
-  const finalText = useMemo_sk(() => composeFinalPrompt(base, corrections, goldenCount), [base, corrections, goldenCount]);
+// 기본 프롬프트(criterion + prompt_template)는 평가항목 관리에서 확인 가능하므로 여기서 중복 표시하지 않고,
+// 배치가 학습해 '활성 버전'에 저장한 학습된 보완 룰(overlay_md) — 평가 시 실제 주입되는 내용 — 만 보여준다.
+// 배치가 새 버전을 활성화하면 이 화면도 그 overlay 를 그대로 반영한다.
+function FinalPromptTab({ overlay, changed, goldenCount, version, skillLoading, skillErr }) {
+  const hasOverlay = Boolean(overlay && overlay.trim());
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ fontSize: 12, color: 'var(--ink-500)', lineHeight: 1.5 }}>
-        기본 프롬프트에 <strong>스킬셋 보정</strong>과 <strong>골든셋 few-shot</strong>이 합쳐진 프롬프트로, 목록 변경 시 자동 갱신됩니다.
+        기본 프롬프트(<strong>평가항목 관리</strong>)에 더해지는 <strong>학습된 보완 룰(overlay)</strong>입니다. 스킬 학습 배치가 활성 버전을 갱신하면 자동 반영됩니다.
       </div>
+
+      {version && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, padding: '2px 8px', borderRadius: 9999, background: 'var(--success-soft)', color: 'var(--success)' }}>
+            <Icon name="check-circle" size={11} />활성 버전 {version.id}{version.createdAt ? ` · ${fmtCdate(version.createdAt)}` : ''}
+          </span>
+          {hasOverlay && (
+            <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 9999, background: changed ? 'var(--success-soft)' : 'var(--muted)', color: changed ? 'var(--success)' : 'var(--ink-500)' }}>
+              {changed ? '이번 버전 갱신' : '이전 버전 룰 승계'}
+            </span>
+          )}
+        </div>
+      )}
 
       <div style={{
         border: '1px solid var(--border)', borderRadius: 12, background: 'var(--background-soft)',
         padding: '16px 18px', fontFamily: 'var(--font-mono, monospace)', fontSize: 12.5, lineHeight: 1.7,
-        color: 'var(--ink-800, var(--ink-900))', whiteSpace: 'pre-wrap',
+        color: hasOverlay ? 'var(--ink-800, var(--ink-900))' : 'var(--ink-400)', whiteSpace: 'pre-wrap',
+        fontStyle: hasOverlay ? 'normal' : 'italic',
       }}>
-        {renderPromptWithHighlights(base, finalText)}
+        {skillLoading
+          ? '학습된 보완 룰 불러오는 중…'
+          : skillErr
+            ? `스킬 버전을 불러오지 못했습니다: ${skillErr}`
+            : hasOverlay
+              ? overlay
+              : version
+                ? '이 항목은 활성 버전에 학습된 보완 룰이 없습니다. 검수 정정(높음/낮음)이 쌓여 배치가 돌면 생성됩니다.'
+                : '학습된 스킬 버전이 없습니다. 검수 정정(높음/낮음)이 쌓인 뒤 스킬 학습 배치를 돌리면 생성됩니다.'}
       </div>
-    </div>
-  );
-}
 
-// 기본 프롬프트 부분은 일반색, 보정/사례 부분은 강조 배경
-function renderPromptWithHighlights(base, finalText) {
-  if (!finalText.startsWith(base)) return finalText;
-  const rest = finalText.slice(base.length);
-  return (
-    <React.Fragment>
-      <span>{base}</span>
-      <span style={{ display: 'block', background: 'var(--primary-soft-flat)', margin: '10px -18px -16px', padding: '12px 18px 16px', borderTop: '1px dashed var(--primary-soft-border)', color: 'var(--ink-800, var(--ink-900))' }}>{rest.replace(/^\n+/, '')}</span>
-    </React.Fragment>
+      {goldenCount > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--ink-500)' }}>
+          <Icon name="star" size={12} style={{ color: 'var(--gold-ink)', fill: 'var(--gold-fill)' }} />
+          이 항목의 골든셋 {goldenCount}건이 few-shot 예시로 함께 주입됩니다.
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -376,6 +363,12 @@ function AdminSkills() {
   const [goldAll, setGoldAll] = useState_sk([]);    // 골든셋 전체 — /api/golden-set
   const [loading, setLoading] = useState_sk(true);
   const [err, setErr] = useState_sk('');
+  // 학습된 보완 룰(overlay) — 활성 스킬 버전. item_name → { overlay, changed } 맵.
+  const [overlayByName, setOverlayByName] = useState_sk({});
+  const [skillVer, setSkillVer] = useState_sk(null);   // { id, createdAt } | null
+  const [skillLoading, setSkillLoading] = useState_sk(true);
+  const [skillErr, setSkillErr] = useState_sk('');
+  const [showHistory, setShowHistory] = useState_sk(false);   // 변경이력 모달(스킬 버전 이력)
 
   useEffect(() => {
     let alive = true;
@@ -384,12 +377,12 @@ function AdminSkills() {
         setLoading(true); setErr('');
         const [ev, sk, gd] = await Promise.all([
           // 채점 대상과 동일한 부서('기본')만. 부서 미지정 시 KSQI 항목이 섞여 order_no 가 충돌한다.
-          fetchEvalItemDefs({ department: '기본' }),  // { items: [{ order_no, category, item, criterion, prompt_template }] }
+          fetchEvalItemDefs({ department: '기본' }),  // { items: [{ order_no, category, item }] }
           fetchSkillset(),            // { entries: [...] }  (전 항목)
           fetchGoldenCasesByItem(),   // { entries: [...] }  (전 항목)
         ]);
         if (!alive) return;
-        const evItems = (ev?.items || []).map(r => ({ key: r.order_no, label: r.item, group: r.category, criterion: r.criterion, promptTemplate: r.prompt_template }));
+        const evItems = (ev?.items || []).map(r => ({ key: r.order_no, label: r.item, group: r.category }));
         setItems(evItems);
         setSkillAll((sk?.entries || []).map(mapSkillEntry));
         setGoldAll((gd?.entries || []).map(mapGoldEntry));
@@ -400,14 +393,38 @@ function AdminSkills() {
         if (alive) setLoading(false);
       }
     })();
+    // 활성 스킬 버전(학습된 보완 룰 overlay) — 파이프라인 프록시. 실패해도 본문은 유지(폴백 안내).
+    (async () => {
+      try {
+        setSkillLoading(true); setSkillErr('');
+        const vlist = await fetchSkillVersions();     // { versions:[{version_id,created_at}], active_version_id }
+        const activeId = vlist?.active_version_id || null;
+        if (!activeId) { if (alive) { setOverlayByName({}); setSkillVer(null); } return; }
+        const detail = await fetchSkillVersionDetail(activeId);   // { items:[{item_name,overlay_md,changed}] }
+        if (!alive) return;
+        const map = {};
+        (detail?.items || []).forEach(it => {
+          map[normName(it.item_name)] = { overlay: it.overlay_md || '', changed: Boolean(it.changed) };
+        });
+        const v = (vlist.versions || []).find(x => x.version_id === activeId);
+        setOverlayByName(map);
+        setSkillVer({ id: activeId, createdAt: v?.created_at || null });
+      } catch (e) {
+        if (alive) setSkillErr(e?.message || '스킬 버전 조회 실패');
+      } finally {
+        if (alive) setSkillLoading(false);
+      }
+    })();
     return () => { alive = false; };
   }, []);
 
   const dim = items.find(d => d.key === selDim) || null;
-  const dimJudgments = skillAll.filter(j => j.dim === selDim);
-  const dimGolden = goldAll.filter(g => g.dim === selDim);
-  const corrections = buildCorrections(dimJudgments);
-  const base = composeBase(dim?.criterion, dim?.promptTemplate) || '이 항목의 평가 기준이 아직 작성되지 않았습니다. (평가항목 관리에서 입력)';
+  // 현재 항목명(item)으로 매칭 — order_no 만으로 매칭하면 루브릭 교체 전 옛 항목명/삭제된 항목이 섞인다.
+  const dimName = normName(dim?.label);
+  const dimJudgments = skillAll.filter(j => normName(j.itemName) === dimName);
+  const dimGolden = goldAll.filter(g => normName(g.itemName) === dimName);
+  // 이 항목의 학습된 보완 룰(overlay) — 활성 버전에서 item_name 매칭.
+  const dimOverlay = (dim && overlayByName[dimName]) || null;
 
   const deleteSkill = async (row) => {
     try { await removeSkillset(row.qaId, row.orderNo); setSkillAll(s => s.filter(x => x.id !== row.id)); }
@@ -418,10 +435,13 @@ function AdminSkills() {
     catch (e) { /* 무시 */ }
   };
 
-  const countFor = (key) => ({
-    skill: skillAll.filter(j => j.dim === key).length,
-    gold: goldAll.filter(g => g.dim === key).length,
-  });
+  const countFor = (name) => {
+    const n = normName(name);
+    return {
+      skill: skillAll.filter(j => normName(j.itemName) === n).length,
+      gold: goldAll.filter(g => normName(g.itemName) === n).length,
+    };
+  };
 
   const TABS = [
     { k: 'skillset', label: `스킬셋 ${dimJudgments.length}` },
@@ -454,7 +474,7 @@ function AdminSkills() {
           <div style={{ padding: '8px', flex: 1, overflowY: 'auto' }}>
             {items.map((d, idx) => {
               const on = selDim === d.key;
-              const c = countFor(d.key);
+              const c = countFor(d.label);
               return (
                 <button key={d.key} onClick={() => setSelDim(d.key)}
                         style={{
@@ -493,9 +513,9 @@ function AdminSkills() {
           <div className="panel-head" style={{ flexShrink: 0 }}>
             <h3>{dim.label}</h3>
             <span style={{ fontSize: 12, color: 'var(--ink-400)', fontWeight: 600, whiteSpace: 'nowrap' }}>{dim.group}</span>
-            {corrections.length > 0 && (
+            {dimOverlay && dimOverlay.overlay && (
               <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 9999, background: 'var(--primary-soft)', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
-                <Icon name="refresh-cw" size={11} />프롬프트 자동 반영 중
+                <Icon name="refresh-cw" size={11} />보완 룰 적용 중
               </span>
             )}
           </div>
@@ -511,6 +531,11 @@ function AdminSkills() {
                 </button>
               );
             })}
+            {/* 변경이력 — 스킬 버전 이력(활성화/롤백)을 LLM 스킬 관리 모드로 연다. */}
+            <button onClick={() => setShowHistory(true)}
+                    style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, height: 30, padding: '0 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: 'var(--ink-600)', whiteSpace: 'nowrap' }}>
+              <Icon name="history" size={13} />변경이력
+            </button>
           </div>
 
           {/* Content */}
@@ -526,7 +551,14 @@ function AdminSkills() {
                   <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)', whiteSpace: 'nowrap' }}>최종 평가 프롬프트</span>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--ink-400)', marginLeft: 4 }}><Icon name="refresh-cw" size={11} />자동 반영</span>
                 </div>
-                <FinalPromptTab base={base} corrections={corrections} goldenCount={dimGolden.length} />
+                <FinalPromptTab
+                  overlay={dimOverlay?.overlay}
+                  changed={dimOverlay?.changed}
+                  goldenCount={dimGolden.length}
+                  version={skillVer}
+                  skillLoading={skillLoading}
+                  skillErr={skillErr}
+                />
               </div>
             </React.Fragment>
           )}
@@ -537,6 +569,10 @@ function AdminSkills() {
           )}
         </div>
       </div>
+
+      {showHistory && (
+        <HistoryModal initialSkillMode departments={['기본']} onClose={() => setShowHistory(false)} />
+      )}
     </div>
   );
 }
