@@ -364,9 +364,12 @@ export function startGoldenLearnScheduler(pool, hooks = {}) {
         if (running) return; // 직전 틱이 끝나지 않았으면 건너뜀(동시중복 방지)
         running = true;
         try {
+            // organizations JOIN — 삭제된 브랜드의 고아 설정 행(qa_batch_configs 잔존)은 자동 발화 제외.
+            //   (예: org 38 hourly 잔존 → 매시 no_rubric_items 실패 알림 재발 방지)
             const { rows } = await pool.query(
-                `SELECT org_id FROM public.qa_batch_configs
-                  WHERE org_id <> 0 AND (config #>> '{scope,goldenFreq}') IN ('hourly', 'daily')`
+                `SELECT c.org_id FROM public.qa_batch_configs c
+                  JOIN public.organizations o ON o.id = c.org_id
+                  WHERE c.org_id <> 0 AND (c.config #>> '{scope,goldenFreq}') IN ('hourly', 'daily')`
             );
             for (const row of rows) {
                 const orgId = row.org_id;
@@ -450,9 +453,11 @@ export function startSkillLearnScheduler(pool, hooks = {}) {
         if (running) return; // 직전 틱이 끝나지 않았으면 건너뜀(동시중복 방지)
         running = true;
         try {
+            // organizations JOIN — 삭제된 브랜드의 고아 설정 행은 자동 발화 제외(골든 스케줄러와 동일 가드).
             const { rows } = await pool.query(
-                `SELECT org_id FROM public.qa_batch_configs
-                  WHERE org_id <> 0 AND (config #>> '{scope,skillFreq}') IN ('hourly', 'daily')`
+                `SELECT c.org_id FROM public.qa_batch_configs c
+                  JOIN public.organizations o ON o.id = c.org_id
+                  WHERE c.org_id <> 0 AND (c.config #>> '{scope,skillFreq}') IN ('hourly', 'daily')`
             );
             for (const row of rows) {
                 const orgId = row.org_id;

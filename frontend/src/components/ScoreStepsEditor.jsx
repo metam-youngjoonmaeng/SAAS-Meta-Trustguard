@@ -1,4 +1,4 @@
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Sparkles, Undo2 } from 'lucide-react';
 
 // 점수 기준 구조화 입력기 — 만점 + 점수 단계(행 단위, 추가/삭제).
 //   행: [단계 점수] [그 점수의 조건 설명] [삭제]
@@ -47,7 +47,9 @@ export function assembleSteps(steps) {
     return `${header}\n${bullets}`;
 }
 
-export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps, error = false }) {
+// aiOriginals: { "<점수>": "교체 전 기존 문구" } — AI 프롬프트 다듬기 적용으로 AI 문구가 행에 들어간 뒤,
+//   해당 행에 AI 마커(✦)를 붙이고 아래에 "기존: <원문>" + [되돌리기]를 노출(원문 복귀 시 자동 소멸).
+export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps, error = false, aiOriginals = null }) {
     const setRow = (i, patch) => onSteps(steps.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
     const addRow = () => {
         // 첫 행이면 만점을 기본 점수로 채워 만점-단계 일치를 유도
@@ -65,6 +67,15 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
 
     return (
         <div className="space-y-3.5">
+            {/* AI 교체 연출 — 흰색에서 보라(#EFE9FE)로 천천히 페이드인한 뒤 영구 유지 + 아이콘 팝 + 기존 줄 페이드 */}
+            <style>{`
+                @keyframes aiFillSweep { 0% { background-color: #FFFFFF; border-color: #E4E7EC; } 100% { background-color: #EFE9FE; border-color: #C7B8F5; } }
+                @keyframes aiIconPop { 0% { transform: translateY(-50%) scale(0) rotate(-30deg); opacity: 0; } 60% { transform: translateY(-50%) scale(1.3) rotate(8deg); opacity: 1; } 100% { transform: translateY(-50%) scale(1) rotate(0deg); opacity: 1; } }
+                @keyframes aiFadeSlide { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+                .ai-filled-input { animation: aiFillSweep 2.4s ease-in-out; }
+                .ai-filled-icon { animation: aiIconPop .5s ease-out; }
+                .ai-orig-line { animation: aiFadeSlide .45s ease-out; }
+            `}</style>
             {/* 만점 */}
             <div className="flex items-center gap-2">
                 <span className="text-[13px] font-medium text-[#344054] w-10">만점</span>
@@ -105,37 +116,76 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
                             <span className="flex-1">이 점수를 주는 조건 · 설명</span>
                             <span style={{ width: 32 }} className="shrink-0" />
                         </div>
-                        {steps.map((s, i) => (
-                            <div key={i} className="flex items-center gap-2">
-                                <div className="relative shrink-0" style={{ width: 92 }}>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value={s.score}
-                                        onChange={(e) => setRow(i, { score: e.target.value })}
-                                        placeholder="점수"
-                                        className="form-input-pretty text-center pr-6"
-                                        style={redStyle || undefined}
-                                    />
-                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-[#98A2B3] pointer-events-none">점</span>
+                        {steps.map((s, i) => {
+                            // AI 교체 행 — 원문 맵에 해당 점수가 있고 현재 문구가 원문과 다르면
+                            // AI 마커 + "기존:" 참고/되돌리기 노출(되돌리면 원문 일치 → 자동 소멸).
+                            const orig = aiOriginals && Object.prototype.hasOwnProperty.call(aiOriginals, String(Number(s.score)))
+                                ? String(aiOriginals[String(Number(s.score))] ?? '')
+                                : null;
+                            const aiReplaced = orig !== null && orig.trim() !== String(s.desc || '').trim();
+                            return (
+                                <div key={i}>
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative shrink-0" style={{ width: 92 }}>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value={s.score}
+                                                onChange={(e) => setRow(i, { score: e.target.value })}
+                                                placeholder="점수"
+                                                className="form-input-pretty text-center pr-6"
+                                                style={redStyle || undefined}
+                                            />
+                                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-[#98A2B3] pointer-events-none">점</span>
+                                        </div>
+                                        <div className="relative flex-1">
+                                            <input
+                                                type="text"
+                                                value={s.desc}
+                                                onChange={(e) => setRow(i, { desc: e.target.value })}
+                                                placeholder="예) 인사 + 소속·성명 + 도입 멘트 모두 양호"
+                                                className={`form-input-pretty w-full ${aiReplaced ? 'ai-filled-input' : ''}`}
+                                                style={
+                                                    aiReplaced
+                                                        ? { paddingLeft: 30, backgroundColor: '#EFE9FE', borderColor: '#C7B8F5' }
+                                                        : undefined
+                                                }
+                                            />
+                                            {aiReplaced && (
+                                                <Sparkles
+                                                    size={13}
+                                                    className="ai-filled-icon absolute left-2.5 top-1/2 -translate-y-1/2 text-[#DC6803] pointer-events-none"
+                                                    title="AI 가 작성한 문구"
+                                                />
+                                            )}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => removeRow(i)}
+                                            title="이 단계 삭제"
+                                            className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg text-[#98A2B3] hover:text-[#D92D20] hover:bg-red-50 cursor-pointer"
+                                        >
+                                            <X size={15} />
+                                        </button>
+                                    </div>
+                                    {aiReplaced && (
+                                        <div className="ai-orig-line mt-1 ml-[100px] mr-10 flex items-start gap-2">
+                                            <span className="text-[11px] text-[#98A2B3] leading-relaxed flex-1">
+                                                기존: {orig.trim() || '(빈 조건)'}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setRow(i, { desc: orig })}
+                                                title="기존 문구로 되돌리기"
+                                                className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-md border border-[#E4E7EC] bg-white text-[#475467] text-[11px] font-semibold hover:bg-[#F2F4F7] cursor-pointer"
+                                            >
+                                                <Undo2 size={11} /> 되돌리기
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
-                                <input
-                                    type="text"
-                                    value={s.desc}
-                                    onChange={(e) => setRow(i, { desc: e.target.value })}
-                                    placeholder="예) 인사 + 소속·성명 + 도입 멘트 모두 양호"
-                                    className="form-input-pretty flex-1"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => removeRow(i)}
-                                    title="이 단계 삭제"
-                                    className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg text-[#98A2B3] hover:text-[#D92D20] hover:bg-red-50 cursor-pointer"
-                                >
-                                    <X size={15} />
-                                </button>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
 

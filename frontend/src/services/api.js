@@ -393,6 +393,15 @@ export async function fetchEvalItemVersions() {
     return request('/api/admin/eval-item-versions');
 }
 
+// AI 프롬프트 다듬기 — 러프 설명 초안 → 구조화 평가 프롬프트 생성(서버가 파이프라인 프록시).
+// payload: { item_name, category, scoring_type, max_score, steps:[{score, condition}], criterion_draft, yn_criteria_draft }
+export async function composeEvalPrompt(payload) {
+    return request('/api/admin/eval-items/compose-prompt', {
+        method: 'POST',
+        body: JSON.stringify(payload || {}),
+    });
+}
+
 export async function saveEvalItemDef(orderNo, {
     category, item, criterion, prompt_template,
     pentagon_axis, scoring_type, max_score, is_active,

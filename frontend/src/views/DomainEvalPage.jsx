@@ -6,6 +6,7 @@ import {
     fetchDomainPentagonDefaults, createDomainPentagonDefault, updateDomainPentagonDefault, deleteDomainPentagonDefault,
 } from '../services/api';
 import ScoreStepsEditor, { parseSteps, assembleSteps, stepsMaxMismatch } from '../components/ScoreStepsEditor';
+import AiPromptCompose from '../components/AiPromptCompose';
 
 // 도메인(업종)별 기본 평가체계 편집 — AI QA 항목관리(EvalItems.jsx)와 동일한 2패널 UX.
 // 좌측: 평가항목 리스트 + 펜타곤 축 리스트 / 우측: 선택 항목 미리보기·편집.
@@ -346,6 +347,7 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
     const [prompt, setPrompt] = useState(item?.prompt_template ?? '');          // Y/N 판정 기준(텍스트)
     const [steps, setSteps] = useState(() => parseSteps(item?.prompt_template)); // 점수제 점수 단계(행)
     const [stepErr, setStepErr] = useState(false); // 저장 시 만점≠최고단계 강조 플래그
+    const [aiStepOriginals, setAiStepOriginals] = useState(null); // AI 다듬기로 교체된 행의 원문({점수: 기존 문구})
     const [isActive, setIsActive] = useState(item?.is_active ?? true);
     const [saving, setSaving] = useState(false);
     const [err, setErr] = useState(null);
@@ -390,6 +392,21 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
 
                 {/* 항목 평가 설명 = 무엇을·어떻게 평가하는지(설명 프롬프트). 점수 단계는 여기 쓰지 않음. */}
                 <FormGroup label="항목 평가 설명">
+                    {/* AI 다듬기 — 러프 초안 → 구조화 프롬프트 생성·검토·적용(폼 반영만, 저장은 아래 저장 버튼). */}
+                    <AiPromptCompose
+                        itemName={name}
+                        category={category}
+                        scoringType={scoringType}
+                        maxScore={maxScore}
+                        steps={steps}
+                        criterion={criterion}
+                        ynDraft={prompt}
+                        onCriterion={setCriterion}
+                        onSteps={setSteps}
+                        onYnDraft={setPrompt}
+                        onMaxScore={setMaxScore}
+                        onAiReplacedSteps={setAiStepOriginals}
+                    />
                     <textarea value={criterion} onChange={(e) => setCriterion(e.target.value)} rows={8}
                         placeholder={`이 항목을 '무엇을·어떻게' 평가하는지 설명을 작성하세요. 예)\n[평가 대상] 상담 시작 시 표준 인사와 소속·성명을 밝혔는지\n[평가 기준] 표준 인사·소속·성명 안내로 상담을 적절히 시작했는가?\n[판정 주의] 인입 직후 고객이 바로 용건을 말한 경우 도입 멘트 비중을 낮게`}
                         className="form-textarea-pretty font-mono text-[12px]" />
@@ -398,7 +415,7 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
                 {/* 점수 기준 = 만점 + 점수 단계(행 단위). 저장 시 표준 텍스트로 합쳐 prompt_template 보관 → 엔진이 척도 파싱. */}
                 <FormGroup label="점수 기준">
                     {isNumeric ? (
-                        <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} error={stepErr} />
+                        <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} error={stepErr} aiOriginals={aiStepOriginals} />
                     ) : (
                         <>
                             <div className="text-[12px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5 leading-relaxed mb-2.5">충족 / 위반 으로만 판정합니다. 점수·총점·펜타곤에는 반영되지 않습니다.</div>

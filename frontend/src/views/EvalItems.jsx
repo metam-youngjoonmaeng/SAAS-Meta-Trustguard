@@ -4,6 +4,7 @@ import Header from '../components/Header';
 import { PRODUCT_NAME } from '../branding';
 import { getBrandConfig, isDynamicChecklistBrand, buildChecklistTemplateFromDefs } from '../constants';
 import ScoreStepsEditor, { parseSteps, assembleSteps, stepsMaxMismatch } from '../components/ScoreStepsEditor';
+import AiPromptCompose from '../components/AiPromptCompose';
 import {
     fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, deleteEvalItemDef, fetchEvalItemHistory,
     fetchPentagonAxes, savePentagonAxis, createPentagonAxis,
@@ -1117,6 +1118,7 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
     const [prompt, setPrompt] = useState(existingDef?.prompt_template ?? '');       // Y/N 판정 기준(텍스트)
     const [steps, setSteps] = useState(() => parseSteps(existingDef?.prompt_template)); // 점수제 점수 단계(행)
     const [stepErr, setStepErr] = useState(false); // 저장 시 만점≠최고단계 강조 플래그
+    const [aiStepOriginals, setAiStepOriginals] = useState(null); // AI 다듬기로 교체된 행의 원문({점수: 기존 문구})
     // 신규 추가는 평가 부서('기본')에 생성 → 체크리스트·평가와 일치해 추가 즉시 반영.
     // '기본'이 부서 옵션에 있으면 그것을, 없으면(레거시 등) 첫 부서를 기본 선택.
     const [selectedDepts, setSelectedDepts] = useState(
@@ -1231,6 +1233,21 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
 
                 {/* 항목 평가 설명 = 무엇을·어떻게 평가하는지(설명 프롬프트). 점수 단계는 여기 쓰지 않음. */}
                 <FormGroup label="항목 평가 설명">
+                    {/* AI 다듬기 — 러프 초안 → 구조화 프롬프트 생성·검토·적용(폼 반영만, 저장은 아래 저장 버튼). */}
+                    <AiPromptCompose
+                        itemName={name}
+                        category={category}
+                        scoringType={scoringType}
+                        maxScore={maxScore}
+                        steps={steps}
+                        criterion={criterion}
+                        ynDraft={prompt}
+                        onCriterion={setCriterion}
+                        onSteps={setSteps}
+                        onYnDraft={setPrompt}
+                        onMaxScore={setMaxScore}
+                        onAiReplacedSteps={setAiStepOriginals}
+                    />
                     <textarea
                         value={criterion}
                         onChange={(e) => setCriterion(e.target.value)}
@@ -1243,7 +1260,7 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                 {/* 점수 기준 = 만점 + 점수 단계(행 단위). 저장 시 표준 텍스트로 합쳐 prompt_template 보관 → 엔진이 척도 파싱. */}
                 <FormGroup label="점수 기준">
                     {scoringType === 'numeric' ? (
-                        <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} error={stepErr} />
+                        <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} error={stepErr} aiOriginals={aiStepOriginals} />
                     ) : (
                         <>
                             <div className="text-[12.5px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5 leading-relaxed mb-2.5">
