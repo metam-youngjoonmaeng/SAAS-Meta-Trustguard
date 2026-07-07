@@ -196,6 +196,10 @@ export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMI
            LEFT JOIN qa_checklist_rows cr ON cr."ID" = er."ID" AND cr.order_no = er.order_no
           WHERE c.review_status = 'approved' AND c.is_sandbox = false
             AND c.org_id = $1 AND er.manual_eval_option IN ('낮음','높음')
+            AND NOT EXISTS (
+                SELECT 1 FROM qa_skill_excluded x
+                 WHERE x.qa_id = er."ID" AND x.order_no = er.order_no AND x.org_id = c.org_id
+            )
           ORDER BY c."CDATE" DESC LIMIT $2`,
         [orgId, lim]
     );

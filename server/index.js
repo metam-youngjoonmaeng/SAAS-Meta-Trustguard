@@ -2875,6 +2875,81 @@ app.delete('/api/golden-set/:qaId/:orderNo', requireAdmin, async (req, res) => {
     }
 });
 
+// ── 스킬셋 (수기 '높음'/'낮음' 정정 누적) — AI 스킬 관리 화면 ────────
+// 검수자가 AI 점수를 정정('낮음'=과대평가/'높음'=과소평가)한 승인·비샌드박스 항목행.
+// 스킬 학습(skillLearn.collectSkillCases)과 동일 소스이며, qa_skill_excluded 로 제외된 건 뺀다.
+app.get('/api/skillset', async (req, res) => {
+    const orderNoRaw = req.query.order_no;
+    const orderNo = orderNoRaw !== undefined && orderNoRaw !== '' && Number.isFinite(Number(orderNoRaw))
+        ? Number(orderNoRaw)
+        : null;
+    const category = String(req.query.category || '').trim();
+    const item = String(req.query.item || '').trim();
+    const orgId = resolveActiveOrgId(req);
+    try {
+        const conds = [`c.review_status = 'approved'`, `c.is_sandbox = false`, `er.manual_eval_option IN ('낮음','높음')`];
+        const params = [];
+        if (orderNo !== null) {
+            params.push(orderNo); conds.push(`er.order_no = $${params.length}`);
+        } else {
+            if (category) { params.push(category); conds.push(`er.category = $${params.length}`); }
+            if (item)     { params.push(item);     conds.push(`er.item     = $${params.length}`); }
+        }
+        if (orgId !== null && orgId !== undefined) {
+            params.push(orgId); conds.push(`c.org_id = $${params.length}`);
+        }
+        const where = `WHERE ${conds.join(' AND ')}`;
+        const { rows } = await pool.query(
+            `SELECT er."ID" AS qa_id, er.order_no, er.category, er.item,
+                    er.ai_eval, er.manual_eval_option AS direction, er.reason_text,
+                    cr.agent_utterance,
+                    c."CDATE" AS call_datetime, c.org_id,
+                    u.login_id, u.display_name
+               FROM qa_evaluation_rows er
+               JOIN qa_calls c ON c."ID" = er."ID"
+               LEFT JOIN qa_checklist_rows cr ON cr."ID" = er."ID" AND cr.order_no = er.order_no
+               LEFT JOIN admin_users u ON u.user_id = c.user_id
+               ${where}
+                 AND NOT EXISTS (
+                     SELECT 1 FROM qa_skill_excluded x
+                      WHERE x.qa_id = er."ID" AND x.order_no = er.order_no AND x.org_id = c.org_id
+                 )
+               ORDER BY c."CDATE" DESC
+               LIMIT 200`,
+            params
+        );
+        res.json({ ok: true, entries: rows });
+    } catch (error) {
+        console.error('GET /api/skillset error:', error);
+        res.status(500).json({ message: 'Failed to load skillset entries.' });
+    }
+});
+
+// DELETE /api/skillset/:qaId/:orderNo — 스킬셋에서만 제외(배치 학습 대상 제외). 원본 평가행 불변.
+app.delete('/api/skillset/:qaId/:orderNo', requireAdmin, async (req, res) => {
+    const qaId = String(req.params.qaId || '').trim();
+    const orderNo = Number(req.params.orderNo);
+    if (!qaId || !Number.isFinite(orderNo)) {
+        res.status(400).json({ message: 'qaId and orderNo are required' });
+        return;
+    }
+    try {
+        // org_id 는 콜에서 확정(super_admin=all 컨텍스트 대비).
+        const { rows: cRows } = await pool.query(`SELECT org_id FROM qa_calls WHERE "ID" = $1 LIMIT 1`, [qaId]);
+        const rowOrg = cRows[0]?.org_id ?? resolveActiveOrgId(req) ?? 0;
+        await pool.query(
+            `INSERT INTO qa_skill_excluded (org_id, qa_id, order_no)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (org_id, qa_id, order_no) DO NOTHING`,
+            [rowOrg, qaId, orderNo]
+        );
+        res.json({ ok: true, excluded: true });
+    } catch (error) {
+        console.error('DELETE /api/skillset/:qaId/:orderNo error:', error);
+        res.status(500).json({ message: 'Failed to exclude from skillset.' });
+    }
+});
+
 // ── 평가항목 정의 (criterion + prompt_template) + 버전 관리 ────────
 // 항목 메타(category/item/order_no/만점/매핑)는 프론트 constants.js 가 SSOT.
 // 본 API 는 (org_id, department, order_no, version) 키로 편집 가능한 필드를 영속한다.

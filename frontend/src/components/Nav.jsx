@@ -27,7 +27,8 @@ const ROLE_META = {
 // 탭 → 라벨 (사이드바와 동일). 상단바 브레드크럼 표시용.
 const TAB_LABELS = {
     dashboard: '평가 리스트',
-    'eval-items': 'AI QA 항목관리',
+    'eval-items': '평가항목 관리',
+    skills: 'AI 스킬 관리',
     'admin-batch': 'AI 평가 배치관리',
     users: '사용자 관리',
     brands: '브랜드 관리',
@@ -38,7 +39,7 @@ const TAB_LABELS = {
 
 // 탭 → 표시 라벨. eval-mgmt 는 역할별, detail 은 페이지명.
 function tabLabelOf(tab, role) {
-    if (tab === 'eval-mgmt') return role === 'agent' ? '내 평가 결과' : '상담사 평가관리';
+    if (tab === 'eval-mgmt') return role === 'agent' ? '내 평가 결과' : '상담사 QA관리';
     if (tab === 'detail') return '상담 QA 분석 결과';
     return TAB_LABELS[tab] || '';
 }

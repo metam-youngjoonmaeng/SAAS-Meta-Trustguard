@@ -347,6 +347,25 @@ export async function removeGoldenSet(qaId, orderNo) {
     );
 }
 
+/** 스킬셋(수기 '높음'/'낮음' 정정 누적) 조회 — 항목(order_no) 단위. 응답 { ok, entries } */
+export async function fetchSkillset({ category, item, orderNo } = {}) {
+    const params = new URLSearchParams();
+    if (orderNo !== undefined && orderNo !== null && orderNo !== '') params.set('order_no', String(orderNo));
+    if (category) params.set('category', category);
+    if (item) params.set('item', item);
+    const qs = params.toString();
+    return request(`/api/skillset${qs ? `?${qs}` : ''}`);
+}
+
+/** 스킬셋에서 제외(배치 학습 대상에서 제거). 원본 평가행은 불변. */
+export async function removeSkillset(qaId, orderNo) {
+    if (!qaId) throw new Error('qaId is required');
+    return request(
+        `/api/skillset/${encodeURIComponent(qaId)}/${encodeURIComponent(orderNo)}`,
+        { method: 'DELETE' }
+    );
+}
+
 /** 소비자보호부 20항목 Y/N 저장 → qa_consumer_eval_rows 갱신 */
 export async function saveConsumerYnPatches(qaId, consumerYnPatches) {
     if (!qaId) throw new Error('qaId is required');
