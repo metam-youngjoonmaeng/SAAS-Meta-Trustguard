@@ -1,7 +1,8 @@
 // AI 스킬 관리 — 평가 항목별로 골든셋(정답 사례)과 스킬셋(높음/낮음 보정)을 관리.
 // 골든셋: 평가리스트에서 '골든셋'으로 체크한 사례 → few-shot 주입
 // 스킬셋: 수기평가에서 '동일'이 아닌(높음/낮음) 판정 누적 → 평가 프롬프트 보정 문구
-// 최종 프롬프트 = 기본 프롬프트 + (반영된) 스킬셋 보정 + 골든셋 few-shot
+// 실제 최종 프롬프트 = 기본 프롬프트(평가항목 관리) + 스킬셋 보정 + 골든셋 few-shot.
+// 단, 이 화면의 '최종 평가 프롬프트' 박스는 기본 프롬프트를 중복 표시하지 않고 스킬셋 보정·골든셋 레이어만 보여준다.
 // etc/pages-skills.jsx 프로토타입 이식(1단계 UI). 스타일은 .tg-eval 스코프(evalMgmt.css) 재사용.
 import React, { useState as useState_sk, useMemo as useMemo_sk, useEffect } from 'react';
 import { Icon, PageHead } from './evalMgmt/ui';
@@ -90,23 +91,20 @@ function buildCorrections(judgments) {
   return lines;
 }
 
-// 기본 프롬프트 = 항목 설명(criterion) + 점수단계(prompt_template).
-// 실제 평가엔진 루브릭(rubricSync)이 criteria_full + prompt_template 둘 다 LLM 에 주입하므로 동일하게 합친다.
-function composeBase(criterion, promptTemplate) {
-  return [criterion, promptTemplate].map(s => (s || '').trim()).filter(Boolean).join('\n\n');
-}
-
-function composeFinalPrompt(base, corrections, goldenCount) {
-  let out = base || '';
+// 스킬셋 레이어 = 기본 프롬프트(평가항목 관리에서 확인) 위에 더해지는 검수자 보정 + 골든셋 few-shot.
+// 기본 프롬프트 원문은 여기서 중복 표시하지 않는다(평가항목 관리에 이미 있으므로).
+function composeSkillLayer(corrections, goldenCount) {
+  let out = '';
   if (corrections.length) {
-    out += '\n\n[검수자 보정 기준 — 수기평가 학습 반영]';
+    out += '[검수자 보정 기준 — 수기평가 학습 반영]';
     corrections.forEach(c => {
       out += `\n\n· ${c.title}`;
       c.items.forEach(it => { out += `\n   - ${it}`; });
     });
   }
   if (goldenCount > 0) {
-    out += `\n\n[참고 사례]\n유사한 골든셋 사례 ${goldenCount}건이 few-shot 예시로 자동 주입됩니다.`;
+    if (out) out += '\n\n';
+    out += `[참고 사례]\n유사한 골든셋 사례 ${goldenCount}건이 few-shot 예시로 자동 주입됩니다.`;
   }
   return out;
 }
@@ -335,35 +333,27 @@ function GoldenTab({ cases, onDelete }) {
 }
 
 // ── 최종 프롬프트 탭 ──────────────────────────────────
-function FinalPromptTab({ base, corrections, goldenCount }) {
-  const finalText = useMemo_sk(() => composeFinalPrompt(base, corrections, goldenCount), [base, corrections, goldenCount]);
+// 기본 프롬프트(criterion + prompt_template)는 평가항목 관리에서 확인 가능하므로 여기서 중복 표시하지 않고,
+// 스킬셋이 기본 프롬프트에 더하는 내용(검수자 보정 + 골든셋 참고)만 보여준다.
+function FinalPromptTab({ corrections, goldenCount }) {
+  const skillText = useMemo_sk(() => composeSkillLayer(corrections, goldenCount), [corrections, goldenCount]);
+  const empty = !skillText;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ fontSize: 12, color: 'var(--ink-500)', lineHeight: 1.5 }}>
-        기본 프롬프트에 <strong>스킬셋 보정</strong>과 <strong>골든셋 few-shot</strong>이 합쳐진 프롬프트로, 목록 변경 시 자동 갱신됩니다.
+        기본 프롬프트(<strong>평가항목 관리</strong>)에 더해지는 <strong>스킬셋 보정</strong>·<strong>골든셋 few-shot</strong> 내용입니다. 목록 변경 시 자동 갱신됩니다.
       </div>
 
       <div style={{
         border: '1px solid var(--border)', borderRadius: 12, background: 'var(--background-soft)',
         padding: '16px 18px', fontFamily: 'var(--font-mono, monospace)', fontSize: 12.5, lineHeight: 1.7,
-        color: 'var(--ink-800, var(--ink-900))', whiteSpace: 'pre-wrap',
+        color: empty ? 'var(--ink-400)' : 'var(--ink-800, var(--ink-900))', whiteSpace: 'pre-wrap',
+        fontStyle: empty ? 'italic' : 'normal',
       }}>
-        {renderPromptWithHighlights(base, finalText)}
+        {empty ? '아직 반영할 스킬셋 보정·골든셋이 없습니다. 기본 프롬프트 그대로 평가합니다.' : skillText}
       </div>
     </div>
-  );
-}
-
-// 기본 프롬프트 부분은 일반색, 보정/사례 부분은 강조 배경
-function renderPromptWithHighlights(base, finalText) {
-  if (!finalText.startsWith(base)) return finalText;
-  const rest = finalText.slice(base.length);
-  return (
-    <React.Fragment>
-      <span>{base}</span>
-      <span style={{ display: 'block', background: 'var(--primary-soft-flat)', margin: '10px -18px -16px', padding: '12px 18px 16px', borderTop: '1px dashed var(--primary-soft-border)', color: 'var(--ink-800, var(--ink-900))' }}>{rest.replace(/^\n+/, '')}</span>
-    </React.Fragment>
   );
 }
 
@@ -384,12 +374,12 @@ function AdminSkills() {
         setLoading(true); setErr('');
         const [ev, sk, gd] = await Promise.all([
           // 채점 대상과 동일한 부서('기본')만. 부서 미지정 시 KSQI 항목이 섞여 order_no 가 충돌한다.
-          fetchEvalItemDefs({ department: '기본' }),  // { items: [{ order_no, category, item, criterion, prompt_template }] }
+          fetchEvalItemDefs({ department: '기본' }),  // { items: [{ order_no, category, item }] }
           fetchSkillset(),            // { entries: [...] }  (전 항목)
           fetchGoldenCasesByItem(),   // { entries: [...] }  (전 항목)
         ]);
         if (!alive) return;
-        const evItems = (ev?.items || []).map(r => ({ key: r.order_no, label: r.item, group: r.category, criterion: r.criterion, promptTemplate: r.prompt_template }));
+        const evItems = (ev?.items || []).map(r => ({ key: r.order_no, label: r.item, group: r.category }));
         setItems(evItems);
         setSkillAll((sk?.entries || []).map(mapSkillEntry));
         setGoldAll((gd?.entries || []).map(mapGoldEntry));
@@ -407,7 +397,6 @@ function AdminSkills() {
   const dimJudgments = skillAll.filter(j => j.dim === selDim);
   const dimGolden = goldAll.filter(g => g.dim === selDim);
   const corrections = buildCorrections(dimJudgments);
-  const base = composeBase(dim?.criterion, dim?.promptTemplate) || '이 항목의 평가 기준이 아직 작성되지 않았습니다. (평가항목 관리에서 입력)';
 
   const deleteSkill = async (row) => {
     try { await removeSkillset(row.qaId, row.orderNo); setSkillAll(s => s.filter(x => x.id !== row.id)); }
@@ -526,7 +515,7 @@ function AdminSkills() {
                   <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)', whiteSpace: 'nowrap' }}>최종 평가 프롬프트</span>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--ink-400)', marginLeft: 4 }}><Icon name="refresh-cw" size={11} />자동 반영</span>
                 </div>
-                <FinalPromptTab base={base} corrections={corrections} goldenCount={dimGolden.length} />
+                <FinalPromptTab corrections={corrections} goldenCount={dimGolden.length} />
               </div>
             </React.Fragment>
           )}
