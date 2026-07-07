@@ -7,6 +7,7 @@
 import React, { useState as useState_sk, useMemo as useMemo_sk, useEffect } from 'react';
 import { Icon, PageHead } from './evalMgmt/ui';
 import { fetchEvalItemDefs, fetchGoldenCasesByItem, removeGoldenSet, fetchSkillset, removeSkillset, fetchSkillVersions, fetchSkillVersionDetail } from '../services/api';
+import { HistoryModal } from './EvalItems';   // 변경이력(스킬 버전 이력 + 활성화/롤백) 재사용
 
 // ── 실데이터 매핑 헬퍼 (서버 응답 → 화면 행) ─────────────
 // CDATE 'YYYYMMDDHHMMSS'(ICS) 또는 ISO → 'YYYY-MM-DD HH:MM'
@@ -365,6 +366,7 @@ function AdminSkills() {
   const [skillVer, setSkillVer] = useState_sk(null);   // { id, createdAt } | null
   const [skillLoading, setSkillLoading] = useState_sk(true);
   const [skillErr, setSkillErr] = useState_sk('');
+  const [showHistory, setShowHistory] = useState_sk(false);   // 변경이력 모달(스킬 버전 이력)
 
   useEffect(() => {
     let alive = true;
@@ -522,6 +524,11 @@ function AdminSkills() {
                 </button>
               );
             })}
+            {/* 변경이력 — 스킬 버전 이력(활성화/롤백)을 LLM 스킬 관리 모드로 연다. */}
+            <button onClick={() => setShowHistory(true)}
+                    style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, height: 30, padding: '0 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: 'var(--ink-600)', whiteSpace: 'nowrap' }}>
+              <Icon name="history" size={13} />변경이력
+            </button>
           </div>
 
           {/* Content */}
@@ -555,6 +562,10 @@ function AdminSkills() {
           )}
         </div>
       </div>
+
+      {showHistory && (
+        <HistoryModal initialSkillMode departments={['기본']} onClose={() => setShowHistory(false)} />
+      )}
     </div>
   );
 }
