@@ -36,6 +36,7 @@ function mapSkillEntry(e) {
   return {
     id: `${e.qa_id}#${e.order_no}`,
     dim: e.order_no,
+    itemName: e.item,               // 현재 항목명 매칭용(루브릭 교체 잔재 배제)
     sessionId: e.qa_id,
     date: fmtCdate(e.call_datetime),
     agent: e.display_name || e.login_id || '—',
@@ -51,6 +52,7 @@ function mapGoldEntry(e) {
   return {
     id: e.golden_id,
     dim: e.order_no,
+    itemName: e.item,               // 현재 항목명 매칭용
     callId: e.qa_id,
     date: fmtCdate(e.call_datetime),
     agent: e.display_name || e.login_id || '—',
@@ -417,10 +419,12 @@ function AdminSkills() {
   }, []);
 
   const dim = items.find(d => d.key === selDim) || null;
-  const dimJudgments = skillAll.filter(j => j.dim === selDim);
-  const dimGolden = goldAll.filter(g => g.dim === selDim);
+  // 현재 항목명(item)으로 매칭 — order_no 만으로 매칭하면 루브릭 교체 전 옛 항목명/삭제된 항목이 섞인다.
+  const dimName = normName(dim?.label);
+  const dimJudgments = skillAll.filter(j => normName(j.itemName) === dimName);
+  const dimGolden = goldAll.filter(g => normName(g.itemName) === dimName);
   // 이 항목의 학습된 보완 룰(overlay) — 활성 버전에서 item_name 매칭.
-  const dimOverlay = (dim && overlayByName[normName(dim.label)]) || null;
+  const dimOverlay = (dim && overlayByName[dimName]) || null;
 
   const deleteSkill = async (row) => {
     try { await removeSkillset(row.qaId, row.orderNo); setSkillAll(s => s.filter(x => x.id !== row.id)); }
@@ -431,10 +435,13 @@ function AdminSkills() {
     catch (e) { /* 무시 */ }
   };
 
-  const countFor = (key) => ({
-    skill: skillAll.filter(j => j.dim === key).length,
-    gold: goldAll.filter(g => g.dim === key).length,
-  });
+  const countFor = (name) => {
+    const n = normName(name);
+    return {
+      skill: skillAll.filter(j => normName(j.itemName) === n).length,
+      gold: goldAll.filter(g => normName(g.itemName) === n).length,
+    };
+  };
 
   const TABS = [
     { k: 'skillset', label: `스킬셋 ${dimJudgments.length}` },
@@ -467,7 +474,7 @@ function AdminSkills() {
           <div style={{ padding: '8px', flex: 1, overflowY: 'auto' }}>
             {items.map((d, idx) => {
               const on = selDim === d.key;
-              const c = countFor(d.key);
+              const c = countFor(d.label);
               return (
                 <button key={d.key} onClick={() => setSelDim(d.key)}
                         style={{
