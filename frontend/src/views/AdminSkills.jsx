@@ -90,6 +90,12 @@ function buildCorrections(judgments) {
   return lines;
 }
 
+// 기본 프롬프트 = 항목 설명(criterion) + 점수단계(prompt_template).
+// 실제 평가엔진 루브릭(rubricSync)이 criteria_full + prompt_template 둘 다 LLM 에 주입하므로 동일하게 합친다.
+function composeBase(criterion, promptTemplate) {
+  return [criterion, promptTemplate].map(s => (s || '').trim()).filter(Boolean).join('\n\n');
+}
+
 function composeFinalPrompt(base, corrections, goldenCount) {
   let out = base || '';
   if (corrections.length) {
@@ -377,12 +383,13 @@ function AdminSkills() {
       try {
         setLoading(true); setErr('');
         const [ev, sk, gd] = await Promise.all([
-          fetchEvalItemDefs(),        // { items: [{ order_no, category, item, prompt_template }] }
+          // 채점 대상과 동일한 부서('기본')만. 부서 미지정 시 KSQI 항목이 섞여 order_no 가 충돌한다.
+          fetchEvalItemDefs({ department: '기본' }),  // { items: [{ order_no, category, item, criterion, prompt_template }] }
           fetchSkillset(),            // { entries: [...] }  (전 항목)
           fetchGoldenCasesByItem(),   // { entries: [...] }  (전 항목)
         ]);
         if (!alive) return;
-        const evItems = (ev?.items || []).map(r => ({ key: r.order_no, label: r.item, group: r.category, base: r.prompt_template }));
+        const evItems = (ev?.items || []).map(r => ({ key: r.order_no, label: r.item, group: r.category, criterion: r.criterion, promptTemplate: r.prompt_template }));
         setItems(evItems);
         setSkillAll((sk?.entries || []).map(mapSkillEntry));
         setGoldAll((gd?.entries || []).map(mapGoldEntry));
@@ -400,7 +407,7 @@ function AdminSkills() {
   const dimJudgments = skillAll.filter(j => j.dim === selDim);
   const dimGolden = goldAll.filter(g => g.dim === selDim);
   const corrections = buildCorrections(dimJudgments);
-  const base = dim?.base || '이 항목을 평가 기준에 따라 0~100점으로 평가하세요.';
+  const base = composeBase(dim?.criterion, dim?.promptTemplate) || '이 항목의 평가 기준이 아직 작성되지 않았습니다. (평가항목 관리에서 입력)';
 
   const deleteSkill = async (row) => {
     try { await removeSkillset(row.qaId, row.orderNo); setSkillAll(s => s.filter(x => x.id !== row.id)); }
