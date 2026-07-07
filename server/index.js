@@ -4314,6 +4314,18 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
                         qa_id: result.qa_id ?? job.qa_id,
                         version_id: vid,
                         items_changed: applied.map((e) => Number(e.item_number)).filter(Number.isFinite),
+                        // 항목별 주입 상세(RAG 로그식 펼침용) — 파이프라인이 이벤트에 동봉한 "주입 시점
+                        // 원문"(overlay_text, 파이프라인 cap 4000자) 보존. 링버퍼 방어로 한 번 더 cap.
+                        items: skillOverlayEvents.map((e) => ({
+                            item_number: Number(e?.item_number),
+                            item_name: e?.item_name || undefined,
+                            applied: !!e?.applied,
+                            overlay_chars: Number(e?.overlay_chars) || 0,
+                            overlay_text:
+                                typeof e?.overlay_text === 'string' && e.overlay_text
+                                    ? e.overlay_text.slice(0, 4000)
+                                    : undefined,
+                        })),
                     });
                 }
             } catch {

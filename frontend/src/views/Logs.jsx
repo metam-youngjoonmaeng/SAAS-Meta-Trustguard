@@ -952,6 +952,15 @@ function SkillLogPanel() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [paused, setPaused] = useState(false);
+    // 펼침 상태 — 평가 적용 행(items 동봉)만 펼쳐 항목별 주입 룰 원문 표시(RAG 로그식).
+    const [openKeys, setOpenKeys] = useState(() => new Set());
+    const toggleOpen = (k) =>
+        setOpenKeys((prev) => {
+            const next = new Set(prev);
+            if (next.has(k)) next.delete(k);
+            else next.add(k);
+            return next;
+        });
 
     async function load() {
         try {
@@ -1033,14 +1042,28 @@ function SkillLogPanel() {
                                         const stage = SKILL_STAGE_META[e.stage] || { label: e.stage || '—', cls: 'bg-gray-100 text-gray-600' };
                                         const isErr = e.stage === 'error';
                                         const changedCount = Array.isArray(e.items_changed) ? e.items_changed.length : null;
+                                        // 평가 적용 행 — 항목별 주입 상세(items) 동봉 시 클릭으로 펼침.
+                                        const rowKey = `${e.ts || 'na'}-${e.qa_id || idx}`;
+                                        const hasItems = Array.isArray(e.items) && e.items.length > 0;
+                                        const isOpen = hasItems && openKeys.has(rowKey);
                                         return (
-                                            <tr key={`${e.ts || 'na'}-${idx}`} className={`align-top ${isErr ? 'bg-red-50/60' : 'hover:bg-[#F9FAFB]'}`}>
+                                            <React.Fragment key={rowKey}>
+                                            <tr
+                                                onClick={hasItems ? () => toggleOpen(rowKey) : undefined}
+                                                className={`align-top ${isErr ? 'bg-red-50/60' : 'hover:bg-[#F9FAFB]'} ${hasItems ? 'cursor-pointer' : ''}`}
+                                            >
                                                 <td className="px-3 py-2 text-[11.5px] text-[#667085] tabular-nums font-mono">{fmtRagTime(e.ts)}</td>
                                                 <td className="px-3 py-2 text-[12px] text-[#101828] tabular-nums">{e.org_id != null ? `org ${e.org_id}` : '—'}</td>
                                                 <td className="px-3 py-2">
                                                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${stage.cls}`}>{stage.label}</span>
                                                 </td>
                                                 <td className="px-3 py-2">
+                                                    {hasItems && (
+                                                        <ChevronDown
+                                                            size={13}
+                                                            className={`inline-block mr-1 -mt-0.5 text-[#98A2B3] transition-transform ${isOpen ? '' : '-rotate-90'}`}
+                                                        />
+                                                    )}
                                                     <span className={`text-[12px] ${isErr ? 'text-[#B42318]' : 'text-[#475467]'}`}>{e.message || e.error || '—'}</span>
                                                     <span className="inline-flex flex-wrap items-center gap-1 ml-2 align-middle">
                                                         {e.source && (
@@ -1055,12 +1078,51 @@ function SkillLogPanel() {
                                                         {e.version_id && (
                                                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#F2F4F7] text-[#475467]">{e.version_id}</span>
                                                         )}
+                                                        {hasItems && !isOpen && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#F6F3FF] text-[#6941C6]">클릭해 주입 룰 보기</span>
+                                                        )}
                                                     </span>
                                                     {isErr && e.error && e.error !== e.message && (
                                                         <div className="mt-0.5 text-[11px] text-[#B42318] break-all">{e.error}</div>
                                                     )}
                                                 </td>
                                             </tr>
+                                            {isOpen && (
+                                                <tr className="bg-[#FAFBFC]">
+                                                    <td colSpan={4} className="px-4 py-3">
+                                                        <div className="text-[11px] font-semibold text-[#667085] uppercase tracking-wide mb-2">
+                                                            항목별 스킬 주입 내용 — 평가 시점에 프롬프트에 실제 들어간 룰 원문
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            {e.items.map((it, i) => (
+                                                                <div key={i} className="bg-white border border-[#E4E7EC] rounded-lg px-3 py-2">
+                                                                    <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                                                                        <span className="font-semibold text-[#101828]">{it.item_name || `#${it.item_number}`}</span>
+                                                                        {Number.isFinite(it.item_number) && it.item_name && (
+                                                                            <span className="text-[11px] text-[#98A2B3]">#{it.item_number}</span>
+                                                                        )}
+                                                                        {it.applied ? (
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-700">주입</span>
+                                                                        ) : (
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">미주입 — 이 항목 룰 없음</span>
+                                                                        )}
+                                                                        {it.applied && it.overlay_chars > 0 && (
+                                                                            <span className="text-[11px] text-[#98A2B3]">{Number(it.overlay_chars).toLocaleString()}자</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {it.applied && it.overlay_text && (
+                                                                        <pre className="mt-1.5 text-[11.5px] font-mono text-[#475467] whitespace-pre-wrap leading-relaxed bg-[#FAFBFC] border border-[#F2F4F7] rounded-md px-2.5 py-2 max-h-[240px] overflow-auto">{it.overlay_text}</pre>
+                                                                    )}
+                                                                    {it.applied && !it.overlay_text && (
+                                                                        <div className="mt-1 text-[11px] text-[#98A2B3]">주입 원문 미기록 — 이전 버전 파이프라인 이벤트(글자수만 기록됨)</div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            </React.Fragment>
                                         );
                                     })}
                                 </tbody>
