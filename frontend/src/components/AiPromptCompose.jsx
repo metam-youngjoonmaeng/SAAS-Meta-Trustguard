@@ -84,14 +84,14 @@ export default function AiPromptCompose({
                                 type="checkbox"
                                 checked={followSteps}
                                 onChange={(e) => setFollowSteps(e.target.checked)}
-                                className="w-3.5 h-3.5 accent-[#6941C6] cursor-pointer"
+                                className="w-3.5 h-3.5 accent-primary cursor-pointer"
                             />
                             <span className="text-[11.5px] font-medium text-[#475467]">점수 단계 따르기</span>
                         </label>
                     )}
                     {/* ⓘ 도움말 — hover 툴팁(group-hover). cursor-help + 아래로 펼침(우측 정렬). */}
                     <span className="relative group inline-flex items-center">
-                        <Info size={14} className="text-[#98A2B3] group-hover:text-[#6941C6] cursor-help" />
+                        <Info size={14} className="text-[#98A2B3] group-hover:text-primary cursor-help" />
                         <span className="pointer-events-none absolute right-0 top-full mt-1.5 w-[310px] z-50 hidden group-hover:block bg-[#101828] text-white text-[11.5px] leading-relaxed rounded-lg px-3 py-2.5 shadow-lg">
                             평가 기준을 대충 적어두고 버튼을 누르면, AI 가 평가에 바로 쓸 수 있도록 깔끔하게 정리해 줍니다.
                             <br />· 무엇을 보고 어떤 순서로 판정할지 읽기 쉬운 문장으로 다시 써 줍니다
@@ -107,7 +107,7 @@ export default function AiPromptCompose({
                         className={`inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border text-[12px] font-semibold ${
                             composing
                                 ? 'border-[#E4E7EC] bg-[#F9FAFB] text-[#98A2B3] cursor-default'
-                                : 'border-[#C7B8F5] bg-[#F6F3FF] text-[#6941C6] hover:bg-[#EFE9FE] cursor-pointer'
+                                : 'border-primary-soft-border bg-primary-soft text-primary hover:bg-primary-tint cursor-pointer'
                         }`}
                     >
                         <Sparkles size={13} /> {composing ? 'AI 생성 중…' : 'AI 프롬프트 다듬기'}
@@ -137,16 +137,16 @@ export default function AiPromptCompose({
                                     className="ai-compose-ring absolute inset-0 rounded-full"
                                     style={{
                                         background:
-                                            'conic-gradient(from 0deg, #6941C6, #9E77ED 40%, rgba(158,119,237,0.06) 75%, #6941C6)',
+                                            'conic-gradient(from 0deg, var(--primary), var(--primary-accent) 40%, rgba(5,90,175,0.06) 75%, var(--primary))',
                                         WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px))',
                                         mask: 'radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px))',
                                     }}
                                 />
-                                <Sparkles size={22} className="ai-compose-core absolute inset-0 m-auto text-[#6941C6]" />
+                                <Sparkles size={22} className="ai-compose-core absolute inset-0 m-auto text-primary" />
                             </div>
                             <div className="text-[14px] font-bold text-[#101828]">
                                 AI 프롬프트 다듬는 중
-                                <span className="ml-0.5 text-[#6941C6]">
+                                <span className="ml-0.5 text-primary">
                                     <span className="ai-compose-dot">.</span>
                                     <span className="ai-compose-dot" style={{ animationDelay: '.15s' }}>.</span>
                                     <span className="ai-compose-dot" style={{ animationDelay: '.3s' }}>.</span>
@@ -250,7 +250,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
             <div className="w-full max-w-[880px] bg-white rounded-2xl shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
                 <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[#E4E7EC] shrink-0">
                     <h3 className="text-base font-bold text-[#101828] inline-flex items-center gap-1.5">
-                        <Sparkles size={15} className="text-[#6941C6]" /> AI 생성 결과 검토
+                        <Sparkles size={15} className="text-primary" /> AI 생성 결과 검토
                     </h3>
                     <button
                         type="button"
@@ -280,7 +280,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                             </pre>
                         </div>
                         <div>
-                            <div className="text-[11.5px] font-semibold text-[#6941C6] uppercase tracking-wide mb-1.5">
+                            <div className="text-[11.5px] font-semibold text-primary uppercase tracking-wide mb-1.5">
                                 AI 생성본 — 직접 수정 가능{edited && <span className="ml-1.5 text-[#B54708] normal-case">(수정됨)</span>}
                             </div>
                             <textarea
@@ -293,15 +293,15 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                     </div>
 
                     {hasMaxChange && (
-                        <div className="flex items-start gap-2 bg-[#F6F3FF] border border-[#C7B8F5] rounded-lg px-3 py-2.5">
+                        <div className="flex items-start gap-2 bg-primary-soft border border-primary-soft-border rounded-lg px-3 py-2.5">
                             <input
                                 type="checkbox"
                                 checked={maxChecked}
                                 onChange={(e) => setMaxChecked(e.target.checked)}
-                                className="shrink-0 w-4 h-4 mt-0.5 accent-[#6941C6] cursor-pointer"
+                                className="shrink-0 w-4 h-4 mt-0.5 accent-primary cursor-pointer"
                             />
                             <div>
-                                <div className="text-[12.5px] font-semibold text-[#6941C6]">
+                                <div className="text-[12.5px] font-semibold text-primary">
                                     만점 변경 제안: {Number(currentMax) > 0 ? `${Number(currentMax)}점` : '(미설정)'} → {suggestedMax}점
                                 </div>
                                 <div className="text-[11.5px] text-[#667085] mt-0.5">
@@ -343,7 +343,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                                                     type="checkbox"
                                                     checked={r.checked}
                                                     onChange={(e) => setRow(i, { checked: e.target.checked })}
-                                                    className="shrink-0 w-4 h-4 accent-[#6941C6] cursor-pointer"
+                                                    className="shrink-0 w-4 h-4 accent-primary cursor-pointer"
                                                 />
                                             )}
                                             <span className="shrink-0 w-[52px] text-center text-[12px] font-bold text-[#344054] bg-[#F2F4F7] rounded-md py-1.5">
@@ -390,7 +390,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                                     type="checkbox"
                                     checked={ynChecked}
                                     onChange={(e) => setYnChecked(e.target.checked)}
-                                    className="shrink-0 w-4 h-4 mt-2 accent-[#6941C6] cursor-pointer"
+                                    className="shrink-0 w-4 h-4 mt-2 accent-primary cursor-pointer"
                                 />
                                 <textarea
                                     value={ynText}
@@ -454,7 +454,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                             className={`h-[38px] px-5 rounded-xl text-[13px] font-semibold shadow-sm inline-flex items-center gap-1.5 ${
                                 !text.trim() || busy
                                     ? 'bg-[#EAECF0] text-[#98A2B3] cursor-default'
-                                    : 'bg-[#6941C6] text-white hover:bg-[#7F56D9] cursor-pointer'
+                                    : 'bg-primary text-white hover:bg-primary-hover cursor-pointer'
                             }`}
                         >
                             <Check size={13} /> 이 내용으로 적용

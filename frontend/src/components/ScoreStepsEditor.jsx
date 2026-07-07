@@ -67,9 +67,9 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
 
     return (
         <div className="space-y-3.5">
-            {/* AI 교체 연출 — 흰색에서 보라(#EFE9FE)로 천천히 페이드인한 뒤 영구 유지 + 아이콘 팝 + 기존 줄 페이드 */}
+            {/* AI 교체 연출 — 흰색에서 핵심컬러 소프트(var(--primary-tint))로 천천히 페이드인한 뒤 영구 유지 + 아이콘 팝 + 기존 줄 페이드 */}
             <style>{`
-                @keyframes aiFillSweep { 0% { background-color: #FFFFFF; border-color: #E4E7EC; } 100% { background-color: #EFE9FE; border-color: #C7B8F5; } }
+                @keyframes aiFillSweep { 0% { background-color: #FFFFFF; border-color: #E4E7EC; } 100% { background-color: var(--primary-tint); border-color: var(--primary-soft-border); } }
                 @keyframes aiIconPop { 0% { transform: translateY(-50%) scale(0) rotate(-30deg); opacity: 0; } 60% { transform: translateY(-50%) scale(1.3) rotate(8deg); opacity: 1; } 100% { transform: translateY(-50%) scale(1) rotate(0deg); opacity: 1; } }
                 @keyframes aiFadeSlide { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
                 .ai-filled-input { animation: aiFillSweep 2.4s ease-in-out; }
@@ -147,14 +147,14 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
                                                 className={`form-input-pretty w-full ${aiReplaced ? 'ai-filled-input' : ''}`}
                                                 style={
                                                     aiReplaced
-                                                        ? { paddingLeft: 30, backgroundColor: '#EFE9FE', borderColor: '#C7B8F5' }
+                                                        ? { paddingLeft: 30, backgroundColor: 'var(--primary-tint)', borderColor: 'var(--primary-soft-border)' }
                                                         : undefined
                                                 }
                                             />
                                             {aiReplaced && (
                                                 <Sparkles
                                                     size={13}
-                                                    className="ai-filled-icon absolute left-2.5 top-1/2 -translate-y-1/2 text-[#DC6803] pointer-events-none"
+                                                    className="ai-filled-icon absolute left-2.5 top-1/2 -translate-y-1/2 text-primary pointer-events-none"
                                                     title="AI 가 작성한 문구"
                                                 />
                                             )}

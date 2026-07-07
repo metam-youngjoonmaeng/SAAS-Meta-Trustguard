@@ -15,6 +15,8 @@
   --primary-tint:   #E3F0FF;                  /* Light blue badge fill, score chips */
   --primary-accent: #3E90FF;                  /* Bright sky — sidebar wordmark accent, team avg line */
   --primary-mid:    #2B66B3;                  /* 2nd-tier table header band */
+  --primary-soft:   #EEF4FB;                  /* Soft brand wash — chips, hover, AI surfaces */
+  --primary-soft-border: #B2DDFF;             /* Soft brand border */
 
   /* ---------- NEUTRAL / SURFACE ---------- */
   --black:        #000000;
