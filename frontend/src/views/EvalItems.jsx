@@ -640,7 +640,7 @@ function formatChangedAt(iso) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function HistoryModal({ departments = [], onClose, initialSkillMode = false }) {
+export function HistoryModal({ departments = [], onClose, initialSkillMode = false, lockSkillMode = false }) {
     const [deptFilter, setDeptFilter] = useState('');       // '' = 전체 부서
     const [typeFilter, setTypeFilter] = useState('');       // '' = 전체 변경 종류
     const [entries, setEntries] = useState([]);
@@ -695,7 +695,7 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
     // LLM 스킬 버전 이력 — 브랜드 전역이라 필터와 무관하게 1회 로드(프록시 실패 시 평가항목 이력만 표시).
     const [skillMeta, setSkillMeta] = useState(null);     // { active_version_id, versions }
     const [skillDetails, setSkillDetails] = useState({}); // version_id → { loading, error, hasParent, parentId, items }
-    const [skillMode, setSkillMode] = useState(Boolean(initialSkillMode));    // 'LLM 스킬 관리' 모드 — 스킬 버전만 + 활성화/롤백 노출
+    const [skillMode, setSkillMode] = useState(Boolean(initialSkillMode || lockSkillMode));    // 'LLM 스킬 관리' 모드 — 스킬 버전만 + 활성화/롤백 노출. lockSkillMode=토글 없이 스킬 전용(AI 스킬 관리).
     const [skillActBusy, setSkillActBusy] = useState(false);
     const loadSkillVersions = useCallback(async () => {
         try {
@@ -805,17 +805,19 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
                         </select>
                     </>
                 )}
-                <button
-                    type="button"
-                    onClick={() => { setExpanded(null); setSkillMode(!skillMode); }}
-                    className={`ml-auto h-[30px] px-3 rounded-md border text-[12px] font-bold cursor-pointer ${
-                        skillMode
-                            ? 'bg-[#6941C6] border-[#6941C6] text-white'
-                            : 'bg-white border-[#D6BBFB] text-[#6941C6] hover:bg-[#F4F0FF]'
-                    }`}
-                >
-                    {skillMode ? '← 전체 이력' : 'LLM 스킬 관리'}
-                </button>
+                {!lockSkillMode && (
+                    <button
+                        type="button"
+                        onClick={() => { setExpanded(null); setSkillMode(!skillMode); }}
+                        className={`ml-auto h-[30px] px-3 rounded-md border text-[12px] font-bold cursor-pointer ${
+                            skillMode
+                                ? 'bg-[#055AAF] border-[#055AAF] text-white'
+                                : 'bg-white border-[#B2DDFF] text-[#055AAF] hover:bg-[#EEF4FB]'
+                        }`}
+                    >
+                        {skillMode ? '← 전체 이력' : 'LLM 스킬 관리'}
+                    </button>
+                )}
             </div>
 
             <div className="px-6 py-5 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 140px)' }}>
@@ -870,7 +872,7 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <span className="text-[12.5px] font-bold text-[#101828] truncate">LLM 스킬 보완 룰 {v.version_id}</span>
-                                                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#F4F0FF] text-[#6941C6]">LLM 스킬</span>
+                                                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#EEF4FB] text-[#055AAF]">LLM 스킬</span>
                                                     <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#EEF4FB] text-[#055AAF]">{CHANGE_TYPE_LABEL.skill_version}</span>
                                                     {isActive && (
                                                         <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#ECFDF3] text-[#067647]">활성</span>
@@ -896,7 +898,7 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
                                                             type="button"
                                                             disabled={skillActBusy}
                                                             onClick={() => handleSkillActivate(v.version_id)}
-                                                            className="h-[28px] px-2.5 rounded-md border border-[#6941C6] bg-[#6941C6] text-[11.5px] font-bold text-white cursor-pointer hover:bg-[#53389E] disabled:opacity-50"
+                                                            className="h-[28px] px-2.5 rounded-md border border-[#055AAF] bg-[#055AAF] text-[11.5px] font-bold text-white cursor-pointer hover:bg-[#1E70E0] disabled:opacity-50"
                                                         >
                                                             이 버전 활성화
                                                         </button>

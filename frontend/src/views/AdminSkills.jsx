@@ -571,7 +571,7 @@ function AdminSkills() {
       </div>
 
       {showHistory && (
-        <HistoryModal initialSkillMode departments={['기본']} onClose={() => setShowHistory(false)} />
+        <HistoryModal initialSkillMode lockSkillMode departments={['기본']} onClose={() => setShowHistory(false)} />
       )}
     </div>
   );
