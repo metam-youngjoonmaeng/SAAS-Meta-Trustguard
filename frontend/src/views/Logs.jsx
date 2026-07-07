@@ -1136,18 +1136,13 @@ function SkillLogPanel() {
 }
 
 /* ── 페이지 컨테이너 + 서브탭 ────────────────────────────── */
-// RAG·사전 / LLM 스킬(백엔드) 탭은 개발/실험 기능 — 기본 숨김(커밋 상태). 로컬 개발 시 .env.local 에
-// NEXT_PUBLIC_SHOW_RAG=1 을 주면 노출(활성화). 미설정(운영/공유)에서는 탭 자체가 렌더되지 않음.
-const SHOW_RAG_DEV = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_SHOW_RAG === '1';
+// RAG·사전 / LLM 스킬(백엔드) 탭 — 기본 노출. 과거 개발 게이트(NEXT_PUBLIC_SHOW_RAG)는
+// 스킬 로그 상세·DB 영속 정식화(2026-07-07)와 함께 제거. 데이터 API 는 관리자 전용(requireAdmin).
 const TABS = [
     { id: 'audit', label: '사용자 활동 (Audit)', icon: ListChecks },
     { id: 'app', label: '서버 로그 (App)', icon: Terminal },
-    ...(SHOW_RAG_DEV
-        ? [
-              { id: 'rag', label: 'RAG · 사전 (백엔드)', icon: Sparkles },
-              { id: 'skill', label: 'LLM 스킬 (백엔드)', icon: Wand2 },
-          ]
-        : []),
+    { id: 'rag', label: 'RAG · 사전 (백엔드)', icon: Sparkles },
+    { id: 'skill', label: 'LLM 스킬 (백엔드)', icon: Wand2 },
 ];
 
 const Logs = () => {
