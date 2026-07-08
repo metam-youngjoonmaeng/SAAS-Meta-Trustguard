@@ -723,6 +723,17 @@ async function canAccessCall(req, qaId) {
 // 수신자별 알림 1건 생성(검수 워크플로우 이벤트 전달). 실패해도 본 동작은 막지 않음.
 async function createNotification(db, n) {
     if (n?.recipientUserId == null) return;
+    // 수신 선호 게이트 — 사용자가 설정>알림 설정에서 명시적으로 끈(false) 유형이면 발송 스킵(기본 on).
+    // notification_prefs.prefs(JSONB): 키가 없으면 수신. 조회 실패 시에도 발송(안전 측 기본값).
+    try {
+        const { rows } = await db.query(
+            `SELECT (prefs ->> $2) AS v FROM public.notification_prefs WHERE user_id = $1`,
+            [n.recipientUserId, n.type]
+        );
+        if (rows[0]?.v === 'false') return;
+    } catch (e) {
+        console.error('notification pref check failed (기본 발송):', e?.message || e);
+    }
     try {
         await db.query(
             `INSERT INTO public.notifications
@@ -5159,6 +5170,40 @@ app.delete('/api/notifications', async (req, res) => {
         res.json({ ok: true, deleted: rowCount });
     } catch (error) {
         console.error('DELETE /api/notifications error:', error);
+        res.status(500).json({ message: 'failed' });
+    }
+});
+
+// 알림 수신 선호 조회 — { prefs: { "<type>": false, ... } } (미기재 유형 = 수신 on). 설정 > 알림 설정.
+app.get('/api/notifications/prefs', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
+        const { rows } = await pool.query(
+            `SELECT prefs FROM public.notification_prefs WHERE user_id = $1`, [uid]
+        );
+        res.json({ prefs: rows[0]?.prefs || {} });
+    } catch (error) {
+        console.error('GET /api/notifications/prefs error:', error);
+        res.status(500).json({ message: 'failed' });
+    }
+});
+
+// 알림 수신 선호 저장 — body { prefs: { "<type>": bool } }. 전체 맵 upsert(프론트가 끈 유형만 false 로 정리).
+app.put('/api/notifications/prefs', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
+        const prefs = (req.body && typeof req.body.prefs === 'object' && req.body.prefs) || {};
+        await pool.query(
+            `INSERT INTO public.notification_prefs (user_id, prefs, updated_at)
+             VALUES ($1, $2::jsonb, now())
+             ON CONFLICT (user_id) DO UPDATE SET prefs = EXCLUDED.prefs, updated_at = now()`,
+            [uid, JSON.stringify(prefs)]
+        );
+        res.json({ ok: true, prefs });
+    } catch (error) {
+        console.error('PUT /api/notifications/prefs error:', error);
         res.status(500).json({ message: 'failed' });
     }
 });

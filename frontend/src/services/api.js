@@ -848,6 +848,19 @@ export async function deleteAllNotifications() {
     return request('/api/notifications', { method: 'DELETE' });
 }
 
+/** 알림 수신 선호 조회. 응답: { prefs: { "<type>": false, ... } } — 미기재 유형은 수신(on). */
+export async function fetchNotificationPrefs() {
+    return request('/api/notifications/prefs');
+}
+
+/** 알림 수신 선호 저장. prefs: { "<type>": bool } (끈 유형만 false 로 두면 됨). */
+export async function updateNotificationPrefs(prefs) {
+    return request('/api/notifications/prefs', {
+        method: 'PUT',
+        body: JSON.stringify({ prefs: prefs || {} }),
+    });
+}
+
 /* ── qa-pipeline 적재 어댑터 ─────────────────────────────────
  * 서버가 qa-pipeline POST /evaluate 를 직접 호출 → 평가 결과를 DB 에 적재.
  * track='standard'(기본): 표준 18항목 1:1 적재 (코오롱 등 표준 8카테고리 브랜드).
