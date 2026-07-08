@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon, Gauge, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod, openInWindow, openCallDetail } from './ui';
 import { scoreClass, TUTOR_SCENARIOS } from './mockData';
-import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
+import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, fetchMyTaMetricCalls, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
 import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
 import { buildTutorLink } from '../../utils/coachingTutorLink';
 import { ReviewStatusBadge } from '../../components';
@@ -339,15 +339,24 @@ function TrendSpark({ points, color = 'var(--primary)', height = 92, width = 220
 }
 
 // 감정·대화 품질 카드 (부정비율 / 회복률 / 금칙어) — 03 TA + 05 qa_call_recovery 실연동(미연동/무데이터 시 mock 폴백).
-function QualityCard({ tone, icon, label, desc, ring, center, delta, footer, hero }) {
+function QualityCard({ tone, icon, label, desc, ring, center, delta, footer, hero, onClick, actionLabel }) {
     const TONES = {
         primary: { color: 'var(--primary)', track: 'var(--primary-soft-flat)', soft: 'var(--primary-soft)', ink: 'var(--primary)' },
         warn: { color: '#e8a045', track: '#fde7cf', soft: '#fff3e0', ink: '#b27a14' },
         ok: { color: 'var(--ink-400)', track: 'var(--muted)', soft: 'var(--background-soft)', ink: 'var(--ink-500)' },
     };
     const c = TONES[tone];
+    const clickable = typeof onClick === 'function';
+    const [hover, setHover] = useState(false);
     return (
-        <div style={{ padding: hero ? '22px 24px' : '20px', border: hero ? `1px solid ${c.color}` : '1px solid var(--border)', borderRadius: 16, background: hero ? `linear-gradient(135deg, ${c.soft}, white 65%)` : 'white', boxShadow: hero ? '0 0 0 3px var(--primary-ring)' : 'none', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div
+            onClick={clickable ? onClick : undefined}
+            onMouseEnter={clickable ? () => setHover(true) : undefined}
+            onMouseLeave={clickable ? () => setHover(false) : undefined}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+            style={{ padding: hero ? '22px 24px' : '20px', border: hero ? `1px solid ${c.color}` : '1px solid var(--border)', borderRadius: 16, background: hero ? `linear-gradient(135deg, ${c.soft}, white 65%)` : 'white', boxShadow: clickable && hover ? '0 6px 18px rgba(16,24,40,0.10)' : hero ? '0 0 0 3px var(--primary-ring)' : 'none', transform: clickable && hover ? 'translateY(-1px)' : 'none', transition: 'box-shadow .15s ease, transform .15s ease', cursor: clickable ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                 <div style={{ width: 28, height: 28, borderRadius: 8, background: c.soft, color: c.color, display: 'grid', placeItems: 'center' }}>
                     <Icon name={icon} size={15} />
@@ -372,7 +381,155 @@ function QualityCard({ tone, icon, label, desc, ring, center, delta, footer, her
                     {footer}
                 </div>
             </div>
+            {clickable && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto', paddingTop: 2 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: c.ink, display: 'inline-flex', alignItems: 'center', gap: 2, opacity: hover ? 1 : 0.75 }}>
+                        {actionLabel || '자세히 보기'}
+                        <Icon name="chevron-right" size={13} />
+                    </span>
+                </div>
+            )}
         </div>
+    );
+}
+
+// 감정 궤적 미니 — 구간별 감정을 색 점열로 압축(부정=빨강·중립=주황·긍정=초록). 회복률 드릴다운용.
+const SENTI_COLOR = { 부정: '#e5484d', 중립: '#e8a045', 긍정: '#2f9759' };
+function EmotionTrack({ sentiments = [], firstNegIdx = null }) {
+    if (!Array.isArray(sentiments) || sentiments.length === 0) {
+        return <span style={{ fontSize: 11, color: 'var(--ink-300)' }}>궤적 없음</span>;
+    }
+    return (
+        <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>
+            {sentiments.map((s, i) => (
+                <span
+                    key={i}
+                    title={`구간 ${i + 1}: ${s}`}
+                    style={{
+                        width: 10, height: 10, borderRadius: 3,
+                        background: SENTI_COLOR[s] || 'var(--ink-300)',
+                        boxShadow: firstNegIdx && i === firstNegIdx - 1 ? '0 0 0 2px var(--ink-900)' : 'none',
+                    }}
+                />
+            ))}
+        </span>
+    );
+}
+
+// 드릴다운 팝업 — 카드별 '내 콜' 목록. kind=negative|recovery|forbidden.
+const DRILL_META = {
+    negative: { title: '부정 감정으로 분류된 콜', icon: 'frown' },
+    recovery: { title: '부정 발생 콜 · 회복 여부', icon: 'heart-pulse' },
+    forbidden: { title: '금칙어 언급 콜', icon: 'shield-check' },
+};
+function fmtCallTime(v) {
+    if (!v) return '—';
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return String(v).slice(0, 16).replace('T', ' ');
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function QualityDrillModal({ kind, onClose }) {
+    const [state, setState] = useState({ loading: true, calls: [], error: null });
+    useEffect(() => {
+        let cancel = false;
+        setState({ loading: true, calls: [], error: null });
+        fetchMyTaMetricCalls(kind)
+            .then((d) => {
+                if (cancel) return;
+                if (d?.enabled === false) setState({ loading: false, calls: [], error: 'TA 분석이 연동되지 않았습니다.' });
+                else setState({ loading: false, calls: Array.isArray(d?.calls) ? d.calls : [], error: null });
+            })
+            .catch(() => { if (!cancel) setState({ loading: false, calls: [], error: '콜 목록을 불러오지 못했습니다.' }); });
+        return () => { cancel = true; };
+    }, [kind]);
+    const meta = DRILL_META[kind] || {};
+    const { loading, calls, error } = state;
+
+    const UidCell = ({ uid }) => (
+        <button
+            className="mono"
+            onClick={() => openCallDetail(uid)}
+            title={`${uid} — 콜 상세 열기`}
+            style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--primary)', fontSize: 11.5, fontWeight: 700, textAlign: 'left', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
+            {uid}
+        </button>
+    );
+
+    return (
+        <Modal title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon name={meta.icon} size={16} />{meta.title}{!loading && !error && <span className="pill blue" style={{ fontSize: 11, marginLeft: 4 }}>{calls.length}건</span>}</span>} onClose={onClose} width={760}>
+            {loading ? (
+                <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>불러오는 중…</div>
+            ) : error ? (
+                <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>{error}</div>
+            ) : calls.length === 0 ? (
+                <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>해당하는 콜이 없습니다.</div>
+            ) : (
+                <div style={{ maxHeight: '58vh', overflowY: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                        <thead>
+                            <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--ink-500)', fontSize: 11, fontWeight: 700, textAlign: 'left' }}>
+                                <th style={{ padding: '8px 10px' }}>상담번호</th>
+                                <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>일시</th>
+                                <th style={{ padding: '8px 10px' }}>채널</th>
+                                {kind === 'negative' && <th style={{ padding: '8px 10px' }}>대표 감정</th>}
+                                {kind === 'recovery' && <th style={{ padding: '8px 10px' }}>회복</th>}
+                                {kind === 'recovery' && <th style={{ padding: '8px 10px' }}>감정 궤적</th>}
+                                {kind === 'recovery' && <th style={{ padding: '8px 10px' }}>시작 → 끝</th>}
+                                {kind === 'forbidden' && <th style={{ padding: '8px 10px' }}>금칙어</th>}
+                                {kind === 'forbidden' && <th style={{ padding: '8px 10px' }}>발화 인용</th>}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {calls.map((r, i) => (
+                                <tr key={`${r.uid}-${i}`} style={{ borderBottom: '1px solid var(--border-soft)' }}>
+                                    <td style={{ padding: '9px 10px', verticalAlign: 'top' }}><UidCell uid={r.uid} /></td>
+                                    <td style={{ padding: '9px 10px', verticalAlign: 'top', whiteSpace: 'nowrap', color: 'var(--ink-500)', fontSize: 11.5 }}>{fmtCallTime(r.cdate)}</td>
+                                    <td style={{ padding: '9px 10px', verticalAlign: 'top', color: 'var(--ink-600)' }}>{r.channel || '—'}</td>
+                                    {kind === 'negative' && (
+                                        <td style={{ padding: '9px 10px', verticalAlign: 'top' }}>
+                                            <span className="pill red" style={{ fontSize: 10.5, fontWeight: 700 }}><Icon name="frown" size={10} />{r.sentiment || '부정'}</span>
+                                        </td>
+                                    )}
+                                    {kind === 'recovery' && (
+                                        <td style={{ padding: '9px 10px', verticalAlign: 'top' }}>
+                                            <span className={`pill ${r.recovered ? 'green' : 'red'}`} style={{ fontSize: 10.5, fontWeight: 700 }}>
+                                                <Icon name={r.recovered ? 'smile' : 'frown'} size={10} />{r.recovered ? '회복' : '미회복'}
+                                            </span>
+                                        </td>
+                                    )}
+                                    {kind === 'recovery' && (
+                                        <td style={{ padding: '9px 10px', verticalAlign: 'top' }}><EmotionTrack sentiments={r.trajectory} firstNegIdx={r.first_neg_idx} /></td>
+                                    )}
+                                    {kind === 'recovery' && (
+                                        <td style={{ padding: '9px 10px', verticalAlign: 'top', fontSize: 11.5, color: 'var(--ink-600)', whiteSpace: 'nowrap' }}>
+                                            부정 → {r.final_sentiment || '—'}
+                                        </td>
+                                    )}
+                                    {kind === 'forbidden' && (
+                                        <td style={{ padding: '9px 10px', verticalAlign: 'top' }}>
+                                            <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                                {(r.hits || []).map((h, j) => (
+                                                    <span key={j} className="pill red" style={{ fontSize: 10.5, fontWeight: 700 }}>{h.word}</span>
+                                                ))}
+                                            </span>
+                                        </td>
+                                    )}
+                                    {kind === 'forbidden' && (
+                                        <td style={{ padding: '9px 10px', verticalAlign: 'top', color: 'var(--ink-600)', fontSize: 11.5, lineHeight: 1.5 }}>
+                                            {(r.hits || [])[0]?.utterance
+                                                ? <span style={{ fontStyle: 'italic' }}>“{(r.hits[0].utterance || '').slice(0, 90)}{(r.hits[0].utterance || '').length > 90 ? '…' : ''}”</span>
+                                                : '—'}
+                                        </td>
+                                    )}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </Modal>
     );
 }
 
@@ -383,6 +540,7 @@ export default function CounselorResults() {
     const [breakdowns, setBreakdowns] = useState({});  // qa_id → { dimKey: pct }
     const [coaching, setCoaching] = useState([]);
     const [taMetrics, setTaMetrics] = useState(null);  // 03 TA 지표(부정/금칙어). null=로딩
+    const [drillKind, setDrillKind] = useState(null);  // 감정품질 카드 드릴다운 팝업(negative|recovery|forbidden)
     const [onlyNeedsReview, setOnlyNeedsReview] = useState(false);  // '내 검수 필요'(대기·검수중)만
     const [colFilters, setColFilters] = useState({});  // 컬럼키 → 제외(excluded) Set
     const name = readActorName();
@@ -603,6 +761,8 @@ export default function CounselorResults() {
                             tone="warn"
                             icon="frown"
                             label="부정 발화 비율"
+                            onClick={taReal && quality.negative.flagged > 0 ? () => setDrillKind('negative') : undefined}
+                            actionLabel={`부정 콜 ${quality.negative.flagged}건 보기`}
                             ring={quality.negative.ratio}
                             center={{ main: `${quality.negative.ratio}%` }}
                             delta={taReal ? null : { dir: 'down', text: `${quality.negative.delta}%p`, good: true }}
@@ -615,6 +775,8 @@ export default function CounselorResults() {
                             tone="primary"
                             icon="heart-pulse"
                             label="회복률"
+                            onClick={recReal && quality.recovery.total > 0 ? () => setDrillKind('recovery') : undefined}
+                            actionLabel={`부정 발생 콜 ${quality.recovery.total}건`}
                             ring={recNoNeg ? 100 : quality.recovery.rate}
                             center={recNoNeg
                                 ? { main: '–', sub: '부정 없음' }
@@ -647,6 +809,8 @@ export default function CounselorResults() {
                             tone="ok"
                             icon="shield-check"
                             label="금칙어 언급률"
+                            onClick={taReal && quality.forbidden.count > 0 ? () => setDrillKind('forbidden') : undefined}
+                            actionLabel={`금칙어 콜 ${quality.forbidden.count}건 보기`}
                             ring={100 - quality.forbidden.rate}
                             center={{ main: `${quality.forbidden.count}건`, sub: quality.forbidden.rate <= 1 ? '양호' : '주의' }}
                             delta={taReal ? null : { dir: 'flat', text: '변동 없음', neutral: true }}
@@ -657,6 +821,8 @@ export default function CounselorResults() {
                     </div>
                 </div>
             </div>
+
+            {drillKind && <QualityDrillModal kind={drillKind} onClose={() => setDrillKind(null)} />}
 
             {/* 배정된 코칭 플랜 */}
             <div className="panel" style={{ marginBottom: 22 }}>

@@ -25,7 +25,7 @@ import { startIcsQaPoller, startGoldenLearnScheduler, triggerGoldenLearn, startS
 import { fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion, pushSkillSettings, fetchSkillGenProgress, fetchSkillMemorySummary } from './skillLearn.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
-import { taEnabled, fetchTaMetricsByUids, fetchSegmentSentimentsByUids } from './taSource.mjs';
+import { taEnabled, fetchTaMetricsByUids, fetchSegmentSentimentsByUids, fetchNegativeCallsByUids, fetchForbiddenCallsByUids } from './taSource.mjs';
 import {
     buildSystemPrompt, resolvePromptParts, judgeEnabled, judgeModel,
     DEFAULT_UNCERTAIN_DEF, DEFAULT_CONTRADICTION_DEF,
@@ -5238,6 +5238,85 @@ app.get('/api/me/ta-metrics', async (req, res) => {
     } catch (e) {
         console.error('GET /api/me/ta-metrics error:', e?.message || e);
         res.status(502).json({ enabled: true, error: 'TA 지표 조회 실패' });
+    }
+});
+
+// GET /api/me/ta-metrics/calls?kind=negative|recovery|forbidden
+//   감정·대화 품질 카드 드릴다운 — 각 지표에 집계된 '내 콜' 목록을 반환(팝업용).
+//   negative/forbidden = 03 tb_ta_rslt(본인 콜 uid 기준), recovery = 05 qa_call_recovery + 03 구간감정 궤적.
+app.get('/api/me/ta-metrics/calls', async (req, res) => {
+    if (!req.session?.user_id) {
+        res.status(401).json({ message: 'unauthenticated' });
+        return;
+    }
+    const kind = String(req.query.kind || '').trim();
+    if (!['negative', 'recovery', 'forbidden'].includes(kind)) {
+        res.status(400).json({ message: 'invalid kind (negative|recovery|forbidden)' });
+        return;
+    }
+    if (!taEnabled()) {
+        res.json({ enabled: false, kind, calls: [] });
+        return;
+    }
+    try {
+        const me = req.session.user_id;
+        const { rows: grp } = await pool.query(
+            `SELECT proj_cd, array_agg("UID") AS uids
+               FROM qa_calls
+              WHERE agent_user_id = $1 AND "UID" IS NOT NULL AND proj_cd IS NOT NULL
+              GROUP BY proj_cd`,
+            [me]
+        );
+        let calls = [];
+        if (kind === 'negative') {
+            for (const g of grp) {
+                const rows = await fetchNegativeCallsByUids(g.proj_cd, g.uids || []);
+                calls.push(...rows.map((r) => ({ proj_cd: g.proj_cd, ...r })));
+            }
+            calls.sort((a, b) => new Date(b.cdate || 0) - new Date(a.cdate || 0));
+        } else if (kind === 'forbidden') {
+            for (const g of grp) {
+                const rows = await fetchForbiddenCallsByUids(g.proj_cd, g.uids || []);
+                calls.push(...rows.map((r) => ({ proj_cd: g.proj_cd, ...r })));
+            }
+            calls.sort((a, b) => new Date(b.cdate || 0) - new Date(a.cdate || 0));
+        } else {
+            // recovery — 부정 발생 콜(had_negative)만. 구간감정 궤적·일시·채널을 03 에서 동봉.
+            const { rows: recRows } = await pool.query(
+                `SELECT proj_cd, uid, recovered, first_neg_idx, final_sentiment, neg_seg_count, segment_count
+                   FROM public.qa_call_recovery
+                  WHERE agent_user_id = $1 AND had_negative = true`,
+                [me]
+            );
+            const meta = new Map();
+            for (const g of grp) {
+                const segRows = await fetchSegmentSentimentsByUids(g.proj_cd, g.uids || []);
+                for (const s of segRows) meta.set(`${g.proj_cd}::${s.uid}`, s);
+            }
+            calls = recRows.map((r) => {
+                const s = meta.get(`${r.proj_cd}::${r.uid}`) || {};
+                return {
+                    proj_cd: r.proj_cd,
+                    uid: r.uid,
+                    recovered: r.recovered,
+                    first_neg_idx: r.first_neg_idx,
+                    final_sentiment: r.final_sentiment,
+                    neg_seg_count: r.neg_seg_count,
+                    segment_count: r.segment_count,
+                    trajectory: s.sentiments || [],
+                    cdate: s.cdate || null,
+                    channel: s.channel || null,
+                };
+            });
+            // 미회복(코칭 후보) 먼저, 그 안에서 최신순.
+            calls.sort((a, b) =>
+                a.recovered === b.recovered ? new Date(b.cdate || 0) - new Date(a.cdate || 0) : a.recovered ? 1 : -1
+            );
+        }
+        res.json({ enabled: true, kind, calls });
+    } catch (e) {
+        console.error('GET /api/me/ta-metrics/calls error:', e?.message || e);
+        res.status(502).json({ enabled: true, error: 'TA 콜 목록 조회 실패' });
     }
 });
 

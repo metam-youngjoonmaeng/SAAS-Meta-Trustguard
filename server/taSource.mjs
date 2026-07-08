@@ -84,7 +84,7 @@ export async function fetchTaMetricsByUids(projCd, uids) {
 export async function fetchSegmentSentimentsByUids(projCd, uids) {
     if (!Array.isArray(uids) || uids.length === 0) return [];
     const { rows } = await getPool().query(
-        `SELECT uid, segments FROM public.tb_ta_rslt
+        `SELECT uid, cdate, channel_type, segments FROM public.tb_ta_rslt
           WHERE proj_cd = $1 AND uid = ANY($2::text[]) AND segments IS NOT NULL`,
         [projCd, uids]
     );
@@ -98,7 +98,58 @@ export async function fetchSegmentSentimentsByUids(projCd, uids) {
         const ordered = arr
             .filter((s) => s && s.sentiment)
             .sort((a, b) => (Number(a.idx) || 0) - (Number(b.idx) || 0));
-        out.push({ uid: r.uid, sentiments: ordered.map((s) => String(s.sentiment)) });
+        // cdate/channel 은 드릴다운 콜목록용(집계 호출부는 uid/sentiments 만 사용 — 하위호환).
+        out.push({ uid: r.uid, cdate: r.cdate, channel: r.channel_type, sentiments: ordered.map((s) => String(s.sentiment)) });
     }
     return out;
+}
+
+/**
+ * (proj_cd, uids[]) → 부정 감정으로 분류된 콜 목록(드릴다운용). sentiment_cls='부정'.
+ * 반환: [{ uid, cdate, channel, sentiment }]  (최신순)
+ */
+export async function fetchNegativeCallsByUids(projCd, uids) {
+    if (!Array.isArray(uids) || uids.length === 0) return [];
+    const { rows } = await getPool().query(
+        `SELECT uid, cdate, channel_type, sentiment_cls
+           FROM public.tb_ta_rslt
+          WHERE proj_cd = $1 AND uid = ANY($2::text[]) AND sentiment_cls = '부정'
+          ORDER BY cdate DESC NULLS LAST`,
+        [projCd, uids]
+    );
+    return rows.map((r) => ({ uid: r.uid, cdate: r.cdate, channel: r.channel_type, sentiment: r.sentiment_cls }));
+}
+
+/**
+ * (proj_cd, uids[]) → 금칙어 언급 콜 목록(드릴다운용). banned_hits(배열) 비어있지 않은 콜.
+ * banned_hits 요소 = { seq, word, snippet, utterance }. word 중복 제거 후 최대 8개.
+ * 반환: [{ uid, cdate, channel, hits:[{ word, utterance }] }]  (최신순)
+ */
+export async function fetchForbiddenCallsByUids(projCd, uids) {
+    if (!Array.isArray(uids) || uids.length === 0) return [];
+    const { rows } = await getPool().query(
+        `SELECT uid, cdate, channel_type, banned_hits
+           FROM public.tb_ta_rslt
+          WHERE proj_cd = $1 AND uid = ANY($2::text[])
+            AND banned_hits IS NOT NULL
+            AND jsonb_typeof(to_jsonb(banned_hits)) = 'array'
+            AND jsonb_array_length(to_jsonb(banned_hits)) > 0
+          ORDER BY cdate DESC NULLS LAST`,
+        [projCd, uids]
+    );
+    return rows.map((r) => {
+        let hits = r.banned_hits;
+        if (typeof hits === 'string') { try { hits = JSON.parse(hits); } catch { hits = []; } }
+        if (!Array.isArray(hits)) hits = [];
+        const seen = new Set();
+        const out = [];
+        for (const h of hits) {
+            const word = String(h?.word || '').trim();
+            if (!word || seen.has(word)) continue;
+            seen.add(word);
+            out.push({ word, utterance: String(h?.utterance || h?.snippet || '').trim() });
+            if (out.length >= 8) break;
+        }
+        return { uid: r.uid, cdate: r.cdate, channel: r.channel_type, hits: out };
+    });
 }
