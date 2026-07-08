@@ -5331,6 +5331,45 @@ app.get('/api/me/ta-metrics/calls', async (req, res) => {
     }
 });
 
+// GET /api/me/eval-version-basis
+//   '내 평가 결과 > 최근 평가' 의 QA 항목버전 드롭다운을 평가 리스트(Dashboard)와 동일 기준으로
+//   번호 매기기 위한 기준 데이터. Dashboard 는 (관리자라) org 전체 콜을 받아 "데이터 있는 버전"을
+//   1,2,3… 연번으로 매기지만, 이 화면은 상담사 스코프라 본인 콜만 받아 부서 전체 버전을 알 수 없다.
+//   → 그래서 org 전체(모든 상담사)의 '평가된 콜' 일시만(점수·내용 無) 부서 태그와 함께 내려주어,
+//      클라이언트가 Dashboard 와 동일한 매칭 로직으로 동일한 연번을 산출하게 한다.
+//   (매칭은 반드시 브라우저(KST)에서 수행 — 서버 컨테이너는 UTC 라 경계 콜의 버전이 달라질 수 있음.)
+app.get('/api/me/eval-version-basis', async (req, res) => {
+    if (!req.session?.user_id) {
+        res.status(401).json({ message: 'unauthenticated' });
+        return;
+    }
+    const orgId = resolveActiveOrgId(req);
+    if (orgId === null || orgId === undefined) {
+        res.json({ ok: true, dates: [] });
+        return;
+    }
+    try {
+        // /api/calls 와 동일한 '평가된 콜' 조건(포기호·미응대 제외). 단 상담사 스코프는 걸지 않는다(부서 전체 기준).
+        const { rows } = await pool.query(
+            `SELECT c."CDATE" AS d, c.department AS dept
+               FROM qa_calls c
+              WHERE c.org_id = $1
+                AND c."CDATE" IS NOT NULL AND c."CDATE" <> '0000-00-00 00:00:00'
+                AND (
+                    EXISTS (SELECT 1 FROM qa_evaluation_rows er    WHERE er."ID" = c."ID")
+                 OR EXISTS (SELECT 1 FROM qa_consumer_eval_rows cr WHERE cr."ID" = c."ID")
+                 OR EXISTS (SELECT 1 FROM qa_checklist_rows kr     WHERE kr."ID" = c."ID")
+                )
+                AND EXISTS (SELECT 1 FROM qa_conversations q WHERE q."ID" = c."ID" AND q.speaker = '상담사')`,
+            [orgId]
+        );
+        res.json({ ok: true, dates: rows });
+    } catch (e) {
+        console.error('GET /api/me/eval-version-basis error:', e?.message || e);
+        res.status(500).json({ ok: false, dates: [] });
+    }
+});
+
 // ───────────────────────────────────────────────────────────────────────────
 // AI 평가 배치관리 (BatchManage)
 //   조건 세트(5개 카드 + 공통 통화시간/스케줄)를 브랜드별로 저장하고,
