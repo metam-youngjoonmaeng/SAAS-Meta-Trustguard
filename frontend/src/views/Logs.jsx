@@ -49,6 +49,9 @@ const ACTION_OPTIONS = [
     { value: 'DOMAIN_CREATE', label: '도메인 생성' },
     { value: 'DOMAIN_UPDATE', label: '도메인 수정' },
     { value: 'DOMAIN_DELETE', label: '도메인 삭제' },
+    // 백엔드 활동(비-audit) — '__' prefix 는 서버(fetchAuditLogs)에 전달하지 않는 클라이언트 필터.
+    { value: '__rag', label: 'RAG · 사전 (백엔드)' },
+    { value: '__skill', label: 'LLM 스킬 (백엔드)' },
 ];
 
 const LEVEL_TONES = {
@@ -90,20 +93,92 @@ function fmtTime(iso) {
     });
 }
 
-/* ── Audit 패널 (DB qa_audit_logs) ───────────────────────── */
+/* ── Audit 패널 (DB qa_audit_logs + 백엔드 RAG·LLM 스킬 활동 통합) ───
+ * 전용 탭(RAG·사전/LLM 스킬) 제거(2026-07-08 사용자 지시) — 백엔드 인메모리 링버퍼
+ * 활동을 사용자 활동 피드에 시간순 통합. 백엔드 행 클릭 시 상세(RAG 카드·메모리
+ * 스냅샷·주입 룰 원문)가 토글로 펼쳐짐. 카드 컴포넌트(RagItemGroup 등)는 재사용.
+ */
+
+/** RAG 링버퍼 엔트리 → 대화(qa_id)별 1행 그룹. hit 항목은 item_number 최신 1건 유지, 금지어는 별도 수집. */
+function buildRagQaGroups(entries) {
+    const byQa = new Map();
+    for (const e of entries) {
+        const qa = e.qa_id || 'unknown';
+        if (!byQa.has(qa)) byQa.set(qa, { items: new Map(), forbidden: [] });
+        const g = byQa.get(qa);
+        if (e.kind === 'forbidden') {
+            g.forbidden.push(e);
+            continue;
+        }
+        const key = Number(e.item_number);
+        const prev = g.items.get(key);
+        if (!prev || (e.ts || 0) > (prev.ts || 0)) g.items.set(key, e);
+    }
+    return Array.from(byQa.entries()).map(([qaId, g]) => {
+        const items = Array.from(g.items.values()).sort((a, b) => Number(a.item_number) - Number(b.item_number));
+        const hitCount = items.reduce((s, e) => s + (Array.isArray(e.hits) ? e.hits.length : 0), 0);
+        const ts = Math.max(0, ...items.map((e) => e.ts || 0), ...g.forbidden.map((e) => e.ts || 0));
+        return { qaId, items, forbidden: g.forbidden, hitCount, ts };
+    });
+}
+
 function AuditPanel() {
     const [logs, setLogs] = useState([]);
+    const [ragGroups, setRagGroups] = useState([]);
+    const [skillEntries, setSkillEntries] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [paused, setPaused] = useState(false);
     const [actionFilter, setActionFilter] = useState('');
     const [loadingMore, setLoadingMore] = useState(false);
     const seenIdsRef = useRef(new Set());
+    // 백엔드 행 펼침 상태 + 메모리 스냅샷 캐시(org_id 단위 — 재펼침 시 재조회 없음)
+    const [openKeys, setOpenKeys] = useState(() => new Set());
+    const [memCache, setMemCache] = useState({});
+
+    const isBackendFilter = actionFilter === '__rag' || actionFilter === '__skill';
+    const auditAction = actionFilter && !isBackendFilter ? actionFilter : undefined;
+
+    const toggleOpen = (k) =>
+        setOpenKeys((prev) => {
+            const next = new Set(prev);
+            if (next.has(k)) next.delete(k);
+            else next.add(k);
+            return next;
+        });
+
+    async function loadMemory(orgId) {
+        setMemCache((prev) => ({ ...prev, [orgId]: { loading: true } }));
+        try {
+            const data = await fetchSkillMemory({ orgId });
+            if (data?.ok === false) throw new Error(data.error || '메모리 조회 실패');
+            setMemCache((prev) => ({ ...prev, [orgId]: { loading: false, data } }));
+        } catch (e) {
+            setMemCache((prev) => ({ ...prev, [orgId]: { loading: false, error: e?.message || '메모리 조회 실패' } }));
+        }
+    }
+
+    async function loadBackend() {
+        // 백엔드 인메모리 링버퍼 스냅샷 — 증분 병합 불필요(매번 전량 교체)
+        try {
+            const [ragRows, skillRows] = await Promise.all([
+                fetchRagLogRecent({ limit: PAGE_SIZE }),
+                fetchSkillLogRecent({ limit: PAGE_SIZE }),
+            ]);
+            setRagGroups(buildRagQaGroups(Array.isArray(ragRows) ? ragRows : []));
+            setSkillEntries(Array.isArray(skillRows) ? skillRows : []);
+        } catch (e) {
+            console.error('backend activity load error:', e);
+        }
+    }
 
     async function loadInitial() {
         setLoading(true);
         try {
-            const rows = await fetchAuditLogs({ limit: PAGE_SIZE, action: actionFilter || undefined });
+            const [rows] = await Promise.all([
+                fetchAuditLogs({ limit: PAGE_SIZE, action: auditAction }),
+                loadBackend(),
+            ]);
             setLogs(rows);
             seenIdsRef.current = new Set(rows.map((r) => r.audit_id));
             setError(null);
@@ -115,8 +190,9 @@ function AuditPanel() {
     }
 
     async function tailNew() {
+        loadBackend();
         try {
-            const rows = await fetchAuditLogs({ limit: PAGE_SIZE, action: actionFilter || undefined });
+            const rows = await fetchAuditLogs({ limit: PAGE_SIZE, action: auditAction });
             const fresh = rows.filter((r) => !seenIdsRef.current.has(r.audit_id));
             if (fresh.length === 0) return;
             for (const r of fresh) seenIdsRef.current.add(r.audit_id);
@@ -134,7 +210,7 @@ function AuditPanel() {
             const more = await fetchAuditLogs({
                 limit: PAGE_SIZE,
                 before: last.audit_id,
-                action: actionFilter || undefined,
+                action: auditAction,
             });
             for (const r of more) seenIdsRef.current.add(r.audit_id);
             setLogs((prev) => [...prev, ...more]);
@@ -155,6 +231,13 @@ function AuditPanel() {
         return () => clearInterval(id);
     }, [paused, actionFilter]);
 
+    // 시간순 통합 피드 — audit(DB) + RAG 조회(대화별 1행) + LLM 스킬 이벤트(건별)
+    const mergedRows = [];
+    if (!isBackendFilter) for (const l of logs) mergedRows.push({ kind: 'audit', ts: new Date(l.created_at).getTime() || 0, key: `a-${l.audit_id}`, audit: l });
+    if (actionFilter === '' || actionFilter === '__rag') for (const g of ragGroups) mergedRows.push({ kind: 'rag', ts: g.ts, key: `r-${g.qaId}`, rag: g });
+    if (actionFilter === '' || actionFilter === '__skill') skillEntries.forEach((e, i) => mergedRows.push({ kind: 'skill', ts: e.ts || 0, key: `s-${e.ts || 'na'}-${e.qa_id || i}`, skill: e }));
+    mergedRows.sort((a, b) => b.ts - a.ts);
+
     return (
         <>
             <div className="flex items-center justify-between gap-2">
@@ -164,7 +247,7 @@ function AuditPanel() {
                         {paused ? '갱신 일시정지' : `자동 갱신 중 (${POLL_INTERVAL_MS / 1000}초)`}
                     </span>
                     <span>·</span>
-                    <span>총 {logs.length}건 표시</span>
+                    <span>총 {mergedRows.length}건 표시</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <select
@@ -215,38 +298,226 @@ function AuditPanel() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-[#E4E7EC] font-mono">
-                                {logs.length === 0 && (
+                                {mergedRows.length === 0 && (
                                     <tr>
                                         <td colSpan={7} className="px-3 py-10 text-center text-sm text-[#667085]">
                                             로그가 없습니다
                                         </td>
                                     </tr>
                                 )}
-                                {logs.map((l) => (
-                                    <tr key={l.audit_id} className="hover:bg-[#F9FAFB]">
-                                        <td className="px-3 py-2 text-[11.5px] text-[#667085] tabular-nums">{fmtTime(l.created_at)}</td>
-                                        <td className="px-3 py-2"><ActionChip action={l.action} /></td>
-                                        <td className="px-3 py-2 text-[12px] text-[#101828]">{l.login_id || '—'}</td>
-                                        <td className="px-3 py-2 text-[11px] text-[#667085]">{l.role || '—'}</td>
-                                        <td className="px-3 py-2 text-[12px] text-[#475467]">
-                                            <span className="font-semibold">{l.resource_type}</span>
-                                            {l.resource_id && <span className="text-[#667085]">/{l.resource_id}</span>}
-                                            {l.http_method && (
-                                                <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F2F4F7] text-[#667085]">
-                                                    {l.http_method}
-                                                </span>
+                                {mergedRows.map((m) => {
+                                    /* ── ① 사용자 audit 행 ── */
+                                    if (m.kind === 'audit') {
+                                        const l = m.audit;
+                                        return (
+                                            <tr key={m.key} className="hover:bg-[#F9FAFB]">
+                                                <td className="px-3 py-2 text-[11.5px] text-[#667085] tabular-nums">{fmtTime(l.created_at)}</td>
+                                                <td className="px-3 py-2"><ActionChip action={l.action} /></td>
+                                                <td className="px-3 py-2 text-[12px] text-[#101828]">{l.login_id || '—'}</td>
+                                                <td className="px-3 py-2 text-[11px] text-[#667085]">{l.role || '—'}</td>
+                                                <td className="px-3 py-2 text-[12px] text-[#475467]">
+                                                    <span className="font-semibold">{l.resource_type}</span>
+                                                    {l.resource_id && <span className="text-[#667085]">/{l.resource_id}</span>}
+                                                    {l.http_method && (
+                                                        <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F2F4F7] text-[#667085]">
+                                                            {l.http_method}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-2 text-[11px] text-[#98A2B3] tabular-nums">{l.client_ip || '—'}</td>
+                                                <td className="px-3 py-2 text-center">
+                                                    {l.success === 1 || l.success === true ? (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-50 text-green-700">OK</span>
+                                                    ) : (
+                                                        <span title={l.error_message || ''} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700">FAIL</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    }
+                                    /* ── ② RAG 조회 행 (대화별 1행 · 클릭 시 항목별 카드 토글) ── */
+                                    if (m.kind === 'rag') {
+                                        const g = m.rag;
+                                        const isOpen = openKeys.has(m.key);
+                                        return (
+                                            <React.Fragment key={m.key}>
+                                                <tr onClick={() => toggleOpen(m.key)} className="align-top hover:bg-[#F9FAFB] cursor-pointer">
+                                                    <td className="px-3 py-2 text-[11.5px] text-[#667085] tabular-nums">{fmtRagTime(m.ts)}</td>
+                                                    <td className="px-3 py-2">
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 whitespace-nowrap">
+                                                            <Sparkles size={11} /> RAG 조회
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-3 py-2 text-[12px] text-[#667085]">백엔드</td>
+                                                    <td className="px-3 py-2 text-[11px] text-[#667085]">AI</td>
+                                                    <td className="px-3 py-2 text-[12px] text-[#475467]">
+                                                        <ChevronDown
+                                                            size={13}
+                                                            className={`inline-block mr-1 -mt-0.5 text-[#98A2B3] transition-transform ${isOpen ? '' : '-rotate-90'}`}
+                                                        />
+                                                        <span className="font-semibold text-[#101828] break-all">{g.qaId}</span>
+                                                        <span className="text-[#667085]"> · 항목 {g.items.length} · 사례 {g.hitCount}건</span>
+                                                        {g.forbidden.length > 0 && (
+                                                            <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-700">금지어 {g.forbidden.length}건</span>
+                                                        )}
+                                                        {!isOpen && (
+                                                            <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700">클릭해 상세 보기</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-[11px] text-[#98A2B3]">—</td>
+                                                    <td className="px-3 py-2 text-center">
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-50 text-green-700">OK</span>
+                                                    </td>
+                                                </tr>
+                                                {isOpen && (
+                                                    <tr className="bg-[#FAFBFC]">
+                                                        <td colSpan={7} className="px-4 py-3 font-sans">
+                                                            <div className="text-[11px] font-semibold text-[#667085] uppercase tracking-wide mb-2">
+                                                                골든셋 RAG — 평가 시 sub-agent fewshot 으로 참조된 사람 검수 정답
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                {g.items.map((e2) => (
+                                                                    <RagItemGroup key={`${g.qaId}-${e2.item_number}`} entry={e2} defaultOpen={false} />
+                                                                ))}
+                                                            </div>
+                                                            {g.forbidden.length > 0 && (
+                                                                <div className="mt-3">
+                                                                    <div className="text-[11px] font-semibold text-[#667085] uppercase tracking-wide mb-1.5">
+                                                                        금지어 · 사전 매칭 — {g.forbidden.length}건
+                                                                    </div>
+                                                                    <div className="space-y-1.5">
+                                                                        {g.forbidden.map((e2, i) => (
+                                                                            <div key={i} className="bg-white border border-[#E4E7EC] rounded-lg px-3 py-2">
+                                                                                <div className="text-[11px] text-[#98A2B3] mb-0.5">
+                                                                                    #{e2.item_number}{e2.item_name ? ` ${e2.item_name}` : ''} · {fmtRagTime(e2.ts)}
+                                                                                </div>
+                                                                                <RagContentCell entry={e2} />
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    }
+                                    /* ── ③ LLM 스킬 이벤트 행 (메모리·평가 적용 행은 클릭 토글) ── */
+                                    const e = m.skill;
+                                    const stage = SKILL_STAGE_META[e.stage] || { label: e.stage || '—', cls: 'bg-gray-100 text-gray-600' };
+                                    const isErr = e.stage === 'error';
+                                    const changedCount = Array.isArray(e.items_changed) ? e.items_changed.length : null;
+                                    const hasItems = Array.isArray(e.items) && e.items.length > 0;
+                                    const isMem = e.stage === 'memory' && e.org_id != null;
+                                    const expandable = hasItems || isMem;
+                                    const isOpen = expandable && openKeys.has(m.key);
+                                    return (
+                                        <React.Fragment key={m.key}>
+                                            <tr
+                                                onClick={expandable ? () => {
+                                                    if (isMem && !openKeys.has(m.key) && !memCache[e.org_id]) loadMemory(e.org_id);
+                                                    toggleOpen(m.key);
+                                                } : undefined}
+                                                className={`align-top ${isErr ? 'bg-red-50/60' : 'hover:bg-[#F9FAFB]'} ${expandable ? 'cursor-pointer' : ''}`}
+                                            >
+                                                <td className="px-3 py-2 text-[11.5px] text-[#667085] tabular-nums">{fmtRagTime(e.ts)}</td>
+                                                <td className="px-3 py-2">
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold whitespace-nowrap ${stage.cls}`}>
+                                                        <Wand2 size={11} /> 스킬 {stage.label}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2 text-[12px] text-[#667085]">백엔드</td>
+                                                <td className="px-3 py-2 text-[11px] text-[#667085]">AI</td>
+                                                <td className="px-3 py-2 text-[12px] text-[#475467]">
+                                                    {expandable && (
+                                                        <ChevronDown
+                                                            size={13}
+                                                            className={`inline-block mr-1 -mt-0.5 text-[#98A2B3] transition-transform ${isOpen ? '' : '-rotate-90'}`}
+                                                        />
+                                                    )}
+                                                    <span className={`text-[12px] ${isErr ? 'text-[#B42318]' : 'text-[#475467]'}`}>{e.message || e.error || '—'}</span>
+                                                    <span className="inline-flex flex-wrap items-center gap-1 ml-2 align-middle">
+                                                        {e.org_id != null && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#F2F4F7] text-[#667085]">org {e.org_id}</span>
+                                                        )}
+                                                        {e.source && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#F2F4F7] text-[#667085]">{e.source}</span>
+                                                        )}
+                                                        {e.case_count != null && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700">케이스 {e.case_count}건</span>
+                                                        )}
+                                                        {changedCount != null && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-700">항목 {changedCount}개</span>
+                                                        )}
+                                                        {e.version_id && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-[#F2F4F7] text-[#475467]">{e.version_id}</span>
+                                                        )}
+                                                        {hasItems && !isOpen && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#F6F3FF] text-[#6941C6]">클릭해 주입 룰 보기</span>
+                                                        )}
+                                                        {isMem && !isOpen && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-50 text-teal-700">클릭해 메모리 보기</span>
+                                                        )}
+                                                    </span>
+                                                    {isErr && e.error && e.error !== e.message && (
+                                                        <div className="mt-0.5 text-[11px] text-[#B42318] break-all">{e.error}</div>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-2 text-[11px] text-[#98A2B3]">—</td>
+                                                <td className="px-3 py-2 text-center">
+                                                    {isErr ? (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700">FAIL</span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-50 text-green-700">OK</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                            {isOpen && isMem && (
+                                                <tr className="bg-[#FAFBFC]">
+                                                    <td colSpan={7} className="px-4 py-3 font-sans">
+                                                        <MemorySnapshot state={memCache[e.org_id]} />
+                                                    </td>
+                                                </tr>
                                             )}
-                                        </td>
-                                        <td className="px-3 py-2 text-[11px] text-[#98A2B3] tabular-nums">{l.client_ip || '—'}</td>
-                                        <td className="px-3 py-2 text-center">
-                                            {l.success === 1 || l.success === true ? (
-                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-50 text-green-700">OK</span>
-                                            ) : (
-                                                <span title={l.error_message || ''} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700">FAIL</span>
+                                            {isOpen && hasItems && (
+                                                <tr className="bg-[#FAFBFC]">
+                                                    <td colSpan={7} className="px-4 py-3 font-sans">
+                                                        <div className="text-[11px] font-semibold text-[#667085] uppercase tracking-wide mb-2">
+                                                            항목별 스킬 주입 내용 — 평가 시점에 프롬프트에 실제 들어간 룰 원문
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            {e.items.map((it, i) => (
+                                                                <div key={i} className="bg-white border border-[#E4E7EC] rounded-lg px-3 py-2">
+                                                                    <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                                                                        <span className="font-semibold text-[#101828]">{it.item_name || `#${it.item_number}`}</span>
+                                                                        {Number.isFinite(it.item_number) && it.item_name && (
+                                                                            <span className="text-[11px] text-[#98A2B3]">#{it.item_number}</span>
+                                                                        )}
+                                                                        {it.applied ? (
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-700">주입</span>
+                                                                        ) : (
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">미주입 — 이 항목 룰 없음</span>
+                                                                        )}
+                                                                        {it.applied && it.overlay_chars > 0 && (
+                                                                            <span className="text-[11px] text-[#98A2B3]">{Number(it.overlay_chars).toLocaleString()}자</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {it.applied && it.overlay_text && (
+                                                                        <pre className="mt-1.5 text-[11.5px] font-mono text-[#475467] whitespace-pre-wrap leading-relaxed bg-[#FAFBFC] border border-[#F2F4F7] rounded-md px-2.5 py-2 max-h-[240px] overflow-auto">{it.overlay_text}</pre>
+                                                                    )}
+                                                                    {it.applied && !it.overlay_text && (
+                                                                        <div className="mt-1 text-[11px] text-[#98A2B3]">주입 원문 미기록 — 이전 버전 파이프라인 이벤트(글자수만 기록됨)</div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                </tr>
                                             )}
-                                        </td>
-                                    </tr>
-                                ))}
+                                        </React.Fragment>
+                                    );
+                                })}
                             </tbody>
                         </table>
                         {logs.length >= PAGE_SIZE && (
@@ -692,41 +963,6 @@ function RagItemGroup({ entry, defaultOpen = false }) {
     );
 }
 
-/** 한 대화(qa_id)의 항목들을 묶는 외곽 토글(기본 접힘) → 내부에 항목별 RagItemGroup. */
-function RagQaGroup({ qaId, items, defaultOpen = false }) {
-    const [open, setOpen] = useState(defaultOpen);
-    const sortedItems = [...items].sort((a, b) => Number(a.item_number) - Number(b.item_number));
-    const totalHits = sortedItems.reduce((s, e) => s + (Array.isArray(e.hits) ? e.hits.length : 0), 0);
-    const latestTs = sortedItems.reduce((mx, e) => Math.max(mx, e.ts || 0), 0);
-    return (
-        <div className="bg-white border border-[#E4E7EC] rounded-xl overflow-hidden shadow-sm">
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left bg-[#F9FAFB] hover:bg-[#F2F4F7] cursor-pointer"
-            >
-                <span className="flex items-center gap-2 min-w-0">
-                    <ChevronDown size={16} className={`shrink-0 text-[#667085] transition-transform ${open ? '' : '-rotate-90'}`} />
-                    <span className="text-[12px]">🗣</span>
-                    <span className="font-bold text-[#101828] text-[13px] font-mono break-all">{qaId}</span>
-                    <span className="text-[11px] text-[#667085]">· {sortedItems.length}개 항목</span>
-                </span>
-                <span className="flex items-center gap-2 shrink-0">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700">사례 {totalHits}건</span>
-                    <span className="text-[10.5px] text-[#98A2B3] font-mono">{fmtRagTime(latestTs)}</span>
-                </span>
-            </button>
-            {open && (
-                <div className="px-3 pb-3 pt-2 border-t border-[#F2F4F7] space-y-2">
-                    {sortedItems.map((e) => (
-                        <RagItemGroup key={`${qaId}-${e.item_number}`} entry={e} defaultOpen={false} />
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
-
 function RagContentCell({ entry }) {
     if (entry.kind === 'forbidden') {
         const matches = Array.isArray(entry.matches) ? entry.matches : [];
@@ -772,172 +1008,7 @@ function RagContentCell({ entry }) {
     );
 }
 
-function RagLogPanel() {
-    const [entries, setEntries] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [paused, setPaused] = useState(false);
-
-    async function load() {
-        try {
-            // fetchRagLogRecent 는 이미 entries 배열을 반환(api.js) — 재언랩 금지(이중 언랩 시 항상 [])
-            // 0-hit(조회됨·0건) 도 표시 — "RAG 가 조회를 돌렸는지" 자체를 가시화. 미적중 엔트리는 RagContentCell 이
-            //   '조회됨 · 0건' 배지로 렌더. 잔존(stale) 노이즈는 서버 within_minutes(기본 60분) 윈도우로 1차 차단.
-            const rows = await fetchRagLogRecent({ limit: PAGE_SIZE });
-            setEntries(Array.isArray(rows) ? rows : []);
-            setError(null);
-        } catch (e) {
-            setError(e?.message || 'RAG 로그 로드 실패');
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    useEffect(() => {
-        load();
-    }, []);
-
-    useEffect(() => {
-        if (paused) return;
-        const id = setInterval(load, POLL_INTERVAL_MS);
-        return () => clearInterval(id);
-    }, [paused]);
-
-    return (
-        <>
-            <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-[12px] text-[#667085]">
-                    <span className="inline-flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${paused ? 'bg-gray-400' : 'bg-green-500 animate-pulse'}`} />
-                        {paused ? '갱신 일시정지' : `자동 갱신 중 (${POLL_INTERVAL_MS / 1000}초)`}
-                    </span>
-                    <span>·</span>
-                    <span>총 {entries.length}건 표시</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setPaused((v) => !v)}
-                        className="inline-flex items-center gap-1.5 h-[34px] px-3.5 rounded-full border border-[#E4E7EC] bg-white text-[12.5px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer"
-                    >
-                        {paused ? <Play size={12} /> : <Pause size={12} />}
-                        {paused ? '재개' : '일시정지'}
-                    </button>
-                    <button
-                        onClick={load}
-                        className="inline-flex items-center gap-1.5 h-[34px] px-3.5 rounded-full bg-[#055AAF] text-white text-[12.5px] font-semibold hover:bg-[#1E70E0] shadow-sm cursor-pointer"
-                    >
-                        <RefreshCw size={12} /> 새로고침
-                    </button>
-                </div>
-            </div>
-
-            {loading ? (
-                <div className="flex justify-center py-12">
-                    <Loader2 className="h-5 w-5 animate-spin text-[#667085]" />
-                </div>
-            ) : (
-                <RagLogBody entries={entries} error={error} />
-            )}
-        </>
-    );
-}
-
-/** RAG 엔트리 = 대화(qa_id)별 → 항목별 2단 접이식 리치 카드, 금지어 = 기존 테이블. */
-function RagLogBody({ entries, error }) {
-    // 대화(qa_id) 별 그룹 → 그 안에서 같은 item_number 는 최신 ts 1건만 유지(항목 토글 1개).
-    const ragQaGroups = (() => {
-        const byQa = new Map(); // qa_id → Map(item_number → 최신 entry)
-        for (const e of entries) {
-            if (e.kind === 'forbidden') continue;
-            const qa = e.qa_id || 'unknown';
-            if (!byQa.has(qa)) byQa.set(qa, new Map());
-            const itemMap = byQa.get(qa);
-            const key = Number(e.item_number);
-            const prev = itemMap.get(key);
-            if (!prev || (e.ts || 0) > (prev.ts || 0)) itemMap.set(key, e);
-        }
-        return Array.from(byQa.entries())
-            .map(([qaId, itemMap]) => {
-                const items = Array.from(itemMap.values());
-                const latestTs = items.reduce((mx, e) => Math.max(mx, e.ts || 0), 0);
-                return { qaId, items, latestTs };
-            })
-            .sort((a, b) => b.latestTs - a.latestTs); // 최근 대화 먼저
-    })();
-    const forbidden = entries.filter((e) => e.kind === 'forbidden');
-    const totalItems = ragQaGroups.reduce((s, g) => s + g.items.length, 0);
-    const totalHits = ragQaGroups.reduce(
-        (s, g) => s + g.items.reduce((t, e) => t + (Array.isArray(e.hits) ? e.hits.length : 0), 0),
-        0,
-    );
-
-    return (
-        <>
-            {error && <p className="text-sm text-[#D92D20]">{error}</p>}
-
-            {/* ── 골든셋 RAG · 페르소나 참조 자료 ── */}
-            <div className="mt-1">
-                <div className="text-[14px] font-bold text-[#101828] flex items-center gap-2">
-                    🌟 골든셋 RAG · 페르소나 참조 자료
-                    {ragQaGroups.length > 0 && (
-                        <span className="text-[12px] font-medium text-[#667085]">
-                            · 대화 {ragQaGroups.length} · 항목 {totalItems} · 사례 {totalHits}건
-                        </span>
-                    )}
-                </div>
-                <p className="mt-1 text-[11.5px] text-[#667085] leading-relaxed">
-                    AI 평가 시 sub-agent fewshot 으로 사용된 사람 검수 정답(골든셋). <b>대화(qa_id) → 평가항목</b> 2단으로 접혀 있으며, 펼치면 버킷(full/partial/zero)별 사례·검색어·STT 원문·색인 요약·근거 발화·검수자 코멘트를 확인할 수 있습니다. (판사는 RAG 미사용)
-                </p>
-                <div className="mt-3 space-y-2.5">
-                    {ragQaGroups.length === 0 ? (
-                        <div className="bg-white border border-[#E4E7EC] rounded-xl px-4 py-10 text-center text-sm text-[#667085]">
-                            표시할 RAG 조회 기록이 없습니다. (평가 실행 시 disable_rag=false 여야 RAG hit 가 기록됩니다.)
-                        </div>
-                    ) : (
-                        ragQaGroups.map((g) => <RagQaGroup key={`qa-${g.qaId}`} qaId={g.qaId} items={g.items} defaultOpen={false} />)
-                    )}
-                </div>
-            </div>
-
-            {/* ── 금지어·사전 매칭 (기존 테이블) ── */}
-            {forbidden.length > 0 && (
-                <div className="mt-6">
-                    <div className="text-[13px] font-bold text-[#101828] mb-2">🚫 금지어 · 사전 매칭 · {forbidden.length}건</div>
-                    <div className="bg-white border border-[#E4E7EC] rounded-xl overflow-hidden">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-[#E4E7EC] bg-[#F9FAFB]">
-                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[140px]">시각</th>
-                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[140px]">qa_id</th>
-                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[200px]">항목</th>
-                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider">내용</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[#E4E7EC]">
-                                {forbidden.map((e, idx) => (
-                                    <tr key={`${e.qa_id || 'na'}-${e.ts}-${idx}`} className="hover:bg-[#F9FAFB] align-top">
-                                        <td className="px-3 py-2 text-[11.5px] text-[#667085] tabular-nums font-mono">{fmtRagTime(e.ts)}</td>
-                                        <td className="px-3 py-2 text-[12px] text-[#101828] font-mono break-all">{e.qa_id || '—'}</td>
-                                        <td className="px-3 py-2 text-[12px] text-[#475467]">
-                                            <span className="font-semibold text-[#101828]">#{e.item_number}</span>
-                                            {e.item_name && <span className="text-[#667085]"> {e.item_name}</span>}
-                                        </td>
-                                        <td className="px-3 py-2"><RagContentCell entry={e} /></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-        </>
-    );
-}
-
-/* ── LLM 스킬 학습 로그 패널 (백엔드 인메모리 링버퍼) ──────────────
- * 스킬 학습(수집→생성→메모리→활성화) 단계별 로그를 5초 폴링으로 표시 — RagLogPanel 미러.
- * 그룹핑 없이 최신순 플랫 리스트. error 단계 행은 붉은 톤.
- */
+/* ── LLM 스킬 단계 메타 (통합 피드 스킬 행 칩 + 상세 렌더에서 사용) ────────── */
 const SKILL_STAGE_META = {
     collect: { label: '수집', cls: 'bg-blue-50 text-blue-700' },
     generate: { label: '생성', cls: 'bg-amber-50 text-amber-700' },
@@ -1035,229 +1106,12 @@ function MemorySnapshot({ state }) {
     );
 }
 
-function SkillLogPanel() {
-    const [entries, setEntries] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [paused, setPaused] = useState(false);
-    // 펼침 상태 — 평가 적용 행(items 동봉)·메모리 행만 펼침(RAG 로그식).
-    const [openKeys, setOpenKeys] = useState(() => new Set());
-    // 메모리 행 펼침 데이터 — org_id 단위 캐시(같은 브랜드 행 재펼침 시 재조회 없음).
-    const [memCache, setMemCache] = useState({});
-    async function loadMemory(orgId) {
-        setMemCache((prev) => ({ ...prev, [orgId]: { loading: true } }));
-        try {
-            const data = await fetchSkillMemory({ orgId });
-            if (data?.ok === false) throw new Error(data.error || '메모리 조회 실패');
-            setMemCache((prev) => ({ ...prev, [orgId]: { loading: false, data } }));
-        } catch (e) {
-            setMemCache((prev) => ({ ...prev, [orgId]: { loading: false, error: e?.message || '메모리 조회 실패' } }));
-        }
-    }
-    const toggleOpen = (k) =>
-        setOpenKeys((prev) => {
-            const next = new Set(prev);
-            if (next.has(k)) next.delete(k);
-            else next.add(k);
-            return next;
-        });
-
-    async function load() {
-        try {
-            // fetchSkillLogRecent 는 이미 entries 배열을 반환(api.js) — 재언랩 금지(이중 언랩 시 항상 [])
-            const rows = await fetchSkillLogRecent({ limit: PAGE_SIZE });
-            setEntries(Array.isArray(rows) ? rows : []);
-            setError(null);
-        } catch (e) {
-            setError(e?.message || '스킬 로그 로드 실패');
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    useEffect(() => {
-        load();
-    }, []);
-
-    useEffect(() => {
-        if (paused) return;
-        const id = setInterval(load, POLL_INTERVAL_MS);
-        return () => clearInterval(id);
-    }, [paused]);
-
-    const sorted = [...entries].sort((a, b) => (b.ts || 0) - (a.ts || 0));
-
-    return (
-        <>
-            <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-[12px] text-[#667085]">
-                    <span className="inline-flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${paused ? 'bg-gray-400' : 'bg-green-500 animate-pulse'}`} />
-                        {paused ? '갱신 일시정지' : `자동 갱신 중 (${POLL_INTERVAL_MS / 1000}초)`}
-                    </span>
-                    <span>·</span>
-                    <span>총 {entries.length}건 표시</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setPaused((v) => !v)}
-                        className="inline-flex items-center gap-1.5 h-[34px] px-3.5 rounded-full border border-[#E4E7EC] bg-white text-[12.5px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer"
-                    >
-                        {paused ? <Play size={12} /> : <Pause size={12} />}
-                        {paused ? '재개' : '일시정지'}
-                    </button>
-                    <button
-                        onClick={load}
-                        className="inline-flex items-center gap-1.5 h-[34px] px-3.5 rounded-full bg-[#055AAF] text-white text-[12.5px] font-semibold hover:bg-[#1E70E0] shadow-sm cursor-pointer"
-                    >
-                        <RefreshCw size={12} /> 새로고침
-                    </button>
-                </div>
-            </div>
-
-            {loading ? (
-                <div className="flex justify-center py-12">
-                    <Loader2 className="h-5 w-5 animate-spin text-[#667085]" />
-                </div>
-            ) : (
-                <>
-                    {error && <p className="text-sm text-[#D92D20]">{error}</p>}
-                    {sorted.length === 0 ? (
-                        <div className="bg-white border border-[#E4E7EC] rounded-xl px-4 py-10 text-center text-sm text-[#667085]">
-                            표시할 스킬 학습 기록이 없습니다. (배치관리 '스킬배치' 또는 LLM 스킬 관리에서 학습을 실행하면 기록됩니다.)
-                        </div>
-                    ) : (
-                        <div className="bg-white border border-[#E4E7EC] rounded-xl overflow-hidden">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-[#E4E7EC] bg-[#F9FAFB]">
-                                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[140px]">시각</th>
-                                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[90px]">브랜드</th>
-                                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider w-[90px]">단계</th>
-                                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[#667085] uppercase tracking-wider">내용</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-[#E4E7EC]">
-                                    {sorted.map((e, idx) => {
-                                        const stage = SKILL_STAGE_META[e.stage] || { label: e.stage || '—', cls: 'bg-gray-100 text-gray-600' };
-                                        const isErr = e.stage === 'error';
-                                        const changedCount = Array.isArray(e.items_changed) ? e.items_changed.length : null;
-                                        // 펼침 대상: 평가 적용 행(items 동봉) + 메모리 행(클릭 시 DB 요약 lazy 조회).
-                                        const rowKey = `${e.ts || 'na'}-${e.qa_id || idx}`;
-                                        const hasItems = Array.isArray(e.items) && e.items.length > 0;
-                                        const isMem = e.stage === 'memory' && e.org_id != null;
-                                        const expandable = hasItems || isMem;
-                                        const isOpen = expandable && openKeys.has(rowKey);
-                                        return (
-                                            <React.Fragment key={rowKey}>
-                                            <tr
-                                                onClick={expandable ? () => {
-                                                    if (isMem && !openKeys.has(rowKey) && !memCache[e.org_id]) loadMemory(e.org_id);
-                                                    toggleOpen(rowKey);
-                                                } : undefined}
-                                                className={`align-top ${isErr ? 'bg-red-50/60' : 'hover:bg-[#F9FAFB]'} ${expandable ? 'cursor-pointer' : ''}`}
-                                            >
-                                                <td className="px-3 py-2 text-[11.5px] text-[#667085] tabular-nums font-mono">{fmtRagTime(e.ts)}</td>
-                                                <td className="px-3 py-2 text-[12px] text-[#101828] tabular-nums">{e.org_id != null ? `org ${e.org_id}` : '—'}</td>
-                                                <td className="px-3 py-2">
-                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${stage.cls}`}>{stage.label}</span>
-                                                </td>
-                                                <td className="px-3 py-2">
-                                                    {expandable && (
-                                                        <ChevronDown
-                                                            size={13}
-                                                            className={`inline-block mr-1 -mt-0.5 text-[#98A2B3] transition-transform ${isOpen ? '' : '-rotate-90'}`}
-                                                        />
-                                                    )}
-                                                    <span className={`text-[12px] ${isErr ? 'text-[#B42318]' : 'text-[#475467]'}`}>{e.message || e.error || '—'}</span>
-                                                    <span className="inline-flex flex-wrap items-center gap-1 ml-2 align-middle">
-                                                        {e.source && (
-                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#F2F4F7] text-[#667085]">{e.source}</span>
-                                                        )}
-                                                        {e.case_count != null && (
-                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700">케이스 {e.case_count}건</span>
-                                                        )}
-                                                        {changedCount != null && (
-                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-700">항목 {changedCount}개</span>
-                                                        )}
-                                                        {e.version_id && (
-                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#F2F4F7] text-[#475467]">{e.version_id}</span>
-                                                        )}
-                                                        {hasItems && !isOpen && (
-                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#F6F3FF] text-[#6941C6]">클릭해 주입 룰 보기</span>
-                                                        )}
-                                                        {isMem && !isOpen && (
-                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-50 text-teal-700">클릭해 메모리 보기</span>
-                                                        )}
-                                                    </span>
-                                                    {isErr && e.error && e.error !== e.message && (
-                                                        <div className="mt-0.5 text-[11px] text-[#B42318] break-all">{e.error}</div>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                            {isOpen && isMem && (
-                                                <tr className="bg-[#FAFBFC]">
-                                                    <td colSpan={4} className="px-4 py-3">
-                                                        <MemorySnapshot state={memCache[e.org_id]} />
-                                                    </td>
-                                                </tr>
-                                            )}
-                                            {isOpen && hasItems && (
-                                                <tr className="bg-[#FAFBFC]">
-                                                    <td colSpan={4} className="px-4 py-3">
-                                                        <div className="text-[11px] font-semibold text-[#667085] uppercase tracking-wide mb-2">
-                                                            항목별 스킬 주입 내용 — 평가 시점에 프롬프트에 실제 들어간 룰 원문
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            {e.items.map((it, i) => (
-                                                                <div key={i} className="bg-white border border-[#E4E7EC] rounded-lg px-3 py-2">
-                                                                    <div className="flex flex-wrap items-center gap-2 text-[12px]">
-                                                                        <span className="font-semibold text-[#101828]">{it.item_name || `#${it.item_number}`}</span>
-                                                                        {Number.isFinite(it.item_number) && it.item_name && (
-                                                                            <span className="text-[11px] text-[#98A2B3]">#{it.item_number}</span>
-                                                                        )}
-                                                                        {it.applied ? (
-                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-700">주입</span>
-                                                                        ) : (
-                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">미주입 — 이 항목 룰 없음</span>
-                                                                        )}
-                                                                        {it.applied && it.overlay_chars > 0 && (
-                                                                            <span className="text-[11px] text-[#98A2B3]">{Number(it.overlay_chars).toLocaleString()}자</span>
-                                                                        )}
-                                                                    </div>
-                                                                    {it.applied && it.overlay_text && (
-                                                                        <pre className="mt-1.5 text-[11.5px] font-mono text-[#475467] whitespace-pre-wrap leading-relaxed bg-[#FAFBFC] border border-[#F2F4F7] rounded-md px-2.5 py-2 max-h-[240px] overflow-auto">{it.overlay_text}</pre>
-                                                                    )}
-                                                                    {it.applied && !it.overlay_text && (
-                                                                        <div className="mt-1 text-[11px] text-[#98A2B3]">주입 원문 미기록 — 이전 버전 파이프라인 이벤트(글자수만 기록됨)</div>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                            </React.Fragment>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </>
-            )}
-        </>
-    );
-}
-
 /* ── 페이지 컨테이너 + 서브탭 ────────────────────────────── */
-// RAG·사전 / LLM 스킬(백엔드) 탭 — 기본 노출. 과거 개발 게이트(NEXT_PUBLIC_SHOW_RAG)는
-// 스킬 로그 상세·DB 영속 정식화(2026-07-07)와 함께 제거. 데이터 API 는 관리자 전용(requireAdmin).
+// RAG·사전 / LLM 스킬 전용 탭 제거(2026-07-08) — 백엔드 활동은 사용자 활동 피드에
+// 시간순 통합(행 클릭 토글 상세). 데이터 API 는 관리자 전용(requireAdmin).
 const TABS = [
     { id: 'audit', label: '사용자 활동 (Audit)', icon: ListChecks },
     { id: 'app', label: '서버 로그 (App)', icon: Terminal },
-    { id: 'rag', label: 'RAG · 사전 (백엔드)', icon: Sparkles },
-    { id: 'skill', label: 'LLM 스킬 (백엔드)', icon: Wand2 },
 ];
 
 const Logs = () => {
@@ -1269,12 +1123,8 @@ const Logs = () => {
                 title="실시간 로그"
                 subtitle={
                     activeTab === 'audit'
-                        ? `사용자 활동 audit — 최근 ${VIEW_WINDOW_DAYS}일 이내 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (DB 보관 3일).`
-                        : activeTab === 'app'
-                          ? `서버 application 로그 — 오늘 ${APP_LOG_LIMIT}줄을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (파일 보관 3일).`
-                          : activeTab === 'skill'
-                            ? `LLM 스킬 학습(수집→생성→메모리→활성화) 단계별 로그 — 백엔드 인메모리 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신.`
-                            : `RAG few-shot 골든 / 금지어·사전 매칭 로그 — 백엔드 인메모리 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (평가 시 disable_rag=false 필요).`
+                        ? `사용자 활동 audit + 백엔드 활동(RAG 조회 · LLM 스킬) 통합 — ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신. 백엔드 행은 클릭하면 상세가 펼쳐집니다.`
+                        : `서버 application 로그 — 오늘 ${APP_LOG_LIMIT}줄을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (파일 보관 3일).`
                 }
                 actions={null}
             />
@@ -1301,7 +1151,7 @@ const Logs = () => {
             </div>
 
             <div className="space-y-3">
-                {activeTab === 'audit' ? <AuditPanel /> : activeTab === 'app' ? <AppPanel /> : activeTab === 'skill' ? <SkillLogPanel /> : <RagLogPanel />}
+                {activeTab === 'audit' ? <AuditPanel /> : <AppPanel />}
             </div>
         </div>
     );
