@@ -22,7 +22,7 @@ import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
 import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult, fetchGoldenIndexCoverage, resolvePipelineBaseUrl } from './qaPipelineIngest.mjs';
 import { loadRagFewshotConfig, saveRagFewshotConfig } from './ragFewshotConfig.mjs';
 import { startIcsQaPoller, startGoldenLearnScheduler, triggerGoldenLearn, startSkillLearnScheduler, triggerSkillLearn } from './icsQaPoller.mjs';
-import { fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion, pushSkillSettings, fetchSkillGenProgress } from './skillLearn.mjs';
+import { fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion, pushSkillSettings, fetchSkillGenProgress, fetchSkillMemorySummary } from './skillLearn.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
 import { taEnabled, fetchTaMetricsByUids, fetchSegmentSentimentsByUids } from './taSource.mjs';
@@ -94,7 +94,8 @@ function pushRagLog(entry) {
  * DB 미적재(스키마 불변). 레코드 계약:
  *   { ts, org_id, source, stage, message,
  *     rubric_id?, version_id?, case_count?, items_changed?, error? }
- *   stage ∈ collect|generate|activate|done|error · org_id 필수(로그 탭 브랜드 필터용).
+ *   stage ∈ collect|generate|memory|activate|done|error · org_id 필수(로그 탭 브랜드 필터용).
+ *   memory = 에이전트 메모리(qa_skill_memory) 로드/저장/미반환(legacy_mode 카나리) 이벤트.
  * 상한 500(초과분 shift). GET /api/skill-log/recent 가 최신순 반환. */
 const SKILL_LOG = [];
 const SKILL_LOG_MAX = 500;
@@ -4330,6 +4331,18 @@ app.post('/api/ingest/qa-pipeline-jobs', async (req, res) => {
                         qa_id: result.qa_id ?? job.qa_id,
                         version_id: vid,
                         items_changed: applied.map((e) => Number(e.item_number)).filter(Number.isFinite),
+                        // 항목별 주입 상세(RAG 로그식 펼침용) — 파이프라인이 이벤트에 동봉한 "주입 시점
+                        // 원문"(overlay_text, 파이프라인 cap 4000자) 보존. 링버퍼 방어로 한 번 더 cap.
+                        items: skillOverlayEvents.map((e) => ({
+                            item_number: Number(e?.item_number),
+                            item_name: e?.item_name || undefined,
+                            applied: !!e?.applied,
+                            overlay_chars: Number(e?.overlay_chars) || 0,
+                            overlay_text:
+                                typeof e?.overlay_text === 'string' && e.overlay_text
+                                    ? e.overlay_text.slice(0, 4000)
+                                    : undefined,
+                        })),
                     });
                 }
             } catch {
@@ -5359,14 +5372,21 @@ async function notifyGoldenLearnComplete(orgId, result, { actorUserId = null, ac
         }
         if (!recipients.size) return;
         const ok = result?.ok !== false;
+        // 골든셋 0건 — 학습할 대상 자체가 없음(ingestGoldenSetToRag reason='no_golden_rows').
+        //   '학습 완료 · 색인 ?건' 오표기 대신 명시 문구로 통지. 스케줄러 발화는 매 주기
+        //   같은 통지가 반복(스팸)되므로 통지 자체를 생략(수동 실행만 통지).
+        const noGolden = ok && (result?.reason === 'no_golden_rows' || result?.golden_count === 0);
+        const srcLabel = source && source.startsWith('schedule') ? '자동(스케줄러)' : '수동';
+        if (noGolden && source && source.startsWith('schedule')) return;
         const savedN = result?.saved ?? result?.records ?? '?';
         const goldenN = result?.golden_count ?? '?';
-        const srcLabel = source && source.startsWith('schedule') ? '자동(스케줄러)' : '수동';
-        const type = ok ? 'golden_learn_completed' : 'golden_learn_failed';
-        const title = ok ? '골든셋 학습 완료' : '골든셋 학습 실패';
-        const body = ok
-            ? `${srcLabel} · 골든 ${goldenN}건 · 색인 ${savedN}건${result?.dry_run ? ' (dry-run)' : ''}`
-            : `${srcLabel} · ${result?.error || result?.reason || '오류'}`;
+        const type = !ok ? 'golden_learn_failed' : noGolden ? 'golden_learn_skipped' : 'golden_learn_completed';
+        const title = !ok ? '골든셋 학습 실패' : noGolden ? '골든셋 학습 건너뜀' : '골든셋 학습 완료';
+        const body = !ok
+            ? `${srcLabel} · ${result?.error || result?.reason || '오류'}`
+            : noGolden
+              ? `${srcLabel} · 학습할 골든셋이 없습니다 — 검수 확정으로 골든셋을 먼저 쌓아주세요`
+              : `${srcLabel} · 골든 ${goldenN}건 · 색인 ${savedN}건${result?.dry_run ? ' (dry-run)' : ''}`;
         for (const uid of recipients) {
             await createNotification(pool, {
                 recipientUserId: uid,
@@ -5610,6 +5630,9 @@ function skillLearnProgressLogger(orgId, source) {
                 });
             }
             pushSkillLog({ org_id: orgId, source, stage: 'generate', message: `overlay 생성 요청 — 정정 케이스 ${p.case_count ?? '?'}건${items.length ? ` · ${items.length}개 항목` : ''}`, case_count: p.case_count ?? null });
+        } else if (p.stage === 'memory' && p.message) {
+            // 에이전트 메모리(qa_skill_memory) 로드/저장/미반환 — skillLearn 이 완성문 동봉, 그대로 적재.
+            pushSkillLog({ org_id: orgId, source, stage: 'memory', message: p.message, rubric_id: p.rubric_id ?? null });
         }
     };
 }
@@ -5639,6 +5662,9 @@ app.post('/api/skill-learn/run', requireAdmin, async (req, res) => {
                 onProgress: skillLearnProgressLogger(orgId, 'manual'),
             });
             recordSkillLearnResult(orgId, 'manual', result, startedAt);
+            // 무해 종료(멱등 스킵)는 실패가 아님 — success=1 + 'skip:' prefix error_message 로 기록,
+            //   화면(Logs.jsx)이 이 마커로 OK/FAIL 대신 SKIP 칩을 렌더(recordSkillLearnResult 의 benign 과 동일 의미론).
+            const benignSkip = result.ok !== true && (result.error === 'no_new_cases' || result.error === 'no_correction_cases');
             await insertQaAuditLog(pool, {
                 req,
                 action: 'SKILL_LEARN_RUN',
@@ -5647,7 +5673,12 @@ app.post('/api/skill-learn/run', requireAdmin, async (req, res) => {
                 http_method: 'POST',
                 http_path: '/api/skill-learn/run',
                 detail_json: JSON.stringify(result),
-                success: result.ok,
+                success: result.ok === true || benignSkip,
+                error_message: benignSkip
+                    ? (result.error === 'no_new_cases'
+                        ? 'skip: 변경 없음 — 마지막 학습과 동일한 정정 케이스(학습 생략, LLM 미호출)'
+                        : 'skip: 정정 케이스(낮음/높음) 없음 — 학습 생략')
+                    : undefined,
             }).catch(() => {});
         } catch (e) {
             console.error('skill-learn background error:', e?.message || e);
@@ -5739,6 +5770,22 @@ app.get('/api/skill-log/recent', requireAdmin, (req, res) => {
     // 최신순(ts 내림차순) — 원본 링버퍼는 변형하지 않도록 복사 후 정렬.
     const entries = rows.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, limit);
     res.json({ entries });
+});
+
+// GET /api/skill-memory — 에이전트 메모리(qa_skill_memory) 항목별 요약(실시간 로그 '메모리' 행 토글).
+//   org_id 쿼리 기준 rubric_id 해석 → blob 요약(읽기 전용). 브랜드 격리: skill-log/recent 와 동일 규칙.
+app.get('/api/skill-memory', requireAdmin, async (req, res) => {
+    let orgId = Number(req.query.org_id);
+    if (req.session?.role !== 'super_admin' && req.session?.org_id != null) orgId = Number(req.session.org_id);
+    if (!Number.isFinite(orgId)) {
+        res.status(400).json({ ok: false, error: 'org_id required' });
+        return;
+    }
+    try {
+        res.json(await fetchSkillMemorySummary(pool, orgId));
+    } catch (e) {
+        res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
 });
 
 // GET /api/batch/eval-items — ② '적용 평가 항목' 칩용. 실제 평가된 항목(order_no+item) 집합.

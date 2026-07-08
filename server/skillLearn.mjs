@@ -229,7 +229,8 @@ export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMI
  * 스킬 학습 실행 본체 — 계약 §4 흐름 1~6.
  *   1) rubric_id 해석(골든과 동일) → 2) 루브릭 사전 등록(멱등) → 3) 케이스 수집(0건이면 조기 반환)
  *   → 4) POST /v2/mtg-skill/{rubric}/generate (auto_activate:true, label='{source} {KST시각}')
- * onProgress(선택): { stage:'collect'|'generate', ... } 단계 전이 통지 — 호출측 로그/상태용.
+ * onProgress(선택): { stage:'collect'|'generate'|'memory', ... } 단계 전이 통지 — 호출측 로그/상태용.
+ *   memory 단계는 message 완성문 동봉(로드/저장/미반환 3종) — 호출측은 그대로 스킬 로그에 적재.
  * @returns {Promise<{ok:boolean, org_id:number, rubric_id:string, version_id?:string|null,
  *                    case_count:number, items_changed?:Array, activated?:boolean, error?:string}>}
  */
@@ -267,6 +268,78 @@ async function saveSkillMemory(pool, rubricId, orgId, memory) {
         logger.warn(`[skill-learn] 메모리 저장 실패(학습 결과는 유효): ${e?.message || e}`);
         return false;
     }
+}
+
+/**
+ * 메모리 blob 통계 — 스킬 로그 표기용. 항목 수·누적 정정 수·모순 의심 노트 수.
+ * 파이프라인 note_contested 가 남기는 journal note prefix("[검수 기준 불일치 의심]") 카운트.
+ */
+function skillMemoryStats(mem) {
+    const items = mem && typeof mem === 'object' && mem.items && typeof mem.items === 'object' ? mem.items : {};
+    let itemCount = 0;
+    let caseCount = 0;
+    let contested = 0;
+    for (const it of Object.values(items)) {
+        if (!it || typeof it !== 'object') continue;
+        itemCount += 1;
+        caseCount += Array.isArray(it.cases) ? it.cases.length : 0;
+        const journal = Array.isArray(it.journal) ? it.journal : [];
+        contested += journal.filter((e) => String(e?.note || '').startsWith('[검수 기준 불일치 의심]')).length;
+    }
+    return { itemCount, caseCount, contested };
+}
+
+// 메모리 요약 캡 — 실시간 로그 토글 조회 페이로드 상한(blob 자체 캡: evidence 500 등과 별개).
+const MEM_SUMMARY_CASES = 20; // 항목당 최근 케이스
+const MEM_SUMMARY_JOURNAL = 5; // 항목당 최근 학습 기록(journal)
+
+/**
+ * 브랜드 에이전트 메모리 요약 — 실시간 로그 '메모리' 행 토글 조회용(읽기 전용, SELECT 만).
+ * qa_skill_memory blob 을 항목별로 정리: 방향 통계·최근 케이스·패턴·journal·last_learned·effect.
+ * 항목명 매핑(buildRubricFromDefs) 실패는 무해 — 번호만 표시.
+ */
+export async function fetchSkillMemorySummary(pool, orgId) {
+    const rubricId = await resolveSkillRubricId(pool, orgId);
+    let mem = null;
+    let updatedAt = null;
+    try {
+        const { rows } = await pool.query('SELECT memory, updated_at FROM public.qa_skill_memory WHERE rubric_id = $1', [rubricId]);
+        mem = rows[0]?.memory ?? null;
+        updatedAt = rows[0]?.updated_at ?? null;
+    } catch (e) {
+        return { ok: false, rubric_id: rubricId, error: String(e?.message || e) };
+    }
+    const numToName = {};
+    try {
+        const { rubric } = await buildRubricFromDefs(pool, orgId);
+        for (const it of rubric?.items || []) numToName[Number(it.eval_item_number)] = safeStr(it.name);
+    } catch {
+        /* 항목명 매핑 실패 — 번호만 표시 */
+    }
+    const src = mem && typeof mem === 'object' && mem.items && typeof mem.items === 'object' ? mem.items : {};
+    const items = Object.entries(src)
+        .map(([no, it]) => {
+            if (!it || typeof it !== 'object') return null;
+            const cases = (Array.isArray(it.cases) ? it.cases : []).filter((c) => c && typeof c === 'object');
+            const journal = (Array.isArray(it.journal) ? it.journal : []).filter((j) => j && typeof j === 'object');
+            return {
+                item_number: asNumber(no),
+                item_name: numToName[Number(no)] || '',
+                case_count: cases.length,
+                dir_high: cases.filter((c) => safeStr(c.direction).trim() === '높음').length,
+                dir_low: cases.filter((c) => safeStr(c.direction).trim() === '낮음').length,
+                contested: journal.filter((j) => safeStr(j.note).startsWith('[검수 기준 불일치 의심]')).length,
+                // blob 은 call_at 오름차순 유지 — 최근 N 건을 최신순으로.
+                cases: cases.slice(-MEM_SUMMARY_CASES).reverse(),
+                patterns: Array.isArray(it.patterns) ? it.patterns : [],
+                journal: journal.slice(-MEM_SUMMARY_JOURNAL).reverse(),
+                last_learned: it.last_learned && typeof it.last_learned === 'object' ? it.last_learned : null,
+                effect: it.effect && typeof it.effect === 'object' ? it.effect : {},
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => (a.item_number ?? 0) - (b.item_number ?? 0));
+    return { ok: true, rubric_id: rubricId, updated_at: updatedAt, items };
 }
 
 /* ── 스킬셋 버전 DB 영속(qa_skill_versions) ─────────────────────────────
@@ -331,10 +404,9 @@ async function persistSkillStore(pool, orgId, rubricId, base) {
     }
 }
 
-/** 파이프라인 버전 0건 & PG 보관본 존재 → store-restore 자가 복원. 복원했으면 true. */
-async function restoreSkillStoreIfEmpty(pool, rubricId, base) {
-    const cur = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions`);
-    if (Array.isArray(cur?.versions) && cur.versions.length) return false;
+/** PG 보관본 → 파이프라인 무조건 되밀기(멱등 merge — 누락 버전만 복원, 기존 무손상).
+ *  MTG DB 소유 모델의 주입 경로: DB 가 원본, 파이프라인 파일은 작업 사본. 성공(ok) 여부 반환. */
+async function pushSkillStoreBackup(pool, rubricId, base) {
     const backup = await loadSkillStoreBackup(pool, rubricId);
     if (!backup?.store || !Array.isArray(backup.store.versions) || !backup.store.versions.length) return false;
     const r = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/store-restore`, {
@@ -342,25 +414,46 @@ async function restoreSkillStoreIfEmpty(pool, rubricId, base) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(backup),
     });
-    const restored = r?.ok === true && Array.isArray(r.restored_versions) && r.restored_versions.length > 0;
-    if (restored) {
-        logger.info(`[skill-learn] 스킬셋 자가 복원 — ${rubricId}: ${r.restored_versions.join(', ')}`);
+    if (r?.ok === true && Array.isArray(r.restored_versions) && r.restored_versions.length > 0) {
+        logger.info(`[skill-learn] 스킬셋 보관본 주입 — ${rubricId}: ${r.restored_versions.join(', ')}`);
     }
-    return restored;
+    return r?.ok === true;
 }
 
-/** 보관본이 파이프라인 스토어와 어긋나면(버전 수/active) dump 재보관 — 조회 경로 백필(기존 버전 소급 보관). */
-async function persistSkillStoreIfStale(pool, orgId, rubricId, base, versionsResp) {
+/** 파이프라인 버전 0건 & PG 보관본 존재 → store-restore 자가 복원. 복원했으면 true. */
+async function restoreSkillStoreIfEmpty(pool, rubricId, base) {
+    const cur = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions`);
+    if (Array.isArray(cur?.versions) && cur.versions.length) return false;
+    return pushSkillStoreBackup(pool, rubricId, base);
+}
+
+/**
+ * 활성 스킬 overlay 맵 — MTG DB 보관본(qa_skill_versions)에서 직접 산출(파이프라인 무조회).
+ * 평가 요청 동봉(metadata.skill_overlays)용: {item_number(str): overlay md}. 학습 제외 항목 제외.
+ * 활성 버전 부재/보관본 부재/오류 전부 null — 호출측은 미동봉(기존 거동)으로 폴백.
+ */
+export async function getActiveSkillOverlays(pool, orgId) {
     try {
-        const liveCount = Array.isArray(versionsResp?.versions) ? versionsResp.versions.length : 0;
-        if (!liveCount) return;
+        const rubricId = await resolveSkillRubricId(pool, orgId);
         const backup = await loadSkillStoreBackup(pool, rubricId);
-        const savedCount = Array.isArray(backup?.store?.versions) ? backup.store.versions.length : 0;
-        const savedActive = backup?.store?.active_version_id ?? null;
-        if (savedCount === liveCount && String(savedActive ?? '') === String(versionsResp?.active_version_id ?? '')) return;
-        await persistSkillStore(pool, orgId, rubricId, base);
+        const store = backup?.store;
+        const active = store?.active_version_id;
+        if (!active) return null;
+        const entry = (store.versions || []).find((v) => v && v.version_id === String(active));
+        const itemsMap = entry && typeof entry.items === 'object' ? entry.items : null;
+        if (!itemsMap) return null;
+        const excluded = new Set((store.excluded_items || []).map((n) => String(n)));
+        const overlays = {};
+        for (const [no, info] of Object.entries(itemsMap)) {
+            if (excluded.has(String(no))) continue;
+            const rel = info && typeof info === 'object' ? info.file : null;
+            const md = rel ? backup.files?.[String(rel)] : null;
+            if (typeof md === 'string' && md.trim()) overlays[String(no)] = md;
+        }
+        return Object.keys(overlays).length ? { rubric_id: rubricId, version_id: String(active), overlays } : null;
     } catch (e) {
-        logger.warn(`[skill-learn] 스킬셋 백필 저장 실패(조회 무영향): ${e?.message || e}`);
+        logger.warn(`[skill-learn] 활성 overlay 산출 실패(평가 미동봉으로 폴백): ${e?.message || e}`);
+        return null;
     }
 }
 
@@ -407,12 +500,13 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
         logger.warn(`[skill-learn] 격리키 이관 시도 실패(신규 키로 진행): ${e?.message || e}`);
     }
 
-    // 스킬셋 자가 복원 — 배포 스왑 등으로 파이프라인 스토어가 비었으면 PG 보관본을 되밀어
-    //   버전 lineage(v1→v2…)를 이어서 학습(끊긴 채 새 v1 이 생기는 것 방지).
+    // 스킬셋 보관본 주입 — MTG DB(qa_skill_versions)가 원본, 파이프라인 파일은 작업 사본.
+    //   빈 스토어 여부와 무관하게 항상 되밀어(멱등 merge — 누락 버전만 복원) 버전 lineage
+    //   (v1→v2…)를 이어서 학습(배포 스왑 소실·부분 소실 모두 커버).
     try {
-        await restoreSkillStoreIfEmpty(pool, rubricId, base);
+        await pushSkillStoreBackup(pool, rubricId, base);
     } catch (e) {
-        logger.warn(`[skill-learn] 스킬셋 복원 시도 실패(현재 스토어로 진행): ${e?.message || e}`);
+        logger.warn(`[skill-learn] 스킬셋 보관본 주입 실패(현재 스토어로 진행): ${e?.message || e}`);
     }
 
     // ③ 정정 케이스 수집 — order_no→item_number 매핑 불가(비활성/미존재 항목) 행은 제외.
@@ -461,6 +555,12 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
     // 메모리 소유 = MTG DB(qa_skill_memory). 누적 메모리를 동봉 → 파이프라인이 학습 입력으로 사용,
     //   응답 memory 로 최종본을 돌려받아 DB 에 UPSERT(SSOT). 로드 실패해도 빈 골격으로 진행(무해).
     const skillMemory = await loadSkillMemory(pool, rubricId);
+    const memBefore = skillMemoryStats(skillMemory);
+    emit({
+        stage: 'memory',
+        rubric_id: rubricId,
+        message: `메모리 로드 — 항목 ${memBefore.itemCount}개 · 누적 정정 ${memBefore.caseCount}건`,
+    });
 
     let resp;
     let j = {};
@@ -492,7 +592,23 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
     //   · ok:false=no_eligible(학습 자격 미달)이라도 유입 케이스 누적분은 저장돼야 다음 배치 자격의
     //     토대가 됨(파일 기반 _persist_mem_best_effort 와 동일 의미). blob 은 항상 입력 ⊇ 라 손실 없음.
     if (j.memory && typeof j.memory === 'object') {
-        await saveSkillMemory(pool, rubricId, orgId, j.memory);
+        const savedOk = await saveSkillMemory(pool, rubricId, orgId, j.memory);
+        const memAfter = skillMemoryStats(j.memory);
+        const added = Math.max(0, memAfter.caseCount - memBefore.caseCount);
+        emit({
+            stage: 'memory',
+            rubric_id: rubricId,
+            message: savedOk
+                ? `메모리 저장 — 항목 ${memAfter.itemCount}개 · 누적 정정 ${memAfter.caseCount}건${added ? ` (+신규 ${added}건)` : ''}${memAfter.contested ? ` · 모순 의심 노트 ${memAfter.contested}건` : ''}`
+                : '메모리 저장 실패 — DB UPSERT 오류 (학습 결과는 유효, 서버 로그 확인)',
+        });
+    } else if (ok) {
+        // 정상 학습인데 memory 미반환 = 파이프라인 메모리 스위치 OFF(legacy_mode) 신호 — 운영 카나리.
+        emit({
+            stage: 'memory',
+            rubric_id: rubricId,
+            message: '메모리 미반환 — 백엔드 메모리 스위치 OFF(legacy_mode) 의심 (QA_MTG_SKILL_MEMORY_ENABLED 확인 필요)',
+        });
     }
     // 스킬셋(버전·룰 원문) DB 영속 — 학습 성공 시 dump 를 PG 에 보관(배포 스왑 생존 계층).
     if (ok) {
@@ -542,54 +658,126 @@ async function pipelineJson(url, init = {}) {
     }
 }
 
-/** 버전 목록 프록시 — GET /v2/mtg-skill/{rubric}/versions. 현재 키에 버전이 없으면
- *  옛 격리키 이관(auto-heal)을 시도한 뒤 재조회 — 키 변경으로 미아가 된 버전 복구. */
-export async function fetchSkillVersions(pool, orgId, opts = {}) {
-    const base = resolveSkillBaseUrl(opts);
-    const rubricId = await resolveSkillRubricId(pool, orgId);
-    let j = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions`);
-    if (!Array.isArray(j?.versions) || !j.versions.length) {
-        try {
-            if (await adoptLegacySkillStore(pool, orgId, rubricId, base)) {
-                j = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions`);
-            }
-        } catch (e) {
-            logger.warn(`[skill-learn] 격리키 이관 시도 실패(현재 키 결과 반환): ${e?.message || e}`);
-        }
-    }
-    // 여전히 비어 있으면 PG 보관본 자가 복원(배포 스왑으로 파일이 소실된 경우) 후 재조회.
-    if (!Array.isArray(j?.versions) || !j.versions.length) {
-        try {
-            if (await restoreSkillStoreIfEmpty(pool, rubricId, base)) {
-                j = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions`);
-            }
-        } catch (e) {
-            logger.warn(`[skill-learn] 스킬셋 복원 시도 실패(현재 키 결과 반환): ${e?.message || e}`);
-        }
-    }
-    // 백필 — DB 영속 도입 전 생성된 버전도 조회 시점에 보관본으로 소급 저장(어긋날 때만 dump).
-    await persistSkillStoreIfStale(pool, orgId, rubricId, base, j);
-    return { org_id: orgId, rubric_id: rubricId, ...j };
+/** 보관본(store blob) → 버전 목록 응답 렌더 — 파이프라인 /versions 응답과 동일 스키마(최신순). */
+function renderVersionsFromBackup(backup) {
+    const versions = [...(backup.store.versions || [])]
+        .reverse()
+        .filter((v) => v && typeof v === 'object')
+        .map((v) => ({
+            version_id: v.version_id,
+            label: v.label ?? '',
+            created_at: v.created_at ?? null,
+            model_id: v.model_id ?? '',
+            case_count: v.case_count ?? null,
+            items_changed: v.items_changed ?? [],
+            item_count: v.item_count ?? null,
+            parent_version_id: v.parent_version_id ?? null,
+            source: v.source ?? '',
+        }));
+    return {
+        ok: true,
+        active_version_id: backup.store.active_version_id ?? null,
+        excluded_items: backup.store.excluded_items || [],
+        versions,
+    };
 }
 
-/** 버전 상세(생성 근거 케이스 포함) 프록시 — GET /v2/mtg-skill/{rubric}/versions/{id}. */
-export async function fetchSkillVersionDetail(pool, orgId, versionId, opts = {}) {
-    const base = resolveSkillBaseUrl(opts);
+/** 버전 목록 — MTG DB(qa_skill_versions) 단독 조회(소유 모델: DB=원본, 조회 경로에 EC2 없음).
+ *  보관본 부재 = "학습된 버전 없음"이 정답. DB 영속 도입 전 파이프라인 파일에만 남은 옛 버전은
+ *  다음 학습이 그 위에서 lineage 를 이어 결과를 DB 로 영속하며 자연 회수된다. */
+export async function fetchSkillVersions(pool, orgId) {
     const rubricId = await resolveSkillRubricId(pool, orgId);
-    const j = await pipelineJson(
-        `${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions/${encodeURIComponent(versionId)}`
-    );
-    return { org_id: orgId, rubric_id: rubricId, ...j };
+    const backup = await loadSkillStoreBackup(pool, rubricId);
+    if (backup?.store && Array.isArray(backup.store.versions) && backup.store.versions.length) {
+        return { org_id: orgId, rubric_id: rubricId, ...renderVersionsFromBackup(backup), source: 'db' };
+    }
+    return {
+        org_id: orgId,
+        rubric_id: rubricId,
+        ok: true,
+        active_version_id: null,
+        excluded_items: [],
+        versions: [],
+        source: 'db',
+    };
 }
 
-/** 버전 활성화/롤백(version_id) 또는 전체 비활성(null) 프록시 — POST /v2/mtg-skill/{rubric}/activate. */
+/** 버전 상세(생성 근거 케이스 포함) — MTG DB 보관본(store+files+manifests) 단독 재구성.
+ *  목록이 DB 에서만 나오므로 미보유 버전 요청은 version_not_found 가 정답(파이프라인 무조회). */
+export async function fetchSkillVersionDetail(pool, orgId, versionId) {
+    const rubricId = await resolveSkillRubricId(pool, orgId);
+    const backup = await loadSkillStoreBackup(pool, rubricId);
+    const entry = (backup?.store?.versions || []).find((v) => v && String(v.version_id) === String(versionId));
+    if (!entry) {
+        return {
+            org_id: orgId,
+            rubric_id: rubricId,
+            ok: false,
+            error: 'version_not_found',
+            version_id: String(versionId),
+        };
+    }
+    const manifest = backup.manifests?.[String(versionId)] || {};
+    const casesBy = manifest.cases_by_item && typeof manifest.cases_by_item === 'object' ? manifest.cases_by_item : {};
+    const itemsMap = entry.items && typeof entry.items === 'object' ? entry.items : {};
+    const items = Object.keys(itemsMap)
+        .sort((a, b) => Number(a) - Number(b))
+        .map((k) => ({
+            item_number: Number(k),
+            item_name: itemsMap[k]?.item_name || '',
+            changed: Boolean(itemsMap[k]?.changed),
+            overlay_md: (itemsMap[k]?.file && backup.files?.[String(itemsMap[k].file)]) || '',
+            cases: Array.isArray(casesBy[k]) ? casesBy[k] : [],
+        }))
+        .filter((it) => Number.isFinite(it.item_number));
+    return {
+        org_id: orgId,
+        rubric_id: rubricId,
+        ok: true,
+        version_id: String(versionId),
+        label: entry.label ?? '',
+        created_at: entry.created_at ?? null,
+        model_id: entry.model_id ?? '',
+        parent_version_id: entry.parent_version_id ?? null,
+        case_count: entry.case_count ?? null,
+        active: String(backup.store?.active_version_id ?? '') === String(versionId),
+        items,
+        source: 'db',
+    };
+}
+
+/** 버전 활성화/롤백(version_id) 또는 전체 비활성(null) — MTG DB 보관본을 직접 갱신(소유 모델).
+ *  평가 주입(skill_overlays 동봉)·조회 모두 DB 기준이므로 DB 갱신 = 실효 반영.
+ *  파이프라인 작업 사본 동기는 베스트에포트(불통이어도 성공). 보관본 없는 브랜드만 기존 프록시. */
 export async function activateSkillVersion(pool, orgId, versionId, opts = {}) {
     const base = resolveSkillBaseUrl(opts);
     const rubricId = await resolveSkillRubricId(pool, orgId);
+    const vid = versionId === null || versionId === undefined ? null : String(versionId);
+    const backup = await loadSkillStoreBackup(pool, rubricId);
+    const known = vid === null || (backup?.store?.versions || []).some((v) => v && String(v.version_id) === vid);
+    if (backup?.store && known) {
+        try {
+            await pool.query(
+                `UPDATE public.qa_skill_versions
+                    SET store = jsonb_set(store, '{store,active_version_id}', $2::jsonb, true), updated_at = now()
+                  WHERE rubric_id = $1`,
+                [rubricId, JSON.stringify(vid)]
+            );
+        } catch (e) {
+            return { ok: false, org_id: orgId, rubric_id: rubricId, error: String(e?.message || e) };
+        }
+        // 파이프라인 작업 사본 동기 — 실패 무해(원본=DB). pipelineJson 은 throw 하지 않음.
+        await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/activate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version_id: vid }),
+        });
+        return { ok: true, org_id: orgId, rubric_id: rubricId, active_version_id: vid, source: 'db' };
+    }
     const j = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/activate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version_id: versionId ?? null }),
+        body: JSON.stringify({ version_id: vid }),
     });
     // 활성 상태 변경도 보관본에 반영(복원 시 활성 버전까지 승계).
     if (j?.ok === true) {
@@ -617,14 +805,23 @@ export async function pushSkillSettings(pool, orgId, excludedOrders, opts = {}) 
     } catch (e) {
         return { ok: false, org_id: orgId, rubric_id: rubricId, error: String(e?.message || e) };
     }
+    // MTG DB 보관본에 직접 반영(소유 모델) — 조회·평가 동봉(getActiveSkillOverlays)이 DB 기준이라
+    // 파이프라인 불통이어도 제외 설정이 즉시 실효. 보관본 없는 브랜드는 UPDATE no-op(무해).
+    try {
+        await ensureSkillVersionsTable(pool);
+        await pool.query(
+            `UPDATE public.qa_skill_versions
+                SET store = jsonb_set(store, '{store,excluded_items}', $2::jsonb, true), updated_at = now()
+              WHERE rubric_id = $1`,
+            [rubricId, JSON.stringify(excludedItems)]
+        );
+    } catch (e) {
+        logger.warn(`[skill-learn] 제외 설정 DB 반영 실패(파이프라인 반영은 계속): ${e?.message || e}`);
+    }
     const j = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ excluded_items: excludedItems }),
     });
-    // 제외 설정도 store.json 에 저장되므로 보관본 갱신(버전 0건이면 persist 가 자체 스킵).
-    if (j?.ok === true) {
-        await persistSkillStore(pool, orgId, rubricId, base);
-    }
     return { org_id: orgId, rubric_id: rubricId, excluded_items: excludedItems, ...j };
 }
