@@ -79,6 +79,15 @@ function pushRagLog(entry) {
     if (!entry || typeof entry !== 'object') return;
     RAG_LOG.push({ ts: Date.now(), ...entry });
     if (RAG_LOG.length > RAG_LOG_MAX) RAG_LOG.shift();
+    // 서버 로그(실시간 로그 > 서버 로그 App 탭)에도 한 줄 — 전용 탭 없이 "RAG 를 돌렸는지/무엇을" 관측.
+    try {
+        const who = entry.item_name || (entry.item_number != null ? `#${entry.item_number}` : '');
+        if (entry.kind === 'forbidden') {
+            logger.info(`[RAG/사전] qa=${entry.qa_id ?? '?'} ${who} · 매칭 ${Array.isArray(entry.matches) ? entry.matches.length : 0}건`);
+        } else {
+            logger.info(`[RAG] qa=${entry.qa_id ?? '?'} ${who} · 조회 ${Array.isArray(entry.hits) ? entry.hits.length : 0}건 hit`);
+        }
+    } catch { /* 로그 실패는 무시 */ }
 }
 
 /* ── [LLM 스킬 로그, additive] 스킬 학습 체인(수집→생성→활성화) 인메모리 링버퍼 — RAG_LOG 미러 ──
@@ -94,6 +103,13 @@ function pushSkillLog(entry) {
     if (!entry || typeof entry !== 'object') return;
     SKILL_LOG.push({ ts: Date.now(), ...entry });
     if (SKILL_LOG.length > SKILL_LOG_MAX) SKILL_LOG.shift();
+    // 서버 로그(실시간 로그 > 서버 로그 App 탭)에도 한 줄 — 전용 탭 없이 스킬 학습 단계 관측.
+    try {
+        const tag = `[스킬${entry.stage ? `:${entry.stage}` : ''}] org=${entry.org_id ?? '?'}${entry.source ? ` (${entry.source})` : ''}`;
+        const msg = `${tag} ${entry.message || ''}`.trimEnd();
+        if (entry.stage === 'error' || entry.error) logger.warn(`${msg}${entry.error ? ` — ${entry.error}` : ''}`);
+        else logger.info(msg);
+    } catch { /* 로그 실패는 무시 */ }
 }
 
 function orderNoPct(orderNos, rows) {
