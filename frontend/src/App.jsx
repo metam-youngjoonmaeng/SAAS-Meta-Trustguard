@@ -588,6 +588,7 @@ function App() {
                 user={currentUser}
                 activeTab={activeTab}
                 detailOrigin={detailOrigin}
+                settingsSection={settingsSection}
                 onNavTab={handleSidebarTabClick}
                 onSampleUploaded={refreshCalls}
             />
