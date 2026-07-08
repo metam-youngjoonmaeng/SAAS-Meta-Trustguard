@@ -202,6 +202,12 @@ export async function fetchMyTaMetrics() {
     return request('/api/me/ta-metrics');
 }
 
+// 감정·대화 품질 카드 드릴다운 — kind=negative|recovery|forbidden 의 '내 콜' 목록.
+// 응답: { enabled, kind, calls:[...] } (kind별 필드 상이 — CounselorResults 참조).
+export async function fetchMyTaMetricCalls(kind) {
+    return request(`/api/me/ta-metrics/calls?kind=${encodeURIComponent(kind)}`);
+}
+
 // AI 평가 배치관리 — 조건 설정 조회/저장 + 예상 대상 미리보기(실데이터).
 // config = BatchManage 화면 state 직렬화({ on, quality, confidence, tenure, bias, scope }).
 export async function fetchBatchConfig() {
