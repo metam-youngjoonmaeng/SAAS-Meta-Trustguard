@@ -26,6 +26,7 @@ const TYPE_META = {
     coaching_assigned: { label: '코칭 배정', cls: 'bg-[#F4F3FF] text-[#5925DC] border-[#D9D6FE]', Icon: GraduationCap },
     coaching_completed: { label: '코칭 완료', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: Award },
     golden_learn_completed: { label: '학습 완료', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: Sparkles },
+    golden_learn_skipped: { label: '학습 대상 없음', cls: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]', Icon: Sparkles },
     golden_learn_failed: { label: '학습 실패', cls: 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]', Icon: Sparkles },
 };
 const metaOf = (t) => TYPE_META[t] || { label: '알림', cls: 'bg-[#F2F4F7] text-[#667085] border-[#E4E7EC]', Icon: Bell };

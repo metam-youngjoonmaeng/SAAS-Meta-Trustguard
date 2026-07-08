@@ -5372,14 +5372,21 @@ async function notifyGoldenLearnComplete(orgId, result, { actorUserId = null, ac
         }
         if (!recipients.size) return;
         const ok = result?.ok !== false;
+        // 골든셋 0건 — 학습할 대상 자체가 없음(ingestGoldenSetToRag reason='no_golden_rows').
+        //   '학습 완료 · 색인 ?건' 오표기 대신 명시 문구로 통지. 스케줄러 발화는 매 주기
+        //   같은 통지가 반복(스팸)되므로 통지 자체를 생략(수동 실행만 통지).
+        const noGolden = ok && (result?.reason === 'no_golden_rows' || result?.golden_count === 0);
+        const srcLabel = source && source.startsWith('schedule') ? '자동(스케줄러)' : '수동';
+        if (noGolden && source && source.startsWith('schedule')) return;
         const savedN = result?.saved ?? result?.records ?? '?';
         const goldenN = result?.golden_count ?? '?';
-        const srcLabel = source && source.startsWith('schedule') ? '자동(스케줄러)' : '수동';
-        const type = ok ? 'golden_learn_completed' : 'golden_learn_failed';
-        const title = ok ? '골든셋 학습 완료' : '골든셋 학습 실패';
-        const body = ok
-            ? `${srcLabel} · 골든 ${goldenN}건 · 색인 ${savedN}건${result?.dry_run ? ' (dry-run)' : ''}`
-            : `${srcLabel} · ${result?.error || result?.reason || '오류'}`;
+        const type = !ok ? 'golden_learn_failed' : noGolden ? 'golden_learn_skipped' : 'golden_learn_completed';
+        const title = !ok ? '골든셋 학습 실패' : noGolden ? '골든셋 학습 건너뜀' : '골든셋 학습 완료';
+        const body = !ok
+            ? `${srcLabel} · ${result?.error || result?.reason || '오류'}`
+            : noGolden
+              ? `${srcLabel} · 학습할 골든셋이 없습니다 — 검수 확정으로 골든셋을 먼저 쌓아주세요`
+              : `${srcLabel} · 골든 ${goldenN}건 · 색인 ${savedN}건${result?.dry_run ? ' (dry-run)' : ''}`;
         for (const uid of recipients) {
             await createNotification(pool, {
                 recipientUserId: uid,

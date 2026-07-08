@@ -826,9 +826,14 @@ export default function BatchManage() {
             if (s?.state === 'done') {
                 const rs = s.result || {};
                 const saved = rs.saved ?? rs.records ?? '?';
+                const goldenN = rs.golden_count ?? s.golden_count;
+                // 골든셋 0건(no_golden_rows) = 학습할 대상 없음 — '완료 · 색인 ?건' 오표기 방지.
+                const noGolden = rs.ok !== false && (rs.reason === 'no_golden_rows' || goldenN === 0);
                 setGoldenMsg(rs.ok === false
                     ? `학습 실패: ${rs.error || rs.reason || '오류'}`
-                    : `학습 완료 — 골든셋 ${rs.golden_count ?? s.golden_count ?? '?'}건, 색인 ${saved}건${rs.dry_run ? ' (dry-run)' : ''}`);
+                    : noGolden
+                      ? '학습할 골든셋이 없습니다 — 검수 확정으로 골든셋을 먼저 쌓은 뒤 실행하세요.'
+                      : `학습 완료 — 골든셋 ${goldenN ?? '?'}건, 색인 ${saved}건${rs.dry_run ? ' (dry-run)' : ''}`);
             } else if (s?.state === 'error') {
                 setGoldenMsg('학습 실패: ' + (s.error || '오류'));
             } else {
