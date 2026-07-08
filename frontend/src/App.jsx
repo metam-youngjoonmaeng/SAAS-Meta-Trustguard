@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Dashboard from './views/Dashboard';
 import Detail from './views/Detail';
-import Brands from './views/Brands';
-import Users from './views/Users';
 import Logs from './views/Logs';
-import Notifications from './views/Notifications';
+import Settings from './views/Settings';
 import EvalItemsHub from './views/EvalItemsHub';
 import Stats from './views/Stats';
 import EvalMgmt from './views/EvalMgmt';
@@ -31,15 +29,13 @@ const AUTH_EXPIRES_AT_KEY = 'qa_dashboard_auth_expires_at';
 const QA_ACTOR_STORAGE_KEY = 'qa_dashboard_actor';
 const SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
 const DASHBOARD_HASH = '#/dashboard';
-const BRANDS_HASH = '#/admin/brands';
-const USERS_HASH = '#/admin/users';
 const LOGS_HASH = '#/admin/logs';
-const NOTIFICATIONS_HASH = '#/admin/notifications';
 const EVAL_ITEMS_HASH = '#/admin/eval-items';
 const STATS_HASH = '#/admin/stats';
 const EVAL_MGMT_HASH = '#/eval-mgmt';
 const BATCH_HASH = '#/admin/batch';
 const SKILL_PROMPTS_HASH = '#/admin/skill-prompts';
+const SETTINGS_HASH = '#/admin/settings';
 const SKILLS_HASH = '#/admin/skills';
 
 function parseRouteFromHash() {
@@ -54,17 +50,15 @@ function parseRouteFromHash() {
             return { tab: 'detail', qaId };
         }
     }
+    // 레거시 링크 → 설정 하위화면으로 매핑(사용자·브랜드는 설정으로 이동). URL 정규화는 applyRoute.
     if (raw === '#/admin/brands') {
-        return { tab: 'brands', qaId: null };
+        return { tab: 'settings', qaId: null, settingsSection: 'brands' };
     }
     if (raw === '#/admin/users') {
-        return { tab: 'users', qaId: null };
+        return { tab: 'settings', qaId: null, settingsSection: 'users' };
     }
     if (raw === '#/admin/logs') {
         return { tab: 'logs', qaId: null };
-    }
-    if (raw === '#/admin/notifications') {
-        return { tab: 'notifications', qaId: null };
     }
     if (raw === '#/admin/eval-items') {
         return { tab: 'eval-items', qaId: null };
@@ -83,6 +77,10 @@ function parseRouteFromHash() {
     }
     if (raw === '#/admin/skills') {
         return { tab: 'skills', qaId: null };
+    }
+    if (raw === '#/admin/settings' || raw.startsWith('#/admin/settings/')) {
+        const sub = raw === '#/admin/settings' ? null : (raw.slice('#/admin/settings/'.length) || null);
+        return { tab: 'settings', qaId: null, settingsSection: sub };
     }
     return { tab: 'dashboard', qaId: null };
 }
@@ -221,6 +219,7 @@ function App() {
         return Math.max(0, initialSession.expiresAt - Date.now());
     });
     const [activeTab, setActiveTab] = useState(initialRoute.tab);
+    const [settingsSection, setSettingsSection] = useState(initialRoute.settingsSection ?? null);
     const [selectedQaId, setSelectedQaId] = useState(initialRoute.qaId);
     const [calls, setCalls] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -421,8 +420,13 @@ function App() {
 
     useEffect(() => {
         const applyRoute = () => {
+            const raw = String(window.location.hash || '').trim();
+            // 레거시 사용자/브랜드 링크 → 설정 하위화면 URL 로 정규화(북마크 갱신).
+            if (raw === '#/admin/users') { window.history.replaceState(null, '', `${SETTINGS_HASH}/users`); }
+            else if (raw === '#/admin/brands') { window.history.replaceState(null, '', `${SETTINGS_HASH}/brands`); }
             const route = parseRouteFromHash();
             setActiveTab(route.tab);
+            setSettingsSection(route.settingsSection ?? null);
             setSelectedQaId(route.qaId);
         };
 
@@ -532,16 +536,14 @@ function App() {
 
     const handleSidebarTabClick = (tab) => {
         if (tab === 'dashboard') navigateHash(DASHBOARD_HASH);
-        else if (tab === 'brands') navigateHash(BRANDS_HASH);
-        else if (tab === 'users') navigateHash(USERS_HASH);
         else if (tab === 'logs') navigateHash(LOGS_HASH);
-        else if (tab === 'notifications') navigateHash(NOTIFICATIONS_HASH);
         else if (tab === 'eval-items') navigateHash(EVAL_ITEMS_HASH);
         else if (tab === 'stats') navigateHash(STATS_HASH);
         else if (tab === 'eval-mgmt') navigateHash(EVAL_MGMT_HASH);
         else if (tab === 'admin-batch') navigateHash(BATCH_HASH);
         else if (tab === 'skill-prompts') navigateHash(SKILL_PROMPTS_HASH);
         else if (tab === 'skills') navigateHash(SKILLS_HASH);
+        else if (tab === 'settings') navigateHash(SETTINGS_HASH);
     };
 
     // 상세에서 "목록으로" / 브레드크럼 부모 클릭 → 진입했던 탭으로 복귀(없으면 평가 리스트).
@@ -621,36 +623,11 @@ function App() {
                     />
                 )}
                 {activeTab === 'eval-mgmt' && <EvalMgmt role={currentUser?.role} />}
-                {activeTab === 'brands' && currentUser?.role === 'super_admin' && <Brands onBrandsChanged={refreshBrands} />}
-                {activeTab === 'brands' && currentUser?.role !== 'super_admin' && (
-                    <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
-                        <p className="text-sm text-[#667085]">super_admin 권한이 필요합니다.</p>
-                    </div>
-                )}
-                {activeTab === 'users' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
-                    <Users
-                        role={currentUser?.role}
-                        currentUserId={currentUser?.user_id}
-                        activeBrandId={selectedBrandId}
-                    />
-                )}
-                {activeTab === 'users' && !(currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
-                    <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
-                        <p className="text-sm text-[#667085]">admin 권한이 필요합니다.</p>
-                    </div>
-                )}
+                {/* 사용자·브랜드 관리는 설정(Settings) 하위화면으로 이동 — 아래 settings 블록에서 렌더 */}
                 {activeTab === 'logs' && currentUser?.role === 'super_admin' && <Logs />}
                 {activeTab === 'logs' && currentUser?.role !== 'super_admin' && (
                     <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
                         <p className="text-sm text-[#667085]">super_admin 권한이 필요합니다.</p>
-                    </div>
-                )}
-                {activeTab === 'notifications' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
-                    <Notifications />
-                )}
-                {activeTab === 'notifications' && !(currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
-                    <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
-                        <p className="text-sm text-[#667085]">admin 권한이 필요합니다.</p>
                     </div>
                 )}
                 {activeTab === 'eval-items' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
@@ -692,6 +669,17 @@ function App() {
                     <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
                         <p className="text-sm text-[#667085]">admin 권한이 필요합니다.</p>
                     </div>
+                )}
+                {activeTab === 'settings' && (
+                    <div className="w-full"><div className="tg-eval"><Settings
+                        role={currentUser?.role}
+                        user={currentUser}
+                        initialSection={settingsSection}
+                        onSectionChange={(key) => navigateHash(key ? `${SETTINGS_HASH}/${key}` : SETTINGS_HASH)}
+                        currentUserId={currentUser?.user_id}
+                        activeBrandId={selectedBrandId}
+                        onBrandsChanged={refreshBrands}
+                    /></div></div>
                 )}
                 </PageContainer>
                 </main>

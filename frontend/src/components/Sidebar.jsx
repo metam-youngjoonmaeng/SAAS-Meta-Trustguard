@@ -1,21 +1,22 @@
 import React from 'react';
-import { Home, Building2, Users, Terminal, Bell, Bot, BarChart3, ClipboardCheck, Star, Filter, ListChecks } from 'lucide-react';
+import { Home, Terminal, Bot, BarChart3, ClipboardCheck, Star, ListChecks, Settings } from 'lucide-react';
 import { PRODUCT_NAME } from '../branding';
 import BrandSelector from './BrandSelector';
 
 // 권한 체계(05 튜터 / 08 Meta_Summary 동일 3단계):
 //   상담사(agent)      : 워크스페이스(홈)만 — 운영관리/시스템 미노출
-//   관리자(admin)      : 워크스페이스 + 운영관리(평가관리·평가항목·사용자) + 시스템(알림)
-//   슈퍼관리자(super)  : 위 전부 + 브랜드 관리 + 실시간 로그
-// 운영관리: 관리자가 다루는 운영 기능(평가 관리·AI 평가항목 관리·사용자/브랜드 관리)을 한곳에.
-//   - 평가 관리·평가항목 관리: admin / super_admin 공통.
-//   - 브랜드 관리·실시간 로그: super_admin 전용.
+//   관리자(admin)      : 워크스페이스 + 운영관리(평가) + 시스템(설정)
+//   슈퍼관리자(super)  : 위 전부 + 실시간 로그
+// 운영관리: 평가 콘텐츠 운영(상담사 QA관리·평가항목·AI 스킬)만. admin / super_admin 공통.
+// 사용자·브랜드 관리는 설정(Settings) 하위화면으로 이동(사이드바 미노출).
+//   - 실시간 로그: super_admin 전용.
 const AGENT_NAV_GROUPS = [
     {
         section: '워크스페이스',
         items: [
             { label: '평가 리스트', tab: 'dashboard', Icon: Home },
             { label: '내 평가 결과', tab: 'eval-mgmt', Icon: Star },
+            { label: '설정', tab: 'settings', Icon: Settings },
         ],
     },
 ];
@@ -34,14 +35,12 @@ const ADMIN_NAV_GROUPS = [
             { label: '상담사 QA관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
             { label: '평가항목 관리', tab: 'eval-items', Icon: ListChecks },
             { label: 'AI 스킬 관리', tab: 'skills', Icon: Bot },
-            { label: '사용자 관리', tab: 'users', Icon: Users },
         ],
     },
     {
         section: '시스템',
         items: [
-            { label: 'AI 평가 배치', tab: 'admin-batch', Icon: Filter },
-            { label: '알림', tab: 'notifications', Icon: Bell },
+            { label: '설정', tab: 'settings', Icon: Settings },
         ],
     },
 ];
@@ -60,16 +59,13 @@ const SUPER_ADMIN_NAV_GROUPS = [
             { label: '상담사 QA관리', tab: 'eval-mgmt', Icon: ClipboardCheck },
             { label: '평가항목 관리', tab: 'eval-items', Icon: ListChecks },
             { label: 'AI 스킬 관리', tab: 'skills', Icon: Bot },
-            { label: '사용자 관리', tab: 'users', Icon: Users },
-            { label: '브랜드 관리', tab: 'brands', Icon: Building2 },
         ],
     },
     {
         section: '시스템',
         items: [
-            { label: 'AI 평가 배치', tab: 'admin-batch', Icon: Filter },
-            { label: '알림', tab: 'notifications', Icon: Bell },
             { label: '실시간 로그', tab: 'logs', Icon: Terminal },
+            { label: '설정', tab: 'settings', Icon: Settings },
         ],
     },
 ];
