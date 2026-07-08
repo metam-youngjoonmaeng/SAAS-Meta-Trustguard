@@ -126,7 +126,7 @@
   --font-display: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
                   ui-sans-serif, system-ui, sans-serif;
   --font-pixel:   "Moneygraphy Pixel", "Moneygraphy Rounded", monospace;
-  --font-mono: ui-monospace, "SFMono-Regular", "Menlo", monospace;
+  /* --font-mono 는 index.css :root 단일 지점에서 관리(등폭 제거 → 본문 서체 통일). .tg-eval 도 상속하므로 여기서 재정의하지 않음. */
 
   /* ── Type tokens (base) ──────────────────────────────── */
   --fs-eyebrow: 11px;   /* uppercase tag labels */

@@ -60,7 +60,7 @@ function SkillCaseCard({ c }) {
     return (
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', background: 'white' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-900)', fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-900)', fontFamily: 'var(--font-mono)' }}>
                     상담 {c.consultation_id || '—'}
                 </span>
                 <DirectionBadge direction={c.direction} />
@@ -131,10 +131,10 @@ function SkillItemAccordion({ item, prevOverlay, hasParent }) {
                             <div style={{ padding: '6px 10px', background: '#EEF4FB', borderBottom: '1px solid var(--border)', fontSize: 9.5, fontWeight: 800, color: '#055AAF', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                                 이번 버전 {item.changed ? '(갱신)' : '(승계)'}
                             </div>
-                            <div style={{ padding: '10px 12px', borderRight: '1px solid var(--border)', background: 'white', fontSize: 11.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 340, overflowY: 'auto', color: 'var(--ink-700)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                            <div style={{ padding: '10px 12px', borderRight: '1px solid var(--border)', background: 'white', fontSize: 11.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 340, overflowY: 'auto', color: 'var(--ink-700)', fontFamily: 'var(--font-mono)' }}>
                                 <DiffText value={hasParent ? prevOv : ''} other={curOverlay} mode="before" />
                             </div>
-                            <div style={{ padding: '10px 12px', background: 'white', fontSize: 11.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 340, overflowY: 'auto', color: 'var(--ink-900)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                            <div style={{ padding: '10px 12px', background: 'white', fontSize: 11.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 340, overflowY: 'auto', color: 'var(--ink-900)', fontFamily: 'var(--font-mono)' }}>
                                 <DiffText value={curOverlay} other={hasParent ? prevOv : ''} mode="after" />
                             </div>
                         </div>
@@ -347,7 +347,7 @@ const SkillPromptManage = () => {
                     </span>
                     <div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-400)', letterSpacing: '0.04em' }}>활성 버전</div>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: activeId ? 'var(--ink-900)' : 'var(--ink-400)', fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: activeId ? 'var(--ink-900)' : 'var(--ink-400)', fontFamily: 'var(--font-mono)' }}>
                             {activeId || '없음 (스킬 미적용)'}
                         </div>
                     </div>
@@ -415,10 +415,10 @@ const SkillPromptManage = () => {
                                             onClick={() => openDetail(v.version_id)}
                                             style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: isSelected ? 'var(--primary-soft-flat)' : 'white' }}
                                         >
-                                            <td style={{ padding: '9px 14px', fontWeight: 700, color: 'var(--ink-900)', fontFamily: 'ui-monospace, SFMono-Regular, monospace', whiteSpace: 'nowrap' }}>{v.version_id}</td>
+                                            <td style={{ padding: '9px 14px', fontWeight: 700, color: 'var(--ink-900)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{v.version_id}</td>
                                             <td style={{ padding: '9px 14px', color: 'var(--ink-600)' }}>{v.label || '—'}</td>
                                             <td style={{ padding: '9px 14px', color: 'var(--ink-500)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtDateTime(v.created_at)}</td>
-                                            <td style={{ padding: '9px 14px', color: 'var(--ink-500)', fontSize: 11.5, fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>{v.model_id || '—'}</td>
+                                            <td style={{ padding: '9px 14px', color: 'var(--ink-500)', fontSize: 11.5, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{v.model_id || '—'}</td>
                                             <td style={{ padding: '9px 14px', textAlign: 'right', color: 'var(--ink-600)', fontVariantNumeric: 'tabular-nums' }}>{v.case_count ?? '—'}</td>
                                             <td style={{ padding: '9px 14px', textAlign: 'right', color: 'var(--ink-600)', fontVariantNumeric: 'tabular-nums' }}>
                                                 {changed}{v.item_count != null ? ` / ${v.item_count}` : ''}
@@ -469,7 +469,7 @@ const SkillPromptManage = () => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                             <Icon name="file-text" size={15} style={{ color: 'var(--ink-500)' }} />
                             <h3 style={{ whiteSpace: 'nowrap' }}>버전 상세</h3>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-600)', fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>{selectedId}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-600)', fontFamily: 'var(--font-mono)' }}>{selectedId}</span>
                             {selectedId === activeId && (
                                 <span style={{ fontSize: 10.5, fontWeight: 800, color: '#067647', background: '#ECFDF3', border: '1px solid #ABEFC6', padding: '2px 9px', borderRadius: 999 }}>활성</span>
                             )}
@@ -501,10 +501,10 @@ const SkillPromptManage = () => {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--ink-500)', marginBottom: 12 }}>
                                     <span>라벨: <b style={{ color: 'var(--ink-700)' }}>{detail.label || '—'}</b></span>
                                     <span>생성: <b style={{ color: 'var(--ink-700)', fontVariantNumeric: 'tabular-nums' }}>{fmtDateTime(detail.created_at)}</b></span>
-                                    <span>모델: <b style={{ color: 'var(--ink-700)', fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>{detail.model_id || '—'}</b></span>
+                                    <span>모델: <b style={{ color: 'var(--ink-700)', fontFamily: 'var(--font-mono)' }}>{detail.model_id || '—'}</b></span>
                                     <span>투입 케이스: <b style={{ color: 'var(--ink-700)', fontVariantNumeric: 'tabular-nums' }}>{detail.case_count ?? '—'}건</b></span>
                                     {detail.parent_version_id && (
-                                        <span>부모 버전: <b style={{ color: 'var(--ink-700)', fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>{detail.parent_version_id}</b></span>
+                                        <span>부모 버전: <b style={{ color: 'var(--ink-700)', fontFamily: 'var(--font-mono)' }}>{detail.parent_version_id}</b></span>
                                     )}
                                 </div>
                                 {Array.isArray(detail.items) && detail.items.length > 0 ? (

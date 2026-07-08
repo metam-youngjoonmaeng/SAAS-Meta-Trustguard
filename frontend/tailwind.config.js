@@ -19,6 +19,12 @@ export default {
                     'soft-border': 'var(--primary-soft-border)', // #B2DDFF — 소프트 테두리
                 },
             },
+            // 등폭(mono) 폰트도 색과 동일하게 단일 토큰으로 관리 — 값의 유일 소스 = app/globals.css 의 --font-mono.
+            // Tailwind 의 .font-mono 유틸 + preflight(code/kbd/samp/pre)가 모두 이 토큰을 참조하므로,
+            // 그 한 줄만 바꾸면 앱 전역 등폭 표기가 일괄 반영된다(2026-07-08 등폭 룩 제거 통일).
+            fontFamily: {
+                mono: ['var(--font-mono)'],
+            },
         },
     },
     plugins: [],
