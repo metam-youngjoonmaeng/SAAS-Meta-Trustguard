@@ -879,7 +879,7 @@ export function createBrandRouter(pool) {
                 `SELECT u.user_id, u.login_id, u.display_name, u.role, u.is_active,
                         u.org_id, o.name AS org_name, u.department,
                         u.email, u.hire_date, u.leave_date, u.extension, u.dup_login_yn,
-                        u.profile_image_path, u.must_change_password,
+                        u.must_change_password,
                         u.created_at, u.updated_at,
                         (SELECT MAX(al.created_at) FROM public.qa_audit_logs al
                          WHERE al.user_id = u.user_id
@@ -893,11 +893,7 @@ export function createBrandRouter(pool) {
                  ORDER BY u.user_id ASC`,
                 params
             );
-            // 프로필 이미지 URL 을 응답에 함께 노출 (UI 가 직접 접근하기 위한 가공).
-            res.json(rows.map((r) => ({
-                ...r,
-                profile_image_url: r.profile_image_path ? `/uploads/${r.profile_image_path}` : null,
-            })));
+            res.json(rows);
         } catch (err) {
             console.error('GET /api/admin/users error:', err);
             res.status(500).json({ message: 'Failed to list users.' });

@@ -659,25 +659,10 @@ app.use((req, res, next) => {
 
 const PORT = Number(process.env.API_PORT || 3007);
 
-// 업로드 루트 — docker-compose 가 ./data/uploads 를 마운트.
-// 로컬 dev (docker 미사용) 시에도 동작하도록 projectRoot 기준 절대경로 사용.
-const UPLOADS_ROOT = path.join(projectRoot, 'data', 'uploads');
-fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
-// 정적 서빙: /uploads/profiles/<file>. 인증 미들웨어 이전에 마운트해서 로그인 사용자/외부에서도 아바타 접근 가능.
-// (아바타는 비공개 정보가 아니라는 가정 — 공유 사내 PoC. 변경 필요 시 인증 미들웨어 이후로 이동)
-app.use(
-    '/uploads',
-    express.static(UPLOADS_ROOT, {
-        immutable: false,
-        maxAge: '1d',
-        fallthrough: true,
-    })
-);
-
 // 브랜드(=조직) / 도메인 CRUD
 app.use('/api', createBrandRouter(pool));
-// 본인 프로필 셀프-편집 (display_name / password / avatar).
-app.use('/api', createUserProfileRouter(pool, { uploadsRoot: UPLOADS_ROOT }));
+// 본인 프로필 셀프-편집 (display_name / password). 프로필 이미지 기능은 폐지.
+app.use('/api', createUserProfileRouter(pool));
 // ICS SSO (ICS 어드민 메뉴 팝업 → ?userId 진입). createSession 주입 — 일반 로그인과 동일 세션 발급.
 app.use('/api', createIcsSsoRouter(pool, { createSession }));
 
@@ -1051,7 +1036,7 @@ app.post('/api/auth/login', async (req, res) => {
     try {
         const { rows } = await pool.query(
             `SELECT user_id, login_id, display_name, role, org_id, is_active, password_hash,
-                    profile_image_path, must_change_password, department
+                    must_change_password, department
              FROM admin_users
              WHERE login_id = $1
              LIMIT 1`,
@@ -1169,7 +1154,6 @@ app.post('/api/auth/login', async (req, res) => {
                 role: row.role,
                 org_id: row.org_id ?? null,
                 department: row.department ?? null,
-                profile_image_url: row.profile_image_path ? `/uploads/${row.profile_image_path}` : null,
                 must_change_password: Boolean(row.must_change_password),
                 session_token: sessionToken,
             },

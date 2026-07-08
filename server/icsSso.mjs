@@ -170,7 +170,7 @@ export function createIcsSsoRouter(pool, { createSession }) {
         const randomHash = crypto.randomBytes(32).toString('hex');
 
         const returningCols =
-            'user_id, login_id, display_name, role, org_id, department, profile_image_path, must_change_password';
+            'user_id, login_id, display_name, role, org_id, department, must_change_password';
         let row;
         try {
             // admin_users 는 twin 스키마에서 INSTEAD OF 트리거 뷰(users+trainee_registrations 로 라우팅).
@@ -227,7 +227,6 @@ export function createIcsSsoRouter(pool, { createSession }) {
                 role: row.role,
                 org_id: row.org_id ?? null,
                 department: row.department ?? null,
-                profile_image_url: row.profile_image_path ? `/uploads/${row.profile_image_path}` : null,
                 must_change_password: false,
                 auth_source: 'ics', // 프론트: ICS 임베드 세션 표시(로그아웃 숨김 + 직접접속 분리)
                 session_token: sessionToken,

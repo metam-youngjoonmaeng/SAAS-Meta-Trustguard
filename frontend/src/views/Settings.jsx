@@ -2,7 +2,7 @@
 // 운영 그룹에 배치 관리(이동) + KSQI(토글) 동거, 타일 클릭 시 하위 화면 진입(뒤로가기). 알림·배치는 실제 뷰(Notifications/BatchManage) 재사용,
 // 프로필·알림설정·보안·정보는 mock(백엔드 연동 전). 시안: etc/pages-shared.jsx SettingsPage 이식.
 import React, { useState, useEffect } from 'react';
-import { Icon, PageHead, Avatar } from './evalMgmt/ui';
+import { Icon, PageHead } from './evalMgmt/ui';
 import BatchManage from './evalMgmt/BatchManage';
 import Users from './Users';
 import Brands from './Brands';
@@ -93,7 +93,7 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
         },
         {
             title: '계정', show: true, items: [
-                { key: 'profile', icon: 'user', label: '프로필', desc: '이름·연락처·프로필 사진', accent: 'ink' },
+                { key: 'profile', icon: 'user', label: '프로필', desc: '이름·연락처·계정 정보', accent: 'ink' },
                 { key: 'notify', icon: 'bell-ring', label: '알림 설정', desc: '유형별 알림 수신 켜기/끄기', accent: 'ink' },
                 { key: 'security', icon: 'lock', label: '보안', desc: '비밀번호·2단계 인증·세션', accent: 'ink' },
                 { key: 'about', icon: 'info', label: '정보·약관', desc: '버전·이용약관·개인정보처리', accent: 'ink' },
@@ -264,14 +264,6 @@ function SettingsProfile({ roleLabel, org, user }) {
             </div>
 
             <div className="col-flex">
-                <div className="panel">
-                    <div className="panel-head"><h3>프로필</h3></div>
-                    <div className="panel-body" style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-                        <Avatar id="settings-me" name={name} size="lg" />
-                        <div className="muted-text" style={{ fontSize: 12 }}>프로필 이미지는 이름 이니셜로 자동 표시됩니다.</div>
-                    </div>
-                </div>
-
                 <div className="panel">
                     <div className="panel-head"><h3>계정 요약</h3></div>
                     <div className="panel-body" style={{ display: 'grid', gap: 12 }}>
