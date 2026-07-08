@@ -192,11 +192,8 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                         <SectionHeader
                             title="체크리스트 평가항목"
                             count={`${items.length}개`}
-                            onEdit={() => selectedItem && setModal({ type: 'edit-item', item: selectedItem })}
-                            editDisabled={!selectedItem}
-                            editTitle={selectedItem ? `${selectedItem.item} 편집` : '편집할 항목을 먼저 선택하세요'}
                         />
-                        <div className="flex-1 overflow-y-auto p-2 min-h-0">
+                        <div className="flex-1 overflow-y-auto p-2 pb-1 min-h-0">
                             {items.map((it, idx) => {
                                 const on = selection.kind === 'item' && selection.idx === idx;
                                 return (
@@ -208,10 +205,12 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                                         selected={on}
                                         inactive={it.is_active === false}
                                         onSelect={() => setSelection({ kind: 'item', idx })}
-                                        onEdit={() => setModal({ type: 'edit-item', item: it })}
                                     />
                                 );
                             })}
+                        </div>
+                        {/* 추가 버튼 = 스크롤 밖 고정 푸터 — 리스트가 길어도 항상 노출 (2026-07-08 QA 피드백) */}
+                        <div className="px-2 pb-1.5 shrink-0 border-t border-[#F2F4F7] bg-white">
                             <AddBox
                                 label="새 평가항목 추가"
                                 onClick={() => setModal({ type: 'new-item' })}
@@ -224,11 +223,8 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                         <SectionHeader
                             title="Pentagon 평가항목"
                             count={`${effectiveAxes.length}축`}
-                            onEdit={() => selectedAxis && setModal({ type: 'edit-axis', label: selectedAxis.label, idx: selectedAxis.idx, dbAxis: selectedAxis.dbAxis })}
-                            editDisabled={!selectedAxis}
-                            editTitle={selectedAxis ? `${selectedAxis.label} 편집` : '편집할 축을 먼저 선택하세요'}
                         />
-                        <div className="p-2">
+                        <div className="p-2 pb-1">
                             {effectiveAxes.map((label, idx) => {
                                 const on = selection.kind === 'axis' && selection.idx === idx;
                                 return (
@@ -238,10 +234,12 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                                         label={label}
                                         selected={on}
                                         onSelect={() => setSelection({ kind: 'axis', idx })}
-                                        onEdit={() => setModal({ type: 'edit-axis', label, idx, dbAxis: pentagonAxesByNo[idx + 1] || null })}
                                     />
                                 );
                             })}
+                        </div>
+                        {/* 추가 버튼 = 리스트 밖 고정 푸터 (체크리스트와 동일 구조) */}
+                        <div className="px-2 pb-1.5 shrink-0 border-t border-[#F2F4F7] bg-white">
                             <AddBox
                                 label="새 Pentagon 축 추가"
                                 onClick={() => setModal({ type: 'new-axis' })}
@@ -356,27 +354,14 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
 
 /* ── 좌측 섹션 헤더 ───────────────────────────────────────────── */
 
-function SectionHeader({ title, count, onEdit, editDisabled, editTitle, extra }) {
-    // 헤더 버튼은 "선택 항목 편집" 고정. 추가는 리스트 하단 AddBox 에서 진입.
-    // extra: 편집 버튼 우측 부가 액션 슬롯 (예: KSQI 섹션 접기 토글).
+function SectionHeader({ title, count, extra }) {
+    // 편집 진입 = 우측 미리보기 > 편집하기 단일 경로 — 헤더 연필·행 화살표 등 중복 편집
+    // 경로는 제거(2026-07-08 QA 피드백). extra: 우측 부가 액션 슬롯.
     return (
         <div className="px-5 py-3 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-2">
             <h3 className="text-[13px] font-bold text-[#101828] tracking-tight">{title}</h3>
             <span className="text-[11.5px] text-[#667085] font-medium">{count}</span>
-            <button
-                type="button"
-                onClick={editDisabled ? undefined : onEdit}
-                disabled={editDisabled}
-                title={editTitle}
-                className={`ml-auto w-7 h-7 grid place-items-center rounded-md transition-colors ${
-                    editDisabled
-                        ? 'text-[#D0D5DD] cursor-not-allowed'
-                        : 'text-[#055AAF] hover:bg-[#EEF4FB] hover:text-[#1E70E0] cursor-pointer'
-                }`}
-            >
-                <Edit3 size={14} strokeWidth={2.2} />
-            </button>
-            {extra || null}
+            {extra ? <span className="ml-auto">{extra}</span> : null}
         </div>
     );
 }
@@ -399,12 +384,13 @@ function AddBox({ label, onClick }) {
 /* ── 좌측 리스트 행 ───────────────────────────────────────────── */
 
 function ItemRow({
-    orderNo, category, label, selected, onSelect, onEdit, inactive = false,
+    orderNo, category, label, selected, onSelect, inactive = false,
 }) {
+    // 행 클릭 = 선택(우측 미리보기)만 — 행 내 화살표 편집 버튼은 중복 경로라 제거(2026-07-08 QA 피드백).
     return (
         <div
             onClick={onSelect}
-            className={`group relative flex items-center gap-2 px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${
+            className={`flex items-center gap-2 px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${
                 selected ? 'bg-[#EEF4FB]' : 'hover:bg-[#F9FAFB]'
             }`}
         >
@@ -424,27 +410,16 @@ function ItemRow({
                     </span>
                 </div>
             </div>
-            <button
-                type="button"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit();
-                }}
-                title="편집"
-                className="w-6 h-6 grid place-items-center rounded-md text-[#98A2B3] hover:bg-white hover:text-[#055AAF] hover:shadow-sm transition-all cursor-pointer"
-            >
-                <ChevronRight size={14} />
-            </button>
         </div>
     );
 }
 
-function AxisRow({ axisNo, label, selected, onSelect, onEdit }) {
+function AxisRow({ axisNo, label, selected, onSelect }) {
     const numChar = ['①', '②', '③', '④', '⑤'][axisNo - 1];
     return (
         <div
             onClick={onSelect}
-            className={`group relative flex items-center gap-2 px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${
+            className={`flex items-center gap-2 px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${
                 selected ? 'bg-[#EEF4FB]' : 'hover:bg-[#F9FAFB]'
             }`}
         >
@@ -452,17 +427,6 @@ function AxisRow({ axisNo, label, selected, onSelect, onEdit }) {
             <div className={`flex-1 text-[12.5px] font-bold truncate ${selected ? 'text-[#055AAF]' : 'text-[#101828]'}`}>
                 {label}
             </div>
-            <button
-                type="button"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit();
-                }}
-                title="편집"
-                className="w-6 h-6 grid place-items-center rounded-md text-[#98A2B3] hover:bg-white hover:text-[#055AAF] hover:shadow-sm transition-all cursor-pointer"
-            >
-                <ChevronRight size={14} />
-            </button>
         </div>
     );
 }
