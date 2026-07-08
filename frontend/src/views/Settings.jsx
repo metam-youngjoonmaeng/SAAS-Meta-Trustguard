@@ -6,6 +6,7 @@ import { Icon, PageHead, Avatar } from './evalMgmt/ui';
 import BatchManage from './evalMgmt/BatchManage';
 import Users from './Users';
 import Brands from './Brands';
+import Logs from './Logs';
 import { fetchNotificationPrefs, updateNotificationPrefs } from '../services/api';
 
 const ROLE_LABEL = { super_admin: '슈퍼관리자', admin: '관리자', agent: '상담사' };
@@ -83,6 +84,12 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
             ],
         },
         {
+            // 실시간 로그 — 사이드바 최상위 탭에서 시스템 설정 하위로 이동(super_admin 전용).
+            title: '시스템', show: role === 'super_admin', items: [
+                { key: 'logs', icon: 'terminal', label: '실시간 로그', desc: '사용자 활동·백엔드(RAG·스킬)·서버 로그 실시간 관측', accent: 'primary' },
+            ],
+        },
+        {
             title: '계정', show: true, items: [
                 { key: 'profile', icon: 'user', label: '프로필', desc: '이름·연락처·프로필 사진', accent: 'ink' },
                 { key: 'notify', icon: 'bell-ring', label: '알림 설정', desc: '유형별 알림 수신 켜기/끄기', accent: 'ink' },
@@ -96,6 +103,7 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
         batch: { label: 'AI 평가 배치 관리', icon: 'filter' },
         users: { label: '사용자 관리', icon: 'users' },
         brands: { label: '브랜드 관리', icon: 'building-2' },
+        logs: { label: '실시간 로그', icon: 'terminal' },
         profile: { label: '프로필', icon: 'user' },
         notify: { label: '알림 설정', icon: 'bell-ring' },
         security: { label: '보안', icon: 'lock' },
@@ -105,8 +113,8 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
     // 하위 화면
     if (section) {
         const meta = SECTION_META[section] || {};
-        // 자체 헤더 보유 뷰(배치·사용자·브랜드)는 settings-section-head 생략.
-        const selfTitled = section === 'batch' || section === 'users' || section === 'brands';
+        // 자체 헤더 보유 뷰(배치·사용자·브랜드·실시간 로그)는 settings-section-head 생략.
+        const selfTitled = section === 'batch' || section === 'users' || section === 'brands' || section === 'logs';
         const NoPerm = ({ need }) => (
             <div className="panel" style={{ padding: 32, textAlign: 'center' }}>
                 <p className="muted-text">{need} 권한이 필요합니다.</p>
@@ -115,7 +123,7 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
         return (
             <div>
                 <button className="settings-back" onClick={() => go(null)}>
-                    <Icon name="chevron-left" size={15} />설정
+                    <Icon name="chevron-left" size={15} />시스템 설정
                 </button>
                 {!selfTitled && (
                     <div className="settings-section-head">
@@ -131,6 +139,9 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
                 {section === 'brands' && (role === 'super_admin'
                     ? <Brands onBrandsChanged={onBrandsChanged} />
                     : <NoPerm need="슈퍼관리자" />)}
+                {section === 'logs' && (role === 'super_admin'
+                    ? <Logs />
+                    : <NoPerm need="슈퍼관리자" />)}
                 {section === 'profile' && <SettingsProfile roleLabel={roleLabel} org={org} user={u} />}
                 {section === 'notify' && <SettingsNotify />}
                 {section === 'security' && <SettingsSecurity />}
@@ -142,7 +153,7 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
     // 허브 랜딩
     return (
         <div>
-            <PageHead title="설정" sub="운영·계정과 관련된 설정을 한 곳에서 관리합니다." />
+            <PageHead title="시스템 설정" sub="운영·계정과 관련된 설정을 한 곳에서 관리합니다." />
 
             <div className="settings-hub">
                 {isAdmin && (

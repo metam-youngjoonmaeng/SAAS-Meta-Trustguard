@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Dashboard from './views/Dashboard';
 import Detail from './views/Detail';
-import Logs from './views/Logs';
 import Settings from './views/Settings';
 import EvalItemsHub from './views/EvalItemsHub';
 import Stats from './views/Stats';
@@ -58,7 +57,8 @@ function parseRouteFromHash() {
         return { tab: 'settings', qaId: null, settingsSection: 'users' };
     }
     if (raw === '#/admin/logs') {
-        return { tab: 'logs', qaId: null };
+        // 실시간 로그는 시스템 설정 하위화면으로 이동 — 레거시 링크는 settings/logs 로 매핑.
+        return { tab: 'settings', qaId: null, settingsSection: 'logs' };
     }
     if (raw === '#/admin/eval-items') {
         return { tab: 'eval-items', qaId: null };
@@ -421,9 +421,10 @@ function App() {
     useEffect(() => {
         const applyRoute = () => {
             const raw = String(window.location.hash || '').trim();
-            // 레거시 사용자/브랜드 링크 → 설정 하위화면 URL 로 정규화(북마크 갱신).
+            // 레거시 사용자/브랜드/로그 링크 → 설정 하위화면 URL 로 정규화(북마크 갱신).
             if (raw === '#/admin/users') { window.history.replaceState(null, '', `${SETTINGS_HASH}/users`); }
             else if (raw === '#/admin/brands') { window.history.replaceState(null, '', `${SETTINGS_HASH}/brands`); }
+            else if (raw === '#/admin/logs') { window.history.replaceState(null, '', `${SETTINGS_HASH}/logs`); }
             const route = parseRouteFromHash();
             setActiveTab(route.tab);
             setSettingsSection(route.settingsSection ?? null);
@@ -623,13 +624,7 @@ function App() {
                     />
                 )}
                 {activeTab === 'eval-mgmt' && <EvalMgmt role={currentUser?.role} />}
-                {/* 사용자·브랜드 관리는 설정(Settings) 하위화면으로 이동 — 아래 settings 블록에서 렌더 */}
-                {activeTab === 'logs' && currentUser?.role === 'super_admin' && <Logs />}
-                {activeTab === 'logs' && currentUser?.role !== 'super_admin' && (
-                    <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
-                        <p className="text-sm text-[#667085]">super_admin 권한이 필요합니다.</p>
-                    </div>
-                )}
+                {/* 사용자·브랜드 관리 + 실시간 로그는 설정(Settings) 하위화면으로 이동 — 아래 settings 블록에서 렌더 */}
                 {activeTab === 'eval-items' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
                     <EvalItemsHub activeBrandId={selectedBrandId} />
                 )}
