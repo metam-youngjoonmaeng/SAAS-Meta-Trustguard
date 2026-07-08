@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon, Gauge, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod, openInWindow, openCallDetail } from './ui';
 import { scoreClass, TUTOR_SCENARIOS } from './mockData';
-import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, fetchMyTaMetricCalls, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
+import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, fetchMyTaMetricCalls, fetchEvalItemVersions, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
 import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
 import { buildTutorLink } from '../../utils/coachingTutorLink';
 import { ReviewStatusBadge } from '../../components';
@@ -543,6 +543,8 @@ export default function CounselorResults() {
     const [taMetrics, setTaMetrics] = useState(null);  // 03 TA 지표(부정/금칙어). null=로딩
     const [drillKind, setDrillKind] = useState(null);  // 감정품질 카드 드릴다운 팝업(negative|recovery|forbidden)
     const [onlyNeedsReview, setOnlyNeedsReview] = useState(false);  // '내 검수 필요'(대기·검수중)만
+    const [recentVer, setRecentVer] = useState('all');  // 최근 평가 목록 평가체계 버전 필터('all'=전체)
+    const [evalVersions, setEvalVersions] = useState([]);  // 평가체계 버전(effective_from) — 버전 드롭다운/매칭용
     const [colFilters, setColFilters] = useState({});  // 컬럼키 → 제외(excluded) Set
     const name = readActorName();
 
@@ -582,6 +584,15 @@ export default function CounselorResults() {
         return () => { cancelled = true; };
     }, []);
 
+    // 평가체계 버전 목록(effective_from) — 최근 평가 목록의 버전 드롭다운/매칭용. (평가 리스트와 동일 소스)
+    useEffect(() => {
+        let cancelled = false;
+        fetchEvalItemVersions()
+            .then((res) => { if (!cancelled) setEvalVersions(Array.isArray(res?.versions) ? res.versions : []); })
+            .catch(() => { if (!cancelled) setEvalVersions([]); });
+        return () => { cancelled = true; };
+    }, []);
+
     // 완료 카드 'X' — 내 보드에서만 정리(멤버별 아카이브). 코칭 이력 팝업엔 계속 노출.
     const archiveCoachingCard = async (id) => {
         setCoaching((list) => list.map((g) => (g.id === id ? { ...g, memberArchived: true } : g)));
@@ -613,9 +624,53 @@ export default function CounselorResults() {
 
     const myEvals = evals || [];
     const needsReviewCount = myEvals.filter((r) => REVIEW_NEEDS_ME.has(r.status)).length;  // 대기+검수중
-    // 토글(대기·검수중) → 컬럼 헤더 필터(엑셀식) 순서로 적용.
+
+    // ── 평가체계 버전 매칭(콜 날짜 → 버전) — 평가 리스트(Dashboard)와 동일 규칙: effective_from 이하 최신 버전 ──
+    const verList = useMemo(() => (
+        [...evalVersions]
+            .map((v) => ({ ...v, ef: v.effective_from ? new Date(v.effective_from) : null }))
+            .filter((v) => v.ef)
+            .sort((a, b) => a.ef - b.ef)
+    ), [evalVersions]);
+    const matchVer = useMemo(() => {
+        const desc = [...verList].reverse();  // 최신부터
+        return (dateStr) => {
+            const d = dateStr ? new Date(String(dateStr).replace(' ', 'T')) : null;
+            if (!d || Number.isNaN(d.getTime()) || !desc.length) return null;
+            for (const v of desc) {
+                if (v.ef <= d) {
+                    if (v.last_deactivated_at && d >= new Date(v.last_deactivated_at)) continue;
+                    return Number(v.version);
+                }
+            }
+            return null;
+        };
+    }, [verList]);
+    // 내 콜이 실제 매칭되는 버전만(빈 버전 숨김) + 화면 연번(1,2,3…) 라벨.
+    const versWithData = useMemo(() => {
+        const s = new Set();
+        for (const e of myEvals) { const v = matchVer(e.callDatetime); if (v != null) s.add(v); }
+        return s;
+    }, [myEvals, matchVer]);
+    const dropdownVers = useMemo(() => {
+        const byNum = new Map();
+        for (const v of verList) {
+            const n = Number(v.version);
+            if (!versWithData.has(n)) continue;
+            if (!byNum.has(n) || v.ef < byNum.get(n).ef) byNum.set(n, v);
+        }
+        return [...byNum.values()].sort((a, b) => a.ef - b.ef);
+    }, [verList, versWithData]);
+    const verLabelOf = useMemo(() => {
+        const m = new Map();
+        dropdownVers.forEach((v, i) => m.set(Number(v.version), i + 1));
+        return (rv) => m.get(Number(rv)) ?? rv;
+    }, [dropdownVers]);
+
+    // 토글(대기·검수중) → 평가체계 버전 → 컬럼 헤더 필터(엑셀식) 순서로 적용.
     const afterToggle = onlyNeedsReview ? myEvals.filter((r) => REVIEW_NEEDS_ME.has(r.status)) : myEvals;
-    const shownEvals = afterToggle.filter((r) =>
+    const afterVer = recentVer === 'all' ? afterToggle : afterToggle.filter((r) => matchVer(r.callDatetime) === Number(recentVer));
+    const shownEvals = afterVer.filter((r) =>
         FILTER_COLS.every((c) => {
             const ex = colFilters[c];
             return !ex || ex.size === 0 || !ex.has(COL_VALUE[c](r));
@@ -916,6 +971,19 @@ export default function CounselorResults() {
             <div className="panel" style={{ marginBottom: 22 }}>
                 <div className="panel-head">
                     <h3>최근 평가</h3>
+                    {dropdownVers.length > 0 && (
+                        <select
+                            value={recentVer}
+                            onChange={(e) => setRecentVer(e.target.value)}
+                            title="평가체계 버전으로 필터"
+                            style={{ marginLeft: 10, height: 28, borderRadius: 8, border: '1px solid var(--border)', background: 'white', color: 'var(--ink-700)', fontSize: 12, fontWeight: 600, padding: '0 8px', cursor: 'pointer' }}
+                        >
+                            <option value="all">전체 버전</option>
+                            {dropdownVers.map((v) => (
+                                <option key={v.version} value={v.version}>버전 {verLabelOf(v.version)}</option>
+                            ))}
+                        </select>
+                    )}
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
                         <button
                             type="button"
