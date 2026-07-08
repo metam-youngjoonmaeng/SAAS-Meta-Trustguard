@@ -5267,17 +5267,27 @@ app.get('/api/me/ta-metrics/calls', async (req, res) => {
               GROUP BY proj_cd`,
             [me]
         );
+        // (proj_cd, UID) → qa_id("ID"). 03 tb_ta_rslt.uid=bare 지만, 콜 상세는 qa_id(ICS 전체형식)로
+        //   조회하므로 행 클릭용 qa_id 를 매핑해 동봉한다. (UID='100-...' vs ID='ics:METAM:100-...')
+        const { rows: idRows } = await pool.query(
+            `SELECT proj_cd, "UID" AS uid, "ID" AS qa_id
+               FROM qa_calls
+              WHERE agent_user_id = $1 AND "UID" IS NOT NULL AND proj_cd IS NOT NULL`,
+            [me]
+        );
+        const qaIdOf = new Map(idRows.map((r) => [`${r.proj_cd}::${r.uid}`, r.qa_id]));
+        const withQaId = (proj_cd, r) => ({ proj_cd, qa_id: qaIdOf.get(`${proj_cd}::${r.uid}`) || r.uid, ...r });
         let calls = [];
         if (kind === 'negative') {
             for (const g of grp) {
                 const rows = await fetchNegativeCallsByUids(g.proj_cd, g.uids || []);
-                calls.push(...rows.map((r) => ({ proj_cd: g.proj_cd, ...r })));
+                calls.push(...rows.map((r) => withQaId(g.proj_cd, r)));
             }
             calls.sort((a, b) => new Date(b.cdate || 0) - new Date(a.cdate || 0));
         } else if (kind === 'forbidden') {
             for (const g of grp) {
                 const rows = await fetchForbiddenCallsByUids(g.proj_cd, g.uids || []);
-                calls.push(...rows.map((r) => ({ proj_cd: g.proj_cd, ...r })));
+                calls.push(...rows.map((r) => withQaId(g.proj_cd, r)));
             }
             calls.sort((a, b) => new Date(b.cdate || 0) - new Date(a.cdate || 0));
         } else {
@@ -5298,6 +5308,7 @@ app.get('/api/me/ta-metrics/calls', async (req, res) => {
                 return {
                     proj_cd: r.proj_cd,
                     uid: r.uid,
+                    qa_id: qaIdOf.get(`${r.proj_cd}::${r.uid}`) || r.uid,
                     recovered: r.recovered,
                     first_neg_idx: r.first_neg_idx,
                     final_sentiment: r.final_sentiment,

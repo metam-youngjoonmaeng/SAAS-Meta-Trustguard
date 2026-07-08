@@ -446,14 +446,15 @@ function QualityDrillModal({ kind, onClose }) {
     const meta = DRILL_META[kind] || {};
     const { loading, calls, error } = state;
 
-    const UidCell = ({ uid }) => (
+    // 표시=bare uid, 클릭=qa_id(ICS 전체형식) — 콜 상세는 qa_id 로 조회하므로 분리.
+    const UidCell = ({ qaId, label }) => (
         <button
             className="mono"
-            onClick={() => openCallDetail(uid)}
-            title={`${uid} — 콜 상세 열기`}
+            onClick={() => openCallDetail(qaId)}
+            title={`${label} — 콜 상세 열기`}
             style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--primary)', fontSize: 11.5, fontWeight: 700, textAlign: 'left', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
         >
-            {uid}
+            {label}
         </button>
     );
 
@@ -484,7 +485,7 @@ function QualityDrillModal({ kind, onClose }) {
                         <tbody>
                             {calls.map((r, i) => (
                                 <tr key={`${r.uid}-${i}`} style={{ borderBottom: '1px solid var(--border-soft)' }}>
-                                    <td style={{ padding: '9px 10px', verticalAlign: 'top' }}><UidCell uid={r.uid} /></td>
+                                    <td style={{ padding: '9px 10px', verticalAlign: 'top' }}><UidCell qaId={r.qa_id || r.uid} label={r.uid} /></td>
                                     <td style={{ padding: '9px 10px', verticalAlign: 'top', whiteSpace: 'nowrap', color: 'var(--ink-500)', fontSize: 11.5 }}>{fmtCallTime(r.cdate)}</td>
                                     <td style={{ padding: '9px 10px', verticalAlign: 'top', color: 'var(--ink-600)' }}>{r.channel || '—'}</td>
                                     {kind === 'negative' && (
