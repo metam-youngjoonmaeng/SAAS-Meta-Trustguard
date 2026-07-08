@@ -327,7 +327,12 @@ function AuditPanel() {
                                                 <td className="px-3 py-2 text-[11px] text-[#98A2B3] tabular-nums">{l.client_ip || '—'}</td>
                                                 <td className="px-3 py-2 text-center">
                                                     {l.success === 1 || l.success === true ? (
-                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-50 text-green-700">OK</span>
+                                                        // 'skip:' prefix = 무해 종료(멱등 스킵 등) — 서버 audit 기록 규약(index.js SKILL_LEARN_RUN 참고)
+                                                        String(l.error_message || '').startsWith('skip:') ? (
+                                                            <span title={l.error_message} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">SKIP</span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-50 text-green-700">OK</span>
+                                                        )
                                                     ) : (
                                                         <span title={l.error_message || ''} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700">FAIL</span>
                                                     )}

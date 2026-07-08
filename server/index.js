@@ -5662,6 +5662,9 @@ app.post('/api/skill-learn/run', requireAdmin, async (req, res) => {
                 onProgress: skillLearnProgressLogger(orgId, 'manual'),
             });
             recordSkillLearnResult(orgId, 'manual', result, startedAt);
+            // 무해 종료(멱등 스킵)는 실패가 아님 — success=1 + 'skip:' prefix error_message 로 기록,
+            //   화면(Logs.jsx)이 이 마커로 OK/FAIL 대신 SKIP 칩을 렌더(recordSkillLearnResult 의 benign 과 동일 의미론).
+            const benignSkip = result.ok !== true && (result.error === 'no_new_cases' || result.error === 'no_correction_cases');
             await insertQaAuditLog(pool, {
                 req,
                 action: 'SKILL_LEARN_RUN',
@@ -5670,7 +5673,12 @@ app.post('/api/skill-learn/run', requireAdmin, async (req, res) => {
                 http_method: 'POST',
                 http_path: '/api/skill-learn/run',
                 detail_json: JSON.stringify(result),
-                success: result.ok,
+                success: result.ok === true || benignSkip,
+                error_message: benignSkip
+                    ? (result.error === 'no_new_cases'
+                        ? 'skip: 변경 없음 — 마지막 학습과 동일한 정정 케이스(학습 생략, LLM 미호출)'
+                        : 'skip: 정정 케이스(낮음/높음) 없음 — 학습 생략')
+                    : undefined,
             }).catch(() => {});
         } catch (e) {
             console.error('skill-learn background error:', e?.message || e);
