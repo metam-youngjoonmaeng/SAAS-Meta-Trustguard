@@ -793,6 +793,18 @@ export async function fetchSkillLogRecent({ limit = 100 } = {}) {
     return Array.isArray(data?.entries) ? data.entries : [];
 }
 
+/**
+ * 에이전트 메모리(qa_skill_memory) 항목별 요약 — 실시간 로그 '메모리' 행 토글 상세.
+ * { ok, rubric_id, updated_at, items: [{ item_number, item_name, case_count, dir_high, dir_low,
+ *   contested, cases[], patterns[], journal[], last_learned, effect }] }
+ */
+export async function fetchSkillMemory({ orgId } = {}) {
+    const params = new URLSearchParams();
+    if (orgId != null) params.set('org_id', String(orgId));
+    const qs = params.toString();
+    return request(`/api/skill-memory${qs ? `?${qs}` : ''}`);
+}
+
 /* ── 알림(수신자별 영구 알림) ───────────────────────────────────
  * 검수 워크플로우 이벤트(최종승인·수정반영)를 수신자(상담사) 단위로 영구 저장/조회.
  * 본인에게 온 알림만 반환(세션 스코프). scope: 'all'(기본) | 'current'(안읽음만).

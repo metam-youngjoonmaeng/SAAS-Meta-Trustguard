@@ -22,7 +22,7 @@ import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
 import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult, fetchGoldenIndexCoverage, resolvePipelineBaseUrl } from './qaPipelineIngest.mjs';
 import { loadRagFewshotConfig, saveRagFewshotConfig } from './ragFewshotConfig.mjs';
 import { startIcsQaPoller, startGoldenLearnScheduler, triggerGoldenLearn, startSkillLearnScheduler, triggerSkillLearn } from './icsQaPoller.mjs';
-import { fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion, pushSkillSettings, fetchSkillGenProgress } from './skillLearn.mjs';
+import { fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion, pushSkillSettings, fetchSkillGenProgress, fetchSkillMemorySummary } from './skillLearn.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
 import { taEnabled, fetchTaMetricsByUids, fetchSegmentSentimentsByUids } from './taSource.mjs';
@@ -85,7 +85,8 @@ function pushRagLog(entry) {
  * DB 미적재(스키마 불변). 레코드 계약:
  *   { ts, org_id, source, stage, message,
  *     rubric_id?, version_id?, case_count?, items_changed?, error? }
- *   stage ∈ collect|generate|activate|done|error · org_id 필수(로그 탭 브랜드 필터용).
+ *   stage ∈ collect|generate|memory|activate|done|error · org_id 필수(로그 탭 브랜드 필터용).
+ *   memory = 에이전트 메모리(qa_skill_memory) 로드/저장/미반환(legacy_mode 카나리) 이벤트.
  * 상한 500(초과분 shift). GET /api/skill-log/recent 가 최신순 반환. */
 const SKILL_LOG = [];
 const SKILL_LOG_MAX = 500;
@@ -5606,6 +5607,9 @@ function skillLearnProgressLogger(orgId, source) {
                 });
             }
             pushSkillLog({ org_id: orgId, source, stage: 'generate', message: `overlay 생성 요청 — 정정 케이스 ${p.case_count ?? '?'}건${items.length ? ` · ${items.length}개 항목` : ''}`, case_count: p.case_count ?? null });
+        } else if (p.stage === 'memory' && p.message) {
+            // 에이전트 메모리(qa_skill_memory) 로드/저장/미반환 — skillLearn 이 완성문 동봉, 그대로 적재.
+            pushSkillLog({ org_id: orgId, source, stage: 'memory', message: p.message, rubric_id: p.rubric_id ?? null });
         }
     };
 }
@@ -5735,6 +5739,22 @@ app.get('/api/skill-log/recent', requireAdmin, (req, res) => {
     // 최신순(ts 내림차순) — 원본 링버퍼는 변형하지 않도록 복사 후 정렬.
     const entries = rows.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, limit);
     res.json({ entries });
+});
+
+// GET /api/skill-memory — 에이전트 메모리(qa_skill_memory) 항목별 요약(실시간 로그 '메모리' 행 토글).
+//   org_id 쿼리 기준 rubric_id 해석 → blob 요약(읽기 전용). 브랜드 격리: skill-log/recent 와 동일 규칙.
+app.get('/api/skill-memory', requireAdmin, async (req, res) => {
+    let orgId = Number(req.query.org_id);
+    if (req.session?.role !== 'super_admin' && req.session?.org_id != null) orgId = Number(req.session.org_id);
+    if (!Number.isFinite(orgId)) {
+        res.status(400).json({ ok: false, error: 'org_id required' });
+        return;
+    }
+    try {
+        res.json(await fetchSkillMemorySummary(pool, orgId));
+    } catch (e) {
+        res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
 });
 
 // GET /api/batch/eval-items — ② '적용 평가 항목' 칩용. 실제 평가된 항목(order_no+item) 집합.

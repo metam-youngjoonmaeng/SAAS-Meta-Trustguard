@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, Pause, Play, RefreshCw, ChevronDown, ListChecks, Terminal, Sparkles, Wand2 } from 'lucide-react';
 import Header from '../components/Header';
-import { fetchAuditLogs, fetchAppLogsRecent, fetchRagLogRecent, fetchSkillLogRecent } from '../services/api';
+import { fetchAuditLogs, fetchAppLogsRecent, fetchRagLogRecent, fetchSkillLogRecent, fetchSkillMemory } from '../services/api';
 
 const POLL_INTERVAL_MS = 5000;
 const PAGE_SIZE = 100;
@@ -935,25 +935,125 @@ function RagLogBody({ entries, error }) {
 }
 
 /* ── LLM 스킬 학습 로그 패널 (백엔드 인메모리 링버퍼) ──────────────
- * 스킬 학습(수집→생성→활성화) 단계별 로그를 5초 폴링으로 표시 — RagLogPanel 미러.
+ * 스킬 학습(수집→생성→메모리→활성화) 단계별 로그를 5초 폴링으로 표시 — RagLogPanel 미러.
  * 그룹핑 없이 최신순 플랫 리스트. error 단계 행은 붉은 톤.
  */
 const SKILL_STAGE_META = {
     collect: { label: '수집', cls: 'bg-blue-50 text-blue-700' },
     generate: { label: '생성', cls: 'bg-amber-50 text-amber-700' },
+    memory: { label: '메모리', cls: 'bg-teal-50 text-teal-700' },
     activate: { label: '활성화', cls: 'bg-indigo-50 text-indigo-700' },
     apply: { label: '평가 적용', cls: 'bg-purple-50 text-purple-700' },
     done: { label: '완료', cls: 'bg-green-50 text-green-700' },
     error: { label: '오류', cls: 'bg-red-50 text-red-700' },
 };
 
+/* 메모리 행 펼침 상세 — /api/skill-memory 요약(항목별 정정 이력·패턴·journal·효과) 렌더. */
+function MemorySnapshot({ state }) {
+    if (!state || state.loading) {
+        return (
+            <div className="flex items-center gap-2 text-[12px] text-[#667085]">
+                <Loader2 className="h-4 w-4 animate-spin" /> 메모리 조회 중…
+            </div>
+        );
+    }
+    if (state.error) return <p className="text-[12px] text-[#D92D20]">{state.error}</p>;
+    const d = state.data || {};
+    const items = Array.isArray(d.items) ? d.items : [];
+    if (!items.length) {
+        return <div className="text-[12px] text-[#667085]">저장된 메모리가 없습니다. (memory_mode 학습이 아직 없거나 케이스 미유입)</div>;
+    }
+    return (
+        <>
+            <div className="text-[11px] font-semibold text-[#667085] uppercase tracking-wide mb-2">
+                에이전트 메모리 — 현재 DB(qa_skill_memory) 상태{d.updated_at ? ` · ${fmtTime(d.updated_at)} 갱신` : ''} · {d.rubric_id || ''}
+            </div>
+            <div className="space-y-2">
+                {items.map((it) => (
+                    <div key={it.item_number} className="bg-white border border-[#E4E7EC] rounded-lg px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                            <span className="font-semibold text-[#101828]">{it.item_name || `#${it.item_number}`}</span>
+                            {it.item_name && <span className="text-[11px] text-[#98A2B3]">#{it.item_number}</span>}
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#F2F4F7] text-[#475467]">정정 {it.case_count}건</span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700">높음 {it.dir_high}</span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700">낮음 {it.dir_low}</span>
+                            {it.contested > 0 && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-700">모순 의심 {it.contested}건</span>
+                            )}
+                            {it.last_learned?.version_id && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#F2F4F7] text-[#667085]">마지막 학습 {it.last_learned.version_id}</span>
+                            )}
+                        </div>
+                        {Array.isArray(it.patterns) && it.patterns.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                <span className="text-[11px] text-[#98A2B3]">패턴</span>
+                                {it.patterns.map((p, i) => (
+                                    <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#F6F3FF] text-[#6941C6]">
+                                        {p.label}{p.direction ? `(${p.direction})` : ''} {p.count}건
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        {Array.isArray(it.cases) && it.cases.length > 0 && (
+                            <div className="mt-1.5 space-y-1 max-h-[200px] overflow-auto">
+                                {it.cases.map((c, i) => (
+                                    <div key={i} className="text-[11.5px] text-[#475467] bg-[#FAFBFC] border border-[#F2F4F7] rounded-md px-2.5 py-1.5">
+                                        <span className="font-mono text-[#101828]">콜 {c.consultation_id || '—'}</span>
+                                        <span className={`ml-1.5 font-semibold ${String(c.direction).trim() === '높음' ? 'text-blue-700' : 'text-amber-700'}`}>{c.direction}</span>
+                                        {c.ai_score != null && <span className="ml-1.5 text-[#98A2B3]">AI {c.ai_score}/{c.max_score ?? '—'}</span>}
+                                        {c.call_at && <span className="ml-1.5 text-[#98A2B3]">{c.call_at}</span>}
+                                        {c.evidence && <div className="mt-0.5 font-mono text-[11px] whitespace-pre-wrap break-all">{c.evidence}</div>}
+                                        {c.review_reason && <div className="mt-0.5 text-[11px] text-[#667085]">검수 사유: {c.review_reason}</div>}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {Array.isArray(it.journal) && it.journal.length > 0 && (
+                            <div className="mt-1.5 space-y-0.5">
+                                <span className="text-[11px] text-[#98A2B3]">학습 기록</span>
+                                {it.journal.map((j, i) => (
+                                    <div key={i} className="text-[11px] text-[#667085]">
+                                        <span className="font-mono text-[#475467]">{j.version_id}</span> · {fmtTime(j.at)} — {j.note}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {it.effect && Object.keys(it.effect).length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                <span className="text-[11px] text-[#98A2B3]">버전별 정정 발생(효과)</span>
+                                {Object.entries(it.effect).map(([vid, e2]) => (
+                                    <span key={vid} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#F2F4F7] text-[#667085]">
+                                        {vid}: 높음 {e2?.['높음'] ?? 0} · 낮음 {e2?.['낮음'] ?? 0}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </>
+    );
+}
+
 function SkillLogPanel() {
     const [entries, setEntries] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [paused, setPaused] = useState(false);
-    // 펼침 상태 — 평가 적용 행(items 동봉)만 펼쳐 항목별 주입 룰 원문 표시(RAG 로그식).
+    // 펼침 상태 — 평가 적용 행(items 동봉)·메모리 행만 펼침(RAG 로그식).
     const [openKeys, setOpenKeys] = useState(() => new Set());
+    // 메모리 행 펼침 데이터 — org_id 단위 캐시(같은 브랜드 행 재펼침 시 재조회 없음).
+    const [memCache, setMemCache] = useState({});
+    async function loadMemory(orgId) {
+        setMemCache((prev) => ({ ...prev, [orgId]: { loading: true } }));
+        try {
+            const data = await fetchSkillMemory({ orgId });
+            if (data?.ok === false) throw new Error(data.error || '메모리 조회 실패');
+            setMemCache((prev) => ({ ...prev, [orgId]: { loading: false, data } }));
+        } catch (e) {
+            setMemCache((prev) => ({ ...prev, [orgId]: { loading: false, error: e?.message || '메모리 조회 실패' } }));
+        }
+    }
     const toggleOpen = (k) =>
         setOpenKeys((prev) => {
             const next = new Set(prev);
@@ -1042,15 +1142,20 @@ function SkillLogPanel() {
                                         const stage = SKILL_STAGE_META[e.stage] || { label: e.stage || '—', cls: 'bg-gray-100 text-gray-600' };
                                         const isErr = e.stage === 'error';
                                         const changedCount = Array.isArray(e.items_changed) ? e.items_changed.length : null;
-                                        // 평가 적용 행 — 항목별 주입 상세(items) 동봉 시 클릭으로 펼침.
+                                        // 펼침 대상: 평가 적용 행(items 동봉) + 메모리 행(클릭 시 DB 요약 lazy 조회).
                                         const rowKey = `${e.ts || 'na'}-${e.qa_id || idx}`;
                                         const hasItems = Array.isArray(e.items) && e.items.length > 0;
-                                        const isOpen = hasItems && openKeys.has(rowKey);
+                                        const isMem = e.stage === 'memory' && e.org_id != null;
+                                        const expandable = hasItems || isMem;
+                                        const isOpen = expandable && openKeys.has(rowKey);
                                         return (
                                             <React.Fragment key={rowKey}>
                                             <tr
-                                                onClick={hasItems ? () => toggleOpen(rowKey) : undefined}
-                                                className={`align-top ${isErr ? 'bg-red-50/60' : 'hover:bg-[#F9FAFB]'} ${hasItems ? 'cursor-pointer' : ''}`}
+                                                onClick={expandable ? () => {
+                                                    if (isMem && !openKeys.has(rowKey) && !memCache[e.org_id]) loadMemory(e.org_id);
+                                                    toggleOpen(rowKey);
+                                                } : undefined}
+                                                className={`align-top ${isErr ? 'bg-red-50/60' : 'hover:bg-[#F9FAFB]'} ${expandable ? 'cursor-pointer' : ''}`}
                                             >
                                                 <td className="px-3 py-2 text-[11.5px] text-[#667085] tabular-nums font-mono">{fmtRagTime(e.ts)}</td>
                                                 <td className="px-3 py-2 text-[12px] text-[#101828] tabular-nums">{e.org_id != null ? `org ${e.org_id}` : '—'}</td>
@@ -1058,7 +1163,7 @@ function SkillLogPanel() {
                                                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${stage.cls}`}>{stage.label}</span>
                                                 </td>
                                                 <td className="px-3 py-2">
-                                                    {hasItems && (
+                                                    {expandable && (
                                                         <ChevronDown
                                                             size={13}
                                                             className={`inline-block mr-1 -mt-0.5 text-[#98A2B3] transition-transform ${isOpen ? '' : '-rotate-90'}`}
@@ -1081,13 +1186,23 @@ function SkillLogPanel() {
                                                         {hasItems && !isOpen && (
                                                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#F6F3FF] text-[#6941C6]">클릭해 주입 룰 보기</span>
                                                         )}
+                                                        {isMem && !isOpen && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-50 text-teal-700">클릭해 메모리 보기</span>
+                                                        )}
                                                     </span>
                                                     {isErr && e.error && e.error !== e.message && (
                                                         <div className="mt-0.5 text-[11px] text-[#B42318] break-all">{e.error}</div>
                                                     )}
                                                 </td>
                                             </tr>
-                                            {isOpen && (
+                                            {isOpen && isMem && (
+                                                <tr className="bg-[#FAFBFC]">
+                                                    <td colSpan={4} className="px-4 py-3">
+                                                        <MemorySnapshot state={memCache[e.org_id]} />
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            {isOpen && hasItems && (
                                                 <tr className="bg-[#FAFBFC]">
                                                     <td colSpan={4} className="px-4 py-3">
                                                         <div className="text-[11px] font-semibold text-[#667085] uppercase tracking-wide mb-2">
@@ -1158,7 +1273,7 @@ const Logs = () => {
                         : activeTab === 'app'
                           ? `서버 application 로그 — 오늘 ${APP_LOG_LIMIT}줄을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (파일 보관 3일).`
                           : activeTab === 'skill'
-                            ? `LLM 스킬 학습(수집→생성→활성화) 단계별 로그 — 백엔드 인메모리 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신.`
+                            ? `LLM 스킬 학습(수집→생성→메모리→활성화) 단계별 로그 — 백엔드 인메모리 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신.`
                             : `RAG few-shot 골든 / 금지어·사전 매칭 로그 — 백엔드 인메모리 ${PAGE_SIZE}건을 ${POLL_INTERVAL_MS / 1000}초마다 자동 갱신 (평가 시 disable_rag=false 필요).`
                 }
                 actions={null}

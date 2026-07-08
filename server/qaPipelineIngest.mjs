@@ -24,6 +24,8 @@
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { buildRubricFromDefs, buildRubricFromDomainDefaults } from './rubricSync.mjs';
 import { getOrgFewshot } from './ragFewshotConfig.mjs';
+// 순환 import(skillLearn ↔ 본 모듈)이지만 양쪽 다 함수 선언 export 를 런타임에만 호출 — ESM 안전.
+import { getActiveSkillOverlays } from './skillLearn.mjs';
 
 const DEFAULT_BASE_URL = 'http://localhost:8081';
 // EC2 원격 백엔드 (V3 qa-pipeline, 8081 직접 접근) — call.pipeline_target==='ec2' 시 사용.
@@ -444,6 +446,11 @@ function buildEvaluatePayload(call) {
                 Array.isArray(call?.additive_items) && call.additive_items.length
                     ? call.additive_items
                     : undefined,
+            // MTG 스킬 overlay 인라인({item_number: md}) — MTG DB(qa_skill_versions) 소유 모델.
+            // 백엔드 apply 게이트가 파일 스토어보다 최우선 사용 → 배포 스왑·등록 소실과 무관하게
+            // 평가 주입이 DB 활성 버전 기준으로 동작. 미동봉이면 백엔드 파일 스토어 거동(무회귀).
+            skill_overlays:
+                call?.skill_overlays && typeof call.skill_overlays === 'object' ? call.skill_overlays : undefined,
         },
     };
 }
@@ -1406,6 +1413,14 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
         // [동작 불가 게이트] 차단 에러는 표준 트랙으로 폴백하지 않고 그대로 전파(라우트가 사용자에게 표시).
         if (err && err.isUnconfiguredBlock) throw err;
         warnings.push(`루브릭 빌드 건너뜀(표준 트랙 진행): ${String(err?.message || err)}`);
+    }
+
+    // MTG 스킬 overlay 동봉 — MTG DB(qa_skill_versions)의 활성 버전을 요청에 직접 실어 보냄.
+    // 백엔드는 동봉본을 파일 스토어보다 최우선 주입(무상태 평가) — rubric_inline 과 동일 원칙.
+    // 활성 버전 부재/조회 실패 시 null → 미동봉(백엔드 파일 스토어 거동, 무회귀).
+    const _skillInline = await getActiveSkillOverlays(pool, rubricCall?.org_id ?? call?.org_id);
+    if (_skillInline?.overlays && Object.keys(_skillInline.overlays).length) {
+        rubricCall = { ...rubricCall, skill_overlays: _skillInline.overlays };
     }
 
     // onProgress 콜백이 있으면 SSE 스트림으로 호출해 노드 진행 이벤트를 중계 (응답 JSON 은 동일).
