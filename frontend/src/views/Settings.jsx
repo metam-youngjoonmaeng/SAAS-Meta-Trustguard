@@ -1,5 +1,5 @@
-// 설정 허브 (SettingsHub) — 운영·계정 설정을 한 곳에서. 카드 그리드(그룹: 평가 기능/운영·개인/계정),
-// KSQI 토글, 타일 클릭 시 하위 화면 진입(뒤로가기). 알림·배치는 실제 뷰(Notifications/BatchManage) 재사용,
+// 설정 허브 (SettingsHub) — 운영·계정 설정을 한 곳에서. 카드 그리드(그룹: 운영/관리자/시스템/계정),
+// 운영 그룹에 배치 관리(이동) + KSQI(토글) 동거, 타일 클릭 시 하위 화면 진입(뒤로가기). 알림·배치는 실제 뷰(Notifications/BatchManage) 재사용,
 // 프로필·알림설정·보안·정보는 mock(백엔드 연동 전). 시안: etc/pages-shared.jsx SettingsPage 이식.
 import React, { useState, useEffect } from 'react';
 import { Icon, PageHead, Avatar } from './evalMgmt/ui';
@@ -73,6 +73,8 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
         {
             title: '운영', show: isAdmin, items: [
                 { key: 'batch', icon: 'filter', label: 'AI 평가 배치 관리', desc: '조건별 평가 대상 필터링·스케줄', accent: 'primary' },
+                // KSQI 는 이동(navigate) 대신 토글 카드 — 운영 그룹에 함께 노출(별도 '평가 기능' 그룹 폐지).
+                { key: 'ksqi', type: 'toggle', icon: 'award', label: 'KSQI 평가', desc: '평가 리스트에 KSQI 리스트 활성화', accent: 'primary' },
             ],
         },
         {
@@ -156,40 +158,36 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
             <PageHead title="시스템 설정" sub="운영·계정과 관련된 설정을 한 곳에서 관리합니다." />
 
             <div className="settings-hub">
-                {isAdmin && (
-                    <div className="settings-hub-group">
-                        <div className="settings-hub-group-title">평가 기능</div>
-                        <div className="settings-hub-grid">
-                            <div className="settings-toggle-card">
-                                <span className="settings-tile-icon accent-primary-icon"><Icon name="award" size={20} /></span>
-                                <span className="settings-tile-body">
-                                    <span className="settings-tile-label">KSQI 평가</span>
-                                    <span className="settings-tile-desc">평가 리스트에 KSQI 리스트 활성화</span>
-                                </span>
-                                <button type="button" role="switch" aria-checked={ksqi} onClick={toggleKsqi} className={`ks-switch ${ksqi ? 'on' : ''}`}>
-                                    <span className="ks-knob" />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
                 {GROUPS.filter((g) => g.show).map((g) => (
                     <div key={g.title} className="settings-hub-group">
                         <div className="settings-hub-group-title">{g.title}</div>
                         <div className="settings-hub-grid">
                             {g.items.map((it) => (
-                                <button key={it.key} className={`settings-tile accent-${it.accent}`} onClick={() => go(it.key)}>
-                                    <span className="settings-tile-icon">
-                                        <Icon name={it.icon} size={20} />
-                                        {it.badge != null && <span className="settings-tile-badge">{it.badge}</span>}
-                                    </span>
-                                    <span className="settings-tile-body">
-                                        <span className="settings-tile-label">{it.label}</span>
-                                        <span className="settings-tile-desc">{it.desc}</span>
-                                    </span>
-                                    <Icon name="chevron-right" size={16} className="settings-tile-arrow" />
-                                </button>
+                                it.type === 'toggle' ? (
+                                    // 토글 카드(KSQI) — 이동 대신 즉시 on/off. 이동 타일과 같은 그리드에 나란히.
+                                    <div key={it.key} className="settings-toggle-card">
+                                        <span className="settings-tile-icon accent-primary-icon"><Icon name={it.icon} size={20} /></span>
+                                        <span className="settings-tile-body">
+                                            <span className="settings-tile-label">{it.label}</span>
+                                            <span className="settings-tile-desc">{it.desc}</span>
+                                        </span>
+                                        <button type="button" role="switch" aria-checked={ksqi} onClick={toggleKsqi} className={`ks-switch ${ksqi ? 'on' : ''}`}>
+                                            <span className="ks-knob" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button key={it.key} className={`settings-tile accent-${it.accent}`} onClick={() => go(it.key)}>
+                                        <span className="settings-tile-icon">
+                                            <Icon name={it.icon} size={20} />
+                                            {it.badge != null && <span className="settings-tile-badge">{it.badge}</span>}
+                                        </span>
+                                        <span className="settings-tile-body">
+                                            <span className="settings-tile-label">{it.label}</span>
+                                            <span className="settings-tile-desc">{it.desc}</span>
+                                        </span>
+                                        <Icon name="chevron-right" size={16} className="settings-tile-arrow" />
+                                    </button>
+                                )
                             ))}
                         </div>
                     </div>
@@ -267,13 +265,10 @@ function SettingsProfile({ roleLabel, org, user }) {
 
             <div className="col-flex">
                 <div className="panel">
-                    <div className="panel-head"><h3>프로필 사진</h3></div>
+                    <div className="panel-head"><h3>프로필</h3></div>
                     <div className="panel-body" style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
                         <Avatar id="settings-me" name={name} size="lg" />
-                        <div>
-                            <button className="btn-mini primary" style={{ marginBottom: 6 }}><Icon name="upload" />업로드</button>
-                            <div className="muted-text" style={{ fontSize: 11.5, marginTop: 6 }}>JPG·PNG, 최대 2MB<br />권장 사이즈 400×400px</div>
-                        </div>
+                        <div className="muted-text" style={{ fontSize: 12 }}>프로필 이미지는 이름 이니셜로 자동 표시됩니다.</div>
                     </div>
                 </div>
 
