@@ -208,13 +208,6 @@ export async function fetchMyTaMetricCalls(kind) {
     return request(`/api/me/ta-metrics/calls?kind=${encodeURIComponent(kind)}`);
 }
 
-// '내 평가 결과 > 최근 평가' 의 QA 항목버전 연번을 평가 리스트(Dashboard)와 동일 기준으로 매기기 위한 기준.
-// org 전체(모든 상담사) '평가된 콜' 일시(+부서)만 반환 → 클라이언트가 동일 매칭으로 동일 연번 산출.
-// 응답: { ok, dates:[{ d, dept }] }
-export async function fetchEvalVersionBasis() {
-    return request('/api/me/eval-version-basis');
-}
-
 // AI 평가 배치관리 — 조건 설정 조회/저장 + 예상 대상 미리보기(실데이터).
 // config = BatchManage 화면 state 직렬화({ on, quality, confidence, tenure, bias, scope }).
 export async function fetchBatchConfig() {

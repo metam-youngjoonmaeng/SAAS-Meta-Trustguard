@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon, Gauge, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod, openInWindow, openCallDetail } from './ui';
 import { scoreClass, TUTOR_SCENARIOS } from './mockData';
-import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, fetchMyTaMetricCalls, fetchEvalItemVersions, fetchEvalVersionBasis, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
+import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, fetchMyTaMetricCalls, fetchEvalItemVersions, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
 import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
 import { buildTutorLink } from '../../utils/coachingTutorLink';
 import { ReviewStatusBadge } from '../../components';
@@ -543,9 +543,8 @@ export default function CounselorResults() {
     const [taMetrics, setTaMetrics] = useState(null);  // 03 TA 지표(부정/금칙어). null=로딩
     const [drillKind, setDrillKind] = useState(null);  // 감정품질 카드 드릴다운 팝업(negative|recovery|forbidden)
     const [onlyNeedsReview, setOnlyNeedsReview] = useState(false);  // '내 검수 필요'(대기·검수중)만
-    const [recentVer, setRecentVer] = useState('all');  // 최근 평가 목록 QA 항목버전 필터('all'=전체)
+    const [recentVer, setRecentVer] = useState('');  // 최근 평가 목록 QA 항목버전 필터('' =기본=최신, 'all'=전체, 그 외=해당버전)
     const [evalVersions, setEvalVersions] = useState([]);  // 평가체계 버전(effective_from) — 버전 드롭다운/매칭용
-    const [basisDates, setBasisDates] = useState([]);  // org 전체 '평가된 콜' 일시(+부서) — Dashboard 와 동일 연번 산출 기준
     const [colFilters, setColFilters] = useState({});  // 컬럼키 → 제외(excluded) Set
     const name = readActorName();
 
@@ -585,17 +584,12 @@ export default function CounselorResults() {
         return () => { cancelled = true; };
     }, []);
 
-    // 평가체계 버전 목록(effective_from) + 연번 산출 기준(org 전체 평가된 콜 일시).
-    //   드롭다운/매칭은 평가 리스트(Dashboard)와 동일 소스·동일 규칙을 쓴다. 특히 연번(QA 항목버전 1,2,3…)은
-    //   Dashboard 처럼 '부서(=org) 전체에서 데이터 있는 버전'을 기준으로 매겨야 같은 콜이 두 화면에서 같은 번호로 보인다.
+    // 평가체계 버전 목록(effective_from) — 최근 평가 목록의 QA 항목버전 드롭다운/매칭용. (평가 리스트와 동일 소스)
     useEffect(() => {
         let cancelled = false;
         fetchEvalItemVersions()
             .then((res) => { if (!cancelled) setEvalVersions(Array.isArray(res?.versions) ? res.versions : []); })
             .catch(() => { if (!cancelled) setEvalVersions([]); });
-        fetchEvalVersionBasis()
-            .then((res) => { if (!cancelled) setBasisDates(Array.isArray(res?.dates) ? res.dates : []); })
-            .catch(() => { if (!cancelled) setBasisDates([]); });
         return () => { cancelled = true; };
     }, []);
 
@@ -652,29 +646,8 @@ export default function CounselorResults() {
             return null;
         };
     }, [verList]);
-    // 연번(QA 항목버전 1,2,3…)은 평가 리스트(Dashboard)와 동일하게 'org 전체에서 데이터 있는 버전' 기준으로 매긴다.
-    //   Dashboard 는 관리자라 org 전체 콜을 받아 이 집합을 직접 계산하지만, 이 화면은 상담사 스코프라
-    //   본인 콜만 받으므로 서버가 내려준 basisDates(부서 전체 평가된 콜 일시)로 동일 매칭해 동일 집합을 만든다.
-    //   → 같은 콜이 두 화면에서 같은 QA 항목버전 번호로 보인다. (부서 태그는 org=단일부서 데모 기준 무시)
-    const canonWithData = useMemo(() => {
-        const s = new Set();
-        for (const b of basisDates) { const v = matchVer(b.d); if (v != null) s.add(v); }
-        return s;
-    }, [basisDates, matchVer]);
-    // 내부 버전 → 화면 연번(Dashboard 와 동일): 데이터 있는 버전을 effective_from ASC 로 1,2,3…
-    const verLabelOf = useMemo(() => {
-        const m = new Map();
-        verList.filter((v) => canonWithData.has(Number(v.version)))
-            .forEach((v, i) => m.set(Number(v.version), i + 1));
-        return (rv) => m.get(Number(rv)) ?? rv;
-    }, [verList, canonWithData]);
-    // 버전 → 처음 반영일(YYYY-MM-DD) — Dashboard 라벨 'v연번 · 반영일' 과 동일 표기.
-    const verDateOf = useMemo(() => {
-        const m = new Map();
-        for (const v of verList) if (v.ef) m.set(Number(v.version), v.ef.toISOString().slice(0, 10));
-        return (rv) => m.get(Number(rv)) || '';
-    }, [verList]);
-    // 드롭다운 옵션 = 내 콜이 실제 있는 버전만(죽은 옵션 방지). 라벨은 위 canonical 연번을 그대로 사용.
+    // 데이터(내 콜) 있는 버전만 — 빈 버전 숨김. 평가 리스트(Dashboard)도 같은 fetchCalls() 스코프
+    //   (상담사=본인 콜, 관리자=org 전체)로 같은 집합을 만들므로, 같은 콜이 두 화면에서 같은 연번으로 보인다.
     const versWithData = useMemo(() => {
         const s = new Set();
         for (const e of myEvals) { const v = matchVer(e.callDatetime); if (v != null) s.add(v); }
@@ -689,10 +662,26 @@ export default function CounselorResults() {
         }
         return [...byNum.values()].sort((a, b) => a.ef - b.ef);
     }, [verList, versWithData]);
+    // 화면 연번(Dashboard 와 동일): 데이터 있는 버전을 effective_from ASC 로 1,2,3…
+    const verLabelOf = useMemo(() => {
+        const m = new Map();
+        dropdownVers.forEach((v, i) => m.set(Number(v.version), i + 1));
+        return (rv) => m.get(Number(rv)) ?? rv;
+    }, [dropdownVers]);
+    // 버전 → 처음 반영일(YYYY-MM-DD) — Dashboard 라벨 'v연번 · 반영일' 과 동일 표기.
+    const verDateOf = useMemo(() => {
+        const m = new Map();
+        for (const v of verList) if (v.ef) m.set(Number(v.version), v.ef.toISOString().slice(0, 10));
+        return (rv) => m.get(Number(rv)) || '';
+    }, [verList]);
+    // 기본 선택 = 데이터 있는 버전 중 최신(= dropdownVers 마지막, effective_from ASC). 평가 리스트와 동일 규칙.
+    const defaultVer = dropdownVers.length ? Number(dropdownVers[dropdownVers.length - 1].version) : null;
+    // '' =기본(최신), 'all'=전체, 그 외=선택 버전. 데이터 없는 브랜드/버전이면 'all' 로 폴백.
+    const effRecentVer = recentVer === '' ? (defaultVer == null ? 'all' : defaultVer) : recentVer;
 
-    // 토글(대기·검수중) → 평가체계 버전 → 컬럼 헤더 필터(엑셀식) 순서로 적용.
+    // 토글(대기·검수중) → QA 항목버전 → 컬럼 헤더 필터(엑셀식) 순서로 적용.
     const afterToggle = onlyNeedsReview ? myEvals.filter((r) => REVIEW_NEEDS_ME.has(r.status)) : myEvals;
-    const afterVer = recentVer === 'all' ? afterToggle : afterToggle.filter((r) => matchVer(r.callDatetime) === Number(recentVer));
+    const afterVer = String(effRecentVer) === 'all' ? afterToggle : afterToggle.filter((r) => matchVer(r.callDatetime) === Number(effRecentVer));
     const shownEvals = afterVer.filter((r) =>
         FILTER_COLS.every((c) => {
             const ex = colFilters[c];
@@ -998,9 +987,9 @@ export default function CounselorResults() {
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 12 }}>
                             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-500)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>QA 항목버전</span>
                             <select
-                                value={recentVer}
+                                value={String(effRecentVer)}
                                 onChange={(e) => setRecentVer(e.target.value)}
-                                title="QA 항목버전으로 필터 (평가 리스트와 동일 기준·번호)"
+                                title="QA 항목버전으로 필터 (평가 리스트와 동일 기준·번호, 기본=최신)"
                                 style={{ height: 28, borderRadius: 8, border: '1px solid var(--border)', background: 'white', color: 'var(--ink-700)', fontSize: 12, fontWeight: 600, padding: '0 8px', cursor: 'pointer' }}
                             >
                                 <option value="all">전체</option>
