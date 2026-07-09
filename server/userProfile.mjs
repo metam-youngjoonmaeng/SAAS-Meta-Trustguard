@@ -32,8 +32,6 @@ export function buildMeResponse(row, sessionToken) {
         org_name: row.org_name ?? null,
         department: row.department ?? null,
         email: row.email ?? null,
-        created_at: row.created_at ?? null,
-        last_login_at: row.last_login_at ?? null,
         must_change_password: Boolean(row.must_change_password),
         ...(sessionToken ? { session_token: sessionToken } : {}),
     };
@@ -46,11 +44,8 @@ export function createUserProfileRouter(pool) {
         try {
             const { rows } = await pool.query(
                 `SELECT au.user_id, au.login_id, au.display_name, au.role, au.is_active,
-                        au.org_id, au.department, au.email, au.created_at, au.must_change_password,
-                        o.name AS org_name,
-                        (SELECT MAX(al.created_at) FROM public.qa_audit_logs al
-                          WHERE al.user_id = au.user_id
-                            AND al.action = 'AUTH_LOGIN_SUCCESS') AS last_login_at
+                        au.org_id, au.department, au.email, au.must_change_password,
+                        o.name AS org_name
                  FROM public.admin_users au
                  LEFT JOIN public.organizations o ON o.id = au.org_id
                  WHERE au.user_id = $1`,
