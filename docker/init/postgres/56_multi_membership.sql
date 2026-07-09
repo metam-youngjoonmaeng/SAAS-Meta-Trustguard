@@ -53,7 +53,6 @@ SELECT
     (CASE WHEN tr.status = 'active' THEN 1 ELSE 0 END)::smallint AS is_active,
     tr.org_id                                              AS org_id,
     tr.department                                          AS department,
-    tr.profile_image_path                                  AS profile_image_path,
     COALESCE(tr.must_change_password, false)               AS must_change_password,
     u.created_at                                           AS created_at,
     u.created_at                                           AS updated_at,
@@ -66,7 +65,10 @@ SELECT
     tr.status                                              AS status
 FROM public.users u
 LEFT JOIN LATERAL (
-    SELECT t.*
+    -- 명시 컬럼 목록(t.* 금지): t.* 는 profile_image_path 까지 포함해 뷰가 해당 컬럼에
+    -- 의존하게 되어 61 의 DROP COLUMN 을 막는다. 폐지 컬럼 제외하고 명시.
+    SELECT t.id, t.user_id, t.org_id, t.name, t.department, t.hire_date,
+           t.role, t.status, t.must_change_password, t.leave_date, t.extension, t.dup_login_yn
       FROM public.trainee_registrations t
      WHERE t.user_id = u.id
      ORDER BY (t.id = u.last_active_trainee_id) DESC NULLS LAST,  -- 활성 포인터 우선
@@ -90,7 +92,6 @@ BEGIN
            status               = CASE WHEN COALESCE(NEW.is_active, 1) = 1 THEN 'active' ELSE 'suspended' END,
            org_id               = NEW.org_id,
            department           = NEW.department,
-           profile_image_path   = NEW.profile_image_path,
            must_change_password = COALESCE(NEW.must_change_password, false),
            name                 = NEW.display_name
      WHERE tr.id = (

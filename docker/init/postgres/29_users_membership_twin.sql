@@ -57,8 +57,6 @@ CREATE TABLE IF NOT EXISTS public.trainee_registrations (
     role                 public.userrole NOT NULL DEFAULT 'agent',
     status               varchar(16) NOT NULL DEFAULT 'active',  -- active|suspended|expired
     registered_at        timestamp with time zone NOT NULL DEFAULT now(),
-    -- 05 전용(02/03 가 단일 DB 합류 시 nullable 로 무해하게 흡수)
-    profile_image_path   text,
     must_change_password boolean NOT NULL DEFAULT false
 );
 CREATE INDEX IF NOT EXISTS ix_trainee_registrations_user_id ON public.trainee_registrations(user_id);
@@ -89,7 +87,6 @@ WITH src AS (
         a.role,
         a.is_active,
         a.department,
-        a.profile_image_path,
         a.must_change_password,
         a.created_at,
         (position('@' in a.login_id) > 0) AS is_ics,
@@ -118,7 +115,7 @@ ON CONFLICT (id) DO NOTHING;
 -- ── 5) admin_users → trainee_registrations 백필 ──────────────
 INSERT INTO public.trainee_registrations
     -- registered_at 은 46 에서 폐기 → 백필에서도 제외(46 이후 스키마 재실행 멱등 보장)
-    (user_id, org_id, name, department, role, status, profile_image_path, must_change_password)
+    (user_id, org_id, name, department, role, status, must_change_password)
 SELECT
     a.user_id,
     a.org_id,
@@ -126,7 +123,6 @@ SELECT
     NULLIF(a.department, ''),
     a.role::public.userrole,
     CASE WHEN a.is_active = 1 THEN 'active' ELSE 'suspended' END,
-    a.profile_image_path,
     -- 로컬 계정은 리셋 비번이므로 강제 변경, ICS/시드는 기존값 유지
     CASE WHEN position('@' in a.login_id) = 0
               AND a.login_id NOT IN ('admin1', 'test1')
