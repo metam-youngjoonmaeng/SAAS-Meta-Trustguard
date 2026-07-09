@@ -7,7 +7,7 @@ import BatchManage from './evalMgmt/BatchManage';
 import Users from './Users';
 import Brands from './Brands';
 import Logs from './Logs';
-import { fetchNotificationPrefs, updateNotificationPrefs } from '../services/api';
+import { fetchNotificationPrefs, updateNotificationPrefs, updateMe, PASSWORD_POLICY_HINT, PASSWORD_POLICY_RE } from '../services/api';
 
 const ROLE_LABEL = { super_admin: '슈퍼관리자', admin: '관리자', agent: '상담사' };
 
@@ -35,16 +35,6 @@ function SettingRow({ label, desc, children }) {
             </div>
             {children}
         </div>
-    );
-}
-
-// 초록 상태 배지(연결됨/현재/활성) — .pill 변형 의존 없이 인라인.
-function GreenPill({ children }) {
-    return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10.5, fontWeight: 700, color: '#067647', background: '#ECFDF3', border: '1px solid #ABEFC6', padding: '2px 8px', borderRadius: 9999, whiteSpace: 'nowrap' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#12B76A', display: 'inline-block' }} />
-            {children}
-        </span>
     );
 }
 
@@ -93,10 +83,8 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
         },
         {
             title: '계정', show: true, items: [
-                { key: 'profile', icon: 'user', label: '프로필', desc: '이름·연락처·계정 정보', accent: 'ink' },
+                { key: 'profile', icon: 'user', label: '프로필', desc: '이름·연락처·비밀번호 변경', accent: 'ink' },
                 { key: 'notify', icon: 'bell-ring', label: '알림 설정', desc: '유형별 알림 수신 켜기/끄기', accent: 'ink' },
-                { key: 'security', icon: 'lock', label: '보안', desc: '비밀번호·2단계 인증·세션', accent: 'ink' },
-                { key: 'about', icon: 'info', label: '정보·약관', desc: '버전·이용약관·개인정보처리', accent: 'ink' },
             ],
         },
     ];
@@ -108,8 +96,6 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
         logs: { label: '실시간 로그', icon: 'terminal' },
         profile: { label: '프로필', icon: 'user' },
         notify: { label: '알림 설정', icon: 'bell-ring' },
-        security: { label: '보안', icon: 'lock' },
-        about: { label: '정보·약관', icon: 'info' },
     };
 
     // 하위 화면
@@ -146,8 +132,6 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
                     : <NoPerm need="슈퍼관리자" />)}
                 {section === 'profile' && <SettingsProfile roleLabel={roleLabel} org={org} user={u} />}
                 {section === 'notify' && <SettingsNotify />}
-                {section === 'security' && <SettingsSecurity />}
-                {section === 'about' && <SettingsAbout />}
             </div>
         );
     }
@@ -261,6 +245,9 @@ function SettingsProfile({ roleLabel, org, user }) {
                         </SettingRow>
                     </div>
                 </div>
+
+                {/* 비밀번호 변경 — 보안탭 폐지로 프로필 하위로 이동(실연동 PATCH /api/me). */}
+                <SettingsPassword />
             </div>
 
             <div className="col-flex">
@@ -285,6 +272,72 @@ function SettingsProfile({ roleLabel, org, user }) {
                         </button>
                     </div>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+// ── 프로필 하위: 비밀번호 변경(실연동) ──
+// 본인 셀프 편집(PATCH /api/me — updateMe). 현재 비밀번호 확인 + 정책(PASSWORD_POLICY_RE) 검증.
+// (구 '보안' 탭에서 유일하게 쓰이던 기능 → 보안 탭 폐지하며 프로필로 이동)
+function SettingsPassword() {
+    const [currentPw, setCurrentPw] = useState('');
+    const [newPw, setNewPw] = useState('');
+    const [confirmPw, setConfirmPw] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [msg, setMsg] = useState(null); // { ok, text }
+
+    const newPwValid = PASSWORD_POLICY_RE.test(newPw);
+    const confirmOk = Boolean(newPw) && newPw === confirmPw;
+    const canSubmit = Boolean(currentPw) && newPwValid && confirmOk && !saving;
+
+    const submit = async () => {
+        if (!canSubmit) return;
+        setSaving(true);
+        setMsg(null);
+        try {
+            await updateMe({ current_password: currentPw, new_password: newPw });
+            setCurrentPw(''); setNewPw(''); setConfirmPw('');
+            setMsg({ ok: true, text: '비밀번호가 변경되었습니다.' });
+        } catch (e) {
+            setMsg({ ok: false, text: e?.message || '비밀번호 변경에 실패했습니다.' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="panel">
+            <div className="panel-head"><h3>비밀번호 변경</h3></div>
+            <div className="panel-body" style={{ display: 'grid', gap: 12, maxWidth: 480 }}>
+                <div className="field">
+                    <span className="field-label">현재 비밀번호</span>
+                    <input type="password" className="text-input" autoComplete="current-password" placeholder="••••••••"
+                        value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} />
+                </div>
+                <div className="field">
+                    <span className="field-label">새 비밀번호</span>
+                    <input type="password" className="text-input" autoComplete="new-password"
+                        value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+                    <span className="field-hint">{PASSWORD_POLICY_HINT}</span>
+                    {newPw && !newPwValid && (
+                        <span className="field-hint" style={{ color: 'var(--destructive)' }}>비밀번호 정책을 확인해주세요.</span>
+                    )}
+                </div>
+                <div className="field">
+                    <span className="field-label">새 비밀번호 확인</span>
+                    <input type="password" className="text-input" autoComplete="new-password"
+                        value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
+                    {confirmPw && !confirmOk && (
+                        <span className="field-hint" style={{ color: 'var(--destructive)' }}>새 비밀번호와 일치하지 않습니다.</span>
+                    )}
+                </div>
+                {msg && (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: msg.ok ? '#067647' : 'var(--destructive)' }}>{msg.text}</div>
+                )}
+                <button className="btn-mini primary" style={{ alignSelf: 'flex-start', marginTop: 4 }} onClick={submit} disabled={!canSubmit}>
+                    <Icon name="key-round" />{saving ? '변경 중…' : '비밀번호 변경'}
+                </button>
             </div>
         </div>
     );
@@ -363,179 +416,6 @@ function SettingsNotify() {
                 )}
                 <div className="muted-text" style={{ fontSize: 11.5, lineHeight: 1.5, marginTop: 12 }}>
                     끈 유형은 상단 알림센터(벨)에도 새로 쌓이지 않습니다. 이메일·푸시 등 외부 채널 발송은 준비 중이에요.
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ── 하위: 보안(mock) ──
-function SettingsSecurity() {
-    const [twoFA, setTwoFA] = useState(true);
-    const sessions = [
-        { device: 'MacBook Pro · Chrome', loc: '서울 · 강남', when: '지금 활성', current: true },
-        { device: 'iPhone 15 · Safari', loc: '서울 · 강남', when: '2시간 전' },
-        { device: 'Windows · Edge', loc: '서울 · 송파', when: '어제 17:20' },
-    ];
-
-    return (
-        <div className="grid grid-stat-l" style={{ alignItems: 'start' }}>
-            <div className="col-flex">
-                <div className="panel">
-                    <div className="panel-head"><h3>비밀번호</h3></div>
-                    <div className="panel-body" style={{ display: 'grid', gap: 12, maxWidth: 480 }}>
-                        <div className="field">
-                            <span className="field-label">현재 비밀번호</span>
-                            <input type="password" className="text-input" placeholder="••••••••" />
-                        </div>
-                        <div className="field">
-                            <span className="field-label">새 비밀번호</span>
-                            <input type="password" className="text-input" />
-                            <span className="field-hint">최소 10자 · 대소문자·숫자·특수문자 포함</span>
-                        </div>
-                        <div className="field">
-                            <span className="field-label">새 비밀번호 확인</span>
-                            <input type="password" className="text-input" />
-                        </div>
-                        <button className="btn-mini primary" style={{ alignSelf: 'flex-start', marginTop: 4 }}>
-                            <Icon name="key-round" />비밀번호 변경
-                        </button>
-                    </div>
-                </div>
-
-                <div className="panel">
-                    <div className="panel-head"><h3>활성 세션</h3></div>
-                    <div className="panel-body" style={{ display: 'grid', gap: 8 }}>
-                        {sessions.map((s, i) => (
-                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 10 }}>
-                                <div style={{ width: 36, height: 36, borderRadius: 9, background: s.current ? 'var(--primary-soft)' : 'var(--muted)', color: s.current ? 'var(--primary)' : 'var(--ink-500)', display: 'grid', placeItems: 'center' }}>
-                                    <Icon name={/iPhone/.test(s.device) ? 'smartphone' : 'monitor'} size={15} />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                        {s.device} {s.current && <GreenPill>현재</GreenPill>}
-                                    </div>
-                                    <div className="muted-text" style={{ fontSize: 11.5, marginTop: 2 }}>{s.loc} · {s.when}</div>
-                                </div>
-                                {!s.current && <button className="btn-mini">종료</button>}
-                            </div>
-                        ))}
-                        <button className="btn-mini" style={{ color: 'var(--destructive)', borderColor: '#fecaca', alignSelf: 'flex-start', marginTop: 4 }}>
-                            <Icon name="log-out" />모든 다른 기기 로그아웃
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div className="col-flex">
-                <div className="panel">
-                    <div className="panel-head"><h3>2단계 인증</h3></div>
-                    <div className="panel-body">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                            <div style={{ width: 40, height: 40, borderRadius: 10, background: twoFA ? '#e8f6ed' : 'var(--muted)', color: twoFA ? '#2f9759' : 'var(--ink-500)', display: 'grid', placeItems: 'center' }}>
-                                <Icon name="shield-check" size={18} />
-                            </div>
-                            <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 13.5, fontWeight: 700 }}>2단계 인증</div>
-                                <div className="muted-text" style={{ fontSize: 11.5 }}>OTP 앱 (Authy)</div>
-                            </div>
-                            <Toggle checked={twoFA} onChange={setTwoFA} />
-                        </div>
-                        <div className="muted-text" style={{ fontSize: 12, lineHeight: 1.5 }}>
-                            로그인 시 OTP 코드를 추가로 입력합니다. 백업 코드를 다운로드하여 안전한 곳에 보관하세요.
-                        </div>
-                        <button className="btn-mini" style={{ marginTop: 12 }}><Icon name="download" />백업 코드 다운로드</button>
-                    </div>
-                </div>
-
-                <div className="panel">
-                    <div className="panel-head"><h3>API 토큰</h3></div>
-                    <div className="panel-body">
-                        <div className="muted-text" style={{ fontSize: 12, marginBottom: 12, lineHeight: 1.55 }}>
-                            외부 시스템 연동을 위한 API 토큰을 발급·관리합니다.
-                        </div>
-                        <div style={{ display: 'grid', gap: 6 }}>
-                            <div style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Icon name="key" size={13} style={{ color: 'var(--ink-400)' }} />
-                                <span className="mono" style={{ fontSize: 11.5 }}>mtm_••••••••8421</span>
-                                <span style={{ marginLeft: 'auto' }}><GreenPill>활성</GreenPill></span>
-                            </div>
-                        </div>
-                        <button className="btn-mini primary" style={{ marginTop: 12 }}><Icon name="plus" />새 토큰 발급</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ── 하위: 정보·약관(mock) ──
-function SettingsAbout() {
-    const policies = [
-        { ico: 'file-text', label: '서비스 이용약관', meta: '2026.04.01 개정' },
-        { ico: 'shield-check', label: '개인정보 처리방침', meta: '2026.04.01 개정' },
-        { ico: 'lock', label: '데이터 처리 정책 (DPA)', meta: '2025.11.20' },
-        { ico: 'cookie', label: '쿠키 정책', meta: '2025.09.10' },
-    ];
-    const oss = [
-        ['React 18.3', 'MIT'], ['Next.js 15', 'MIT'], ['Tailwind CSS v4', 'MIT'],
-        ['Pretendard Variable', 'OFL'], ['Lucide Icons', 'ISC'], ['FastAPI · SQLModel', 'MIT'],
-    ];
-
-    return (
-        <div className="grid grid-stat-l" style={{ alignItems: 'start' }}>
-            <div className="col-flex">
-                <div className="panel">
-                    <div className="panel-head"><h3>제품 정보</h3></div>
-                    <div className="panel-body" style={{ display: 'grid', gap: 14 }}>
-                        <div>
-                            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink-900)' }}>Meta Trustguard</div>
-                            <div className="muted-text mono" style={{ fontSize: 11.5, marginTop: 2 }}>버전 2.4.1 · 2026.05.22 빌드</div>
-                        </div>
-                        <div className="divider" />
-                        <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span className="muted-text">개발사</span><span style={{ fontWeight: 600 }}>메타엠(주)</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span className="muted-text">사업자등록번호</span><span className="mono">123-45-67890</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span className="muted-text">고객지원</span><span className="mono">support@metam.co.kr</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="panel">
-                    <div className="panel-head"><h3>약관 및 정책</h3></div>
-                    <div>
-                        {policies.map((it) => (
-                            <div key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                                <Icon name={it.ico} size={14} style={{ color: 'var(--ink-400)' }} />
-                                <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{it.label}</span>
-                                <span className="muted-text" style={{ fontSize: 11.5 }}>{it.meta}</span>
-                                <Icon name="external-link" size={12} style={{ color: 'var(--ink-400)' }} />
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-
-            <div className="panel">
-                <div className="panel-head"><h3>오픈소스 및 크레딧</h3></div>
-                <div className="panel-body">
-                    <div className="muted-text" style={{ fontSize: 12, lineHeight: 1.6, marginBottom: 14 }}>
-                        Meta Trustguard는 다음 오픈소스 프로젝트를 사용합니다.
-                    </div>
-                    <div style={{ display: 'grid', gap: 6 }}>
-                        {oss.map(([name, license]) => (
-                            <div key={name} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed var(--border)', fontSize: 12.5 }}>
-                                <span style={{ color: 'var(--ink-700)' }}>{name}</span>
-                                <span className="mono muted-text">{license}</span>
-                            </div>
-                        ))}
-                    </div>
                 </div>
             </div>
         </div>

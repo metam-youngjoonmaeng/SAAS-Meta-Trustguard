@@ -46,7 +46,6 @@ const SETTINGS_SECTION_LABELS = {
     logs: '실시간 로그',
     profile: '프로필',
     notify: '알림 설정',
-    security: '보안',
     about: '정보·약관',
 };
 
