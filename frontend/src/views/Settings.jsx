@@ -253,17 +253,17 @@ function SettingsProfile({ roleLabel }) {
                             </div>
                             <div className="field">
                                 <span className="field-label">이메일</span>
-                                <input className="text-input" value={email} disabled />
+                                <div className="field-static">{email}</div>
                             </div>
                         </div>
                         <div className="grid grid-2" style={{ gap: 14 }}>
                             <div className="field">
                                 <span className="field-label">소속</span>
-                                <input className="text-input" value={org} disabled />
+                                <div className="field-static">{org}</div>
                             </div>
                             <div className="field">
                                 <span className="field-label">부서</span>
-                                <input className="text-input" value={dept} disabled />
+                                <div className="field-static">{dept}</div>
                             </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
