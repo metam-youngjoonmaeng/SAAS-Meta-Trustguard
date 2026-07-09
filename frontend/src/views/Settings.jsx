@@ -26,18 +26,6 @@ function Toggle({ checked, onChange }) {
     );
 }
 
-function SettingRow({ label, desc, children }) {
-    return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{label}</div>
-                <div className="muted-text" style={{ fontSize: 11.5, marginTop: 2 }}>{desc}</div>
-            </div>
-            {children}
-        </div>
-    );
-}
-
 export default function Settings({ role = 'agent', user, initialSection = null, onSectionChange, currentUserId, activeBrandId, onBrandsChanged }) {
     // 하위화면(section)은 해시로 딥링크. App 이 initialSection 으로 주입하고, 변경 시 onSectionChange 로 해시 갱신.
     const [section, setSection] = useState(initialSection || null);
@@ -230,31 +218,6 @@ function SettingsProfile() {
                         <div className="muted-text" style={{ fontSize: 11.5 }}>
                             개인정보 변경이 필요하면 관리자에게 문의하세요.
                         </div>
-                    </div>
-                </div>
-
-                <div className="panel">
-                    <div className="panel-head"><h3>환경 설정</h3></div>
-                    <div className="panel-body" style={{ display: 'grid', gap: 14 }}>
-                        <SettingRow label="언어" desc="UI 및 알림 메시지 언어">
-                            <select className="text-input" style={{ width: 200, height: 36 }} defaultValue="ko">
-                                <option value="ko">한국어</option>
-                                <option value="en">English</option>
-                            </select>
-                        </SettingRow>
-                        <SettingRow label="시간대" desc="평가 일시·통계 기준">
-                            <select className="text-input" style={{ width: 200, height: 36 }} defaultValue="kst">
-                                <option value="kst">한국 표준시 (UTC+9)</option>
-                                <option value="utc">UTC</option>
-                            </select>
-                        </SettingRow>
-                        <SettingRow label="시작 페이지" desc="로그인 직후 표시할 화면">
-                            <select className="text-input" style={{ width: 200, height: 36 }} defaultValue="dashboard">
-                                <option value="dashboard">평가 리스트</option>
-                                <option value="eval-mgmt">상담사 QA관리</option>
-                                <option value="stats">전체 통계</option>
-                            </select>
-                        </SettingRow>
                     </div>
                 </div>
 
