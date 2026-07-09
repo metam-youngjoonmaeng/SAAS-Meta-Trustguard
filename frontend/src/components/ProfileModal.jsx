@@ -1,23 +1,19 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Loader2, X, Camera, Trash2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Loader2, X } from 'lucide-react';
 import {
     PASSWORD_POLICY_HINT,
     PASSWORD_POLICY_RE,
     updateMe,
-    uploadAvatar,
-    removeAvatar,
 } from '../services/api';
 
 // 본인 프로필 편집 모달.
-// - 이름 / 비밀번호 / 프로필 사진만 변경 가능 (로그인 ID·역할·소속은 super_admin 만).
+// - 이름 / 비밀번호만 변경 가능 (로그인 ID·역할·소속은 super_admin 만). 프로필 사진 업로드 기능은 폐지.
+// - 아바타는 이름 이니셜 원형으로만 표시(업로드 없음).
 // - forceChange=true 인 경우 닫기 버튼 비활성 + 비밀번호 변경이 완료될 때까지 모달이 유지된다.
 //
 // onSaved(updatedUser) — 저장 직후 상위 (App.jsx) 가 currentUser 캐시를 갱신할 수 있도록 전달.
 //
 // 비밀번호 정책은 services/api.js PASSWORD_POLICY_RE 와 동일 (서버 userProfile.mjs 와도 정합).
-
-const AVATAR_INPUT_ACCEPT = 'image/jpeg,image/png,image/webp';
-const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
 function getInitial(name) {
     const src = String(name || '').trim();
@@ -31,14 +27,10 @@ export default function ProfileModal({ currentUser, forceChange = false, onClose
     const [newPw, setNewPw] = useState('');
     const [confirmPw, setConfirmPw] = useState('');
     const [saving, setSaving] = useState(false);
-    const [uploading, setUploading] = useState(false);
     const [error, setError] = useState(null);
-    const [avatarUrl, setAvatarUrl] = useState(currentUser?.profile_image_url || null);
-    const fileInputRef = useRef(null);
 
     useEffect(() => {
         setDraftName(currentUser?.display_name || '');
-        setAvatarUrl(currentUser?.profile_image_url || null);
     }, [currentUser]);
 
     const wantsPasswordChange = Boolean(currentPw || newPw || confirmPw) || forceChange;
@@ -48,50 +40,6 @@ export default function ProfileModal({ currentUser, forceChange = false, onClose
     const nameChanged = draftName.trim() !== (currentUser?.display_name || '').trim();
     const hasAnyChange = forceChange ? wantsPasswordChange : (nameChanged || wantsPasswordChange);
     const canSave = nameOk && newPwValid && confirmOk && hasAnyChange && !saving;
-
-    const onPickFile = () => fileInputRef.current?.click();
-
-    const onFileChange = async (e) => {
-        const file = e.target.files?.[0];
-        e.target.value = '';
-        if (!file) return;
-        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-            setError('jpg, png, webp 이미지만 업로드 가능합니다.');
-            return;
-        }
-        if (file.size > AVATAR_MAX_BYTES) {
-            setError('이미지 크기는 2MB 이하만 가능합니다.');
-            return;
-        }
-        setUploading(true);
-        setError(null);
-        try {
-            const resp = await uploadAvatar(file);
-            // 캐시 무효화를 위해 ?v=timestamp 부착.
-            const url = resp?.profile_image_url ? `${resp.profile_image_url}?v=${Date.now()}` : null;
-            setAvatarUrl(url);
-            onSaved?.({ profile_image_url: url });
-        } catch (err) {
-            setError(err?.message || '이미지 업로드 실패');
-        } finally {
-            setUploading(false);
-        }
-    };
-
-    const onRemoveAvatar = async () => {
-        if (!avatarUrl) return;
-        setUploading(true);
-        setError(null);
-        try {
-            await removeAvatar();
-            setAvatarUrl(null);
-            onSaved?.({ profile_image_url: null });
-        } catch (err) {
-            setError(err?.message || '이미지 제거 실패');
-        } finally {
-            setUploading(false);
-        }
-    };
 
     const onSave = async () => {
         setSaving(true);
@@ -106,7 +54,6 @@ export default function ProfileModal({ currentUser, forceChange = false, onClose
             const updated = await updateMe(patch);
             onSaved?.({
                 display_name: updated?.display_name,
-                profile_image_url: updated?.profile_image_url,
                 must_change_password: updated?.must_change_password,
             });
             // 비밀번호 변경 입력 초기화
@@ -157,58 +104,12 @@ export default function ProfileModal({ currentUser, forceChange = false, onClose
                 <div className="px-6 py-5 space-y-5">
                     {!forceChange && (
                         <div className="flex items-center gap-4">
-                            <div className="relative">
-                                {avatarUrl ? (
-                                    <img
-                                        src={avatarUrl}
-                                        alt={currentUser?.display_name || ''}
-                                        className="w-[72px] h-[72px] rounded-full object-cover border border-[#E4E7EC]"
-                                    />
-                                ) : (
-                                    <div className="w-[72px] h-[72px] rounded-full bg-[#055AAF] text-white grid place-items-center font-bold text-2xl">
-                                        {getInitial(currentUser?.display_name || currentUser?.login_id)}
-                                    </div>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={onPickFile}
-                                    disabled={uploading}
-                                    title="사진 변경"
-                                    className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border border-[#E4E7EC] shadow grid place-items-center text-[#475467] hover:bg-[#F2F4F7] cursor-pointer disabled:opacity-50"
-                                >
-                                    {uploading ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
-                                </button>
+                            <div className="w-[72px] h-[72px] rounded-full bg-[#055AAF] text-white grid place-items-center font-bold text-2xl shrink-0">
+                                {getInitial(currentUser?.display_name || currentUser?.login_id)}
                             </div>
-                            <div className="flex-1">
+                            <div className="flex-1 min-w-0">
                                 <div className="text-[13px] font-semibold text-[#101828]">{currentUser?.display_name}</div>
                                 <div className="text-[11.5px] text-[#667085] font-mono mt-0.5">{currentUser?.login_id}</div>
-                                <div className="flex gap-2 mt-2">
-                                    <button
-                                        type="button"
-                                        onClick={onPickFile}
-                                        disabled={uploading}
-                                        className="h-[28px] px-3 rounded-lg border border-[#E4E7EC] bg-white text-[11.5px] font-semibold text-[#475467] hover:bg-[#F2F4F7] cursor-pointer disabled:opacity-50"
-                                    >
-                                        업로드
-                                    </button>
-                                    {avatarUrl && (
-                                        <button
-                                            type="button"
-                                            onClick={onRemoveAvatar}
-                                            disabled={uploading}
-                                            className="h-[28px] px-3 rounded-lg border border-[#FECDCA] bg-white text-[11.5px] font-semibold text-[#B42318] hover:bg-red-50 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
-                                        >
-                                            <Trash2 size={11} /> 제거
-                                        </button>
-                                    )}
-                                </div>
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept={AVATAR_INPUT_ACCEPT}
-                                    onChange={onFileChange}
-                                    className="hidden"
-                                />
                             </div>
                         </div>
                     )}

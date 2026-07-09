@@ -138,8 +138,6 @@ services:
       - ./server:/app/server:ro
       # 일자별 application 로그 — 호스트 ./logs 로 직접 노출 (AI-Tutor backend/logs 와 동일 패턴)
       - ./logs:/app/logs
-      # 프로필 이미지 업로드 — DB 백업과 분리해 보관, 컨테이너 재기동에도 보존
-      - ./data/uploads:/app/data/uploads
     ports:
       - "3027:3007"
     restart: unless-stopped

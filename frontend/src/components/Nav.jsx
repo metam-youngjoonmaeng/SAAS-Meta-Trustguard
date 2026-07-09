@@ -35,6 +35,18 @@ const TAB_LABELS = {
     stats: '전체 통계',
     notifications: '알림',
     logs: '실시간 로그',
+    settings: '시스템 설정',
+};
+
+// 시스템 설정 하위화면 key → 라벨 (Settings.jsx SECTION_META 와 정합). 상단바 브레드크럼 2단계 표시용.
+const SETTINGS_SECTION_LABELS = {
+    batch: 'AI 평가 배치 관리',
+    users: '사용자 관리',
+    brands: '브랜드 관리',
+    logs: '실시간 로그',
+    profile: '프로필',
+    notify: '알림 설정',
+    about: '정보·약관',
 };
 
 // 탭 → 표시 라벨. eval-mgmt 는 역할별, detail 은 페이지명.
@@ -46,7 +58,7 @@ function tabLabelOf(tab, role) {
 
 // 현재 위치 브레드크럼. 상세(detail)는 "어디서 진입했는지(detailOrigin)"를 부모로 두고
 // 그 탭으로 복귀 가능 — 평가 리스트에서 왔으면 평가 리스트, 상담사 평가관리에서 왔으면 그쪽.
-function buildCrumbs(activeTab, role, detailOrigin, onNavTab) {
+function buildCrumbs(activeTab, role, detailOrigin, onNavTab, settingsSection) {
     if (!activeTab) return [];
     if (activeTab === 'detail') {
         const origin = detailOrigin || 'dashboard';
@@ -54,6 +66,16 @@ function buildCrumbs(activeTab, role, detailOrigin, onNavTab) {
             { label: tabLabelOf(origin, role), onClick: () => onNavTab && onNavTab(origin) },
             { label: '상담 QA 분석 결과' },
         ];
+    }
+    // 시스템 설정: '시스템 설정 > 하위화면'. 하위화면에 있을 때 상위 '시스템 설정' 클릭 시 허브로 복귀.
+    if (activeTab === 'settings') {
+        const crumbs = [{
+            label: '시스템 설정',
+            onClick: settingsSection ? () => onNavTab && onNavTab('settings') : undefined,
+        }];
+        const subLabel = settingsSection ? SETTINGS_SECTION_LABELS[settingsSection] : '';
+        if (subLabel) crumbs.push({ label: subLabel });
+        return crumbs;
     }
     const label = tabLabelOf(activeTab, role);
     return label ? [{ label }] : [];
@@ -71,11 +93,10 @@ function initialsOf(user) {
     return src.slice(0, 2).toUpperCase();
 }
 
-const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, activeTab, detailOrigin, onNavTab, onSampleUploaded }) => {
+const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, activeTab, detailOrigin, settingsSection, onNavTab, onSampleUploaded }) => {
     const roleMeta = user?.role ? ROLE_META[user.role] : null;
     const displayName = user?.display_name || user?.login_id || '';
-    const avatarUrl = user?.profile_image_url;
-    const crumbs = buildCrumbs(activeTab, user?.role, detailOrigin, onNavTab);
+    const crumbs = buildCrumbs(activeTab, user?.role, detailOrigin, onNavTab, settingsSection);
     return (
         <nav className="app-nav">
             <div className="app-nav-inner">
@@ -136,11 +157,7 @@ const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, 
                                 className="app-nav-user app-nav-user-button"
                                 title={onProfileClick ? '내 프로필 열기' : (user.login_id || '')}
                             >
-                                {avatarUrl ? (
-                                    <img src={avatarUrl} alt="" className="app-nav-user-avatar app-nav-user-avatar-image" />
-                                ) : (
-                                    <span className="app-nav-user-avatar">{initialsOf(user)}</span>
-                                )}
+                                <span className="app-nav-user-avatar">{initialsOf(user)}</span>
                                 <span className="app-nav-user-name">{displayName}</span>
                                 {roleMeta && (
                                     <span className={`app-nav-user-role app-nav-user-role-${roleMeta.variant}`}>

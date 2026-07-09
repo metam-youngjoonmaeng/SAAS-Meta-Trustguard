@@ -638,7 +638,7 @@ export async function removeUserMembership(userId, traineeId) {
 
 /* ── 본인 프로필 (셀프-편집) ───────────────────────────────────
  * 신규 사용자는 초기 비밀번호 발급 + must_change_password=true 로 시작.
- * 본인은 다음만 변경 가능: display_name, password, profile_image.
+ * 본인은 다음만 변경 가능: display_name, password.
  * (login_id / role / org_id / is_active 변경 불가 — super_admin 만 가능) */
 export async function fetchMe() {
     return request('/api/me');
@@ -657,37 +657,8 @@ export async function updateMe({ display_name, current_password, new_password } 
     });
 }
 
-/** 프로필 이미지 업로드 — multipart/form-data ('avatar' 필드).
- *  서버는 jpg/png/webp 2MB 이하만 수용. 응답: { ok, profile_image_url } */
-export async function uploadAvatar(file) {
-    if (!(file instanceof File)) throw new Error('file is required');
-    const form = new FormData();
-    form.append('avatar', file);
-    const headers = { ...actorRequestHeaders() };
-    delete headers['Content-Type']; // multipart boundary 는 브라우저가 자동 설정
-    const res = await fetch('/api/me/avatar', {
-        method: 'POST',
-        headers,
-        body: form,
-    });
-    if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        let msg = text || `Request failed: ${res.status}`;
-        try {
-            const j = JSON.parse(text);
-            if (j?.message) msg = j.message;
-        } catch { /* ignore */ }
-        throw new Error(msg);
-    }
-    return res.json();
-}
-
-export async function removeAvatar() {
-    return request('/api/me/avatar', { method: 'DELETE' });
-}
-
 /** localStorage 에 저장된 actor 캐시를 서버 최신 상태로 갱신.
- *  ProfileModal 저장 후 호출해 Nav 헤더가 즉시 새 이름/사진을 반영하도록 한다. */
+ *  ProfileModal 저장 후 호출해 Nav 헤더가 즉시 새 이름을 반영하도록 한다. */
 export function syncStoredActor(patch) {
     if (typeof window === 'undefined' || !window.localStorage) return null;
     try {
@@ -846,6 +817,19 @@ export async function deleteNotification(id) {
 /** 내 알림 전체 삭제. */
 export async function deleteAllNotifications() {
     return request('/api/notifications', { method: 'DELETE' });
+}
+
+/** 알림 수신 선호 조회. 응답: { prefs: { "<type>": false, ... } } — 미기재 유형은 수신(on). */
+export async function fetchNotificationPrefs() {
+    return request('/api/notifications/prefs');
+}
+
+/** 알림 수신 선호 저장. prefs: { "<type>": bool } (끈 유형만 false 로 두면 됨). */
+export async function updateNotificationPrefs(prefs) {
+    return request('/api/notifications/prefs', {
+        method: 'PUT',
+        body: JSON.stringify({ prefs: prefs || {} }),
+    });
 }
 
 /* ── qa-pipeline 적재 어댑터 ─────────────────────────────────

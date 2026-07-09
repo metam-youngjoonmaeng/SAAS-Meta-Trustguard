@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon, Gauge, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod, openInWindow, openCallDetail } from './ui';
 import { scoreClass, TUTOR_SCENARIOS } from './mockData';
-import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, fetchMyTaMetricCalls, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
+import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, fetchMyTaMetricCalls, fetchEvalItemVersions, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
 import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
 import { buildTutorLink } from '../../utils/coachingTutorLink';
 import { ReviewStatusBadge } from '../../components';
@@ -446,14 +446,15 @@ function QualityDrillModal({ kind, onClose }) {
     const meta = DRILL_META[kind] || {};
     const { loading, calls, error } = state;
 
-    const UidCell = ({ uid }) => (
+    // 표시=bare uid, 클릭=qa_id(ICS 전체형식) — 콜 상세는 qa_id 로 조회하므로 분리.
+    const UidCell = ({ qaId, label }) => (
         <button
             className="mono"
-            onClick={() => openCallDetail(uid)}
-            title={`${uid} — 콜 상세 열기`}
+            onClick={() => openCallDetail(qaId)}
+            title={`${label} — 콜 상세 열기`}
             style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--primary)', fontSize: 11.5, fontWeight: 700, textAlign: 'left', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
         >
-            {uid}
+            {label}
         </button>
     );
 
@@ -484,7 +485,7 @@ function QualityDrillModal({ kind, onClose }) {
                         <tbody>
                             {calls.map((r, i) => (
                                 <tr key={`${r.uid}-${i}`} style={{ borderBottom: '1px solid var(--border-soft)' }}>
-                                    <td style={{ padding: '9px 10px', verticalAlign: 'top' }}><UidCell uid={r.uid} /></td>
+                                    <td style={{ padding: '9px 10px', verticalAlign: 'top' }}><UidCell qaId={r.qa_id || r.uid} label={r.uid} /></td>
                                     <td style={{ padding: '9px 10px', verticalAlign: 'top', whiteSpace: 'nowrap', color: 'var(--ink-500)', fontSize: 11.5 }}>{fmtCallTime(r.cdate)}</td>
                                     <td style={{ padding: '9px 10px', verticalAlign: 'top', color: 'var(--ink-600)' }}>{r.channel || '—'}</td>
                                     {kind === 'negative' && (
@@ -542,6 +543,8 @@ export default function CounselorResults() {
     const [taMetrics, setTaMetrics] = useState(null);  // 03 TA 지표(부정/금칙어). null=로딩
     const [drillKind, setDrillKind] = useState(null);  // 감정품질 카드 드릴다운 팝업(negative|recovery|forbidden)
     const [onlyNeedsReview, setOnlyNeedsReview] = useState(false);  // '내 검수 필요'(대기·검수중)만
+    const [recentVer, setRecentVer] = useState('');  // 최근 평가 목록 QA 항목버전 필터('' =기본=최신, 'all'=전체, 그 외=해당버전)
+    const [evalVersions, setEvalVersions] = useState([]);  // 평가체계 버전(effective_from) — 버전 드롭다운/매칭용
     const [colFilters, setColFilters] = useState({});  // 컬럼키 → 제외(excluded) Set
     const name = readActorName();
 
@@ -581,6 +584,15 @@ export default function CounselorResults() {
         return () => { cancelled = true; };
     }, []);
 
+    // 평가체계 버전 목록(effective_from) — 최근 평가 목록의 QA 항목버전 드롭다운/매칭용. (평가 리스트와 동일 소스)
+    useEffect(() => {
+        let cancelled = false;
+        fetchEvalItemVersions()
+            .then((res) => { if (!cancelled) setEvalVersions(Array.isArray(res?.versions) ? res.versions : []); })
+            .catch(() => { if (!cancelled) setEvalVersions([]); });
+        return () => { cancelled = true; };
+    }, []);
+
     // 완료 카드 'X' — 내 보드에서만 정리(멤버별 아카이브). 코칭 이력 팝업엔 계속 노출.
     const archiveCoachingCard = async (id) => {
         setCoaching((list) => list.map((g) => (g.id === id ? { ...g, memberArchived: true } : g)));
@@ -612,9 +624,65 @@ export default function CounselorResults() {
 
     const myEvals = evals || [];
     const needsReviewCount = myEvals.filter((r) => REVIEW_NEEDS_ME.has(r.status)).length;  // 대기+검수중
-    // 토글(대기·검수중) → 컬럼 헤더 필터(엑셀식) 순서로 적용.
+
+    // ── 평가체계 버전 매칭(콜 날짜 → 버전) — 평가 리스트(Dashboard)와 동일 규칙: effective_from 이하 최신 버전 ──
+    const verList = useMemo(() => (
+        [...evalVersions]
+            .map((v) => ({ ...v, ef: v.effective_from ? new Date(v.effective_from) : null }))
+            .filter((v) => v.ef)
+            .sort((a, b) => a.ef - b.ef)
+    ), [evalVersions]);
+    const matchVer = useMemo(() => {
+        const desc = [...verList].reverse();  // 최신부터
+        return (dateStr) => {
+            const d = dateStr ? new Date(String(dateStr).replace(' ', 'T')) : null;
+            if (!d || Number.isNaN(d.getTime()) || !desc.length) return null;
+            for (const v of desc) {
+                if (v.ef <= d) {
+                    if (v.last_deactivated_at && d >= new Date(v.last_deactivated_at)) continue;
+                    return Number(v.version);
+                }
+            }
+            return null;
+        };
+    }, [verList]);
+    // 데이터(내 콜) 있는 버전만 — 빈 버전 숨김. 평가 리스트(Dashboard)도 같은 fetchCalls() 스코프
+    //   (상담사=본인 콜, 관리자=org 전체)로 같은 집합을 만들므로, 같은 콜이 두 화면에서 같은 연번으로 보인다.
+    const versWithData = useMemo(() => {
+        const s = new Set();
+        for (const e of myEvals) { const v = matchVer(e.callDatetime); if (v != null) s.add(v); }
+        return s;
+    }, [myEvals, matchVer]);
+    const dropdownVers = useMemo(() => {
+        const byNum = new Map();
+        for (const v of verList) {
+            const n = Number(v.version);
+            if (!versWithData.has(n)) continue;
+            if (!byNum.has(n) || v.ef < byNum.get(n).ef) byNum.set(n, v);
+        }
+        return [...byNum.values()].sort((a, b) => a.ef - b.ef);
+    }, [verList, versWithData]);
+    // 화면 연번(Dashboard 와 동일): 데이터 있는 버전을 effective_from ASC 로 1,2,3…
+    const verLabelOf = useMemo(() => {
+        const m = new Map();
+        dropdownVers.forEach((v, i) => m.set(Number(v.version), i + 1));
+        return (rv) => m.get(Number(rv)) ?? rv;
+    }, [dropdownVers]);
+    // 버전 → 처음 반영일(YYYY-MM-DD) — Dashboard 라벨 'v연번 · 반영일' 과 동일 표기.
+    const verDateOf = useMemo(() => {
+        const m = new Map();
+        for (const v of verList) if (v.ef) m.set(Number(v.version), v.ef.toISOString().slice(0, 10));
+        return (rv) => m.get(Number(rv)) || '';
+    }, [verList]);
+    // 기본 선택 = 데이터 있는 버전 중 최신(= dropdownVers 마지막, effective_from ASC). 평가 리스트와 동일 규칙.
+    const defaultVer = dropdownVers.length ? Number(dropdownVers[dropdownVers.length - 1].version) : null;
+    // '' =기본(최신), 'all'=전체, 그 외=선택 버전. 데이터 없는 브랜드/버전이면 'all' 로 폴백.
+    const effRecentVer = recentVer === '' ? (defaultVer == null ? 'all' : defaultVer) : recentVer;
+
+    // 토글(대기·검수중) → QA 항목버전 → 컬럼 헤더 필터(엑셀식) 순서로 적용.
     const afterToggle = onlyNeedsReview ? myEvals.filter((r) => REVIEW_NEEDS_ME.has(r.status)) : myEvals;
-    const shownEvals = afterToggle.filter((r) =>
+    const afterVer = String(effRecentVer) === 'all' ? afterToggle : afterToggle.filter((r) => matchVer(r.callDatetime) === Number(effRecentVer));
+    const shownEvals = afterVer.filter((r) =>
         FILTER_COLS.every((c) => {
             const ex = colFilters[c];
             return !ex || ex.size === 0 || !ex.has(COL_VALUE[c](r));
@@ -915,6 +983,22 @@ export default function CounselorResults() {
             <div className="panel" style={{ marginBottom: 22 }}>
                 <div className="panel-head">
                     <h3>최근 평가</h3>
+                    {dropdownVers.length > 0 && (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 12 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-500)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>QA 항목버전</span>
+                            <select
+                                value={String(effRecentVer)}
+                                onChange={(e) => setRecentVer(e.target.value)}
+                                title="QA 항목버전으로 필터 (평가 리스트와 동일 기준·번호, 기본=최신)"
+                                style={{ height: 28, borderRadius: 8, border: '1px solid var(--border)', background: 'white', color: 'var(--ink-700)', fontSize: 12, fontWeight: 600, padding: '0 8px', cursor: 'pointer' }}
+                            >
+                                <option value="all">전체</option>
+                                {[...dropdownVers].reverse().map((v) => (
+                                    <option key={v.version} value={v.version}>v{verLabelOf(v.version)} · {verDateOf(v.version)}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
                         <button
                             type="button"

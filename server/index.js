@@ -659,25 +659,10 @@ app.use((req, res, next) => {
 
 const PORT = Number(process.env.API_PORT || 3007);
 
-// 업로드 루트 — docker-compose 가 ./data/uploads 를 마운트.
-// 로컬 dev (docker 미사용) 시에도 동작하도록 projectRoot 기준 절대경로 사용.
-const UPLOADS_ROOT = path.join(projectRoot, 'data', 'uploads');
-fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
-// 정적 서빙: /uploads/profiles/<file>. 인증 미들웨어 이전에 마운트해서 로그인 사용자/외부에서도 아바타 접근 가능.
-// (아바타는 비공개 정보가 아니라는 가정 — 공유 사내 PoC. 변경 필요 시 인증 미들웨어 이후로 이동)
-app.use(
-    '/uploads',
-    express.static(UPLOADS_ROOT, {
-        immutable: false,
-        maxAge: '1d',
-        fallthrough: true,
-    })
-);
-
 // 브랜드(=조직) / 도메인 CRUD
 app.use('/api', createBrandRouter(pool));
-// 본인 프로필 셀프-편집 (display_name / password / avatar).
-app.use('/api', createUserProfileRouter(pool, { uploadsRoot: UPLOADS_ROOT }));
+// 본인 프로필 셀프-편집 (display_name / password). 프로필 이미지 기능은 폐지.
+app.use('/api', createUserProfileRouter(pool));
 // ICS SSO (ICS 어드민 메뉴 팝업 → ?userId 진입). createSession 주입 — 일반 로그인과 동일 세션 발급.
 app.use('/api', createIcsSsoRouter(pool, { createSession }));
 
@@ -723,6 +708,17 @@ async function canAccessCall(req, qaId) {
 // 수신자별 알림 1건 생성(검수 워크플로우 이벤트 전달). 실패해도 본 동작은 막지 않음.
 async function createNotification(db, n) {
     if (n?.recipientUserId == null) return;
+    // 수신 선호 게이트 — 사용자가 설정>알림 설정에서 명시적으로 끈(false) 유형이면 발송 스킵(기본 on).
+    // notification_prefs.prefs(JSONB): 키가 없으면 수신. 조회 실패 시에도 발송(안전 측 기본값).
+    try {
+        const { rows } = await db.query(
+            `SELECT (prefs ->> $2) AS v FROM public.notification_prefs WHERE user_id = $1`,
+            [n.recipientUserId, n.type]
+        );
+        if (rows[0]?.v === 'false') return;
+    } catch (e) {
+        console.error('notification pref check failed (기본 발송):', e?.message || e);
+    }
     try {
         await db.query(
             `INSERT INTO public.notifications
@@ -1040,7 +1036,7 @@ app.post('/api/auth/login', async (req, res) => {
     try {
         const { rows } = await pool.query(
             `SELECT user_id, login_id, display_name, role, org_id, is_active, password_hash,
-                    profile_image_path, must_change_password, department
+                    must_change_password, department
              FROM admin_users
              WHERE login_id = $1
              LIMIT 1`,
@@ -1158,7 +1154,6 @@ app.post('/api/auth/login', async (req, res) => {
                 role: row.role,
                 org_id: row.org_id ?? null,
                 department: row.department ?? null,
-                profile_image_url: row.profile_image_path ? `/uploads/${row.profile_image_path}` : null,
                 must_change_password: Boolean(row.must_change_password),
                 session_token: sessionToken,
             },
@@ -5163,6 +5158,40 @@ app.delete('/api/notifications', async (req, res) => {
     }
 });
 
+// 알림 수신 선호 조회 — { prefs: { "<type>": false, ... } } (미기재 유형 = 수신 on). 설정 > 알림 설정.
+app.get('/api/notifications/prefs', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
+        const { rows } = await pool.query(
+            `SELECT prefs FROM public.notification_prefs WHERE user_id = $1`, [uid]
+        );
+        res.json({ prefs: rows[0]?.prefs || {} });
+    } catch (error) {
+        console.error('GET /api/notifications/prefs error:', error);
+        res.status(500).json({ message: 'failed' });
+    }
+});
+
+// 알림 수신 선호 저장 — body { prefs: { "<type>": bool } }. 전체 맵 upsert(프론트가 끈 유형만 false 로 정리).
+app.put('/api/notifications/prefs', async (req, res) => {
+    try {
+        const uid = req.session?.user_id;
+        if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
+        const prefs = (req.body && typeof req.body.prefs === 'object' && req.body.prefs) || {};
+        await pool.query(
+            `INSERT INTO public.notification_prefs (user_id, prefs, updated_at)
+             VALUES ($1, $2::jsonb, now())
+             ON CONFLICT (user_id) DO UPDATE SET prefs = EXCLUDED.prefs, updated_at = now()`,
+            [uid, JSON.stringify(prefs)]
+        );
+        res.json({ ok: true, prefs });
+    } catch (error) {
+        console.error('PUT /api/notifications/prefs error:', error);
+        res.status(500).json({ message: 'failed' });
+    }
+});
+
 app.get('/api/me/ta-metrics', async (req, res) => {
     if (!req.session?.user_id) {
         res.status(401).json({ message: 'unauthenticated' });
@@ -5267,17 +5296,27 @@ app.get('/api/me/ta-metrics/calls', async (req, res) => {
               GROUP BY proj_cd`,
             [me]
         );
+        // (proj_cd, UID) → qa_id("ID"). 03 tb_ta_rslt.uid=bare 지만, 콜 상세는 qa_id(ICS 전체형식)로
+        //   조회하므로 행 클릭용 qa_id 를 매핑해 동봉한다. (UID='100-...' vs ID='ics:METAM:100-...')
+        const { rows: idRows } = await pool.query(
+            `SELECT proj_cd, "UID" AS uid, "ID" AS qa_id
+               FROM qa_calls
+              WHERE agent_user_id = $1 AND "UID" IS NOT NULL AND proj_cd IS NOT NULL`,
+            [me]
+        );
+        const qaIdOf = new Map(idRows.map((r) => [`${r.proj_cd}::${r.uid}`, r.qa_id]));
+        const withQaId = (proj_cd, r) => ({ proj_cd, qa_id: qaIdOf.get(`${proj_cd}::${r.uid}`) || r.uid, ...r });
         let calls = [];
         if (kind === 'negative') {
             for (const g of grp) {
                 const rows = await fetchNegativeCallsByUids(g.proj_cd, g.uids || []);
-                calls.push(...rows.map((r) => ({ proj_cd: g.proj_cd, ...r })));
+                calls.push(...rows.map((r) => withQaId(g.proj_cd, r)));
             }
             calls.sort((a, b) => new Date(b.cdate || 0) - new Date(a.cdate || 0));
         } else if (kind === 'forbidden') {
             for (const g of grp) {
                 const rows = await fetchForbiddenCallsByUids(g.proj_cd, g.uids || []);
-                calls.push(...rows.map((r) => ({ proj_cd: g.proj_cd, ...r })));
+                calls.push(...rows.map((r) => withQaId(g.proj_cd, r)));
             }
             calls.sort((a, b) => new Date(b.cdate || 0) - new Date(a.cdate || 0));
         } else {
@@ -5298,6 +5337,7 @@ app.get('/api/me/ta-metrics/calls', async (req, res) => {
                 return {
                     proj_cd: r.proj_cd,
                     uid: r.uid,
+                    qa_id: qaIdOf.get(`${r.proj_cd}::${r.uid}`) || r.uid,
                     recovered: r.recovered,
                     first_neg_idx: r.first_neg_idx,
                     final_sentiment: r.final_sentiment,

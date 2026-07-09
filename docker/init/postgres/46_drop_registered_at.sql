@@ -17,7 +17,6 @@ SELECT
     (CASE WHEN tr.status = 'active' THEN 1 ELSE 0 END)::smallint AS is_active,
     tr.org_id                                              AS org_id,
     tr.department                                          AS department,
-    tr.profile_image_path                                  AS profile_image_path,
     COALESCE(tr.must_change_password, false)               AS must_change_password,
     u.created_at                                           AS created_at,
     u.created_at                                           AS updated_at,   -- registered_at 폐기 → 식별 생성시각으로 대체(미사용 호환 컬럼)

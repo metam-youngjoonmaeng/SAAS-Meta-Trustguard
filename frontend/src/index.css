@@ -98,7 +98,12 @@
                   'Noto Sans KR', 'Malgun Gothic', sans-serif;
   --font-body:    'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
                   'Noto Sans KR', 'Malgun Gothic', sans-serif;
-  --font-mono:    ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  /* 숫자·ID·코드 표기 폰트 — 앱 전체 '단일 관리 지점'(2026-07-08). 등폭(monospace) 룩을 제거하고
+     본문(--font-body)과 동일한 서체로 통일한다. 자릿수 정렬은 각 사용처의 font-variant-numeric: tabular-nums
+     로 유지되므로 표·점수 정렬은 그대로다. 앱 전역의 .mono / var(--font-mono) 는 모두 이 한 줄을 참조하므로,
+     다시 등폭으로 되돌리려면 이 줄만 아래 주석 스택으로 교체하면 전체가 즉시 반영된다.
+     이전(등폭): ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; */
+  --font-mono:    var(--font-body);
 
   /* Type scale — actually in use in the dashboard */
   --fs-9:   9px;    /* Hint text inside utterance cells */

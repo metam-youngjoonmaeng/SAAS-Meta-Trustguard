@@ -1282,7 +1282,7 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <div className="flex items-center gap-3">
-                                                            <Avatar name={u.display_name} id={u.user_id} size={36} imageUrl={u.profile_image_url} />
+                                                            <Avatar name={u.display_name} id={u.user_id} size={36} />
                                                             <div className="min-w-0">
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="text-[13px] font-semibold text-[#101828]">{u.display_name}</span>

@@ -126,7 +126,7 @@
   --font-display: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
                   ui-sans-serif, system-ui, sans-serif;
   --font-pixel:   "Moneygraphy Pixel", "Moneygraphy Rounded", monospace;
-  --font-mono: ui-monospace, "SFMono-Regular", "Menlo", monospace;
+  /* --font-mono 는 index.css :root 단일 지점에서 관리(등폭 제거 → 본문 서체 통일). .tg-eval 도 상속하므로 여기서 재정의하지 않음. */
 
   /* ── Type tokens (base) ──────────────────────────────── */
   --fs-eyebrow: 11px;   /* uppercase tag labels */
@@ -864,3 +864,47 @@
 .tg-eval .row-tr:hover { background: var(--background-soft); }
 .tg-eval .row-sub td { border-bottom: 1px solid var(--border-soft); padding-top: 0; }
 .tg-eval .icon-del:hover { background: var(--destructive-soft); color: var(--destructive); }
+
+/* ── 설정 허브(Settings) — 카드 그리드·타일·KSQI 토글·하위화면 헤더 (시안 etc/app.css 이식) ── */
+.tg-eval .settings-hub { display: flex; flex-direction: column; gap: 28px; max-width: 760px; margin: 0 auto; }
+.tg-eval .settings-hub-group-title { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-400); margin-bottom: 12px; }
+.tg-eval .settings-hub-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tg-eval .settings-tile {
+  display: flex; align-items: center; gap: 14px; text-align: left; min-height: 78px;
+  padding: 16px; border: 1px solid var(--border); border-radius: 14px;
+  background: #fff; cursor: pointer; font-family: inherit;
+  transition: border-color var(--t-base), box-shadow var(--t-base), transform var(--t-base);
+}
+.tg-eval .settings-tile:hover { border-color: var(--primary-soft-border, var(--primary)); box-shadow: 0 4px 16px rgba(5,90,175,0.09); transform: translateY(-1px); }
+.tg-eval .settings-tile-icon { position: relative; flex-shrink: 0; width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; }
+.tg-eval .settings-tile.accent-primary .settings-tile-icon { background: var(--primary-soft); color: var(--primary); }
+.tg-eval .settings-tile.accent-ink .settings-tile-icon { background: var(--muted); color: var(--ink-600); }
+.tg-eval .settings-tile-badge {
+  position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9999px; background: var(--destructive, #d92d20); color: #fff;
+  font-size: 10.5px; font-weight: 700; display: grid; place-items: center; border: 2px solid #fff;
+}
+.tg-eval .settings-tile-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.tg-eval .settings-tile-label { font-size: 14px; font-weight: 700; color: var(--ink-900); }
+.tg-eval .settings-tile-desc { font-size: 12px; color: var(--ink-400); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-eval .settings-tile-arrow { flex-shrink: 0; color: var(--ink-300); }
+.tg-eval .settings-tile:hover .settings-tile-arrow { color: var(--primary); }
+.tg-eval .settings-back {
+  display: inline-flex; align-items: center; gap: 4px; margin-bottom: 14px; white-space: nowrap;
+  padding: 6px 12px 6px 8px; border: 1px solid var(--border); border-radius: 9999px;
+  background: #fff; color: var(--ink-600); font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: border-color var(--t-base), color var(--t-base);
+}
+.tg-eval .settings-back:hover { border-color: var(--primary); color: var(--primary); }
+.tg-eval .settings-section-head { display: flex; align-items: center; gap: 11px; margin-bottom: 20px; }
+.tg-eval .settings-section-icon { flex-shrink: 0; width: 38px; height: 38px; border-radius: 10px; background: var(--primary-soft); color: var(--primary); display: grid; place-items: center; }
+.tg-eval .settings-section-head h2 { margin: 0; font-size: 20px; font-weight: 800; color: var(--ink-900); white-space: nowrap; }
+@media (max-width: 720px) { .tg-eval .settings-hub-grid { grid-template-columns: 1fr; } }
+
+/* KSQI 토글 카드 + 스위치 */
+.tg-eval .settings-toggle-card { display: flex; align-items: center; gap: 14px; min-height: 78px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+.tg-eval .settings-toggle-card .settings-tile-icon.accent-primary-icon { background: var(--primary-soft); color: var(--primary); }
+.tg-eval .ks-switch { flex-shrink: 0; width: 46px; height: 26px; border-radius: 9999px; border: 0; padding: 0; background: var(--ink-300); cursor: pointer; position: relative; transition: background var(--t-base); }
+.tg-eval .ks-switch.on { background: var(--primary); }
+.tg-eval .ks-knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform var(--t-base); }
+.tg-eval .ks-switch.on .ks-knob { transform: translateX(20px); }

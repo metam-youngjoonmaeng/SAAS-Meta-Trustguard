@@ -15,7 +15,6 @@ SELECT
     (CASE WHEN tr.status = 'active' THEN 1 ELSE 0 END)::smallint AS is_active,
     tr.org_id                                              AS org_id,
     tr.department                                          AS department,
-    tr.profile_image_path                                  AS profile_image_path,
     COALESCE(tr.must_change_password, false)               AS must_change_password,
     u.created_at                                           AS created_at,
     u.created_at                                           AS updated_at,   -- 46 에서 registered_at 폐기 → 동일 소스(재실행 멱등)
@@ -43,7 +42,6 @@ BEGIN
            status               = CASE WHEN COALESCE(NEW.is_active, 1) = 1 THEN 'active' ELSE 'suspended' END,
            org_id               = NEW.org_id,
            department           = NEW.department,
-           profile_image_path   = NEW.profile_image_path,
            must_change_password = COALESCE(NEW.must_change_password, false),
            name                 = NEW.display_name,
            hire_date            = NEW.hire_date,
