@@ -7,7 +7,7 @@ import BatchManage from './evalMgmt/BatchManage';
 import Users from './Users';
 import Brands from './Brands';
 import Logs from './Logs';
-import { fetchNotificationPrefs, updateNotificationPrefs, updateMe, PASSWORD_POLICY_HINT, PASSWORD_POLICY_RE } from '../services/api';
+import { fetchNotificationPrefs, updateNotificationPrefs, updateMe, fetchMe, syncStoredActor, PASSWORD_POLICY_HINT, PASSWORD_POLICY_RE } from '../services/api';
 
 const ROLE_LABEL = { super_admin: '슈퍼관리자', admin: '관리자', agent: '상담사' };
 
@@ -182,11 +182,60 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
 }
 
 // ── 하위: 프로필(mock) ──
-function SettingsProfile({ roleLabel, org, user }) {
-    const [name, setName] = useState(user.name || '홍길동');
-    const [email, setEmail] = useState(user.email || 'user@metam.co.kr');
-    const [phone, setPhone] = useState('010-2849-1284');
-    const [bio, setBio] = useState('콜센터 QA · 평가 운영 담당');
+// 날짜 포맷 — 계정 요약(가입일/마지막 로그인). 값 없으면 '—'.
+function fmtDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d) ? '—' : d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+function fmtDateTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d) ? '—' : d.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+// 프로필 기본 정보 — 실 사용자 DB 연동(GET /api/me).
+//   · 이름(display_name): 본인 편집 가능(PATCH /api/me) — 저장 시 Nav 캐시 동기화.
+//   · 이메일/소속/부서: 읽기 전용(관리자만 변경). 값 없으면 빈칸.
+//   · 전화번호·자기소개: DB에 필드 없어 화면에서 제거.
+function SettingsProfile({ roleLabel }) {
+    const [me, setMe] = useState(null); // null=로딩
+    const [name, setName] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [msg, setMsg] = useState(null); // { ok, text }
+
+    useEffect(() => {
+        let alive = true;
+        fetchMe()
+            .then((r) => { if (!alive) return; setMe(r || {}); setName(r?.display_name || ''); })
+            .catch(() => { if (alive) setMe({}); });
+        return () => { alive = false; };
+    }, []);
+
+    const nameOk = name.trim().length >= 1 && name.trim().length <= 50;
+    const nameChanged = Boolean(me) && name.trim() !== (me.display_name || '').trim();
+    const canSave = nameOk && nameChanged && !saving;
+
+    const save = async () => {
+        if (!canSave) return;
+        setSaving(true); setMsg(null);
+        try {
+            const updated = await updateMe({ display_name: name.trim() });
+            const nm = updated?.display_name || name.trim();
+            setMe((m) => ({ ...(m || {}), display_name: nm }));
+            setName(nm);
+            syncStoredActor({ display_name: nm }); // Nav 헤더 캐시 반영(새로고침 시 즉시 표시)
+            setMsg({ ok: true, text: '저장되었습니다.' });
+        } catch (e) {
+            setMsg({ ok: false, text: e?.message || '저장에 실패했습니다.' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const email = me?.email || '';
+    const org = me?.org_name || '';
+    const dept = me?.department || '';
 
     return (
         <div className="grid grid-stat-l" style={{ alignItems: 'start' }}>
@@ -197,26 +246,36 @@ function SettingsProfile({ roleLabel, org, user }) {
                         <div className="grid grid-2" style={{ gap: 14 }}>
                             <div className="field">
                                 <span className="field-label">이름</span>
-                                <input className="text-input" value={name} onChange={(e) => setName(e.target.value)} />
+                                <input className="text-input" value={name} maxLength={50}
+                                       disabled={!me}
+                                       placeholder={me ? '' : '불러오는 중…'}
+                                       onChange={(e) => setName(e.target.value)} />
                             </div>
                             <div className="field">
                                 <span className="field-label">이메일</span>
-                                <input className="text-input" value={email} onChange={(e) => setEmail(e.target.value)} />
+                                <input className="text-input" value={email} disabled />
                             </div>
                         </div>
                         <div className="grid grid-2" style={{ gap: 14 }}>
                             <div className="field">
-                                <span className="field-label">전화번호</span>
-                                <input className="text-input" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                            </div>
-                            <div className="field">
                                 <span className="field-label">소속</span>
                                 <input className="text-input" value={org} disabled />
                             </div>
+                            <div className="field">
+                                <span className="field-label">부서</span>
+                                <input className="text-input" value={dept} disabled />
+                            </div>
                         </div>
-                        <div className="field">
-                            <span className="field-label">자기 소개</span>
-                            <textarea className="textarea" rows="3" value={bio} onChange={(e) => setBio(e.target.value)} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <button className="btn-mini primary" onClick={save} disabled={!canSave}>
+                                {saving ? '저장 중…' : '저장'}
+                            </button>
+                            {msg && (
+                                <span style={{ fontSize: 12, color: msg.ok ? '#067647' : 'var(--destructive)' }}>{msg.text}</span>
+                            )}
+                            <span className="muted-text" style={{ fontSize: 11.5, marginLeft: 'auto' }}>
+                                이메일·소속·부서는 관리자만 변경할 수 있습니다.
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -260,11 +319,11 @@ function SettingsProfile({ roleLabel, org, user }) {
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                             <span className="muted-text">가입일</span>
-                            <span className="mono">2025-01-12</span>
+                            <span className="mono">{fmtDate(me?.created_at)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                             <span className="muted-text">마지막 로그인</span>
-                            <span className="mono">2026-05-26 09:21</span>
+                            <span className="mono">{fmtDateTime(me?.last_login_at)}</span>
                         </div>
                         <div className="divider" />
                         <button className="btn-mini" style={{ color: 'var(--destructive)', borderColor: '#fecaca' }}>
