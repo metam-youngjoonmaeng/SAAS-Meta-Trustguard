@@ -182,23 +182,11 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
 }
 
 // ── 하위: 프로필(mock) ──
-// 날짜 포맷 — 계정 요약(가입일/마지막 로그인). 값 없으면 '—'.
-function fmtDate(iso) {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    return isNaN(d) ? '—' : d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
-}
-function fmtDateTime(iso) {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    return isNaN(d) ? '—' : d.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
-
 // 프로필 기본 정보 — 실 사용자 DB 연동(GET /api/me).
 //   · 이름(display_name): 본인 편집 가능(PATCH /api/me) — 저장 시 Nav 캐시 동기화.
 //   · 이메일/소속/부서: 읽기 전용(관리자만 변경). 값 없으면 빈칸.
 //   · 전화번호·자기소개: DB에 필드 없어 화면에서 제거.
-function SettingsProfile({ roleLabel }) {
+function SettingsProfile() {
     const [me, setMe] = useState(null); // null=로딩
     const [name, setName] = useState('');
     const [saving, setSaving] = useState(false);
@@ -238,7 +226,7 @@ function SettingsProfile({ roleLabel }) {
     const dept = me?.department || '';
 
     return (
-        <div className="grid grid-stat-l" style={{ alignItems: 'start' }}>
+        <div>
             <div className="col-flex">
                 <div className="panel">
                     <div className="panel-head"><h3>기본 정보</h3></div>
@@ -253,17 +241,17 @@ function SettingsProfile({ roleLabel }) {
                             </div>
                             <div className="field">
                                 <span className="field-label">이메일</span>
-                                <input className="text-input" value={email} disabled />
+                                <div className="field-static">{email}</div>
                             </div>
                         </div>
                         <div className="grid grid-2" style={{ gap: 14 }}>
                             <div className="field">
                                 <span className="field-label">소속</span>
-                                <input className="text-input" value={org} disabled />
+                                <div className="field-static">{org}</div>
                             </div>
                             <div className="field">
                                 <span className="field-label">부서</span>
-                                <input className="text-input" value={dept} disabled />
+                                <div className="field-static">{dept}</div>
                             </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -307,30 +295,6 @@ function SettingsProfile({ roleLabel }) {
 
                 {/* 비밀번호 변경 — 보안탭 폐지로 프로필 하위로 이동(실연동 PATCH /api/me). */}
                 <SettingsPassword />
-            </div>
-
-            <div className="col-flex">
-                <div className="panel">
-                    <div className="panel-head"><h3>계정 요약</h3></div>
-                    <div className="panel-body" style={{ display: 'grid', gap: 12 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                            <span className="muted-text">역할</span>
-                            <span style={{ fontWeight: 600 }}>{roleLabel}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                            <span className="muted-text">가입일</span>
-                            <span className="mono">{fmtDate(me?.created_at)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                            <span className="muted-text">마지막 로그인</span>
-                            <span className="mono">{fmtDateTime(me?.last_login_at)}</span>
-                        </div>
-                        <div className="divider" />
-                        <button className="btn-mini" style={{ color: 'var(--destructive)', borderColor: '#fecaca' }}>
-                            <Icon name="log-out" />로그아웃
-                        </button>
-                    </div>
-                </div>
             </div>
         </div>
     );

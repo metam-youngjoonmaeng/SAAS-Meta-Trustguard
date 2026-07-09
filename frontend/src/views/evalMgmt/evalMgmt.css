@@ -778,6 +778,16 @@
   width: 100%;
 }
 .tg-eval .text-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
+/* 읽기 전용 필드 — 입력박스 테두리 없이 정적 텍스트로 표시(편집 가능 필드와 시각적 구분) */
+.tg-eval .field-static {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  font-size: 13.5px;
+  font-family: var(--font-sans);
+  color: var(--ink-700);
+}
+.tg-eval .field-static:empty::before { content: ''; }
 .tg-eval .textarea {
   min-height: 80px;
   padding: 10px 12px;
