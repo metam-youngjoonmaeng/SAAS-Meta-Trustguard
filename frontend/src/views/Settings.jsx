@@ -7,7 +7,7 @@ import BatchManage from './evalMgmt/BatchManage';
 import Users from './Users';
 import Brands from './Brands';
 import Logs from './Logs';
-import { fetchNotificationPrefs, updateNotificationPrefs, updateMe, fetchMe, syncStoredActor, PASSWORD_POLICY_HINT, PASSWORD_POLICY_RE } from '../services/api';
+import { fetchNotificationPrefs, updateNotificationPrefs, updateMe, fetchMe, PASSWORD_POLICY_HINT, PASSWORD_POLICY_RE } from '../services/api';
 
 const ROLE_LABEL = { super_admin: '슈퍼관리자', admin: '관리자', agent: '상담사' };
 
@@ -23,18 +23,6 @@ function Toggle({ checked, onChange }) {
         >
             <span className="ks-knob" />
         </button>
-    );
-}
-
-function SettingRow({ label, desc, children }) {
-    return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{label}</div>
-                <div className="muted-text" style={{ fontSize: 11.5, marginTop: 2 }}>{desc}</div>
-            </div>
-            {children}
-        </div>
     );
 }
 
@@ -182,45 +170,21 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
 }
 
 // ── 하위: 프로필(mock) ──
-// 프로필 기본 정보 — 실 사용자 DB 연동(GET /api/me).
-//   · 이름(display_name): 본인 편집 가능(PATCH /api/me) — 저장 시 Nav 캐시 동기화.
-//   · 이메일/소속/부서: 읽기 전용(관리자만 변경). 값 없으면 빈칸.
-//   · 전화번호·자기소개: DB에 필드 없어 화면에서 제거.
+// 프로필 기본 정보 — 실 사용자 DB 연동(GET /api/me). 전부 읽기 전용(개인정보 확인용).
+//   · 이름/이메일/소속/부서: 표시만. 변경은 관리자(사용자 관리)에서. 값 없으면 빈칸.
+//   · 본인 셀프 편집은 비밀번호 변경(SettingsPassword)만.
 function SettingsProfile() {
     const [me, setMe] = useState(null); // null=로딩
-    const [name, setName] = useState('');
-    const [saving, setSaving] = useState(false);
-    const [msg, setMsg] = useState(null); // { ok, text }
 
     useEffect(() => {
         let alive = true;
         fetchMe()
-            .then((r) => { if (!alive) return; setMe(r || {}); setName(r?.display_name || ''); })
+            .then((r) => { if (alive) setMe(r || {}); })
             .catch(() => { if (alive) setMe({}); });
         return () => { alive = false; };
     }, []);
 
-    const nameOk = name.trim().length >= 1 && name.trim().length <= 50;
-    const nameChanged = Boolean(me) && name.trim() !== (me.display_name || '').trim();
-    const canSave = nameOk && nameChanged && !saving;
-
-    const save = async () => {
-        if (!canSave) return;
-        setSaving(true); setMsg(null);
-        try {
-            const updated = await updateMe({ display_name: name.trim() });
-            const nm = updated?.display_name || name.trim();
-            setMe((m) => ({ ...(m || {}), display_name: nm }));
-            setName(nm);
-            syncStoredActor({ display_name: nm }); // Nav 헤더 캐시 반영(새로고침 시 즉시 표시)
-            setMsg({ ok: true, text: '저장되었습니다.' });
-        } catch (e) {
-            setMsg({ ok: false, text: e?.message || '저장에 실패했습니다.' });
-        } finally {
-            setSaving(false);
-        }
-    };
-
+    const name = me?.display_name || '';
     const email = me?.email || '';
     const org = me?.org_name || '';
     const dept = me?.department || '';
@@ -234,10 +198,7 @@ function SettingsProfile() {
                         <div className="grid grid-2" style={{ gap: 14 }}>
                             <div className="field">
                                 <span className="field-label">이름</span>
-                                <input className="text-input" value={name} maxLength={50}
-                                       disabled={!me}
-                                       placeholder={me ? '' : '불러오는 중…'}
-                                       onChange={(e) => setName(e.target.value)} />
+                                <div className="field-static">{name}</div>
                             </div>
                             <div className="field">
                                 <span className="field-label">이메일</span>
@@ -254,42 +215,9 @@ function SettingsProfile() {
                                 <div className="field-static">{dept}</div>
                             </div>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <button className="btn-mini primary" onClick={save} disabled={!canSave}>
-                                {saving ? '저장 중…' : '저장'}
-                            </button>
-                            {msg && (
-                                <span style={{ fontSize: 12, color: msg.ok ? '#067647' : 'var(--destructive)' }}>{msg.text}</span>
-                            )}
-                            <span className="muted-text" style={{ fontSize: 11.5, marginLeft: 'auto' }}>
-                                이메일·소속·부서는 관리자만 변경할 수 있습니다.
-                            </span>
+                        <div className="muted-text" style={{ fontSize: 11.5 }}>
+                            개인정보 변경이 필요하면 관리자에게 문의하세요.
                         </div>
-                    </div>
-                </div>
-
-                <div className="panel">
-                    <div className="panel-head"><h3>환경 설정</h3></div>
-                    <div className="panel-body" style={{ display: 'grid', gap: 14 }}>
-                        <SettingRow label="언어" desc="UI 및 알림 메시지 언어">
-                            <select className="text-input" style={{ width: 200, height: 36 }} defaultValue="ko">
-                                <option value="ko">한국어</option>
-                                <option value="en">English</option>
-                            </select>
-                        </SettingRow>
-                        <SettingRow label="시간대" desc="평가 일시·통계 기준">
-                            <select className="text-input" style={{ width: 200, height: 36 }} defaultValue="kst">
-                                <option value="kst">한국 표준시 (UTC+9)</option>
-                                <option value="utc">UTC</option>
-                            </select>
-                        </SettingRow>
-                        <SettingRow label="시작 페이지" desc="로그인 직후 표시할 화면">
-                            <select className="text-input" style={{ width: 200, height: 36 }} defaultValue="dashboard">
-                                <option value="dashboard">평가 리스트</option>
-                                <option value="eval-mgmt">상담사 QA관리</option>
-                                <option value="stats">전체 통계</option>
-                            </select>
-                        </SettingRow>
                     </div>
                 </div>
 
