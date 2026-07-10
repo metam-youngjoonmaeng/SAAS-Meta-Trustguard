@@ -76,6 +76,7 @@ const Sidebar = ({
     selectedBrandId,
     onBrandChange,
     onTabClick,
+    collapsed = false,
 }) => {
     const navGroups =
         role === 'super_admin'
@@ -88,7 +89,7 @@ const Sidebar = ({
     const showSelector = brands.length > 0;
 
     return (
-        <aside className="sidebar">
+        <aside className={`sidebar${collapsed ? ' collapsed' : ''}`} aria-hidden={collapsed}>
             {showSelector && (
                 <div className="sidebar-brand-selector">
                     <BrandSelector

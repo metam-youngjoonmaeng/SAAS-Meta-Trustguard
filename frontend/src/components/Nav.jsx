@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock3, ShieldCheck, Shield, Headset, Home, ChevronRight } from 'lucide-react';
+import { Clock3, ShieldCheck, Shield, Headset, Home, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import OrgSwitcher from './OrgSwitcher';
 /* SAMPLE_UPLOAD_FEATURE */ import SampleUploadModal from './SampleUploadModal';
@@ -93,7 +93,7 @@ function initialsOf(user) {
     return src.slice(0, 2).toUpperCase();
 }
 
-const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, activeTab, detailOrigin, settingsSection, onNavTab, onSampleUploaded }) => {
+const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, activeTab, detailOrigin, settingsSection, onNavTab, onSampleUploaded, onToggleSidebar, sidebarCollapsed }) => {
     const roleMeta = user?.role ? ROLE_META[user.role] : null;
     const displayName = user?.display_name || user?.login_id || '';
     const crumbs = buildCrumbs(activeTab, user?.role, detailOrigin, onNavTab, settingsSection);
@@ -110,6 +110,19 @@ const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, 
                     <span className="app-nav-wordmark">Meta-Trustguard</span>
                     {isDev && <span className="app-nav-dev-badge">DEV</span>}
                 </button>
+
+                {user && onToggleSidebar && (
+                    <button
+                        type="button"
+                        onClick={onToggleSidebar}
+                        className="app-nav-sidebar-toggle"
+                        aria-label={sidebarCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
+                        aria-pressed={!sidebarCollapsed}
+                        title={sidebarCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
+                    >
+                        {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+                    </button>
+                )}
 
                 <div className="app-nav-body">
                     {/* 현재 위치 브레드크럼 (좌측) */}
