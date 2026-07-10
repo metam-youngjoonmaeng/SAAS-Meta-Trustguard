@@ -239,6 +239,17 @@ function App() {
         return raw ? Number(raw) : null;
     });
     const [profileModalOpen, setProfileModalOpen] = useState(false);
+    // 사이드바 접기(완전 숨김) — 상단바 토글로 제어, 새로고침/탭이동에도 유지(localStorage).
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+        try { return localStorage.getItem('tg_sidebar_collapsed') === '1'; } catch { return false; }
+    });
+    const toggleSidebar = useCallback(() => {
+        setSidebarCollapsed((v) => {
+            const next = !v;
+            try { localStorage.setItem('tg_sidebar_collapsed', next ? '1' : '0'); } catch { /* noop */ }
+            return next;
+        });
+    }, []);
 
     const clearSession = async () => {
         // 서버에 로그아웃 통보 (test1 샌드박스 계정인 경우 세션 변경분 휘발 처리).
@@ -591,6 +602,8 @@ function App() {
                 settingsSection={settingsSection}
                 onNavTab={handleSidebarTabClick}
                 onSampleUploaded={refreshCalls}
+                onToggleSidebar={toggleSidebar}
+                sidebarCollapsed={sidebarCollapsed}
             />
             <div className="app-shell-body">
                 <Sidebar
@@ -600,6 +613,7 @@ function App() {
                     selectedBrandId={selectedBrandId}
                     onBrandChange={handleBrandChange}
                     onTabClick={handleSidebarTabClick}
+                    collapsed={sidebarCollapsed}
                 />
                 <main className="app-shell-main">
                 {/* key 에 활성 브랜드 포함 — 브랜드 전환 시 현재 탭 전체 리마운트로 자체 fetch 뷰
