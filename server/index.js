@@ -5354,6 +5354,15 @@ app.put('/api/notifications/prefs', async (req, res) => {
     }
 });
 
+// A-71: 내 평가 결과 기간 선택 → TA 지표/드릴다운 기간 필터. from/to = YYYY-MM-DD(둘 다 선택,
+// to 당일 포함). 형식이 어긋나면 무시(전체 기간 = 기존 동작)라 구버전 프론트와도 호환.
+function taRangeFromQuery(req) {
+    const pick = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim()) ? String(v).trim() : null);
+    const from = pick(req.query.from);
+    const to = pick(req.query.to);
+    return from || to ? { from, to } : null;
+}
+
 app.get('/api/me/ta-metrics', async (req, res) => {
     if (!req.session?.user_id) {
         res.status(401).json({ message: 'unauthenticated' });
@@ -5366,6 +5375,7 @@ app.get('/api/me/ta-metrics', async (req, res) => {
     }
     try {
         const me = req.session.user_id;
+        const range = taRangeFromQuery(req); // A-71: 기간(from/to) — 미지정 시 전체(기존 동작)
         const { rows: grp } = await pool.query(
             `SELECT proj_cd, array_agg("UID") AS uids
                FROM qa_calls
@@ -5374,19 +5384,29 @@ app.get('/api/me/ta-metrics', async (req, res) => {
             [me]
         );
         let total = 0, negative = 0, banned = 0;
+        let rDenom = 0, rRec = 0;
         for (const g of grp) {
-            const m = await fetchTaMetricsByUids(g.proj_cd, g.uids || []);
+            const m = await fetchTaMetricsByUids(g.proj_cd, g.uids || [], range);
             total += m.total; negative += m.negative; banned += m.banned;
 
-            const segRows = await fetchSegmentSentimentsByUids(g.proj_cd, g.uids || []);
+            const segRows = await fetchSegmentSentimentsByUids(g.proj_cd, g.uids || [], range);
             for (const sr of segRows) {
                 const sents = sr.sentiments || [];
                 const segCount = sents.length;
                 const negCount = sents.filter((s) => s === '부정').length;
                 const firstNeg = sents.findIndex((s) => s === '부정');
                 const finalS = segCount ? sents[segCount - 1] : null;
-                const hadNeg = negCount > 0;
-                const recovered = hadNeg && (finalS === '긍정' || finalS === '중립');
+                const hadNegSeg = negCount > 0;
+                const recovered = hadNegSeg && (finalS === '긍정' || finalS === '중립');
+                // A-72: '부정 발생' 분모 = 구간에 부정 존재 AND (대표감정이 부정 OR 회복 서사).
+                //   수기검토로 대표감정이 부정→비부정으로 정정됐고 회복 서사도 아닌 콜은 분모 제외
+                //   — 부정 발화 비율(sentiment_cls 기준)과 판정 일치. 회복된 콜은 대표감정이
+                //   자연히 비부정이어도 분모 유지(회복률 의미 보존).
+                const hadNeg = hadNegSeg && (sr.sentiment_cls === '부정' || recovered);
+                if (hadNeg) {
+                    rDenom += 1;
+                    if (recovered) rRec += 1;
+                }
                 await pool.query(
                     `INSERT INTO public.qa_call_recovery
                         (proj_cd, uid, agent_user_id, segment_count, neg_seg_count, first_neg_idx,
@@ -5405,14 +5425,8 @@ app.get('/api/me/ta-metrics', async (req, res) => {
                 );
             }
         }
-        const { rows: rec } = await pool.query(
-            `SELECT count(*) FILTER (WHERE had_negative)::int AS denom,
-                    count(*) FILTER (WHERE recovered)::int    AS recovered
-               FROM public.qa_call_recovery WHERE agent_user_id = $1`,
-            [me]
-        );
-        const rDenom = rec[0]?.denom || 0;
-        const rRec = rec[0]?.recovered || 0;
+        // 회복률 집계는 위 루프의 인메모리 카운트 사용 — 기간 필터(A-71)·대표감정 규칙(A-72)이
+        // 항상 현재 조회분과 일치. qa_call_recovery 는 콜단위 분석 캐시로 계속 적재(타 소비처 대비).
 
         const pct = (n) => (total > 0 ? Math.round((n / total) * 1000) / 10 : null);
         res.json({
@@ -5451,6 +5465,7 @@ app.get('/api/me/ta-metrics/calls', async (req, res) => {
     }
     try {
         const me = req.session.user_id;
+        const range = taRangeFromQuery(req); // A-71: 기간 필터 — 지표 카드와 동일 범위
         const { rows: grp } = await pool.query(
             `SELECT proj_cd, array_agg("UID") AS uids
                FROM qa_calls
@@ -5471,45 +5486,46 @@ app.get('/api/me/ta-metrics/calls', async (req, res) => {
         let calls = [];
         if (kind === 'negative') {
             for (const g of grp) {
-                const rows = await fetchNegativeCallsByUids(g.proj_cd, g.uids || []);
+                const rows = await fetchNegativeCallsByUids(g.proj_cd, g.uids || [], range);
                 calls.push(...rows.map((r) => withQaId(g.proj_cd, r)));
             }
             calls.sort((a, b) => new Date(b.cdate || 0) - new Date(a.cdate || 0));
         } else if (kind === 'forbidden') {
             for (const g of grp) {
-                const rows = await fetchForbiddenCallsByUids(g.proj_cd, g.uids || []);
+                const rows = await fetchForbiddenCallsByUids(g.proj_cd, g.uids || [], range);
                 calls.push(...rows.map((r) => withQaId(g.proj_cd, r)));
             }
             calls.sort((a, b) => new Date(b.cdate || 0) - new Date(a.cdate || 0));
         } else {
-            // recovery — 부정 발생 콜(had_negative)만. 구간감정 궤적·일시·채널을 03 에서 동봉.
-            const { rows: recRows } = await pool.query(
-                `SELECT proj_cd, uid, recovered, first_neg_idx, final_sentiment, neg_seg_count, segment_count
-                   FROM public.qa_call_recovery
-                  WHERE agent_user_id = $1 AND had_negative = true`,
-                [me]
-            );
-            const meta = new Map();
+            // recovery — 03 구간감정에서 직접 계산(지표 카드와 동일 규칙·동일 기간 — 캐시 미경유).
+            //   분모(A-72): 구간 부정 존재 AND (대표감정 부정 OR 회복 서사) — /api/me/ta-metrics 와 일치.
             for (const g of grp) {
-                const segRows = await fetchSegmentSentimentsByUids(g.proj_cd, g.uids || []);
-                for (const s of segRows) meta.set(`${g.proj_cd}::${s.uid}`, s);
+                const segRows = await fetchSegmentSentimentsByUids(g.proj_cd, g.uids || [], range);
+                for (const s of segRows) {
+                    const sents = s.sentiments || [];
+                    const segCount = sents.length;
+                    const negCount = sents.filter((x) => x === '부정').length;
+                    const firstNeg = sents.findIndex((x) => x === '부정');
+                    const finalS = segCount ? sents[segCount - 1] : null;
+                    const hadNegSeg = negCount > 0;
+                    const recovered = hadNegSeg && (finalS === '긍정' || finalS === '중립');
+                    const hadNeg = hadNegSeg && (s.sentiment_cls === '부정' || recovered);
+                    if (!hadNeg) continue;
+                    calls.push({
+                        proj_cd: g.proj_cd,
+                        uid: s.uid,
+                        qa_id: qaIdOf.get(`${g.proj_cd}::${s.uid}`) || s.uid,
+                        recovered,
+                        first_neg_idx: firstNeg >= 0 ? firstNeg + 1 : null,
+                        final_sentiment: finalS,
+                        neg_seg_count: negCount,
+                        segment_count: segCount,
+                        trajectory: sents,
+                        cdate: s.cdate || null,
+                        channel: s.channel || null,
+                    });
+                }
             }
-            calls = recRows.map((r) => {
-                const s = meta.get(`${r.proj_cd}::${r.uid}`) || {};
-                return {
-                    proj_cd: r.proj_cd,
-                    uid: r.uid,
-                    qa_id: qaIdOf.get(`${r.proj_cd}::${r.uid}`) || r.uid,
-                    recovered: r.recovered,
-                    first_neg_idx: r.first_neg_idx,
-                    final_sentiment: r.final_sentiment,
-                    neg_seg_count: r.neg_seg_count,
-                    segment_count: r.segment_count,
-                    trajectory: s.sentiments || [],
-                    cdate: s.cdate || null,
-                    channel: s.channel || null,
-                };
-            });
             // 미회복(코칭 후보) 먼저, 그 안에서 최신순.
             calls.sort((a, b) =>
                 a.recovered === b.recovered ? new Date(b.cdate || 0) - new Date(a.cdate || 0) : a.recovered ? 1 : -1

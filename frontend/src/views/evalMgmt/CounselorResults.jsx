@@ -429,12 +429,12 @@ function fmtCallTime(v) {
     const p = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
-function QualityDrillModal({ kind, onClose }) {
+function QualityDrillModal({ kind, period = null, onClose }) {
     const [state, setState] = useState({ loading: true, calls: [], error: null });
     useEffect(() => {
         let cancel = false;
         setState({ loading: true, calls: [], error: null });
-        fetchMyTaMetricCalls(kind)
+        fetchMyTaMetricCalls(kind, period)  // 지표 카드와 동일 기간(A-71)
             .then((d) => {
                 if (cancel) return;
                 if (d?.enabled === false) setState({ loading: false, calls: [], error: 'TA 분석이 연동되지 않았습니다.' });
@@ -442,7 +442,7 @@ function QualityDrillModal({ kind, onClose }) {
             })
             .catch(() => { if (!cancel) setState({ loading: false, calls: [], error: '콜 목록을 불러오지 못했습니다.' }); });
         return () => { cancel = true; };
-    }, [kind]);
+    }, [kind, period]);
     const meta = DRILL_META[kind] || {};
     const { loading, calls, error } = state;
 
@@ -572,9 +572,15 @@ export default function CounselorResults() {
                 if (!cancelled) setCoaching([]);
             }
         })();
+        return () => { cancelled = true; };
+    }, []);
+
+    // TA 지표(부정발화·금칙어·회복률) — 기간 선택에 반응해 재조회(A-71).
+    useEffect(() => {
+        let cancelled = false;
         (async () => {
             try {
-                const data = await fetchMyTaMetrics();  // 부정발화·금칙어(03 tb_ta_rslt, 본인 콜 기준)
+                const data = await fetchMyTaMetrics(period);  // 03 tb_ta_rslt, 본인 콜 + 설정 기간 기준
                 if (!cancelled) setTaMetrics(data || { enabled: false });
             } catch (e) {
                 console.error('TA 지표 로딩 실패:', e);
@@ -582,7 +588,7 @@ export default function CounselorResults() {
             }
         })();
         return () => { cancelled = true; };
-    }, []);
+    }, [period]);
 
     // 평가체계 버전 목록(effective_from) — 최근 평가 목록의 QA 항목버전 드롭다운/매칭용. (평가 리스트와 동일 소스)
     useEffect(() => {
@@ -637,7 +643,20 @@ export default function CounselorResults() {
         return () => { cancelled = true; };
     }, [evals]);
 
-    const myEvals = evals || [];
+    // 기간 선택(A-71) — KPI 카드·최근 평가 목록·파생 집계 전부 설정 기간의 콜만 반영.
+    //   '전체'(start/end null) = 무필터. 날짜 파싱 불가 콜은 숨기지 않고 포함(데이터 유실 방지).
+    const myEvals = useMemo(() => {
+        const list = evals || [];
+        if (!period?.start && !period?.end) return list;
+        const from = period?.start ? period.start.getTime() : null;
+        const to = period?.end ? period.end.getTime() + 24 * 60 * 60 * 1000 : null; // end 당일 포함
+        return list.filter((e) => {
+            const d = e.callDatetime ? new Date(String(e.callDatetime).replace(' ', 'T')) : null;
+            if (!d || Number.isNaN(d.getTime())) return true;
+            const t = d.getTime();
+            return (from == null || t >= from) && (to == null || t < to);
+        });
+    }, [evals, period]);
     const needsReviewCount = myEvals.filter((r) => REVIEW_NEEDS_ME.has(r.status)).length;  // 대기+검수중
 
     // ── 평가체계 버전 매칭(콜 날짜 → 버전) — 평가 리스트(Dashboard)와 동일 규칙: effective_from 이하 최신 버전 ──
@@ -833,7 +852,7 @@ export default function CounselorResults() {
             <div className="panel" style={{ marginBottom: 22 }}>
                 <div className="panel-head">
                     <h3>감정 · 대화 품질</h3>
-                    <div className="sub" style={{ marginLeft: 12 }}>{taReal ? 'TA 분석 기반 · 내 통화 전체' : 'STT 발화 분석 기반 · 이번주'}</div>
+                    <div className="sub" style={{ marginLeft: 12 }}>{taReal ? 'TA 분석 기반 · 설정 기간별 통화 분석' : 'STT 발화 분석 기반 · 이번주'}</div>
                     <span className="pill blue" style={{ marginLeft: 'auto', fontSize: 10.5 }}>
                         <Icon name="audio-lines" size={10} />{taReal ? `${quality.negative.total}건 통화 분석` : '512개 발화 분석'}
                     </span>
@@ -905,7 +924,7 @@ export default function CounselorResults() {
                 </div>
             </div>
 
-            {drillKind && <QualityDrillModal kind={drillKind} onClose={() => setDrillKind(null)} />}
+            {drillKind && <QualityDrillModal kind={drillKind} period={period} onClose={() => setDrillKind(null)} />}
 
             {/* 배정된 코칭 플랜 */}
             <div className="panel" style={{ marginBottom: 22 }}>
