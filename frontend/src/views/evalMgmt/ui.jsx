@@ -520,7 +520,8 @@ export function defaultPeriod(preset = '7d') {
     return { preset, start: r.start, end: r.end };
 }
 
-export function PeriodPicker({ value, onChange }) {
+// align: 팝업 정렬('right' 기본). 화면 왼쪽에 놓인 피커는 'left' — 오른쪽 앵커가 창 밖으로 나가 잘리는 문제 방지.
+export function PeriodPicker({ value, onChange, align = 'right' }) {
     const v = value || defaultPeriod('7d');
     const [open, setOpen] = useState(false);
     const [viewMonth, setViewMonth] = useState(() => startOfDay(v.end || APP_TODAY));
@@ -596,7 +597,7 @@ export function PeriodPicker({ value, onChange }) {
             </button>
 
             {open && (
-                <div className="period-pop">
+                <div className="period-pop" style={align === 'left' ? { left: 0, right: 'auto' } : undefined}>
                     <div className="period-presets">
                         {PERIOD_PRESETS.map((p) => (
                             <button

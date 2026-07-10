@@ -541,6 +541,7 @@ function toCallRow(row) {
         id: row.qa_id,
         uid: row.uid ?? null,          // 상담번호(ICS UID) — 평가목록 표시용
         agent_code: row.agent_code ?? null,
+        agent_user_id: row.agent_user_id ?? null,  // 계정 연결 정본 — 코칭 근거(코칭 배정) 상담사 매칭용
         call_no: row.call_no,
         call_datetime: row.call_datetime,
         duration_sec: row.duration_sec,
@@ -1346,6 +1347,7 @@ app.get('/api/calls', async (req, res) => {
                 c.duration_sec AS duration_sec,
                 ''::text AS team_name,
                 c.agent_code AS agent_code,
+                c.agent_user_id AS agent_user_id,
                 ''::text AS agent_id,
                 COALESCE(au.display_name, '')::text AS agent_name,
                 ''::text AS consultation_type,

@@ -39,6 +39,7 @@ function adaptCall(c) {
         id: c.qa_id,
         sessionId: c.uid || c.qa_id,                 // 상담번호(ICS UID)
         counselor: c.agent_code || '',
+        agentUserId: c.agent_user_id ?? null,        // 계정 연결의 정본(qa_calls.agent_user_id) — 코칭 근거 매칭용
         name: c.agent_name || c.agent_code || '미지정',
         avId: hashAv(c.agent_code || c.qa_id),
         callDatetime: c.call_datetime || null,       // 원본 상담일시(평가리스트와 동일 포맷 표시용)
@@ -172,13 +173,17 @@ export default function AdminEvalMgmt() {
     };
 
     // 평가 목록에서 체크한 콜 → 코칭 배정 모달을 근거 콜 자동 선택 상태로 오픈 (현장 의견①).
-    // row.counselor(agent_code) → agents.user_id 매칭 — 코칭 members/근거 소유 검증은 숫자 user_id 기준.
+    // 콜의 agent_user_id(계정 연결 정본, 서버 근거 소유 검증과 동일 기준) 우선 매칭 —
+    // agent_code 는 비어있거나 계정과 불일치할 수 있어 구데이터 폴백으로만 사용.
     const coachFromCalls = (rowsSel) => {
         const byMember = new Map(); // user_id → { picks: {callId: callObj} }
         let unmatched = 0;
         for (const r of rowsSel) {
-            const a = agents.find((x) => x.id === r.counselor);
-            const uid = Number(a?.user_id);
+            let uid = r.agentUserId == null ? NaN : Number(r.agentUserId);
+            if (!Number.isFinite(uid)) {
+                const a = agents.find((x) => x.id === r.counselor);
+                uid = Number(a?.user_id);
+            }
             if (!Number.isFinite(uid)) { unmatched += 1; continue; }
             if (!byMember.has(uid)) byMember.set(uid, { picks: {} });
             // MemberCallPicker 콜 객체와 동형(id/date/score/channel) — 체크 표시·전송(callIds=keys) 호환.
@@ -821,7 +826,7 @@ function MemberCallPicker({ agentId, picks, onToggleCall }) {
         <div style={{ display: 'grid', gap: 10 }}>
             {/* 필터: 기간 + 채널(인/아웃) */}
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-                <PeriodPicker value={period} onChange={setPeriod} />
+                <PeriodPicker value={period} onChange={setPeriod} align="left" />
                 <div className="seg">
                     {[['', '전체'], ['I', '인바운드'], ['O', '아웃바운드']].map(([k, lbl]) => (
                         <button key={k || 'all'} className={`seg-btn ${io === k ? 'active' : ''}`} onClick={() => setIo(k)}>{lbl}</button>
@@ -986,6 +991,15 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false,
             windowed={windowed}
             foot={
                 <>
+                    {!canSave && (
+                        <span className="muted-text" style={{ fontSize: 11.5, marginRight: 'auto', alignSelf: 'center' }}>
+                            {selected.length === 0
+                                ? '대상 상담사를 선택하세요'
+                                : !focus
+                                    ? '집중 영역을 선택하면 배정할 수 있어요'
+                                    : '액션 아이템을 1개 이상 입력하세요'}
+                        </span>
+                    )}
                     <button className="btn-mini" onClick={onClose}>취소</button>
                     <button className="btn-mini primary" disabled={!canSave} onClick={submit}>
                         <Icon name="send" size={11} />배정하기
