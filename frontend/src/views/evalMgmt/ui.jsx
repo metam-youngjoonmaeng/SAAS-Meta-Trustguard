@@ -521,7 +521,9 @@ export function defaultPeriod(preset = '7d') {
 }
 
 // align: 팝업 정렬('right' 기본). 화면 왼쪽에 놓인 피커는 'left' — 오른쪽 앵커가 창 밖으로 나가 잘리는 문제 방지.
-export function PeriodPicker({ value, onChange, align = 'right' }) {
+// fixedPop: overflow 클리핑 컨테이너(모달·아코디언 등) 안에서 사용할 때 true — 팝업을 뷰포트 기준
+//   position:fixed 로 띄워 어떤 조상에도 잘리지 않게 한다. 열 때 트리거 rect 로 위치 계산(+화면 경계 클램프).
+export function PeriodPicker({ value, onChange, align = 'right', fixedPop = false }) {
     const v = value || defaultPeriod('7d');
     const [open, setOpen] = useState(false);
     const [viewMonth, setViewMonth] = useState(() => startOfDay(v.end || APP_TODAY));
@@ -588,16 +590,32 @@ export function PeriodPicker({ value, onChange, align = 'right' }) {
     const isEnd = (d) => sameDay(d, draft.start) || sameDay(d, draft.end);
     const future = (d) => d > startOfDay(APP_TODAY);
 
+    // fixedPop — 열 때 트리거 위치로 뷰포트 좌표 계산. 아래 공간 부족 시 위로 펼침, 좌우는 화면 안으로 클램프.
+    const [popPos, setPopPos] = useState(null);
+    const POP_W = 430, POP_H = 350;
+    const toggleOpen = () => {
+        if (!open && fixedPop && ref.current) {
+            const r = ref.current.getBoundingClientRect();
+            const top = r.bottom + 8 + POP_H > window.innerHeight ? Math.max(8, r.top - 8 - POP_H) : r.bottom + 8;
+            const left = Math.max(8, Math.min(align === 'left' ? r.left : r.right - POP_W, window.innerWidth - 8 - POP_W));
+            setPopPos({ top, left });
+        }
+        setOpen((o) => !o);
+    };
+    const popStyle = fixedPop && popPos
+        ? { position: 'fixed', top: popPos.top, left: popPos.left, right: 'auto', zIndex: 200 }
+        : align === 'left' ? { left: 0, right: 'auto' } : undefined;
+
     return (
         <div className="period-picker" ref={ref}>
-            <button className={`period-trigger ${open ? 'open' : ''}`} onClick={() => setOpen((o) => !o)}>
+            <button className={`period-trigger ${open ? 'open' : ''}`} onClick={toggleOpen}>
                 <Icon name="calendar" size={14} />
                 <span>{label}</span>
                 <Icon name="chevron-down" size={13} style={{ color: 'var(--ink-400)' }} />
             </button>
 
             {open && (
-                <div className="period-pop" style={align === 'left' ? { left: 0, right: 'auto' } : undefined}>
+                <div className="period-pop" style={popStyle}>
                     <div className="period-presets">
                         {PERIOD_PRESETS.map((p) => (
                             <button

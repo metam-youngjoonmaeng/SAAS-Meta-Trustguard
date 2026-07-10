@@ -826,7 +826,7 @@ function MemberCallPicker({ agentId, picks, onToggleCall }) {
         <div style={{ display: 'grid', gap: 10 }}>
             {/* 필터: 기간 + 채널(인/아웃) */}
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-                <PeriodPicker value={period} onChange={setPeriod} align="left" />
+                <PeriodPicker value={period} onChange={setPeriod} align="left" fixedPop />
                 <div className="seg">
                     {[['', '전체'], ['I', '인바운드'], ['O', '아웃바운드']].map(([k, lbl]) => (
                         <button key={k || 'all'} className={`seg-btn ${io === k ? 'active' : ''}`} onClick={() => setIo(k)}>{lbl}</button>
