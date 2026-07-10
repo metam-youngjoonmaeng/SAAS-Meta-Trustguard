@@ -1,5 +1,5 @@
-import React from 'react';
-import { Home, Bot, BarChart3, ClipboardCheck, Star, ListChecks, Settings } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Home, Bot, BarChart3, ClipboardCheck, Star, ListChecks, Settings, Gauge } from 'lucide-react';
 import { PRODUCT_NAME } from '../branding';
 import BrandSelector from './BrandSelector';
 
@@ -76,13 +76,24 @@ const Sidebar = ({
     selectedBrandId,
     onBrandChange,
     onTabClick,
+    ksqiEnabled = false,
 }) => {
-    const navGroups =
+    const baseGroups =
         role === 'super_admin'
             ? SUPER_ADMIN_NAV_GROUPS
             : role === 'admin'
               ? ADMIN_NAV_GROUPS
               : AGENT_NAV_GROUPS; // agent(상담사) 및 그 외 — 워크스페이스(홈)만
+    // KSQI 평가 탭 — 브랜드 ksqi_stt_enabled=true 인 admin/super_admin 워크스페이스에만 주입
+    // (평가 리스트·전체 통계와 같은 섹션). KSQI 관리 카탈로그는 딥링크(#/admin/ksqi-mgmt)로만 유지.
+    const navGroups = useMemo(() => {
+        if (!ksqiEnabled || (role !== 'admin' && role !== 'super_admin')) return baseGroups;
+        return baseGroups.map((g) =>
+            g.section === '워크스페이스'
+                ? { ...g, items: [...g.items, { label: 'KSQI 평가', tab: 'ksqi-eval', Icon: Gauge }] }
+                : g
+        );
+    }, [baseGroups, ksqiEnabled, role]);
     // 모든 역할(상담사 포함)이 본인 소속 브랜드를 셀렉터에 표시.
     // 전환은 lockSingle(super_admin 외 잠금)으로 제어 — 상담사는 표시만, 전환 불가.
     const showSelector = brands.length > 0;

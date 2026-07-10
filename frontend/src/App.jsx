@@ -8,6 +8,8 @@ import EvalMgmt from './views/EvalMgmt';
 import BatchManage from './views/evalMgmt/BatchManage';
 import SkillPromptManage from './views/SkillPromptManage';
 import AdminSkills from './views/AdminSkills';
+import KsqiMgmt from './views/KsqiMgmt';
+import KsqiEval from './views/KsqiEval';
 import Sidebar from './components/Sidebar';
 import Nav from './components/Nav';
 import ProfileModal from './components/ProfileModal';
@@ -36,6 +38,8 @@ const BATCH_HASH = '#/admin/batch';
 const SKILL_PROMPTS_HASH = '#/admin/skill-prompts';
 const SETTINGS_HASH = '#/admin/settings';
 const SKILLS_HASH = '#/admin/skills';
+const KSQI_MGMT_HASH = '#/admin/ksqi-mgmt';
+const KSQI_EVAL_HASH = '#/ksqi-eval';
 
 function parseRouteFromHash() {
     if (typeof window === 'undefined') {
@@ -77,6 +81,12 @@ function parseRouteFromHash() {
     }
     if (raw === '#/admin/skills') {
         return { tab: 'skills', qaId: null };
+    }
+    if (raw === '#/admin/ksqi-mgmt') {
+        return { tab: 'ksqi-mgmt', qaId: null };
+    }
+    if (raw === '#/ksqi-eval') {
+        return { tab: 'ksqi-eval', qaId: null };
     }
     if (raw === '#/admin/settings' || raw.startsWith('#/admin/settings/')) {
         const sub = raw === '#/admin/settings' ? null : (raw.slice('#/admin/settings/'.length) || null);
@@ -544,6 +554,8 @@ function App() {
         else if (tab === 'admin-batch') navigateHash(BATCH_HASH);
         else if (tab === 'skill-prompts') navigateHash(SKILL_PROMPTS_HASH);
         else if (tab === 'skills') navigateHash(SKILLS_HASH);
+        else if (tab === 'ksqi-mgmt') navigateHash(KSQI_MGMT_HASH);
+        else if (tab === 'ksqi-eval') navigateHash(KSQI_EVAL_HASH);
         else if (tab === 'settings') navigateHash(SETTINGS_HASH);
     };
 
@@ -563,6 +575,11 @@ function App() {
         },
         [selectedBrandId, refreshCalls, activeTab],
     );
+
+    // KSQI 관리 탭 게이트 — 현재 선택된 브랜드의 ksqi_stt_enabled 값을 사이드바에 내려
+    // 해당 브랜드에서 기능이 켜진 경우에만 탭을 노출한다(실제 게이트 판정은 Sidebar).
+    const selectedBrand = brands.find((b) => b.id === selectedBrandId) || null;
+    const ksqiEnabled = Boolean(selectedBrand?.ksqi_stt_enabled);
 
     // ICS SSO 처리 중 — 앱/로그인 화면 대신 로더(스테일 세션 깜빡임 방지, 05/08 동일).
     if (ssoRunning) {
@@ -600,6 +617,7 @@ function App() {
                     selectedBrandId={selectedBrandId}
                     onBrandChange={handleBrandChange}
                     onTabClick={handleSidebarTabClick}
+                    ksqiEnabled={ksqiEnabled}
                 />
                 <main className="app-shell-main">
                 {/* key 에 활성 브랜드 포함 — 브랜드 전환 시 현재 탭 전체 리마운트로 자체 fetch 뷰
@@ -623,6 +641,14 @@ function App() {
                         activeBrandId={selectedBrandId}
                         role={currentUser?.role}
                     />
+                )}
+                {activeTab === 'ksqi-eval' && ksqiEnabled && (
+                    <KsqiEval calls={calls} isLoading={isLoading} activeBrandId={selectedBrandId} />
+                )}
+                {activeTab === 'ksqi-eval' && !ksqiEnabled && (
+                    <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
+                        <p className="text-sm text-[#667085]">이 브랜드에서는 KSQI 평가 기능이 비활성화되어 있습니다.</p>
+                    </div>
                 )}
                 {activeTab === 'eval-mgmt' && <EvalMgmt role={currentUser?.role} />}
                 {/* 사용자·브랜드 관리 + 실시간 로그는 설정(Settings) 하위화면으로 이동 — 아래 settings 블록에서 렌더 */}
@@ -658,6 +684,19 @@ function App() {
                         <p className="text-sm text-[#667085]">admin 권한이 필요합니다.</p>
                     </div>
                 )}
+                {activeTab === 'ksqi-mgmt' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && ksqiEnabled && (
+                    <KsqiMgmt />
+                )}
+                {activeTab === 'ksqi-mgmt' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && !ksqiEnabled && (
+                    <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
+                        <p className="text-sm text-[#667085]">이 브랜드에서는 KSQI 기능이 비활성화되어 있습니다.</p>
+                    </div>
+                )}
+                {activeTab === 'ksqi-mgmt' && !(currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
+                    <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">
+                        <p className="text-sm text-[#667085]">admin 권한이 필요합니다.</p>
+                    </div>
+                )}
                 {activeTab === 'stats' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
                     <Stats activeBrandId={selectedBrandId} role={currentUser?.role} />
                 )}
@@ -674,6 +713,7 @@ function App() {
                         onSectionChange={(key) => navigateHash(key ? `${SETTINGS_HASH}/${key}` : SETTINGS_HASH)}
                         currentUserId={currentUser?.user_id}
                         activeBrandId={selectedBrandId}
+                        activeBrandKsqiEnabled={ksqiEnabled}
                         onBrandsChanged={refreshBrands}
                     /></div></div>
                 )}

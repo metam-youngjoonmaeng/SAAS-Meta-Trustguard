@@ -451,6 +451,11 @@ function buildEvaluatePayload(call) {
             // 평가 주입이 DB 활성 버전 기준으로 동작. 미동봉이면 백엔드 파일 스토어 거동(무회귀).
             skill_overlays:
                 call?.skill_overlays && typeof call.skill_overlays === 'object' ? call.skill_overlays : undefined,
+            // KSQI-STT(신규 17항목, 코오롱 9항목 레거시 v2/nodes/ksqi 와 완전 분리) 실행 토글 —
+            // organizations.ksqi_stt_enabled(evaluateStandardCall 이 주입) 를 그대로 전달.
+            // 항상 명시적 boolean(다른 옵션 필드와 달리 undefined 로 생략하지 않음) — 백엔드가
+            // state["ksqi_stt_enabled"] 게이트로 그대로 읽어 신규 모듈 실행 여부를 결정.
+            ksqi_stt_enabled: call?.ksqi_stt_enabled === true,
         },
     };
 }
@@ -1218,6 +1223,21 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         client.release();
     }
 
+    // KSQI STT 보고서 적재(보조 축) — 브랜드 채점(위 트랜잭션 COMMIT 완료)과 분리한 별도 UPDATE.
+    // qa_calls.ksqi_report(로컬 임시 jsonb) 에 저장하되, 컬럼 부재/실패는 조용히 스킵해 브랜드 적재에
+    // 영향 주지 않는다(보조 모듈 = 메인 무영향 원칙, 파이프라인 swallow 설계와 동형). prod 는 담당자가
+    // 동일 컬럼(ADD COLUMN IF NOT EXISTS ksqi_report jsonb) 을 추가하면 자동 동작.
+    if (mapped?.ksqi_report) {
+        try {
+            await pool.query(`UPDATE qa_calls SET ksqi_report = $2 WHERE "ID" = $1`, [
+                id,
+                JSON.stringify(mapped.ksqi_report),
+            ]);
+        } catch (e) {
+            console.warn(`[ingest] ksqi_report 적재 스킵 (ID=${id}, 컬럼 부재 가능): ${e.message}`);
+        }
+    }
+
     return {
         ok: true,
         qa_id: id,
@@ -1228,6 +1248,24 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         org_id: orgId,
         turns: conversation.length,
     };
+}
+
+/**
+ * org 의 KSQI-STT 실행 토글(organizations.ksqi_stt_enabled) 조회 — 미설정/조회 실패는
+ * 안전 기본값 false(신규 모듈 미실행, 기존 브랜드 무회귀). getOrgFewshot 과 동일한 org 단건 조회 패턴.
+ */
+async function getOrgKsqiSttEnabled(pool, orgId) {
+    if (orgId === null || orgId === undefined) return false;
+    try {
+        const { rows } = await pool.query(
+            `SELECT ksqi_stt_enabled FROM public.organizations WHERE id = $1 LIMIT 1`,
+            [orgId],
+        );
+        return rows[0]?.ksqi_stt_enabled === true;
+    } catch (err) {
+        console.error('getOrgKsqiSttEnabled error:', err);
+        return false;
+    }
 }
 
 /**
@@ -1423,6 +1461,10 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
         rubricCall = { ...rubricCall, skill_overlays: _skillInline.overlays };
     }
 
+    // KSQI-STT 실행 토글 — 해당 org 의 ksqi_stt_enabled 를 metadata 로 동봉(True 시 백엔드가
+    // 신규 KSQI-STT 모듈 실행). skill_overlays 와 동일한 org_id 해석(rubricCall 우선 → call 폴백).
+    rubricCall = { ...rubricCall, ksqi_stt_enabled: await getOrgKsqiSttEnabled(pool, rubricCall?.org_id ?? call?.org_id) };
+
     // onProgress 콜백이 있으면 SSE 스트림으로 호출해 노드 진행 이벤트를 중계 (응답 JSON 은 동일).
     const resp =
         typeof opts.onProgress === 'function'
@@ -1463,6 +1505,10 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
     // 가 axes[] 를 qa_analysis_report 에 적재해 분석 라우트가 점수밴드 보일러플레이트 대신 LLM
     // {rating,analysis,summary} 를 표시. 비-pentagon 브랜드는 resp.pentagon 부재 → null(무회귀).
     mapped.pentagon = resp && typeof resp === 'object' ? resp.pentagon || null : null;
+    // KSQI STT 보고서(A 서비스품질/B 공감 — 브랜드 루브릭과 별개 축) 통과 — ingestStandardCallToDb
+    // 가 qa_calls.ksqi_report(로컬 임시 jsonb, prod 스키마는 담당자 추가 예정)에 저장. KSQI 비활성
+    // 브랜드는 resp.ksqi_stt_report 부재 → null(무회귀).
+    mapped.ksqi_report = resp && typeof resp === 'object' ? resp.ksqi_stt_report || null : null;
 
     // 파이프라인 크래시 vs 포기호 구분: 평가 산출물이 0건인데 응답에 error 필드가 있으면
     // 이는 '포기호/미응대'가 아니라 평가 자체의 실패다(예: report_generator_v2 의 ItemResult

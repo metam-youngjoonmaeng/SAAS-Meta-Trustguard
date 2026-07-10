@@ -7,7 +7,7 @@ import BatchManage from './evalMgmt/BatchManage';
 import Users from './Users';
 import Brands from './Brands';
 import Logs from './Logs';
-import { fetchNotificationPrefs, updateNotificationPrefs, updateMe, fetchMe, PASSWORD_POLICY_HINT, PASSWORD_POLICY_RE } from '../services/api';
+import { fetchNotificationPrefs, updateNotificationPrefs, updateMe, fetchMe, updateBrand, PASSWORD_POLICY_HINT, PASSWORD_POLICY_RE } from '../services/api';
 
 const ROLE_LABEL = { super_admin: '슈퍼관리자', admin: '관리자', agent: '상담사' };
 
@@ -26,24 +26,36 @@ function Toggle({ checked, onChange }) {
     );
 }
 
-export default function Settings({ role = 'agent', user, initialSection = null, onSectionChange, currentUserId, activeBrandId, onBrandsChanged }) {
+export default function Settings({ role = 'agent', user, initialSection = null, onSectionChange, currentUserId, activeBrandId, activeBrandKsqiEnabled = false, onBrandsChanged }) {
     // 하위화면(section)은 해시로 딥링크. App 이 initialSection 으로 주입하고, 변경 시 onSectionChange 로 해시 갱신.
     const [section, setSection] = useState(initialSection || null);
     useEffect(() => { setSection(initialSection || null); }, [initialSection]);
     const go = (key) => { const k = key || null; setSection(k); if (onSectionChange) onSectionChange(k); };
     const isAdmin = role === 'admin' || role === 'super_admin';
+    const isSuper = role === 'super_admin';
     const u = user || {};
     const roleLabel = ROLE_LABEL[role] || '사용자';
     const org = u.org || u.brand_name || u.brandName || '메타엠';
 
-    const [ksqi, setKsqi] = useState(() => {
-        try { return localStorage.getItem('ksqi_enabled') === '1'; } catch { return false; }
-    });
-    const toggleKsqi = () => {
+    // KSQI 토글 — 선택 브랜드(activeBrandId)의 ksqi_stt_enabled. 켜면 그 브랜드 평가 시 KSQI 노드
+    // 병렬 실행 + 'KSQI 관리' 탭 노출(App 이 selectedBrand.ksqi_stt_enabled 로 게이트). super_admin 전용.
+    const [ksqi, setKsqi] = useState(Boolean(activeBrandKsqiEnabled));
+    const [ksqiSaving, setKsqiSaving] = useState(false);
+    useEffect(() => { setKsqi(Boolean(activeBrandKsqiEnabled)); }, [activeBrandKsqiEnabled, activeBrandId]);
+    const toggleKsqi = async () => {
+        if (!activeBrandId || ksqiSaving) return;
         const next = !ksqi;
-        setKsqi(next);
-        try { localStorage.setItem('ksqi_enabled', next ? '1' : '0'); } catch { /* noop */ }
-        try { window.dispatchEvent(new Event('ksqi-change')); } catch { /* noop */ }
+        setKsqi(next); // 낙관적 반영
+        setKsqiSaving(true);
+        try {
+            await updateBrand(activeBrandId, { ksqi_stt_enabled: next });
+            if (onBrandsChanged) await onBrandsChanged(); // App.brands 재조회 → 탭 게이트·토글 값 동기
+        } catch (e) {
+            setKsqi(!next); // 실패 롤백
+            alert('KSQI 토글 저장에 실패했습니다. 슈퍼관리자 권한·브랜드 선택을 확인해 주세요.');
+        } finally {
+            setKsqiSaving(false);
+        }
     };
 
     // 허브 카드(그룹별)
@@ -51,8 +63,8 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
         {
             title: '운영', show: isAdmin, items: [
                 { key: 'batch', icon: 'filter', label: 'AI 평가 배치 관리', desc: '조건별 평가 대상 필터링·스케줄', accent: 'primary' },
-                // KSQI 는 이동(navigate) 대신 토글 카드 — 운영 그룹에 함께 노출(별도 '평가 기능' 그룹 폐지).
-                { key: 'ksqi', type: 'toggle', icon: 'award', label: 'KSQI 평가', desc: '평가 리스트에 KSQI 리스트 활성화', accent: 'primary' },
+                // KSQI 토글 — 선택 브랜드의 KSQI on/off(super_admin). 켜면 그 브랜드 KSQI 노드 실행 + 'KSQI 관리' 탭 노출.
+                ...(isSuper ? [{ key: 'ksqi', type: 'toggle', icon: 'award', label: 'KSQI 평가', desc: '이 브랜드에 KSQI 노드 실행 + KSQI 관리 탭 노출', accent: 'primary' }] : []),
             ],
         },
         {
@@ -143,7 +155,7 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
                                             <span className="settings-tile-label">{it.label}</span>
                                             <span className="settings-tile-desc">{it.desc}</span>
                                         </span>
-                                        <button type="button" role="switch" aria-checked={ksqi} onClick={toggleKsqi} className={`ks-switch ${ksqi ? 'on' : ''}`}>
+                                        <button type="button" role="switch" aria-checked={ksqi} disabled={!activeBrandId || ksqiSaving} onClick={toggleKsqi} className={`ks-switch ${ksqi ? 'on' : ''}`} title={activeBrandId ? '' : '브랜드를 먼저 선택하세요'}>
                                             <span className="ks-knob" />
                                         </button>
                                     </div>

@@ -23,6 +23,24 @@ function sha256Hex(s) {
     return crypto.createHash('sha256').update(String(s)).digest('hex');
 }
 
+// organizations.ksqi_stt_enabled 컬럼 존재 여부(로컬만 존재 가능, prod 미적용 시 부재) — 1회 캐시.
+// 부재 시 SELECT/RETURNING/UPDATE 가 컬럼을 참조하면 SQL 에러로 브랜드 API 전체가 500 → 앱 마비.
+// 따라서 컬럼 유무에 따라 쿼리 조각을 분기(부재 시 ksqi_stt_enabled=false 상수)해 무회귀 보장.
+let _orgKsqiColCache = null;
+async function orgHasKsqiColumn(pool) {
+    if (_orgKsqiColCache !== null) return _orgKsqiColCache;
+    try {
+        const { rows } = await pool.query(
+            `SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'organizations' AND column_name = 'ksqi_stt_enabled' LIMIT 1`
+        );
+        _orgKsqiColCache = rows.length > 0;
+    } catch {
+        _orgKsqiColCache = false;
+    }
+    return _orgKsqiColCache;
+}
+
 // 신규 사용자에게 자동 부여되는 초기 비밀번호. 반드시 INITIAL_USER_PASSWORD env 로 설정한다.
 // (하드코딩 폴백 제거 — 미설정 시 약한 기본값을 조용히 쓰지 않고 에러로 막는다.)
 // 신규 계정은 must_change_password=true 로 시작 → 첫 로그인 시 강제 변경.
@@ -566,9 +584,10 @@ export function createBrandRouter(pool) {
         try {
             const isSuper = req.session?.role === 'super_admin';
             const ownOrgId = Number(req.session?.org_id) || null;
+            const ksqiSel = (await orgHasKsqiColumn(pool)) ? 'o.ksqi_stt_enabled' : 'false AS ksqi_stt_enabled';
             const { rows: orgRows } = isSuper
                 ? await pool.query(
-                      `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id,
+                      `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id, ${ksqiSel},
                               d.name AS domain_name
                        FROM public.organizations o
                        LEFT JOIN public.domains d ON d.id = o.domain_id
@@ -576,7 +595,7 @@ export function createBrandRouter(pool) {
                        ORDER BY o.id ASC`
                   )
                 : await pool.query(
-                      `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id,
+                      `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id, ${ksqiSel},
                               d.name AS domain_name
                        FROM public.organizations o
                        LEFT JOIN public.domains d ON d.id = o.domain_id
@@ -596,6 +615,7 @@ export function createBrandRouter(pool) {
                     color: r.color,
                     domain_id: r.domain_id,
                     domain_name: r.domain_name,
+                    ksqi_stt_enabled: r.ksqi_stt_enabled === true,
                     members: counts.members.get(r.id) || 0,
                     sessions: counts.sessions.get(r.id) || 0,
                     is_own: r.id === ownOrgId,
@@ -611,8 +631,9 @@ export function createBrandRouter(pool) {
     // super_admin 관리 탭 — 전체(비활성 포함)
     router.get('/admin/brands', requireSuperAdmin, async (req, res) => {
         try {
+            const ksqiSel = (await orgHasKsqiColumn(pool)) ? 'o.ksqi_stt_enabled' : 'false AS ksqi_stt_enabled';
             const { rows: orgRows } = await pool.query(
-                `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id, o.created_at,
+                `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id, o.created_at, ${ksqiSel},
                         d.name AS domain_name
                  FROM public.organizations o
                  LEFT JOIN public.domains d ON d.id = o.domain_id
@@ -631,6 +652,7 @@ export function createBrandRouter(pool) {
                     domain_id: r.domain_id,
                     domain_name: r.domain_name,
                     created_at: r.created_at,
+                    ksqi_stt_enabled: r.ksqi_stt_enabled === true,
                     members: counts.members.get(r.id) || 0,
                     sessions: counts.sessions.get(r.id) || 0,
                 }))
@@ -718,6 +740,11 @@ export function createBrandRouter(pool) {
             fields.push(`active = $${idx++}`);
             values.push(Boolean(req.body.active));
         }
+        const hasKsqiCol = await orgHasKsqiColumn(pool);
+        if (hasKsqiCol && typeof req.body?.ksqi_stt_enabled === 'boolean') {
+            fields.push(`ksqi_stt_enabled = $${idx++}`);
+            values.push(Boolean(req.body.ksqi_stt_enabled));
+        }
         const hasDomainInBody = 'domain_id' in (req.body || {});
         let newDomainId = null;
         if (hasDomainInBody) {
@@ -746,7 +773,7 @@ export function createBrandRouter(pool) {
             }
             const { rows } = await client.query(
                 `UPDATE public.organizations SET ${fields.join(', ')} WHERE id = $${idx}
-                 RETURNING id, name, short, color, active, domain_id`,
+                 RETURNING id, name, short, color, active, domain_id${hasKsqiCol ? ', ksqi_stt_enabled' : ''}`,
                 values
             );
             out = rows[0];

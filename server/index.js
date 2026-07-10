@@ -577,6 +577,15 @@ function toCallRow(row) {
         // 옛 콜=카탈로그 배점 합(80), 루브릭 평가 콜=ev.max_score 합(예: 78). 마이그레이션 불필요.
         // 미적재(체크리스트 없음) 시 null → FE 가 DEFAULT_TOTAL_MAX(80) 폴백.
         total_max: (row.total_max !== undefined && row.total_max !== null) ? Number(row.total_max) || null : null,
+        // KSQI 평가 — 시행 여부 + 영역 점수(별개 축). ksqi_report 컬럼 부재 시 has_ksqi=false·점수 null.
+        // KSQI 평가 워크스페이스 탭의 목록 필터(시행 콜만)·점수 컬럼(A/B/전체)에서 사용.
+        has_ksqi: row.has_ksqi === true || row.has_ksqi === 't',
+        ksqi_a: row.ksqi_a === null || row.ksqi_a === undefined ? null : Number(row.ksqi_a),
+        ksqi_b: row.ksqi_b === null || row.ksqi_b === undefined ? null : Number(row.ksqi_b),
+        ksqi_overall_raw:
+            row.ksqi_overall_raw === null || row.ksqi_overall_raw === undefined ? null : Number(row.ksqi_overall_raw),
+        ksqi_overall_max:
+            row.ksqi_overall_max === null || row.ksqi_overall_max === undefined ? null : Number(row.ksqi_overall_max),
     };
 }
 
@@ -1268,9 +1277,40 @@ app.post('/api/auth/switch-org', async (req, res) => {
     }
 });
 
+// qa_calls.ksqi_report(로컬 임시 jsonb) 컬럼 존재 여부 — prod 미적용 시 부재. 1회 캐시.
+// 부재 시 /api/calls 가 컬럼을 참조하면 SQL 에러로 리스트 전체가 깨지므로, 존재 여부에 따라
+// SELECT 조각을 분기(부재 시 has_ksqi=false·점수 null)해 무회귀 보장.
+let _qaCallsKsqiColCache = null;
+async function qaCallsHasKsqiColumn(pool) {
+    if (_qaCallsKsqiColCache !== null) return _qaCallsKsqiColCache;
+    try {
+        const { rows } = await pool.query(
+            `SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'qa_calls' AND column_name = 'ksqi_report' LIMIT 1`
+        );
+        _qaCallsKsqiColCache = rows.length > 0;
+    } catch {
+        _qaCallsKsqiColCache = false;
+    }
+    return _qaCallsKsqiColCache;
+}
+
 app.get('/api/calls', async (req, res) => {
     try {
         const activeOrgId = resolveActiveOrgId(req);
+        // KSQI 점수/유무 컬럼(area_a·area_b scaled + overall) — 컬럼 존재 시에만 추출, 부재 시 안전 폴백.
+        const hasKsqiCol = await qaCallsHasKsqiColumn(pool);
+        const ksqiCols = hasKsqiCol
+            ? `(c.ksqi_report IS NOT NULL) AS has_ksqi,
+               (c.ksqi_report->'area_a'->>'scaled')::float AS ksqi_a,
+               (c.ksqi_report->'area_b'->>'scaled')::float AS ksqi_b,
+               (c.ksqi_report->'overall'->>'raw')::float AS ksqi_overall_raw,
+               (c.ksqi_report->'overall'->>'max')::float AS ksqi_overall_max`
+            : `false AS has_ksqi,
+               NULL::float AS ksqi_a,
+               NULL::float AS ksqi_b,
+               NULL::float AS ksqi_overall_raw,
+               NULL::float AS ksqi_overall_max`;
         const params = [];
         const conds = [];
         if (activeOrgId != null) {
@@ -1340,7 +1380,8 @@ app.get('/api/calls', async (req, res) => {
                 ) AS has_manual_override,
                 COALESCE(gs.golden_count, 0) AS golden_count,
                 COALESCE(ev.ev_total, 0) AS ev_total,
-                COALESCE(ev.opted_count, 0) AS opted_count
+                COALESCE(ev.opted_count, 0) AS opted_count,
+                ${ksqiCols}
              FROM qa_calls c
              LEFT JOIN public.organizations o ON o.id = c.org_id
              LEFT JOIN public.admin_users au ON au.user_id = c.agent_user_id
@@ -1604,15 +1645,29 @@ app.get('/api/stats', async (req, res) => {
         }));
         const weak = [...items].filter((i) => i.avg != null).sort((a, b) => a.avg - b.avg).slice(0, 5);
 
-        // 5) 일별 추이(현재창)
+        // 5) 일별 추이(현재창) — generate_series 날짜 스파인에 LEFT JOIN.
+        //    GROUP BY 만 하면 콜 없는 날이 행에서 통째로 빠져 7일 창에 막대가 6개만 나온다(빈 날 누락 fix).
+        //    빈 날은 avg=null / count=0 으로 내려 프론트가 '평가 없음'으로 구분 표시.
         const sc5 = buildScope({ withDept: true });
         const daily = (await pool.query(
-            `SELECT ${CDATE_DT} AS date,
-                    ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS avg, COUNT(*) AS count
-               FROM qa_calls c ${sc5.where} AND ${bind(winCur, sc5.params)}
-              GROUP BY ${CDATE_DT} ORDER BY 1`,
+            bind(
+                `SELECT s.date::date AS date, d.avg, COALESCE(d.count, 0) AS count
+                   FROM generate_series($A::date - ($D - 1), $A::date, interval '1 day') AS s(date)
+                   LEFT JOIN (
+                        SELECT ${CDATE_DT} AS date,
+                               ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS avg, COUNT(*) AS count
+                          FROM qa_calls c ${sc5.where} AND ${winCur}
+                         GROUP BY ${CDATE_DT}
+                   ) d ON d.date = s.date::date
+                  ORDER BY 1`,
+                sc5.params
+            ),
             sc5.params
-        )).rows.map((r) => ({ date: r.date, avg: Number(r.avg), count: Number(r.count) }));
+        )).rows.map((r) => ({
+            date: r.date,
+            avg: r.avg != null ? Number(r.avg) : null,
+            count: Number(r.count),
+        }));
 
         // 6) 상담사 랭킹(현재창) — 이름 조인, 미연결은 '미지정' 한 줄
         const sc6 = buildScope({ withDept: true });
@@ -1827,6 +1882,19 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
         // 수기평가 대상 사유(상세 배지용) — ['저품질 검증 · 평균점수 미달', ...]
         const manualReviewReasons = Array.isArray(callMeta.manual_review_reasons) ? callMeta.manual_review_reasons : [];
 
+        // KSQI STT 보고서(로컬 임시 jsonb — prod 스키마는 담당자 추가 예정). 브랜드 루브릭과 별개 축이라
+        // 별도 방어 쿼리로 조회 — 컬럼 부재 시 조용히 null 로 폴백해 상세 로드 자체는 무영향(500 방지).
+        let ksqiReport = null;
+        try {
+            const { rows: krRows } = await pool.query(
+                `SELECT ksqi_report FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
+                [qaId]
+            );
+            ksqiReport = krRows[0]?.ksqi_report || null;
+        } catch (krErr) {
+            ksqiReport = null;
+        }
+
         // 관리자 코멘트 — qa_admin_comments(qa_id 단일행에 전체 배열 보관). 없으면 [].
         const { rows: acRows } = await pool.query(
             'SELECT comments FROM public.qa_admin_comments WHERE qa_id = $1',
@@ -1884,6 +1952,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
                 admin_comments: adminComments,
                 manual_review: !!callMeta.manual_review,
                 manual_review_reasons: manualReviewReasons,
+                ksqi_report: ksqiReport,
             });
             return;
         }
@@ -2002,6 +2071,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
             admin_comments: adminComments,
             manual_review: !!callMeta.manual_review,
             manual_review_reasons: manualReviewReasons,
+            ksqi_report: ksqiReport,
         });
     } catch (error) {
         console.error('GET /api/evaluations/:qaId error:', error);
@@ -3102,6 +3172,32 @@ app.post('/api/admin/eval-items/compose-prompt', requireAdmin, async (req, res) 
     } catch (err) {
         console.error('POST /api/admin/eval-items/compose-prompt error:', err);
         res.json({ ok: false, error: String(err?.message || err) });
+    }
+});
+
+// GET /api/ksqi-stt/catalog — KSQI-STT(신규 17항목) 카탈로그 프록시. qa-pipeline
+// GET /ksqi-stt/catalog 를 그대로 중계(DB 무접촉) — compose-prompt 와 동일 base 해석
+// (EC2 타깃 기본, QA_PIPELINE_FORCE_LOCAL 우선). 'KSQI 관리' 탭이 항목/기준 표시에 사용.
+app.get('/api/ksqi-stt/catalog', async (req, res) => {
+    try {
+        const base = resolvePipelineBaseUrl({ pipeline_target: 'ec2' }, {}).replace(/\/+$/, '');
+        const resp = await fetch(`${base}/ksqi-stt/catalog`, {
+            signal: AbortSignal.timeout(30_000),
+        });
+        let j = null;
+        try {
+            j = await resp.json();
+        } catch {
+            /* 비-JSON 응답 */
+        }
+        if (!resp.ok || j === null) {
+            res.status(502).json({ message: `ksqi-stt catalog 조회 실패 (http_${resp.status})` });
+            return;
+        }
+        res.json(j);
+    } catch (err) {
+        console.error('GET /api/ksqi-stt/catalog error:', err);
+        res.status(502).json({ message: String(err?.message || err) });
     }
 });
 
