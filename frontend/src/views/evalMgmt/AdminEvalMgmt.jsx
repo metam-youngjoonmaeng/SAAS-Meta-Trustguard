@@ -171,6 +171,36 @@ export default function AdminEvalMgmt() {
         setCoaching(await reloadCoaching()); // 서버 기준으로 갱신(관리자 공유 일관성)
     };
 
+    // 평가 목록에서 체크한 콜 → 코칭 배정 모달을 근거 콜 자동 선택 상태로 오픈 (현장 의견①).
+    // row.counselor(agent_code) → agents.user_id 매칭 — 코칭 members/근거 소유 검증은 숫자 user_id 기준.
+    const coachFromCalls = (rowsSel) => {
+        const byMember = new Map(); // user_id → { picks: {callId: callObj} }
+        let unmatched = 0;
+        for (const r of rowsSel) {
+            const a = agents.find((x) => x.id === r.counselor);
+            const uid = Number(a?.user_id);
+            if (!Number.isFinite(uid)) { unmatched += 1; continue; }
+            if (!byMember.has(uid)) byMember.set(uid, { picks: {} });
+            // MemberCallPicker 콜 객체와 동형(id/date/score/channel) — 체크 표시·전송(callIds=keys) 호환.
+            byMember.get(uid).picks[r.id] = { id: r.id, date: r.callDatetime || r.date, score: r.score, channel: r.channel, callNo: r.sessionId };
+        }
+        if (!byMember.size) {
+            alert('선택한 콜의 상담사 계정을 찾을 수 없습니다. 상담사 미연결(미지정) 콜은 배정 근거로 쓸 수 없습니다.');
+            return;
+        }
+        if (unmatched > 0) alert(`상담사 계정 미연결 콜 ${unmatched}건은 배정 근거에서 제외했습니다.`);
+        const members = [...byMember.keys()];
+        openCoachingWindow({
+            agents,
+            onCreate: addCoaching,
+            prefill: {
+                targetType: members.length > 1 ? 'group' : 'individual',
+                members,
+                picks: Object.fromEntries(byMember),
+            },
+        });
+    };
+
     return (
         <div>
             <PageHead eyebrow="관리자 · 평가 관리" title="평가 관리" sub="조직 전체 평가 데이터를 분석하고, 취약 상담사에게 코칭을 배정합니다." />
@@ -181,6 +211,7 @@ export default function AdminEvalMgmt() {
                 results={results || []}
                 loading={results === null}
                 onReload={reloadCalls}
+                onCoachFromCalls={coachFromCalls}
                 beforeList={<CoachingPanel coaching={coaching} agents={agents} onAssign={assign} onUnassign={unassign} onRemove={removeItem} onArchive={archiveItem} onNew={() => openCoachingWindow({ agents, onCreate: addCoaching })} />}
             />
         </div>
@@ -714,6 +745,7 @@ function openCoachingWindow(opts) {
             <CoachingCreateModal
                 windowed
                 agents={opts.agents || []}
+                prefill={opts.prefill || null}
                 onClose={close}
                 onCreate={(entry) => Promise.resolve(opts.onCreate?.(entry)).finally(close)}
             />
@@ -758,10 +790,11 @@ function CoachingHistoryModal({ onClose, windowed = false }) {
     );
 }
 
-// 배정 근거용 — 한 상담사의 콜 이력 피커. 저점수 우선 정렬 · 인/아웃 필터 · 기간(기본 이번 달) · 15개씩 페이징 · lazy(펼칠 때만 로드).
+// 배정 근거용 — 한 상담사의 콜 이력 피커. 최근순/저점수순 정렬 토글 · 인/아웃 필터 · 기간(기본 최근 7일) · 15개씩 페이징 · lazy(펼칠 때만 로드).
 function MemberCallPicker({ agentId, picks, onToggleCall }) {
     const LIMIT = 15;
-    const [period, setPeriod] = useState(() => defaultPeriod('month'));  // 기본: 이번 달(날짜 수정 가능)
+    const [period, setPeriod] = useState(() => defaultPeriod('7d'));  // 기본: 최근 7일(날짜 수정 가능) — 현장은 최근 콜 피드백이 대부분
+    const [sort, setSort] = useState('date');   // 'date' 최근순(기본) | 'score' 저점수 우선
     const [io, setIo] = useState('');           // '' 전체 | 'I' 인바운드 | 'O' 아웃바운드
     const [page, setPage] = useState(1);
     const [data, setData] = useState({ items: [], total: 0 });
@@ -770,17 +803,17 @@ function MemberCallPicker({ agentId, picks, onToggleCall }) {
     const ymd = (d) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '');
 
     // 필터 바뀌면 1페이지로.
-    useEffect(() => { setPage(1); }, [agentId, io, period]);
+    useEffect(() => { setPage(1); }, [agentId, io, period, sort]);
 
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
-        fetchAgentCalls(agentId, { from: ymd(period.start), to: ymd(period.end), io, sort: 'score', page, limit: LIMIT })
+        fetchAgentCalls(agentId, { from: ymd(period.start), to: ymd(period.end), io, sort, page, limit: LIMIT })
             .then((res) => { if (!cancelled) setData({ items: res.items || [], total: res.total || 0 }); })
             .catch(() => { if (!cancelled) setData({ items: [], total: 0 }); })
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
-    }, [agentId, io, period, page]);
+    }, [agentId, io, period, page, sort]);
 
     const pages = Math.max(1, Math.ceil((data.total || 0) / LIMIT));
 
@@ -794,7 +827,13 @@ function MemberCallPicker({ agentId, picks, onToggleCall }) {
                         <button key={k || 'all'} className={`seg-btn ${io === k ? 'active' : ''}`} onClick={() => setIo(k)}>{lbl}</button>
                     ))}
                 </div>
-                <span className="muted-text" style={{ fontSize: 11, marginLeft: 'auto' }}>저점수 우선 · {data.total}건</span>
+                {/* 정렬 토글 — 백엔드 sort=date|score 기지원 */}
+                <div className="seg">
+                    {[['date', '최근순'], ['score', '저점수순']].map(([k, lbl]) => (
+                        <button key={k} className={`seg-btn ${sort === k ? 'active' : ''}`} onClick={() => setSort(k)}>{lbl}</button>
+                    ))}
+                </div>
+                <span className="muted-text" style={{ fontSize: 11, marginLeft: 'auto' }}>{data.total}건</span>
             </div>
 
             {/* 콜 목록(스크롤) */}
@@ -840,16 +879,17 @@ function MemberCallPicker({ agentId, picks, onToggleCall }) {
     );
 }
 
-function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false }) {
-    const [targetType, setTargetType] = useState('group');
+// prefill — 평가 목록에서 콜 선택 후 진입 시 초기값 주입: { targetType, members:[user_id], picks:{ [memberId]: {picks} } }.
+function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false, prefill = null }) {
+    const [targetType, setTargetType] = useState(prefill?.targetType || 'group');
     const [channel, setChannel] = useState('call');   // 학습 채널 — 'call'(전화) | 'chat'(채팅). Tutor 딥링크 mode 로 전달.
-    const [selected, setSelected] = useState([]);
+    const [selected, setSelected] = useState(() => (Array.isArray(prefill?.members) ? prefill.members : []));
     const [focus, setFocus] = useState('');
     const [items, setItems] = useState([]);
     const [scenarios, setScenarios] = useState([]);
     const [scenCat, setScenCat] = useState('order');
     // 배정 근거(선택) — { [memberId]: { picks: {callId: callObj}, note } }. 상담사별 개별.
-    const [reasonSel, setReasonSel] = useState({});
+    const [reasonSel, setReasonSel] = useState(() => prefill?.picks || {});
     const [openMember, setOpenMember] = useState(null);  // 한 번에 한 명만 펼침
 
     // 대상에서 빠진 상담사의 근거는 정리, 펼침도 동기화(단일 선택이면 자동 펼침).
@@ -1201,7 +1241,7 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false 
 // sessionStorage(탭 단위, 탭 닫으면 자동 해제). 쿠키/localStorage 대신 SPA 내 화면 전환 보존용.
 const SELECTED_KEY = 'tg.evalMgmt.adminResults.selected';
 
-function AdminResults({ embedded, beforeList, results = [], loading = false, onReload }) {
+function AdminResults({ embedded, beforeList, results = [], loading = false, onReload, onCoachFromCalls }) {
     const [period, setPeriod] = useState(defaultPeriod('7d'));
     const [channel, setChannel] = useState('all');
     const [team, setTeam] = useState('all');
@@ -1337,17 +1377,22 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
     const drawerItem = drawerId ? results.find((r) => r.id === drawerId) : null;
     const COLS = '36px 96px 108px 168px 88px 84px 1fr 64px 112px 104px 30px';
 
-    // 평가목록 내보내기 — 체크한 건만(없으면 전체 필터결과) CSV/Excel 로 저장. 화면 컬럼과 동일.
+    // 평가목록 내보내기 — 체크한 건만(없으면 전체 필터결과) CSV/Excel 로 저장.
+    // 화면 테이블과 컬럼 구성·표시값 1:1 동일 (상담일시·상담번호·상담사·채널·부서·카테고리·점수·수기검토·승인).
+    const EXPORT_REVIEW_LABEL = {
+        pending: '대기', in_review: '검수중', review_done: '검토요청',
+        admin_revised: '반려', objection: '이의제기', approved: '확정', completed: '확정',
+    };
     const buildExportRows = (src) => src.map((r) => ({
         '상담일시': r.callDatetime ? formatDateTime(r.callDatetime) : `${r.date} ${r.time}`,
         '상담번호': r.sessionId,
         '상담사': r.name,
-        '상담사코드': r.counselor || '',
-        '채널': r.channel,
+        '채널': r.channel === 'inbound' ? '인바운드' : r.channel === 'outbound' ? '아웃바운드' : '-',
         '부서': r.team,
         '카테고리': r.category,
         '점수': r.score,
-        '승인': approvedIds.has(r.id) ? '승인' : '대기',
+        '수기검토': r.reviewRound > 0 ? `${r.reviewRound}차 검토` : '미검토',
+        '승인': EXPORT_REVIEW_LABEL[r.reviewStatus] || '대기',
     }));
     const exportDownload = (fmt) => {
         setDlOpen(false);
@@ -1483,7 +1528,13 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                 <div className="panel-head">
                     <h3>평가 목록</h3>
                     <div className="sub" style={{ marginLeft: 12 }}>{filtered.length}건 표시 중</div>
-                    <div style={{ marginLeft: 'auto', position: 'relative' }}>
+                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
+                        {/* 체크한 콜로 코칭 배정 — 선택 콜이 배정 근거로 자동 반영된 모달 오픈 (현장 의견①) */}
+                        {selected.size > 0 && onCoachFromCalls && (
+                            <button className="btn-mini primary" onClick={() => onCoachFromCalls(filtered.filter((r) => selected.has(r.id)))}>
+                                <Icon name="graduation-cap" size={11} />코칭 배정 ({selected.size})
+                            </button>
+                        )}
                         <button className="btn-mini" onClick={() => setDlOpen((v) => !v)}>
                             <Icon name="download" />Download{selected.size > 0 ? ` (${selected.size})` : ''}
                         </button>

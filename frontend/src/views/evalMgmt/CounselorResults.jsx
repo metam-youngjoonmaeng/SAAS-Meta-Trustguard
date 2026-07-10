@@ -608,6 +608,21 @@ export default function CounselorResults() {
         .filter((g) => !g.memberArchived)
         .sort((a, b) => (coachingAllDone(a) ? 1 : 0) - (coachingAllDone(b) ? 1 : 0));
 
+    // 상단 집계 — 배정 전체(coaching, 본인 정리분 포함) 기준. 카드 pill(완료/진행 중/시작 전)과 동일 분류.
+    // boardCoaching 으로 세면 정리(X)한 완료 건이 빠져 총 배정 수가 실제보다 작게 보임(현장 피드백: 6건인데 5건).
+    const coachingCounts = (() => {
+        let notStarted = 0, inProgress = 0, completed = 0;
+        for (const g of coaching) {
+            const sc = Array.isArray(g.scenarios) ? g.scenarios : [];
+            const my = Array.isArray(g.completed) ? g.completed : [];
+            const doneCount = sc.filter((c) => my.includes(c)).length;
+            if (coachingAllDone(g)) completed += 1;
+            else if (doneCount > 0) inProgress += 1;
+            else notStarted += 1;
+        }
+        return { total: coaching.length, notStarted, inProgress, completed };
+    })();
+
     // 각 평가의 항목별 점수 로드(강점·개선 집계 + 선택 상세). 최근 50건으로 제한.
     useEffect(() => {
         if (!evals || !evals.length) return undefined;
@@ -903,10 +918,16 @@ export default function CounselorResults() {
                         <span className="muted-text" style={{ fontSize: 12 }}>· 관리자가 직접 지정한 학습 커리큘럼</span>
                     </div>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {boardCoaching.length > 0 && (
-                            <span className="pill blue" style={{ fontSize: 10.5 }}>
-                                <Icon name="inbox" size={10} />{boardCoaching.length}건 진행 중
-                            </span>
+                        {/* 상태별 건수 — 총 배정 / 학습 미진행 / 학습 진행중 / 진행 완료 (현장 피드백 반영) */}
+                        {coachingCounts.total > 0 && (
+                            <>
+                                <span className="pill navy" style={{ fontSize: 10.5 }}>
+                                    <Icon name="inbox" size={10} />총 {coachingCounts.total}건
+                                </span>
+                                <span className="pill yellow" style={{ fontSize: 10.5 }}>미진행 {coachingCounts.notStarted}</span>
+                                <span className="pill blue" style={{ fontSize: 10.5 }}>진행 중 {coachingCounts.inProgress}</span>
+                                <span className="pill green" style={{ fontSize: 10.5 }}>완료 {coachingCounts.completed}</span>
+                            </>
                         )}
                         <button
                             className="btn-mini"

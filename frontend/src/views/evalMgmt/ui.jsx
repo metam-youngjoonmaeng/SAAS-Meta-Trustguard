@@ -474,7 +474,9 @@ export function Donut({ value, size = 96, stroke = 9, color = 'var(--primary)', 
 // ─────────────────────────────────────────────────────
 // PeriodPicker — 통합 기간 선택기
 // ─────────────────────────────────────────────────────
-const APP_TODAY = new Date(2026, 5, 16); // 2026-06-16 (mock "today")
+// 실제 오늘. 과거엔 mock 고정일(2026-06-16)이 하드코딩되어 그 이후 날짜(당일 포함)가
+// 캘린더에서 disabled + 월 이동 불가 + 프리셋 오계산되는 버그가 있었음 — 고정일 사용 금지.
+const APP_TODAY = new Date();
 
 const PERIOD_PRESETS = [
     { key: 'today', label: '오늘' },

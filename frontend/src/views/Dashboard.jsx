@@ -96,7 +96,7 @@ function buildPages(current, total) {
     return out;
 }
 
-const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
+const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId, ksqiMode = false }) => {
     // 활성 브랜드의 평가 체계 lookup. 신한(=1) 은 컬렉션관리부 9항목 + 소비자보호부 20항목, 한화(=2) 는 고객센터 8항목.
     const brandConfig = useMemo(() => getBrandConfig(activeBrandId), [activeBrandId]);
     const DEPARTMENT_OPTIONS = brandConfig.departments;
@@ -131,6 +131,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
         startDate: '',
         endDate: '',
         agent: '',
+        callNo: '',       // 상담번호 직접 조회 — 입력 시 다른 필터 우회(아래 baseFilteredCalls)
         eval: '',
         role: '',
         item: 'AI_QA',
@@ -280,6 +281,14 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
 
     // 기본 필터 (버전 제외) 적용 후 콜 셋. 자동 전환 판정용.
     const baseFilteredCalls = useMemo(() => {
+        // 상담번호 직접 조회 — 번호를 아는 특정 콜을 기간·부서 등 여러 필터를 거치지 않고
+        // 바로 찾도록 다른 조건을 전부 우회하고 org 전체에서 부분 일치 검색 (현장 피드백).
+        // 대소문자만 무시 ('ecom' → 'ECOM-STT-1086' 매칭). 하이픈 등 구분자는 저장값 그대로 비교.
+        const callNoQ = String(filters.callNo || '').trim().toLowerCase();
+        if (callNoQ) {
+            return calls.filter(row =>
+                (!ksqiMode || row.has_ksqi) && String(row.call_no || '').toLowerCase().includes(callNoQ));
+        }
         const startDate = filters.startDate ? new Date(`${filters.startDate}T00:00:00`) : null;
         const endDate = filters.endDate ? new Date(`${filters.endDate}T23:59:59.999`) : null;
         const defaultDept = DEPARTMENT_OPTIONS[0];
@@ -288,6 +297,8 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
         const singleDept = DEPARTMENT_OPTIONS.length <= 1;
 
         return calls.filter(row => {
+            // KSQI 모드: KSQI 가 실제 시행된 콜(ksqi_report 존재)만 노출.
+            if (ksqiMode && !row.has_ksqi) return false;
             const rowDept = row.department || defaultDept;
             if (!singleDept && rowDept !== department) return false;
             if (startDate || endDate) {
@@ -304,7 +315,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
             if (filters.manualOnly && !row.manual_review) return false;
             return true;
         });
-    }, [calls, filters.startDate, filters.endDate, filters.role, filters.agent, filters.item, filters.consultationType, filters.reviewStatus, filters.manualOnly, department, DEPARTMENT_OPTIONS]);
+    }, [calls, filters.startDate, filters.endDate, filters.role, filters.agent, filters.callNo, filters.item, filters.consultationType, filters.reviewStatus, filters.manualOnly, department, DEPARTMENT_OPTIONS, ksqiMode]);
 
     // 자동 전환: 선택 버전과 날짜 범위가 완전히 어긋나 0건이면 데이터가 있는 버전으로 fallback.
     // 0건 ≠ 자동 전환: 사용자가 선택한 버전 안에 콜이 있으면 그대로 유지 (부분 겹침은 부분만 표시).
@@ -335,12 +346,13 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
     }, [selectedVersion, baseFilteredCalls, departmentVersions, matchCallToVersion]);
 
     const filteredCalls = useMemo(() => {
+        if (String(filters.callNo || '').trim()) return baseFilteredCalls; // 상담번호 직접 조회 — 버전 필터도 우회
         if (versionFilterInfo.effectiveVersion === '') return baseFilteredCalls;
         return baseFilteredCalls.filter((row) => {
             const callDate = parseCallDate(row.call_datetime);
             return matchCallToVersion(callDate) === versionFilterInfo.effectiveVersion;
         });
-    }, [baseFilteredCalls, versionFilterInfo.effectiveVersion, matchCallToVersion]);
+    }, [baseFilteredCalls, versionFilterInfo.effectiveVersion, matchCallToVersion, filters.callNo]);
 
     // 페이지네이션 — 한 화면에 PAGE_SIZE(10)건, 초과분은 하단 숫자 네비게이션.
     const pageCount = Math.max(1, Math.ceil(filteredCalls.length / PAGE_SIZE));
@@ -387,13 +399,14 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
             {/* Filter Section */}
             <div className="bg-white p-6 rounded-xl border border-[#E4E7EC] shadow-sm mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                    <div className="space-y-1.5">
+                    {/* min-w-0: date 인풋은 고유 최소폭이 커서 창 축소 시 셀 밖으로 넘쳐 옆 필터를 덮음 — 셀·인풋 모두 축소 허용 */}
+                    <div className="space-y-1.5 min-w-0">
                         <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">기간</label>
-                        <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
+                        <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center min-w-0">
                             <input
                                 type="date"
                                 lang="en-CA"
-                                className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 focus:border-[#055AAF] outline-none transition-all"
+                                className="w-full min-w-0 px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 focus:border-[#055AAF] outline-none transition-all"
                                 value={filters.startDate}
                                 onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
                             />
@@ -401,9 +414,22 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                             <input
                                 type="date"
                                 lang="en-CA"
-                                className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 focus:border-[#055AAF] outline-none transition-all"
+                                className="w-full min-w-0 px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 focus:border-[#055AAF] outline-none transition-all"
                                 value={filters.endDate}
                                 onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">상담번호</label>
+                        <div className="relative" title="입력 시 기간·부서 등 다른 필터를 무시하고 전체에서 바로 조회합니다">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                            <input
+                                type="text"
+                                placeholder="상담번호 직접 조회"
+                                className="w-full pl-10 pr-4 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 focus:border-[#055AAF] outline-none transition-all placeholder:text-gray-400"
+                                value={filters.callNo}
+                                onChange={(e) => setFilters(prev => ({ ...prev, callNo: e.target.value }))}
                             />
                         </div>
                     </div>
@@ -471,6 +497,8 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                             ))}
                         </select>
                     </div>
+                    {/* 검수상태·수기평가 대상 필터 — KSQI 평가 탭에서는 불필요(별개 축·검수흐름 없음)하여 숨김. */}
+                    {!ksqiMode && (
                     <div className="space-y-1.5">
                         <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">검수상태</label>
                         <select
@@ -487,6 +515,8 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                             <option value={REVIEW_STATUS.APPROVED}>{REVIEW_STATUS_LABEL[REVIEW_STATUS.APPROVED]}</option>
                         </select>
                     </div>
+                    )}
+                    {!ksqiMode && (
                     <div className="space-y-1.5">
                         <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">수기평가 대상</label>
                         <select
@@ -498,6 +528,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                             <option value="only">수기평가 대상만</option>
                         </select>
                     </div>
+                    )}
                     <div className="space-y-1.5">
                         <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">항목</label>
                         <select
@@ -536,12 +567,88 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
             {/* Main Table — evolved direction: 흰색 헤더 + 중성 칩, 짙은 파란 chrome 제거 */}
             <div className="bg-white rounded-xl border border-[#E4E7EC] overflow-hidden shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
                 <div className="overflow-auto min-h-[400px] max-h-[720px]">
-                    {department !== '소비자보호부' ? (
+                    {ksqiMode ? (
+                        <table className="w-full border-collapse table-fixed text-left">
+                            <colgroup>
+                                <col className="w-12" />
+                                <col className="w-28" />
+                                <col className="w-44" />
+                                <col className="w-20" />
+                                <col className="w-32" />
+                                <col className="w-28" />
+                                <col className="w-28" />
+                                <col className="w-28" />
+                                <col className="w-24" />
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC]"></th>
+                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담번호</th>
+                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담일시</th>
+                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담시간</th>
+                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담사명</th>
+                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085] text-right">A 서비스품질</th>
+                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085] text-right">B 공감</th>
+                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085] text-right">KSQI 전체</th>
+                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085] text-center">검수상태</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#F2F4F7]">
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan={9} className="py-20 text-center text-[#98A2B3] text-[13px]">
+                                            데이터를 불러오는 중입니다...
+                                        </td>
+                                    </tr>
+                                ) : filteredCalls.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={9} className="py-20 text-center">
+                                            <div className="flex flex-col items-center gap-2 text-[#98A2B3]">
+                                                <FileX size={40} strokeWidth={1.5} className="opacity-60" />
+                                                <p className="text-[13px]">KSQI 평가가 시행된 콜이 없습니다.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : pagedCalls.map((row) => {
+                                    const fmtScaled = (v) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(1) : (v == null ? '-' : String(v)));
+                                    const overall =
+                                        row.ksqi_overall_raw == null || row.ksqi_overall_max == null
+                                            ? '-'
+                                            : `${row.ksqi_overall_raw} / ${row.ksqi_overall_max}`;
+                                    return (
+                                        <tr key={row.qa_id} className="hover:bg-[#FAFBFC] transition-colors group">
+                                            <td className="text-center py-3">
+                                                <button
+                                                    onClick={() => onOpenDetail(row.qa_id)}
+                                                    className="w-7 h-7 rounded-md inline-flex items-center justify-center text-[#98A2B3] hover:bg-[#055AAF] hover:text-white transition-all"
+                                                    aria-label="KSQI 평가 상세"
+                                                >
+                                                    <ChevronRight size={16} />
+                                                </button>
+                                            </td>
+                                            <td className="px-3 py-3 font-mono text-[12px] text-[#475467]">{row.call_no || '-'}</td>
+                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDateTime(row.call_datetime)}</td>
+                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDuration(row.duration_sec)}</td>
+                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{row.agent_name || '-'}</td>
+                                            <td className="px-3 py-3 text-right text-[13px] text-[#101828] tabular-nums">{fmtScaled(row.ksqi_a)}</td>
+                                            <td className="px-3 py-3 text-right text-[13px] text-[#101828] tabular-nums">{fmtScaled(row.ksqi_b)}</td>
+                                            <td className="px-3 py-3 text-right text-[14px] font-semibold text-[#101828] tabular-nums">{overall}</td>
+                                            <td className="px-3 py-3 text-center">
+                                                <ReviewStatusBadge status={deriveReviewStatus(row)} title={reviewTooltip(row)} />
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    ) : department !== '소비자보호부' ? (
                         <table className="w-full border-collapse table-fixed text-left">
                             <colgroup>
                                 <col className="w-12" />
                                 <col className="w-24" />
                                 <col className="w-40" />
+                                <col className="w-20" />
+                                <col className="w-20" />
                                 <col className="w-20" />
                                 <col className="w-20" />
                                 <col className="w-16" />
@@ -553,6 +660,8 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                                     <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC]"></th>
                                     <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담번호</th>
                                     <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담일시</th>
+                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담사명</th>
+                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">부서</th>
                                     <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">직무</th>
                                     <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담시간</th>
                                     <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-2 py-2 text-[12px] font-semibold text-[#667085] text-right">합계</th>
@@ -573,13 +682,13 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                             <tbody className="divide-y divide-[#F2F4F7]">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={7 + CHECKLIST_KEYS.length} className="py-20 text-center text-[#98A2B3] text-[13px]">
+                                        <td colSpan={9 + CHECKLIST_KEYS.length} className="py-20 text-center text-[#98A2B3] text-[13px]">
                                             데이터를 불러오는 중입니다...
                                         </td>
                                     </tr>
                                 ) : filteredCalls.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7 + CHECKLIST_KEYS.length} className="py-20 text-center">
+                                        <td colSpan={9 + CHECKLIST_KEYS.length} className="py-20 text-center">
                                             <div className="flex flex-col items-center gap-2 text-[#98A2B3]">
                                                 <FileX size={40} strokeWidth={1.5} className="opacity-60" />
                                                 <p className="text-[13px]">조회 결과가 없습니다.</p>
@@ -612,6 +721,8 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                                                 </div>
                                             </td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDateTime(row.call_datetime)}</td>
+                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{row.agent_name || '-'}</td>
+                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{row.department || '-'}</td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{row.role || '-'}</td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDuration(row.duration_sec)}</td>
                                             <td className="px-2 py-3 text-right text-[14px] font-semibold text-[#101828] tabular-nums">
@@ -653,12 +764,14 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                                 <col className="w-24" />
                                 <col className="w-24" />
                                 <col className="w-24" />
+                                <col className="w-24" />
                             </colgroup>
                             <thead>
                                 <tr>
                                     <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC]"></th>
                                     <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담번호</th>
                                     <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담일시</th>
+                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담사명</th>
                                     <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">VOC</th>
                                     <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">판촉</th>
                                     <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085] text-right">합계</th>
@@ -668,13 +781,13 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                             <tbody className="divide-y divide-[#F2F4F7]">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={7} className="py-20 text-center text-[#98A2B3] text-[13px]">
+                                        <td colSpan={8} className="py-20 text-center text-[#98A2B3] text-[13px]">
                                             데이터를 불러오는 중입니다...
                                         </td>
                                     </tr>
                                 ) : filteredCalls.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="py-20 text-center">
+                                        <td colSpan={8} className="py-20 text-center">
                                             <div className="flex flex-col items-center gap-2 text-[#98A2B3]">
                                                 <FileX size={40} strokeWidth={1.5} className="opacity-60" />
                                                 <p className="text-[13px]">조회 결과가 없습니다.</p>
@@ -711,6 +824,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                                                 </div>
                                             </td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDateTime(row.call_datetime)}</td>
+                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{row.agent_name || '-'}</td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{row.voc_code || '-'}</td>
                                             <td className="px-3 py-3 text-[13px] text-[#475467]">{row.promotion_code || '-'}</td>
                                             <td className="px-3 py-3 text-right text-[14px] font-semibold text-[#101828] tabular-nums">
