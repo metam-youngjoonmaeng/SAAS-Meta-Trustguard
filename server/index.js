@@ -2452,6 +2452,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
 
     // 검토요청 제출은 수기평가 100% 완료해야 가능(프론트 버튼 게이트의 백엔드 백스톱 — API 직접 호출 우회 방지).
     //   "판단됨" 정의 = manual_eval_option 설정됨 OR manual_eval≠ai_eval (GET /api/evaluations 의 judged 와 동일).
+    //   yes_no(컴플라이언스) 항목은 수기평가 대상이 아니므로 분모에서 제외 — 프론트 scoredRows 와 동일 기준.
     if (isAgent && next === 'review_done' && (from === 'pending' || from === 'in_review')) {
         const { rows: prog } = await pool.query(
             `SELECT count(*)::int AS total,
@@ -2459,8 +2460,15 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                         WHERE (manual_eval_option IS NOT NULL AND btrim(manual_eval_option) <> '')
                            OR (ai_eval IS NOT NULL AND manual_eval IS NOT NULL AND manual_eval IS DISTINCT FROM ai_eval)
                     )::int AS judged
-               FROM qa_evaluation_rows WHERE "ID" = $1`,
-            [qaId]
+               FROM qa_evaluation_rows er
+              WHERE er."ID" = $1
+                AND NOT EXISTS (
+                      SELECT 1 FROM public.eval_item_defs d
+                       WHERE d.org_id = $2 AND d.order_no = er.order_no
+                         AND d.is_active = true AND d.deactivated_at IS NULL
+                         AND lower(d.scoring_type) = 'yes_no'
+                    )`,
+            [qaId, cur.org_id]
         );
         const total = prog[0]?.total ?? 0;
         const judged = prog[0]?.judged ?? 0;
