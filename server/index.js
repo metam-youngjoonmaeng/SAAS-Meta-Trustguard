@@ -3175,26 +3175,84 @@ app.post('/api/admin/eval-items/compose-prompt', requireAdmin, async (req, res) 
     }
 });
 
-// GET /api/ksqi-stt/catalog — KSQI-STT(신규 17항목) 카탈로그 프록시. qa-pipeline
-// GET /ksqi-stt/catalog 를 그대로 중계(DB 무접촉) — compose-prompt 와 동일 base 해석
-// (EC2 타깃 기본, QA_PIPELINE_FORCE_LOCAL 우선). 'KSQI 관리' 탭이 항목/기준 표시에 사용.
-app.get('/api/ksqi-stt/catalog', async (req, res) => {
+// ksqi_item_defs(브랜드별 KSQI 항목 정의) 테이블 존재 여부 — prod 미적용 시 부재. 1회 캐시.
+// 부재 시 카탈로그가 기존 파이프라인 프록시 동작으로 폴백해 무회귀 보장.
+let _ksqiItemDefsTableCache = null;
+async function hasKsqiItemDefsTable(pool) {
+    if (_ksqiItemDefsTableCache !== null) return _ksqiItemDefsTableCache;
     try {
-        const base = resolvePipelineBaseUrl({ pipeline_target: 'ec2' }, {}).replace(/\/+$/, '');
-        const resp = await fetch(`${base}/ksqi-stt/catalog`, {
-            signal: AbortSignal.timeout(30_000),
-        });
-        let j = null;
-        try {
-            j = await resp.json();
-        } catch {
-            /* 비-JSON 응답 */
+        const { rows } = await pool.query(
+            `SELECT 1 FROM information_schema.tables
+             WHERE table_schema = 'public' AND table_name = 'ksqi_item_defs' LIMIT 1`
+        );
+        _ksqiItemDefsTableCache = rows.length > 0;
+    } catch {
+        _ksqiItemDefsTableCache = false;
+    }
+    return _ksqiItemDefsTableCache;
+}
+
+// 파이프라인 GET /ksqi-stt/catalog 중계 — 항목 판정 기준 본문(criterion)의 SSOT 는 파이프라인 코드.
+async function fetchPipelineKsqiCatalog(timeoutMs = 30_000) {
+    const base = resolvePipelineBaseUrl({ pipeline_target: 'ec2' }, {}).replace(/\/+$/, '');
+    const resp = await fetch(`${base}/ksqi-stt/catalog`, { signal: AbortSignal.timeout(timeoutMs) });
+    let j = null;
+    try {
+        j = await resp.json();
+    } catch {
+        /* 비-JSON 응답 */
+    }
+    if (!resp.ok || j === null) throw new Error(`ksqi-stt catalog 조회 실패 (http_${resp.status})`);
+    return Array.isArray(j) ? j : Array.isArray(j?.catalog) ? j.catalog : Array.isArray(j?.items) ? j.items : [];
+}
+
+// GET /api/ksqi-stt/catalog?org_id=N — KSQI 평가항목 카탈로그.
+//   org_id 지정 + ksqi_item_defs 존재 시: 브랜드별 DB 정의(번호·명칭·영역·대분류·배점·활성)를
+//   우선 반환하고, 판정 기준 본문(criterion)은 파이프라인 카탈로그에서 번호로 병합(베스트에포트 —
+//   파이프라인 불통이어도 DB 항목 목록은 정상 반환). 'KSQI 관리' 탭이 사용.
+//   org_id 미지정 / 테이블·행 부재(prod 미적용): 기존 파이프라인 프록시 그대로(무회귀).
+app.get('/api/ksqi-stt/catalog', async (req, res) => {
+    const orgId = Number(req.query.org_id) || null;
+    try {
+        if (orgId && (await hasKsqiItemDefsTable(pool))) {
+            const { rows } = await pool.query(
+                `SELECT number, name, area, category, kind, max_score, is_active
+                   FROM public.ksqi_item_defs
+                  WHERE org_id = $1
+                  ORDER BY number`,
+                [orgId]
+            );
+            if (rows.length > 0) {
+                let criterionByNumber = new Map();
+                try {
+                    const pipelineItems = await fetchPipelineKsqiCatalog(10_000);
+                    criterionByNumber = new Map(pipelineItems.map((it) => [Number(it.number), it]));
+                } catch (err) {
+                    console.warn('ksqi-stt catalog: 파이프라인 criterion 병합 생략 —', String(err?.message || err));
+                }
+                res.json({
+                    source: 'db',
+                    org_id: orgId,
+                    items: rows.map((r) => {
+                        const p = criterionByNumber.get(Number(r.number)) || {};
+                        return {
+                            number: Number(r.number),
+                            name: r.name,
+                            area: r.area,
+                            category: r.category,
+                            kind: r.kind,
+                            max_score: Number(r.max_score),
+                            is_active: r.is_active !== false,
+                            criterion: p.criterion ?? '',
+                            alt_channel: p.alt_channel ?? null,
+                        };
+                    }),
+                });
+                return;
+            }
         }
-        if (!resp.ok || j === null) {
-            res.status(502).json({ message: `ksqi-stt catalog 조회 실패 (http_${resp.status})` });
-            return;
-        }
-        res.json(j);
+        // 폴백 — 파이프라인 프록시 (org 미지정·테이블/행 부재).
+        res.json({ source: 'pipeline', items: await fetchPipelineKsqiCatalog() });
     } catch (err) {
         console.error('GET /api/ksqi-stt/catalog error:', err);
         res.status(502).json({ message: String(err?.message || err) });

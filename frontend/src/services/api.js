@@ -485,12 +485,14 @@ export async function fetchEvalItemHistory({ department, changeType, limit } = {
 }
 
 /* ── KSQI STT 카탈로그 ──────────────────────────────────────────
- * KSQI STT 평가표(17항목) 정의 조회. 서버가 파이프라인 GET /ksqi-stt/catalog 를 프록시.
- * 각 항목: { number, name, area("A"|"B"), kind("llm"|"auto"), max_score, category,
+ * KSQI STT 평가표 정의 조회. orgId 지정 시 서버가 브랜드별 DB(ksqi_item_defs)를 우선 조회하고
+ * 판정 기준 본문(criterion)만 파이프라인 카탈로그에서 병합. 미지정/미시딩 시 파이프라인 프록시.
+ * 각 항목: { number, name, area("A"|"B"), kind("llm"|"auto"), max_score, category, is_active,
  *           criterion(llm=판정 프롬프트 본문 / auto=대체채널 안내), alt_channel(auto만) }.
  * 읽기 전용(KsqiMgmt 뷰). 서버 래핑 여부와 무관하게 배열로 정규화해 반환. */
-export async function fetchKsqiCatalog() {
-    const data = await request('/api/ksqi-stt/catalog');
+export async function fetchKsqiCatalog(orgId = null) {
+    const qs = orgId ? `?org_id=${encodeURIComponent(orgId)}` : '';
+    const data = await request(`/api/ksqi-stt/catalog${qs}`);
     if (Array.isArray(data)) return data;
     if (Array.isArray(data?.catalog)) return data.catalog;
     if (Array.isArray(data?.items)) return data.items;

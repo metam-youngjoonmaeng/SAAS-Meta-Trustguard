@@ -134,3 +134,32 @@ export async function seedPentagonAxesFromDomain(client, orgId, domainId) {
     }
     return rows.length;
 }
+
+// 신규 브랜드 시드 — KSQI 표준 항목 세트 복제(63_ksqi_item_defs.sql 시딩분과 동일).
+// 기존 행에서 번호별 표준 정의(DISTINCT ON)를 골라 새 org 로 복사한다 — 항목 원본을
+// JS 에 중복 정의하지 않기 위함. 테이블 부재(prod 미적용)·원본 0건이면 0 반환(무해 스킵,
+// 다음 기동의 seeder 재적용이 보충).
+export async function seedKsqiItemDefs(client, orgId) {
+    if (!Number.isFinite(Number(orgId))) {
+        throw new Error('seedKsqiItemDefs: orgId must be a number');
+    }
+    try {
+        const { rows } = await client.query(
+            `SELECT 1 FROM information_schema.tables
+             WHERE table_schema = 'public' AND table_name = 'ksqi_item_defs' LIMIT 1`
+        );
+        if (rows.length === 0) return 0;
+        const { rowCount } = await client.query(
+            `INSERT INTO public.ksqi_item_defs (org_id, number, name, area, category, kind, max_score)
+             SELECT $1, d.number, d.name, d.area, d.category, d.kind, d.max_score
+               FROM (SELECT DISTINCT ON (number) number, name, area, category, kind, max_score
+                       FROM public.ksqi_item_defs
+                      ORDER BY number, org_id) d
+                 ON CONFLICT (org_id, number) DO NOTHING`,
+            [orgId]
+        );
+        return rowCount ?? 0;
+    } catch {
+        return 0;
+    }
+}

@@ -16,6 +16,7 @@ import { logger, todayLogPath } from './logger.mjs';
 import {
     seedMinimalEvalItems,
     seedEvalItemsFromDomain,
+    seedKsqiItemDefs,
     seedPentagonAxesFromDomain,
 } from './defaultEvalItems.mjs';
 
@@ -695,6 +696,9 @@ export function createBrandRouter(pool) {
                 seededItemCount = await seedMinimalEvalItems(client, out.id);
             }
             seededAxisCount = await seedPentagonAxesFromDomain(client, out.id, domainId);
+            // 신규 브랜드 = KSQI 표준 항목 세트 복제(63_ksqi_item_defs.sql 시딩분과 동일).
+            //   테이블 부재(prod 미적용) 시 조용히 스킵 — 다음 기동의 seeder 재적용이 보충.
+            await seedKsqiItemDefs(client, out.id);
             await client.query('COMMIT');
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});

@@ -685,7 +685,7 @@ function App() {
                     </div>
                 )}
                 {activeTab === 'ksqi-mgmt' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && ksqiEnabled && (
-                    <KsqiMgmt />
+                    <KsqiMgmt orgId={selectedBrandId} />
                 )}
                 {activeTab === 'ksqi-mgmt' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && !ksqiEnabled && (
                     <div className="bg-white border border-[#E4E7EC] rounded-xl p-8 text-center">

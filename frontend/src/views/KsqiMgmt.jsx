@@ -141,7 +141,7 @@ function ItemPreview({ item }) {
     );
 }
 
-const KsqiMgmt = ({ topOffset = 0 }) => {
+const KsqiMgmt = ({ topOffset = 0, orgId = null }) => {
     const [catalog, setCatalog] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -151,7 +151,8 @@ const KsqiMgmt = ({ topOffset = 0 }) => {
         let cancelled = false;
         setLoading(true);
         setError(null);
-        fetchKsqiCatalog()
+        // 활성 브랜드 지정 시 브랜드별 DB 정의(ksqi_item_defs) 기준 조회 — 브랜드 전환 시 재조회.
+        fetchKsqiCatalog(orgId)
             .then((list) => {
                 if (cancelled) return;
                 const items = Array.isArray(list) ? [...list].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)) : [];
@@ -169,7 +170,7 @@ const KsqiMgmt = ({ topOffset = 0 }) => {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [orgId]);
 
     // 영역(A/B) → 항목 그룹. 각 영역 내 number 오름차순.
     const grouped = useMemo(() => {
