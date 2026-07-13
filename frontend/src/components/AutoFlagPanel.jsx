@@ -53,18 +53,18 @@ const AutoFlagPanel = ({ calls, department, onOpenDetail }) => {
     }, [calls, department]);
 
     return (
-        <div className="bg-white rounded-xl border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#F2F4F7] flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-[var(--border)] shadow-[0_1px_2px_rgba(16,24,40,0.04)] overflow-hidden">
+            <div className="px-5 py-4 border-b border-[var(--muted)] flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <Flag size={16} className="text-[#B54708]" />
-                    <h3 className="text-[14px] font-semibold text-[#101828]">자동 플래그 (오늘 배치)</h3>
+                    <Flag size={16} className="text-[var(--warning)]" />
+                    <h3 className="text-[14px] font-semibold text-[var(--ink-900)]">자동 플래그 (오늘 배치)</h3>
                 </div>
-                <span className="text-[12px] text-[#98A2B3] tabular-nums">{flags.length}건</span>
+                <span className="text-[12px] text-[var(--ink-500)] tabular-nums">{flags.length}건</span>
             </div>
 
             {flags.length === 0 ? (
                 <div className="px-5 py-10 text-center">
-                    <div className="flex flex-col items-center gap-2 text-[#98A2B3]">
+                    <div className="flex flex-col items-center gap-2 text-[var(--ink-500)]">
                         <FileX size={32} strokeWidth={1.5} className="opacity-60" />
                         <p className="text-[13px]">플래그된 콜이 없습니다.</p>
                     </div>
@@ -73,34 +73,34 @@ const AutoFlagPanel = ({ calls, department, onOpenDetail }) => {
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
-                            <tr className="bg-[#FAFBFC]">
-                                <th className="px-4 py-2 text-[12px] font-semibold text-[#667085] border-b border-[#F2F4F7]">평가 시각</th>
-                                <th className="px-4 py-2 text-[12px] font-semibold text-[#667085] border-b border-[#F2F4F7]">상담사</th>
-                                <th className="px-4 py-2 text-[12px] font-semibold text-[#667085] border-b border-[#F2F4F7]">이슈</th>
-                                <th className="px-4 py-2 text-[12px] font-semibold text-[#667085] border-b border-[#F2F4F7] text-right">점수</th>
-                                <th className="px-4 py-2 text-[12px] font-semibold text-[#667085] border-b border-[#F2F4F7] text-center">처리</th>
+                            <tr className="bg-[var(--background-soft)]">
+                                <th className="px-4 py-2 text-[12px] font-semibold text-[var(--ink-500)] border-b border-[var(--muted)]">평가 시각</th>
+                                <th className="px-4 py-2 text-[12px] font-semibold text-[var(--ink-500)] border-b border-[var(--muted)]">상담사</th>
+                                <th className="px-4 py-2 text-[12px] font-semibold text-[var(--ink-500)] border-b border-[var(--muted)]">이슈</th>
+                                <th className="px-4 py-2 text-[12px] font-semibold text-[var(--ink-500)] border-b border-[var(--muted)] text-right">점수</th>
+                                <th className="px-4 py-2 text-[12px] font-semibold text-[var(--ink-500)] border-b border-[var(--muted)] text-center">처리</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#F2F4F7]">
+                        <tbody className="divide-y divide-[var(--muted)]">
                             {flags.map(({ call, label, scoreText }) => (
                                 <tr
                                     key={call.qa_id}
-                                    className="hover:bg-[#FAFBFC] transition-colors cursor-pointer"
+                                    className="hover:bg-[var(--background-soft)] transition-colors cursor-pointer"
                                     onClick={() => onOpenDetail && onOpenDetail(call.qa_id)}
                                 >
-                                    <td className="px-4 py-2.5 text-[13px] text-[#475467] whitespace-nowrap tabular-nums">
+                                    <td className="px-4 py-2.5 text-[13px] text-[var(--ink-700)] whitespace-nowrap tabular-nums">
                                         {formatTime(call.call_datetime)}
                                     </td>
                                     <td className="px-4 py-2.5 whitespace-nowrap">
-                                        <div className="text-[13px] text-[#475467]">{call.agent_name || '-'}</div>
-                                        <div className="text-[11px] text-[#98A2B3] font-mono">{call.call_no || ''}</div>
+                                        <div className="text-[13px] text-[var(--ink-700)]">{call.agent_name || '-'}</div>
+                                        <div className="text-[11px] text-[var(--ink-500)] font-mono">{call.call_no || ''}</div>
                                     </td>
-                                    <td className="px-4 py-2.5 text-[13px] text-[#475467]">{label}</td>
-                                    <td className="px-4 py-2.5 text-[13px] text-right text-[#475467] tabular-nums whitespace-nowrap">
+                                    <td className="px-4 py-2.5 text-[13px] text-[var(--ink-700)]">{label}</td>
+                                    <td className="px-4 py-2.5 text-[13px] text-right text-[var(--ink-700)] tabular-nums whitespace-nowrap">
                                         {scoreText}
                                     </td>
                                     <td className="px-4 py-2.5 text-center">
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#F2F4F7] text-[#475467] text-[11px] font-semibold">
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--muted)] text-[var(--ink-700)] text-[11px] font-semibold">
                                             검토 필요
                                         </span>
                                     </td>

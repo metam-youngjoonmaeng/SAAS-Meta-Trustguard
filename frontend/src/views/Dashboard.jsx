@@ -385,45 +385,45 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
     return (
         <div className="w-full">
             {/* Filter Section */}
-            <div className="bg-white p-6 rounded-xl border border-[#E4E7EC] shadow-sm mb-6">
+            <div className="bg-white p-6 rounded-xl border border-[var(--border)] shadow-sm mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                     <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">기간</label>
+                        <label className="text-xs font-bold text-[var(--ink-500)] uppercase tracking-wider">기간</label>
                         <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
                             <input
                                 type="date"
                                 lang="en-CA"
-                                className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 focus:border-[#055AAF] outline-none transition-all"
+                                className="w-full px-3 py-2 bg-[var(--background-soft)] border border-[var(--border-strong)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)]/20 focus:border-[var(--primary)] outline-none transition-all"
                                 value={filters.startDate}
                                 onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
                             />
-                            <span className="text-[#98A2B3] font-bold text-xs">~</span>
+                            <span className="text-[var(--ink-400)] font-bold text-xs">~</span>
                             <input
                                 type="date"
                                 lang="en-CA"
-                                className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 focus:border-[#055AAF] outline-none transition-all"
+                                className="w-full px-3 py-2 bg-[var(--background-soft)] border border-[var(--border-strong)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)]/20 focus:border-[var(--primary)] outline-none transition-all"
                                 value={filters.endDate}
                                 onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
                             />
                         </div>
                     </div>
                     <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">상담사</label>
+                        <label className="text-xs font-bold text-[var(--ink-500)] uppercase tracking-wider">상담사</label>
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-400)]" size={16} />
                             <input
                                 type="text"
                                 placeholder="성명 입력"
-                                className="w-full pl-10 pr-4 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 focus:border-[#055AAF] outline-none transition-all placeholder:text-gray-400"
+                                className="w-full pl-10 pr-4 py-2 bg-[var(--background-soft)] border border-[var(--border-strong)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)]/20 focus:border-[var(--primary)] outline-none transition-all placeholder:text-[var(--ink-400)]"
                                 value={filters.agent}
                                 onChange={(e) => setFilters(prev => ({ ...prev, agent: e.target.value }))}
                             />
                         </div>
                     </div>
                     <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">QA 항목버전</label>
+                        <label className="text-xs font-bold text-[var(--ink-500)] uppercase tracking-wider">QA 항목버전</label>
                         <select
-                            className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 outline-none cursor-pointer disabled:bg-[#F2F4F7] disabled:text-[#98A2B3] disabled:cursor-not-allowed"
+                            className="w-full px-3 py-2 bg-[var(--background-soft)] border border-[var(--border-strong)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)]/20 outline-none cursor-pointer disabled:bg-[var(--muted)] disabled:text-[var(--ink-400)] disabled:cursor-not-allowed"
                             value={filters.eval === '' ? (defaultVersion === '' ? 'all' : String(defaultVersion)) : filters.eval}
                             onChange={(e) => setFilters(prev => ({ ...prev, eval: e.target.value }))}
                             disabled={dropdownVersions.length === 0}
@@ -446,9 +446,9 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                         </select>
                     </div>
                     <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">직무</label>
+                        <label className="text-xs font-bold text-[var(--ink-500)] uppercase tracking-wider">직무</label>
                         <select
-                            className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 outline-none cursor-pointer disabled:bg-[#F2F4F7] disabled:text-[#98A2B3] disabled:cursor-not-allowed"
+                            className="w-full px-3 py-2 bg-[var(--background-soft)] border border-[var(--border-strong)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)]/20 outline-none cursor-pointer disabled:bg-[var(--muted)] disabled:text-[var(--ink-400)] disabled:cursor-not-allowed"
                             value={filters.role}
                             onChange={(e) => setFilters(prev => ({ ...prev, role: e.target.value }))}
                             disabled={roleOptions.length <= 1}
@@ -458,9 +458,9 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                         </select>
                     </div>
                     <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">부서</label>
+                        <label className="text-xs font-bold text-[var(--ink-500)] uppercase tracking-wider">부서</label>
                         <select
-                            className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 outline-none cursor-pointer"
+                            className="w-full px-3 py-2 bg-[var(--background-soft)] border border-[var(--border-strong)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)]/20 outline-none cursor-pointer"
                             value={department}
                             onChange={(e) => handleDepartmentChange(e.target.value)}
                         >
@@ -472,9 +472,9 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                         </select>
                     </div>
                     <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">검수상태</label>
+                        <label className="text-xs font-bold text-[var(--ink-500)] uppercase tracking-wider">검수상태</label>
                         <select
-                            className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 outline-none cursor-pointer"
+                            className="w-full px-3 py-2 bg-[var(--background-soft)] border border-[var(--border-strong)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)]/20 outline-none cursor-pointer"
                             value={filters.reviewStatus}
                             onChange={(e) => setFilters(prev => ({ ...prev, reviewStatus: e.target.value }))}
                         >
@@ -488,9 +488,9 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                         </select>
                     </div>
                     <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">수기평가 대상</label>
+                        <label className="text-xs font-bold text-[var(--ink-500)] uppercase tracking-wider">수기평가 대상</label>
                         <select
-                            className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm focus:ring-2 focus:ring-[#055AAF]/20 outline-none cursor-pointer"
+                            className="w-full px-3 py-2 bg-[var(--background-soft)] border border-[var(--border-strong)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)]/20 outline-none cursor-pointer"
                             value={filters.manualOnly ? 'only' : ''}
                             onChange={(e) => setFilters(prev => ({ ...prev, manualOnly: e.target.value === 'only' }))}
                         >
@@ -499,9 +499,9 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                         </select>
                     </div>
                     <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">항목</label>
+                        <label className="text-xs font-bold text-[var(--ink-500)] uppercase tracking-wider">항목</label>
                         <select
-                            className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm outline-none cursor-not-allowed text-[#667085] disabled:opacity-100"
+                            className="w-full px-3 py-2 bg-[var(--background-soft)] border border-[var(--border-strong)] rounded-lg text-sm outline-none cursor-not-allowed text-[var(--ink-500)] disabled:opacity-100"
                             value={filters.item}
                             disabled
                         >
@@ -513,20 +513,20 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
 
             {/* 평가체계 자동 전환 배너 — 선택한 버전 × 조건이 0건일 때 가장 가까운 데이터 있는 버전으로 전환됨을 명시 */}
             {versionFilterInfo.autoSwitched && (
-                <div className="mb-4 px-4 py-3 rounded-lg border border-[#BFD4F2] bg-[#EEF4FB] flex items-start gap-2.5 text-[12.5px] text-[#055AAF]">
+                <div className="mb-4 px-4 py-3 rounded-lg border border-[var(--primary-soft-flat)] bg-[var(--primary-soft-flat)] flex items-start gap-2.5 text-[12.5px] text-[var(--primary)]">
                     <Info size={14} className="mt-0.5 shrink-0" />
                     <div className="flex-1">
                         <div className="font-semibold">
                             선택한 v{versionLabelOf(selectedVersion)} 의 데이터가 현재 조건에 없어 v{versionLabelOf(versionFilterInfo.effectiveVersion)} 으로 자동 전환되었습니다.
                         </div>
-                        <div className="text-[11.5px] text-[#1E70E0] mt-0.5">
+                        <div className="text-[11.5px] text-[var(--primary)] mt-0.5">
                             날짜 범위를 v{versionLabelOf(selectedVersion)} 효력 기간으로 조정하거나 전체 보기로 돌아갈 수 있습니다.
                         </div>
                     </div>
                     <button
                         type="button"
                         onClick={() => setFilters((prev) => ({ ...prev, eval: '' }))}
-                        className="shrink-0 h-[28px] px-3 rounded-md bg-white border border-[#BFD4F2] text-[11.5px] font-semibold text-[#055AAF] hover:bg-[#FAFBFC] cursor-pointer"
+                        className="shrink-0 h-[28px] px-3 rounded-md bg-white border border-[var(--primary-soft-flat)] text-[11.5px] font-semibold text-[var(--primary)] hover:bg-[var(--background-soft)] cursor-pointer"
                     >
                         전체 보기
                     </button>
@@ -534,7 +534,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
             )}
 
             {/* Main Table — evolved direction: 흰색 헤더 + 중성 칩, 짙은 파란 chrome 제거 */}
-            <div className="bg-white rounded-xl border border-[#E4E7EC] overflow-hidden shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
                 <div className="overflow-auto min-h-[400px] max-h-[720px]">
                     {department !== '소비자보호부' ? (
                         <table className="w-full border-collapse table-fixed text-left">
@@ -550,37 +550,37 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                             </colgroup>
                             <thead>
                                 <tr>
-                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC]"></th>
-                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담번호</th>
-                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담일시</th>
-                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">직무</th>
-                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담시간</th>
-                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-2 py-2 text-[12px] font-semibold text-[#667085] text-right">합계</th>
-                                    <th colSpan={CHECKLIST_KEYS.length} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#F2F4F7] px-1.5 py-1.5 text-[12px] font-semibold text-[#98A2B3] text-center">평가 항목</th>
-                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085] text-center">검수상태</th>
+                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)]"></th>
+                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">상담번호</th>
+                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">상담일시</th>
+                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">직무</th>
+                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">상담시간</th>
+                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-2 py-2 text-[12px] font-semibold text-[var(--ink-500)] text-right">합계</th>
+                                    <th colSpan={CHECKLIST_KEYS.length} className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--muted)] px-1.5 py-1.5 text-[12px] font-semibold text-[var(--ink-400)] text-center">평가 항목</th>
+                                    <th rowSpan={2} className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)] text-center">검수상태</th>
                                 </tr>
                                 <tr>
                                     {CHECKLIST_KEYS.map(key => (
                                         <th
                                             key={key}
-                                            className="sticky top-[28px] z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-1 py-1.5 text-[12px] font-semibold text-[#667085] text-center"
+                                            className="sticky top-[28px] z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-1 py-1.5 text-[12px] font-semibold text-[var(--ink-500)] text-center"
                                         >
                                             {key}
                                         </th>
                                     ))}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#F2F4F7]">
+                            <tbody className="divide-y divide-[var(--muted)]">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={7 + CHECKLIST_KEYS.length} className="py-20 text-center text-[#98A2B3] text-[13px]">
+                                        <td colSpan={7 + CHECKLIST_KEYS.length} className="py-20 text-center text-[var(--ink-400)] text-[13px]">
                                             데이터를 불러오는 중입니다...
                                         </td>
                                     </tr>
                                 ) : filteredCalls.length === 0 ? (
                                     <tr>
                                         <td colSpan={7 + CHECKLIST_KEYS.length} className="py-20 text-center">
-                                            <div className="flex flex-col items-center gap-2 text-[#98A2B3]">
+                                            <div className="flex flex-col items-center gap-2 text-[var(--ink-400)]">
                                                 <FileX size={40} strokeWidth={1.5} className="opacity-60" />
                                                 <p className="text-[13px]">조회 결과가 없습니다.</p>
                                             </div>
@@ -589,32 +589,32 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                                 ) : pagedCalls.map((row) => {
                                     const yn = row.checklist_yn_kor || {};
                                     return (
-                                        <tr key={row.qa_id} className="hover:bg-[#FAFBFC] transition-colors group">
+                                        <tr key={row.qa_id} className="hover:bg-[var(--background-soft)] transition-colors group">
                                             <td className="text-center py-3">
                                                 <button
                                                     onClick={() => onOpenDetail(row.qa_id)}
-                                                    className="w-7 h-7 rounded-md inline-flex items-center justify-center text-[#98A2B3] hover:bg-[#055AAF] hover:text-white transition-all"
+                                                    className="w-7 h-7 rounded-md inline-flex items-center justify-center text-[var(--ink-400)] hover:bg-[var(--primary)] hover:text-white transition-all"
                                                 >
                                                     <ChevronRight size={16} />
                                                 </button>
                                             </td>
-                                            <td className="px-3 py-3 font-mono text-[12px] text-[#475467]">
+                                            <td className="px-3 py-3 font-mono text-[12px] text-[var(--ink-700)]">
                                                 <div className="flex items-center gap-1.5">
                                                     <span>{row.call_no || '-'}</span>
                                                     {row.manual_review && (
                                                         <span
                                                             title={Array.isArray(row.manual_review_reasons) ? row.manual_review_reasons.join(', ') : ''}
-                                                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89] whitespace-nowrap"
+                                                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[var(--warning-soft)] text-[var(--warning)] border border-[var(--warning-soft)] whitespace-nowrap"
                                                         >
                                                             수기평가
                                                         </span>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDateTime(row.call_datetime)}</td>
-                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{row.role || '-'}</td>
-                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDuration(row.duration_sec)}</td>
-                                            <td className="px-2 py-3 text-right text-[14px] font-semibold text-[#101828] tabular-nums">
+                                            <td className="px-3 py-3 text-[13px] text-[var(--ink-700)]">{formatDateTime(row.call_datetime)}</td>
+                                            <td className="px-3 py-3 text-[13px] text-[var(--ink-700)]">{row.role || '-'}</td>
+                                            <td className="px-3 py-3 text-[13px] text-[var(--ink-700)]">{formatDuration(row.duration_sec)}</td>
+                                            <td className="px-2 py-3 text-right text-[14px] font-semibold text-[var(--ink-900)] tabular-nums">
                                                 {(department === '고객지원실' || dynamic || brandConfig.key === 'default')
                                                     ? labelEarnedOverDefaultMax(row.total_score, row.total_max || rubricTotalMax || DEFAULT_TOTAL_MAX)
                                                     : labelEarnedOverMax(row.total_score)}
@@ -625,7 +625,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                                                 return (
                                                     <td key={key} className="px-1 py-3 text-center">
                                                         <span
-                                                            className={`inline-flex items-center justify-center min-w-[30px] px-2 py-0.5 rounded-full text-[12px] font-semibold tabular-nums ${empty ? 'bg-[#F9FAFB] text-[#98A2B3]' : 'bg-[#F2F4F7] text-[#101828]'}`}
+                                                            className={`inline-flex items-center justify-center min-w-[30px] px-2 py-0.5 rounded-full text-[12px] font-semibold tabular-nums ${empty ? 'bg-[var(--background-soft)] text-[var(--ink-400)]' : 'bg-[var(--muted)] text-[var(--ink-900)]'}`}
                                                         >
                                                             {text}
                                                         </span>
@@ -656,26 +656,26 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                             </colgroup>
                             <thead>
                                 <tr>
-                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC]"></th>
-                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담번호</th>
-                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">상담일시</th>
-                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">VOC</th>
-                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085]">판촉</th>
-                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085] text-right">합계</th>
-                                    <th className="sticky top-0 z-20 bg-[#FAFBFC] border-b border-[#E4E7EC] px-3 py-2 text-[12px] font-semibold text-[#667085] text-right">미충족</th>
+                                    <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)]"></th>
+                                    <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">상담번호</th>
+                                    <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">상담일시</th>
+                                    <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">VOC</th>
+                                    <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">판촉</th>
+                                    <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)] text-right">합계</th>
+                                    <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)] text-right">미충족</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#F2F4F7]">
+                            <tbody className="divide-y divide-[var(--muted)]">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={7} className="py-20 text-center text-[#98A2B3] text-[13px]">
+                                        <td colSpan={7} className="py-20 text-center text-[var(--ink-400)] text-[13px]">
                                             데이터를 불러오는 중입니다...
                                         </td>
                                     </tr>
                                 ) : filteredCalls.length === 0 ? (
                                     <tr>
                                         <td colSpan={7} className="py-20 text-center">
-                                            <div className="flex flex-col items-center gap-2 text-[#98A2B3]">
+                                            <div className="flex flex-col items-center gap-2 text-[var(--ink-400)]">
                                                 <FileX size={40} strokeWidth={1.5} className="opacity-60" />
                                                 <p className="text-[13px]">조회 결과가 없습니다.</p>
                                             </div>
@@ -688,40 +688,40 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                                         ? Math.max(0, total - violations)
                                         : null;
                                     return (
-                                        <tr key={row.qa_id} className="hover:bg-[#FAFBFC] transition-colors group">
+                                        <tr key={row.qa_id} className="hover:bg-[var(--background-soft)] transition-colors group">
                                             <td className="text-center py-3">
                                                 <button
                                                     onClick={() => onOpenDetail(row.qa_id)}
-                                                    className="w-7 h-7 rounded-md inline-flex items-center justify-center text-[#98A2B3] hover:bg-[#055AAF] hover:text-white transition-all"
+                                                    className="w-7 h-7 rounded-md inline-flex items-center justify-center text-[var(--ink-400)] hover:bg-[var(--primary)] hover:text-white transition-all"
                                                 >
                                                     <ChevronRight size={16} />
                                                 </button>
                                             </td>
-                                            <td className="px-3 py-3 font-mono text-[12px] text-[#475467]">
+                                            <td className="px-3 py-3 font-mono text-[12px] text-[var(--ink-700)]">
                                                 <div className="flex items-center gap-1.5">
                                                     <span>{row.call_no || '-'}</span>
                                                     {row.manual_review && (
                                                         <span
                                                             title={Array.isArray(row.manual_review_reasons) ? row.manual_review_reasons.join(', ') : ''}
-                                                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89] whitespace-nowrap"
+                                                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[var(--warning-soft)] text-[var(--warning)] border border-[var(--warning-soft)] whitespace-nowrap"
                                                         >
                                                             수기평가
                                                         </span>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{formatDateTime(row.call_datetime)}</td>
-                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{row.voc_code || '-'}</td>
-                                            <td className="px-3 py-3 text-[13px] text-[#475467]">{row.promotion_code || '-'}</td>
-                                            <td className="px-3 py-3 text-right text-[14px] font-semibold text-[#101828] tabular-nums">
+                                            <td className="px-3 py-3 text-[13px] text-[var(--ink-700)]">{formatDateTime(row.call_datetime)}</td>
+                                            <td className="px-3 py-3 text-[13px] text-[var(--ink-700)]">{row.voc_code || '-'}</td>
+                                            <td className="px-3 py-3 text-[13px] text-[var(--ink-700)]">{row.promotion_code || '-'}</td>
+                                            <td className="px-3 py-3 text-right text-[14px] font-semibold text-[var(--ink-900)] tabular-nums">
                                                 {earned === null ? '-' : `${earned}/${total}`}
                                             </td>
                                             <td className="px-3 py-3 text-right">
                                                 <span
                                                     className={`inline-flex items-center justify-center min-w-[40px] px-2.5 py-0.5 rounded-full text-[12px] font-semibold tabular-nums ${
                                                         Number.isFinite(violations) && violations > 0
-                                                            ? 'bg-[#FFFAEB] text-[#B54708]'
-                                                            : 'bg-[#F9FAFB] text-[#98A2B3]'
+                                                            ? 'bg-[var(--warning-soft)] text-[var(--warning)]'
+                                                            : 'bg-[var(--background-soft)] text-[var(--ink-400)]'
                                                     }`}
                                                 >
                                                     {Number.isFinite(violations) ? `${violations}건` : '-'}
@@ -734,8 +734,8 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                         </table>
                     )}
                 </div>
-                <div className="px-5 py-3 border-t border-[#F2F4F7] bg-[#FAFBFC] flex items-center justify-between gap-4 text-[12px] text-[#667085]">
-                    <span className="shrink-0">{department} · 총 <strong className="text-[#101828] font-semibold">{filteredCalls.length}</strong> 건</span>
+                <div className="px-5 py-3 border-t border-[var(--muted)] bg-[var(--background-soft)] flex items-center justify-between gap-4 text-[12px] text-[var(--ink-500)]">
+                    <span className="shrink-0">{department} · 총 <strong className="text-[var(--ink-900)] font-semibold">{filteredCalls.length}</strong> 건</span>
 
                     {/* 페이지 네비게이션 — 10건 초과 시에만 노출 */}
                     {pageCount > 1 && (
@@ -744,14 +744,14 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                                 type="button"
                                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                                 disabled={safePage === 0}
-                                className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[#D0D5DD] bg-white text-[#475467] hover:bg-[#F2F4F7] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[var(--border-strong)] bg-white text-[var(--ink-700)] hover:bg-[var(--muted)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                                 aria-label="이전 페이지"
                             >
                                 <ChevronRight size={14} className="rotate-180" />
                             </button>
                             {buildPages(safePage, pageCount).map((p, i) =>
                                 p === '…' ? (
-                                    <span key={`gap-${i}`} className="w-7 h-7 inline-flex items-center justify-center text-[#98A2B3]">…</span>
+                                    <span key={`gap-${i}`} className="w-7 h-7 inline-flex items-center justify-center text-[var(--ink-400)]">…</span>
                                 ) : (
                                     <button
                                         key={p}
@@ -759,8 +759,8 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                                         onClick={() => setPage(p)}
                                         className={`min-w-[28px] h-7 px-2 inline-flex items-center justify-center rounded-md border text-[12px] font-semibold transition-colors ${
                                             p === safePage
-                                                ? 'border-[#055AAF] bg-[#055AAF] text-white'
-                                                : 'border-[#D0D5DD] bg-white text-[#475467] hover:bg-[#F2F4F7]'
+                                                ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
+                                                : 'border-[var(--border-strong)] bg-white text-[var(--ink-700)] hover:bg-[var(--muted)]'
                                         }`}
                                         aria-current={p === safePage ? 'page' : undefined}
                                     >
@@ -772,7 +772,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId }) => {
                                 type="button"
                                 onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
                                 disabled={safePage === pageCount - 1}
-                                className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[#D0D5DD] bg-white text-[#475467] hover:bg-[#F2F4F7] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[var(--border-strong)] bg-white text-[var(--ink-700)] hover:bg-[var(--muted)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                                 aria-label="다음 페이지"
                             >
                                 <ChevronRight size={14} />
