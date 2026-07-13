@@ -32,16 +32,16 @@ export function deriveReviewStatus(call) {
 }
 
 const STYLES = {
-    pending: { dot: '#98A2B3', bg: '#F2F4F7', text: '#667085', border: '#E4E7EC' },
+    pending: { dot: 'var(--ink-400)', bg: 'var(--muted)', text: 'var(--ink-500)', border: 'var(--border)' },
     // 검수중: 진행 중 단계라 회색 계열(대기보다 진하게) — 파란색은 '완료된 느낌'이라 회색으로.
-    in_review: { dot: '#475467', bg: '#E4E7EC', text: '#344054', border: '#CDD2DA' },
+    in_review: { dot: 'var(--ink-700)', bg: 'var(--border)', text: 'var(--ink-700)', border: 'var(--border)' },
     // 검토요청: 검수중과 동일한 블루 계열(체크 아이콘으로 "작업 끝, 승인 요청" 구분).
-    review_done: { dot: '#1E70E0', bg: '#EEF4FB', text: '#055AAF', border: '#BFD4F2' },
+    review_done: { dot: 'var(--primary)', bg: 'var(--primary-soft-flat)', text: 'var(--primary)', border: 'var(--primary-soft-flat)' },
     // 반려: 상담사 액션 필요 → 주황 계열(주의 환기).
-    admin_revised: { dot: '#F79009', bg: '#FFFAEB', text: '#B54708', border: '#FEDF89' },
+    admin_revised: { dot: 'var(--warning)', bg: 'var(--warning-soft)', text: 'var(--warning)', border: 'var(--warning-soft)' },
     // 이의제기: 관리자 재검토 필요 → 적색 계열.
-    objection: { dot: '#D92D20', bg: '#FEF3F2', text: '#B42318', border: '#FECDCA' },
-    approved: { dot: '#12B76A', bg: '#ECFDF3', text: '#067647', border: '#ABEFC6' },
+    objection: { dot: 'var(--destructive)', bg: 'var(--destructive-soft)', text: 'var(--destructive)', border: 'var(--destructive-soft)' },
+    approved: { dot: 'var(--success)', bg: 'var(--success-soft)', text: 'var(--success)', border: 'var(--success-soft)' },
 };
 
 const ReviewStatusBadge = ({ status, size = 'sm', title }) => {
@@ -109,8 +109,8 @@ export const ReviewStatusActionButton = ({ status, isSaving, onChange }) => {
     const base = 'px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed';
     const variantClass =
         variant === 'primary'
-            ? 'bg-[#055AAF] text-white hover:bg-[#044a93]'
-            : 'border border-[#D0D5DD] text-[#344054] hover:bg-gray-50';
+            ? 'bg-[var(--primary)] text-white hover:bg-[var(--primary)]'
+            : 'border border-[var(--border-strong)] text-[var(--ink-700)] hover:bg-[var(--muted)]';
     return (
         <button
             type="button"

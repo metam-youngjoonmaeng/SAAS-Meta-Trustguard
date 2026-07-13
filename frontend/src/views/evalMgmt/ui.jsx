@@ -111,7 +111,7 @@ export function Gauge({ value, max = 100, label = '종합 점수', size = 140 })
     const c = 2 * Math.PI * r;
     const pct = Math.max(0, Math.min(1, value / max));
     const offset = c * (1 - pct);
-    const grad = value >= 90 ? ['#34a86b', '#4dbd75'] : value >= 80 ? ['#e8a045', '#f5c022'] : ['#d04443', '#e85a5a'];
+    const grad = value >= 90 ? ['var(--success)', 'var(--cat-delivery)'] : value >= 80 ? ['var(--cat-product)', '#f5c022'] : ['var(--cat-payment)', '#e85a5a'];
     const gid = `g${String(label).replace(/[^a-zA-Z0-9]/g, '')}`;
     return (
         <div className="gauge" style={{ width: size, height: size }}>
@@ -147,7 +147,7 @@ export function Gauge({ value, max = 100, label = '종합 점수', size = 140 })
 // ─────────────────────────────────────────────────────
 // Sparkline
 // ─────────────────────────────────────────────────────
-export function Spark({ data, color = '#2563eb', height = 56, fill = true }) {
+export function Spark({ data, color = 'var(--primary)', height = 56, fill = true }) {
     const w = 200;
     const h = height;
     const max = Math.max(...data);
