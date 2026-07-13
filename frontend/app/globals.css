@@ -1,10 +1,12 @@
+@import "../styles/metam-ds/fonts.css";
+@import "../styles/metam-ds/tokens.css";
+@import "../styles/metam-ds/ds-base.v3.css";
 /* ============================================================
    MetaM AI QA Dashboard — Design Tokens
    Source of truth: MetaM AI QA Dashboard Design System
    ( colors_and_type.css + README.md )
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
 
 /* Tailwind CSS v3 — 기존 tailwind.cdn.js(Play CDN, v3)와 동일 시맨틱 유지.
    (앱 마크업이 전부 v3 유틸로 작성돼 있어 v4 로 올리면 정렬/그림자/링이 틀어짐) */
@@ -13,70 +15,78 @@
 @tailwind utilities;
 
 :root {
+    /* MetaM DS 브리지 — 색·그림자·라디이는 metam-ds 토큰 참조로 재정의(@metam/ds v0.1).
+       정의를 삭제해 DS 값이 직접 적용된다. 구조 변수(space/fs/fw/lh/ls)는 보존. */
   /* ---------- BRAND / PRIMARY ---------- */
-  --primary:        #055AAF;                  /* MetaM signature blue — buttons, active nav, key counters */
-  --primary-light:  #1E70E0;                  /* Hover state for primary buttons */
-  --primary-dark:   #003078;                  /* Used sparingly — deep accents */
-  --primary-bg:     rgba(5, 90, 175, 0.05);   /* Subtle wash on table rows + selection */
-  --primary-tint:   #E3F0FF;                  /* Light blue badge fill, score chips */
-  --primary-accent: #3E90FF;                  /* Bright sky — sidebar wordmark accent, team avg line */
-  --primary-mid:    #2B66B3;                  /* 2nd-tier table header band */
+    --primary-light: var(--primary);
+    --primary-dark: color-mix(in srgb, var(--primary) 78%, black);
+    --primary-bg: var(--primary-soft);
+    --primary-tint: var(--primary-soft-flat);
+    --primary-accent: var(--primary);
+    --primary-mid: var(--primary);
+    /* main 신규 마크업(AiPromptCompose)의 border-primary-soft-border 용 — DS 블루 파생 소프트 테두리.
+       미정의 시 border-color 가 currentColor 로 떨어져 검은 테두리가 된다. */
+    --primary-soft-border: color-mix(in srgb, var(--primary) 22%, #fff);
+
+  /* ---------- 앱 시맨틱 확장 (DS 기본 팔레트에 없어 컴포넌트에 원시 hex 로 흩어져 있던 색을
+       토큰 계층으로 편입 — 값 보존. 이후 색 변경은 여기 한 곳에서.) ---------- */
+    --violet:            #5925DC;   /* 코칭 배정 알림 · 활성 소속 강조 */
+    --violet-soft:       #F4F3FF;   /* 위 배경 */
+    --violet-border:     #D9D6FE;   /* 위 테두리 */
+    --diff-changed:      #C11574;   /* AI 다듬기 diff '변경' 상태 배지 글자 */
+    --diff-changed-soft: #FDF2FA;   /* 위 배경 */
+    --console-bg:        #0B1220;   /* 로그 콘솔(터미널) 다크 표면 */
+    --console-border:    #1F2A44;   /* 위 테두리 */
+    --console-accent:    #7DD3FC;   /* 위 모듈/강조 텍스트(시안) */
 
   /* ---------- NEUTRAL / SURFACE ---------- */
   --black:        #000000;
   --white:        #FFFFFF;
-  --secondary:    #101828;                    /* Headlines, near-black text */
-  --bg-main:      #eff6ff;                    /* Page background — 01-AI-Tutor-dev globals.css --background 동일 */
-  --bg-card:      #FFFFFF;                    /* Cards, tables */
-  --bg-sidebar:   #0B0E14;                    /* Sidebar (very dark slate, not pure black) */
-  --bg-subtle:    #F2F4F7;                    /* Disabled chips, empty cells */
+    --secondary: var(--ink-900);
+    --bg-main: var(--background);
+    --bg-card: var(--card);
+    --bg-sidebar: var(--card);
+    --bg-subtle: var(--muted);
 
   /* ---------- TEXT ---------- */
-  --text-main:     #111827;                   /* Body text */
-  --text-strong:   #344054;                   /* Strong body, table cells */
-  --text-body:     #475467;                   /* Secondary copy */
-  --text-muted:    #667085;                   /* Labels, captions */
-  --text-dim:      #98A2B3;                   /* Placeholders, empty states */
-  --text-on-dark:  #F9FAFB;                   /* Text on sidebar */
+    --text-main: var(--ink-900);
+    --text-strong: var(--ink-700);
+    --text-body: var(--ink-700);
+    --text-muted: var(--ink-500);
+    --text-dim: var(--ink-400);
+    --text-on-dark: var(--primary-foreground);
 
   /* ---------- BORDER ---------- */
-  --border:        #E4E7EC;                   /* Default card / table border */
-  --border-soft:   #EEF2F7;                   /* Inner table-cell dividers */
-  --border-strong: #D0D5DD;                   /* Form inputs */
-  --border-focus:  var(--primary);
+    --border-soft: var(--border);
+    --border-focus: var(--primary);
 
   /* ---------- SEMANTIC ---------- */
-  --success:        #12B76A;
-  --success-bg:     #ECFDF3;
-  --warning:        #B54708;                  /* amber-800 — caution badges */
-  --warning-bg:     #FFFAEB;
-  --danger:         #D92D20;                  /* Login errors, destructive */
-  --danger-bg:      #FEF3F2;
-  --info:           var(--primary);
+    --success-bg: var(--success-soft);
+    --warning-bg: var(--warning-soft);
+    --danger: var(--destructive);
+    --danger-bg: var(--destructive-soft);
+    --info: var(--primary);
 
   /* Score tier colors (Dashboard categoryCell) */
-  --score-good-bg:  var(--primary-tint);      /* ratio >= 0.75 */
-  --score-good-fg:  var(--primary);
-  --score-mid-bg:   #FFFAEB;                  /* 0.5 <= ratio < 0.75 */
-  --score-mid-fg:   #92400E;                  /* amber-800 */
-  --score-low-bg:   var(--bg-subtle);         /* < 0.5 or N/A */
-  --score-low-fg:   var(--text-dim);
+    --score-good-bg: var(--success-soft);
+    --score-good-fg: var(--success);
+    --score-mid-bg: var(--warning-soft);
+    --score-mid-fg: var(--warning);
+    --score-low-bg: var(--destructive-soft);
+    --score-low-fg: var(--destructive);
 
   /* ---------- SHADOW ---------- */
-  --shadow-sm:      0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-md:      0 4px 6px -1px rgba(16, 24, 40, 0.1), 0 2px 4px -1px rgba(16, 24, 40, 0.06);
-  --shadow-lg:      0 10px 15px -3px rgba(16, 24, 40, 0.1), 0 4px 6px -2px rgba(16, 24, 40, 0.05);
-  --shadow-premium: 0 20px 25px -5px rgba(16, 24, 40, 0.1), 0 10px 10px -5px rgba(16, 24, 40, 0.04);
-  --shadow-primary: 0 4px 12px rgba(5, 90, 175, 0.25);   /* Primary button lift on hover */
-  --shadow-radar:   0 20px 50px rgba(0, 0, 0, 0.15);     /* Hover-over tooltip pop */
+    --shadow-premium: var(--shadow-xl);
+    --shadow-primary: var(--shadow-glow-primary);
+    --shadow-radar: var(--shadow-lg);
 
   /* ---------- RADIUS ---------- */
-  --radius-sm:   4px;
-  --radius-md:   8px;
-  --radius-lg:   12px;
-  --radius-xl:   16px;
-  --radius-2xl:  20px;
-  --radius-pill: 9999px;
+    --radius-sm: var(--r-xs);
+    --radius-md: var(--r-sm);
+    --radius-lg: var(--r-md);
+    --radius-xl: var(--r-lg);
+    --radius-2xl: var(--r-2xl);
+    --radius-pill: var(--r-pill);
 
   /* ---------- SPACING ---------- (Tailwind's default 4px scale) */
   --space-1:  4px;
@@ -90,18 +100,13 @@
   --space-12: 48px;
 
   /* ---------- MOTION ---------- */
-  --transition:      all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition: var(--t-base);
+    --transition-slow: var(--t-slow);
 
   /* ============================================================
-     TYPOGRAPHY — Outfit (display) + Inter (Latin body fallback)
-     Korean glyphs fall through to system Korean fonts
-     (Apple SD Gothic Neo / Noto Sans KR / Malgun Gothic).
      ============================================================ */
-  --font-display: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
-                  'Noto Sans KR', 'Malgun Gothic', sans-serif;
-  --font-body:    'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
-                  'Noto Sans KR', 'Malgun Gothic', sans-serif;
+    --font-display: var(--font-sans);
+    --font-body: var(--font-sans);
   /* 숫자·ID·코드 표기 폰트 — 앱 전체 '단일 관리 지점'(2026-07-08). 등폭(monospace) 룩을 제거하고
      본문(--font-body)과 동일한 서체로 통일한다. 자릿수 정렬은 각 사용처의 font-variant-numeric: tabular-nums
      로 유지되므로 표·점수 정렬은 그대로다. 앱 전역의 .mono / var(--font-mono) 는 모두 이 한 줄을 참조하므로,
@@ -220,7 +225,6 @@ body {
   flex: 1;
   display: flex;
   overflow: hidden;
-  position: relative; /* 사이드바 밖 토글(.sidebar-edge-toggle) 기준 */
 }
 
 .app-shell-main {
@@ -228,35 +232,6 @@ body {
   min-width: 0;
   overflow-y: auto;
   padding: var(--space-8);
-}
-
-/* 사이드바 접기/펴기 토글 — 사이드바 밖 좌상단, 테두리·배경 없이 화살표만.
-   기본은 반투명(은은), hover 시 또렷+브랜드색. 사이드바 폭에 맞춰 좌우 이동. */
-.sidebar-edge-toggle {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%); /* 세로 중앙 */
-  left: 270px; /* 펼침: 사이드바(260) 우측 바로 밖 */
-  z-index: 40;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--secondary);
-  opacity: 0.38;
-  cursor: pointer;
-  transition: left 0.2s ease, opacity 0.15s ease, color 0.15s ease;
-}
-.sidebar-edge-toggle:hover {
-  opacity: 0.9;
-  color: var(--primary);
-}
-.sidebar-edge-toggle.is-collapsed {
-  left: 14px; /* 접힘: 화면 좌측 끝 */
 }
 
 /* Top Nav — 60px 높이, 흰 배경 (원본 nav.tsx 동일) */
@@ -268,7 +243,8 @@ body {
 
 .app-nav-inner {
   display: flex;
-  height: 60px;
+  /* DS 셸 통일 — 메인 콘솔 상단 헤더와 동일한 52px (위 .sidebar 와 같은 이유로 미반영 상태였음) */
+  height: 52px;
   width: 100%;
   align-items: stretch;
 }
@@ -316,7 +292,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: white;
-  background: #dc2626;
+  background: var(--destructive);
 }
 
 .app-nav-body {
@@ -440,7 +416,9 @@ body {
 
 /* Sidebar — light theme, 260px wide (원본 01-AI-Tutor-dev 와 동일). 상단 Nav 가 별도라서 sticky/100vh 불필요 */
 .sidebar {
-  width: 260px;
+  /* DS 셸 통일 — 05 튜터 / 08 Summary 와 동일한 216px. (이전 리스킨이 import 되지 않는
+     src/index.css 에만 반영해 실제로는 260px 로 남아 있었음) */
+  width: 216px;
   flex-shrink: 0;
   background: var(--white);
   color: var(--text-strong);
@@ -450,16 +428,6 @@ body {
   border-right: 1px solid var(--border);
   overflow-y: auto;
   overflow-x: visible;
-  transition: width 0.2s ease, padding 0.2s ease;
-}
-
-/* 접힘 — 사이드바를 완전히 숨김(폭 0). 토글은 사이드바 밖(좌상단)에 있어 접어도 다시 펼 수 있음. */
-.sidebar.collapsed {
-  width: 0;
-  padding-left: 0;
-  padding-right: 0;
-  border-right-color: transparent;
-  overflow: hidden;
 }
 
 .sidebar-brand-selector {
@@ -726,7 +694,8 @@ tr:last-child td {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;
-  font-size: var(--fs-13);
+  /* DS 스케일에 13px 단계가 없다(--fs-9/10/11/12/14/16/18/24). 폼 입력은 본문 텍스트 → --fs-14. */
+  font-size: var(--fs-14);
   color: var(--secondary);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -745,7 +714,7 @@ tr:last-child td {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;
-  font-size: var(--fs-13);
+  font-size: var(--fs-14);
   color: var(--secondary);
   line-height: 1.55;
   outline: none;

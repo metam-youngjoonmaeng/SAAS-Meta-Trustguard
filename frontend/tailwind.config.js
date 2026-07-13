@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */
-// 브랜드 색은 여기 테마 토큰으로만 정의(단일 소스 = index.css 의 CSS 변수 참조).
-// 마크업에서는 임의값([#055AAF]) 대신 semantic 클래스(bg-primary, text-primary, border-primary-soft 등)를 사용.
+// MetaM DS(@metam/ds v0.1) 토큰 매핑 — 색은 var() 참조라 값 갱신만으로 리스킨된다.
+// 마크업 semantic 클래스(bg-primary, bg-primary-tint, border-primary-soft-border 등)는 아래 primary 램프로 해석.
+import ds from "./styles/metam-ds/tailwind-v3-theme.cjs";
 export default {
     content: [
         './app/**/*.{js,ts,jsx,tsx,mdx}',
@@ -8,23 +9,26 @@ export default {
     ],
     theme: {
         extend: {
+            // DS 테마(색·radius·fontFamily{sans,mono}) 스프레드가 단일 소스.
+            ...ds,
+            // main: primary 램프 클래스(bg-primary-tint/hover, border-primary-soft-border 등)를 유지하되
+            // 값은 DS 토큰(app/globals.css :root --primary*)으로 해석 — ds.colors.primary(단일)를 램프로 확장.
+            // bg-primary-soft 는 ds 의 top-level 'primary-soft'(→ --primary-soft-flat)가 담당(키 충돌 회피).
             colors: {
-                // MetaM 핵심 블루 계열 — 값은 index.css :root 의 --primary* 가 유일 소스.
+                ...ds.colors,
                 primary: {
-                    DEFAULT: 'var(--primary)',        // #055AAF — 버튼/아이콘/활성/강조 텍스트
-                    hover: 'var(--primary-light)',    // #1E70E0 — primary hover
-                    accent: 'var(--primary-accent)',  // #3E90FF — 밝은 강조(그라디언트 등)
-                    tint: 'var(--primary-tint)',      // #E3F0FF — 채움/hover 배경(살짝 진한 톤)
-                    soft: 'var(--primary-soft)',      // #EEF4FB — 기본 소프트 배경/칩
-                    'soft-border': 'var(--primary-soft-border)', // #B2DDFF — 소프트 테두리
+                    DEFAULT: 'var(--primary)',
+                    hover: 'var(--primary-light)',
+                    accent: 'var(--primary-accent)',
+                    tint: 'var(--primary-tint)',
+                    'soft-border': 'var(--primary-soft-border)',
                 },
             },
-            // 등폭(mono) 폰트도 색과 동일하게 단일 토큰으로 관리 — 값의 유일 소스 = app/globals.css 의 --font-mono.
-            // Tailwind 의 .font-mono 유틸 + preflight(code/kbd/samp/pre)가 모두 이 토큰을 참조하므로,
-            // 그 한 줄만 바꾸면 앱 전역 등폭 표기가 일괄 반영된다(2026-07-08 등폭 룩 제거 통일).
-            fontFamily: {
-                mono: ['var(--font-mono)'],
-            },
+            // 등폭(mono) 폰트는 DS fontFamily(...ds)가 단일 소스로 관리한다 — mono → var(--font-mono).
+            // main 이 inline 으로 재정의했던 fontFamily.mono(값 == var(--font-mono))는 위 ...ds 스프레드가
+            // 동일 토큰으로 이미 제공하므로 생략한다(별도 fontFamily 키를 두면 ds 의 sans 가 덮여 사라짐).
+            // .font-mono 유틸 + preflight(code/kbd/samp/pre)가 모두 --font-mono 를 참조하므로,
+            // app/globals.css 의 --font-mono 한 줄만 바꾸면 앱 전역 등폭 표기가 일괄 반영된다(2026-07-08 등폭 룩 제거 통일).
         },
     },
     plugins: [],
