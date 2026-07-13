@@ -61,24 +61,24 @@ function FilePicker({ label, file, onFile, hint, disabled }) {
     const inputRef = useRef(null);
     return (
         <div className="space-y-1.5">
-            <label className="text-xs font-bold text-[#667085] uppercase tracking-wider">{label}</label>
+            <label className="text-xs font-bold text-[var(--ink-500)] uppercase tracking-wider">{label}</label>
             <div className="flex items-center gap-2">
                 <button
                     type="button"
                     disabled={disabled}
                     onClick={() => inputRef.current?.click()}
-                    className="px-3 py-2 bg-[#F9FAFB] border border-[#D0D5DD] rounded-lg text-sm font-semibold text-[#344054] hover:bg-white disabled:opacity-50"
+                    className="px-3 py-2 bg-[var(--background-soft)] border border-[var(--border-strong)] rounded-lg text-sm font-semibold text-[var(--ink-700)] hover:bg-white disabled:opacity-50"
                 >
                     파일 선택
                 </button>
-                <span className="text-sm text-[#344054] truncate flex items-center gap-1.5">
+                <span className="text-sm text-[var(--ink-700)] truncate flex items-center gap-1.5">
                     {file ? (
                         <>
-                            <FileJson size={14} className="text-[#055AAF]" />
+                            <FileJson size={14} className="text-[var(--primary)]" />
                             {file.name}
                         </>
                     ) : (
-                        <span className="text-[#98A2B3]">선택된 파일 없음</span>
+                        <span className="text-[var(--ink-500)]">선택된 파일 없음</span>
                     )}
                 </span>
                 <input
@@ -89,7 +89,7 @@ function FilePicker({ label, file, onFile, hint, disabled }) {
                     onChange={(e) => onFile(e.target.files?.[0] ?? null)}
                 />
             </div>
-            {hint ? <p className="text-[11px] text-[#98A2B3]">{hint}</p> : null}
+            {hint ? <p className="text-[11px] text-[var(--ink-500)]">{hint}</p> : null}
         </div>
     );
 }
@@ -350,27 +350,27 @@ export default function SampleUploadModal({ onUploaded }) {
             <button
                 type="button"
                 onClick={() => setOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-[#D0D5DD] rounded-lg text-sm font-semibold text-[#344054] hover:bg-[#F9FAFB] transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-[var(--border-strong)] rounded-lg text-sm font-semibold text-[var(--ink-700)] hover:bg-[var(--background-soft)] transition-colors"
                 title="input.json 업로드 → AI 평가 실행 → 적재"
             >
-                {running ? <Loader2 size={16} className="animate-spin text-[#B54708]" /> : <Upload size={16} />}
+                {running ? <Loader2 size={16} className="animate-spin text-[var(--warning)]" /> : <Upload size={16} />}
                 평가 업로드
             </button>
 
             {open ? (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-                    <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-[#E4E7EC]">
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E4E7EC] bg-[#FAFBFC] rounded-t-2xl">
+                    <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-[var(--border)]">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-[var(--background-soft)] rounded-t-2xl">
                             <div>
-                                <h2 className="text-base font-bold text-[#101828]">AI 평가 실행</h2>
-                                <p className="text-xs text-[#667085] mt-0.5">
+                                <h2 className="text-base font-bold text-[var(--ink-900)]">AI 평가 실행</h2>
+                                <p className="text-xs text-[var(--ink-500)] mt-0.5">
                                     input.json 하나만 선택하면 서버가 qa-pipeline 평가를 실행 후 적재합니다.
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={close}
-                                className="p-1.5 rounded-md text-[#667085] hover:bg-[#F9FAFB]"
+                                className="p-1.5 rounded-md text-[var(--ink-500)] hover:bg-[var(--background-soft)]"
                             >
                                 <X size={18} />
                             </button>
@@ -384,7 +384,7 @@ export default function SampleUploadModal({ onUploaded }) {
                                 disabled={Boolean(running)}
                                 hint="STT 전문·콜 정보 (transcript, consultation_id/id 등). 아웃풋 파일은 필요 없습니다."
                             />
-                            <div className="flex items-start gap-2 px-3 py-2 bg-[#F0F7FF] border border-[#B3D4F5] rounded-lg text-xs text-[#055AAF]">
+                            <div className="flex items-start gap-2 px-3 py-2 bg-[var(--primary-soft)] border border-[var(--primary-soft-border)] rounded-lg text-xs text-[var(--primary)]">
                                 <Sparkles size={14} className="mt-0.5 shrink-0" />
                                 <span>
                                     활성 브랜드의 AI 평가항목 기준으로 평가·적재됩니다 (운영 데이터). 실행 후 창을 닫아도
@@ -393,23 +393,23 @@ export default function SampleUploadModal({ onUploaded }) {
                             </div>
 
                             {parseError ? (
-                                <div className="flex items-start gap-2 px-3 py-2 bg-[#FEF3F2] border border-[#FECDCA] rounded-lg text-xs text-[#D92D20]">
+                                <div className="flex items-start gap-2 px-3 py-2 bg-[var(--destructive-soft)] border border-[var(--destructive-soft)] rounded-lg text-xs text-[var(--destructive)]">
                                     <AlertCircle size={14} className="mt-0.5 shrink-0" />
                                     <span>{parseError}</span>
                                 </div>
                             ) : null}
 
                             {validation.notes.length > 0 ? (
-                                <div className="bg-[#F9FAFB] border border-[#E4E7EC] rounded-lg px-3 py-2.5 space-y-1.5">
-                                    <p className="text-[11px] font-bold text-[#667085] uppercase tracking-wider">검증 결과</p>
+                                <div className="bg-[var(--background-soft)] border border-[var(--border)] rounded-lg px-3 py-2.5 space-y-1.5">
+                                    <p className="text-[11px] font-bold text-[var(--ink-500)] uppercase tracking-wider">검증 결과</p>
                                     {validation.notes.map((n, i) => (
                                         <div
                                             key={i}
                                             className={`flex items-start gap-2 text-xs ${n.kind === 'error'
-                                                    ? 'text-[#D92D20]'
+                                                    ? 'text-[var(--destructive)]'
                                                     : n.kind === 'warn'
-                                                        ? 'text-[#B54708]'
-                                                        : 'text-[#055AAF]'
+                                                        ? 'text-[var(--warning)]'
+                                                        : 'text-[var(--primary)]'
                                                 }`}
                                         >
                                             {n.kind === 'ok' ? (
@@ -424,7 +424,7 @@ export default function SampleUploadModal({ onUploaded }) {
                             ) : null}
 
                             {running ? (
-                                <div className="flex items-start gap-2 px-3 py-2 bg-[#FFFAEB] border border-[#FEDF89] rounded-lg text-xs text-[#B54708]">
+                                <div className="flex items-start gap-2 px-3 py-2 bg-[var(--warning-soft)] border border-[var(--warning-soft)] rounded-lg text-xs text-[var(--warning)]">
                                     <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin" />
                                     <div className="space-y-1 min-w-0">
                                         <div>
@@ -440,31 +440,31 @@ export default function SampleUploadModal({ onUploaded }) {
                                                         : ''}
                                                 </div>
                                                 {nodeLabels(running.progress.recent_done).length > 0 ? (
-                                                    <div className="text-[11px] text-[#B54708]/80 truncate">
+                                                    <div className="text-[11px] text-[var(--warning)]/80 truncate">
                                                         최근 완료: {nodeLabels(running.progress.recent_done).slice(-4).join(' → ')}
                                                     </div>
                                                 ) : null}
                                             </>
                                         ) : (
-                                            <div className="text-[11px] text-[#B54708]/80">파이프라인 연결 중...</div>
+                                            <div className="text-[11px] text-[var(--warning)]/80">파이프라인 연결 중...</div>
                                         )}
                                     </div>
                                 </div>
                             ) : null}
 
                             {resultMsg ? (
-                                <div className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs bg-[#FEF3F2] border border-[#FECDCA] text-[#D92D20]">
+                                <div className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs bg-[var(--destructive-soft)] border border-[var(--destructive-soft)] text-[var(--destructive)]">
                                     <AlertCircle size={14} className="mt-0.5 shrink-0" />
                                     <span>{resultMsg}</span>
                                 </div>
                             ) : null}
                         </div>
 
-                        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[#E4E7EC] bg-[#F9FAFB] rounded-b-2xl">
+                        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--border)] bg-[var(--background-soft)] rounded-b-2xl">
                             <button
                                 type="button"
                                 onClick={close}
-                                className="px-4 py-2 text-sm font-semibold text-[#344054] border border-[#D0D5DD] bg-white rounded-lg hover:bg-[#F9FAFB]"
+                                className="px-4 py-2 text-sm font-semibold text-[var(--ink-700)] border border-[var(--border-strong)] bg-white rounded-lg hover:bg-[var(--background-soft)]"
                             >
                                 닫기
                             </button>
@@ -472,7 +472,7 @@ export default function SampleUploadModal({ onUploaded }) {
                                 type="button"
                                 onClick={handleRunAi}
                                 disabled={!validation.ready || Boolean(running)}
-                                className="px-4 py-2 text-sm font-bold text-white bg-[#055AAF] rounded-lg hover:bg-[#1E70E0] disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-4 py-2 text-sm font-bold text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {running ? 'AI 평가 진행 중...' : 'AI 평가 실행'}
                             </button>
@@ -486,18 +486,18 @@ export default function SampleUploadModal({ onUploaded }) {
                     <div
                         className={`flex items-start gap-2.5 px-4 py-3 rounded-lg shadow-2xl border max-w-md ${
                             toast.kind === 'success'
-                                ? 'bg-white border-[#055AAF]/20 text-[#101828]'
+                                ? 'bg-white border-[var(--primary)]/20 text-[var(--ink-900)]'
                                 : toast.kind === 'warn'
-                                    ? 'bg-white border-[#FEC84B] text-[#B54708]'
-                                    : 'bg-white border-[#FECDCA] text-[#D92D20]'
+                                    ? 'bg-white border-[var(--warning-soft)] text-[var(--warning)]'
+                                    : 'bg-white border-[var(--destructive-soft)] text-[var(--destructive)]'
                         }`}
                     >
                         {toast.kind === 'success' ? (
-                            <CheckCircle2 size={18} className="text-[#055AAF] mt-0.5 flex-shrink-0" />
+                            <CheckCircle2 size={18} className="text-[var(--primary)] mt-0.5 flex-shrink-0" />
                         ) : toast.kind === 'warn' ? (
-                            <AlertCircle size={18} className="text-[#B54708] mt-0.5 flex-shrink-0" />
+                            <AlertCircle size={18} className="text-[var(--warning)] mt-0.5 flex-shrink-0" />
                         ) : (
-                            <AlertCircle size={18} className="text-[#D92D20] mt-0.5 flex-shrink-0" />
+                            <AlertCircle size={18} className="text-[var(--destructive)] mt-0.5 flex-shrink-0" />
                         )}
                         <div className="text-sm leading-snug">
                             <div className="font-bold mb-0.5">
@@ -507,12 +507,12 @@ export default function SampleUploadModal({ onUploaded }) {
                                         ? '평가 제외 (미적재)'
                                         : 'AI 평가 실패'}
                             </div>
-                            <div className="text-xs text-[#667085] break-words">{toast.text}</div>
+                            <div className="text-xs text-[var(--ink-500)] break-words">{toast.text}</div>
                         </div>
                         <button
                             type="button"
                             onClick={() => setToast(null)}
-                            className="ml-1 -mt-0.5 -mr-1 p-1 text-[#98A2B3] hover:text-[#344054] rounded"
+                            className="ml-1 -mt-0.5 -mr-1 p-1 text-[var(--ink-500)] hover:text-[var(--ink-700)] rounded"
                             aria-label="알림 닫기"
                         >
                             <X size={14} />

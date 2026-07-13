@@ -150,11 +150,11 @@ function FilterCard({ idx, icon, title, tag, desc, on, onToggle, est, children }
                     typeof est === 'number' ? (
                         <div style={{ textAlign: 'right', flexShrink: 0, marginRight: 4 }}>
                             <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{est.toLocaleString()}</div>
-                            <div style={{ fontSize: 10.5, color: 'var(--ink-400)', marginTop: 3 }}>예상 대상</div>
+                            <div style={{ fontSize: 10.5, color: 'var(--ink-500)', marginTop: 3 }}>예상 대상</div>
                         </div>
                     ) : (
                         <div style={{ textAlign: 'right', flexShrink: 0, marginRight: 4, maxWidth: 96 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-400)', lineHeight: 1.35 }}>{est}</div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-500)', lineHeight: 1.35 }}>{est}</div>
                         </div>
                     )
                 )}
@@ -179,10 +179,10 @@ function PencilBtn({ onClick, title }) {
             title={title}
             style={{
                 width: 28, height: 28, borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0,
-                background: 'transparent', border: 0, color: 'var(--ink-400)', transition: 'color .12s',
+                background: 'transparent', border: 0, color: 'var(--ink-500)', transition: 'color .12s',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-400)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-500)'; }}
         >
             <Icon name="pencil" size={15} />
         </button>
@@ -248,8 +248,8 @@ function DiffText({ value, other, mode }) {
         <>
             {ops.map((op, idx) => {
                 if (op.t === 'eq') return <span key={idx}>{op.v}</span>;
-                if (mode === 'before' && op.t === 'del') return <mark key={idx} style={{ background: '#FEE4E2', color: '#B42318', borderRadius: 3, padding: '0 2px' }}>{op.v}</mark>;
-                if (mode === 'after' && op.t === 'ins') return <mark key={idx} style={{ background: '#DCFAE6', color: '#067647', borderRadius: 3, padding: '0 2px' }}>{op.v}</mark>;
+                if (mode === 'before' && op.t === 'del') return <mark key={idx} style={{ background: 'var(--destructive-soft)', color: 'var(--destructive)', borderRadius: 3, padding: '0 2px' }}>{op.v}</mark>;
+                if (mode === 'after' && op.t === 'ins') return <mark key={idx} style={{ background: 'var(--success-soft)', color: 'var(--success)', borderRadius: 3, padding: '0 2px' }}>{op.v}</mark>;
                 return null;
             })}
         </>
@@ -363,9 +363,9 @@ function PromptEditModal({ focus, onClose, onChanged }) {
         }
     };
 
-    const msgColor = msg?.type === 'error' ? 'var(--danger, #d04443)'
-        : msg?.type === 'warn' ? 'var(--warning-ink, #b45309)'
-        : msg?.type === 'done' ? 'var(--success-ink, #15803d)' : 'var(--primary)';
+    const msgColor = msg?.type === 'error' ? 'var(--danger, var(--cat-payment))'
+        : msg?.type === 'warn' ? 'var(--warning-ink, var(--warning))'
+        : msg?.type === 'done' ? 'var(--success-ink, var(--success))' : 'var(--primary)';
 
     const isHistory = view === 'history';
     const editFoot = (
@@ -417,7 +417,7 @@ function PromptEditModal({ focus, onClose, onChanged }) {
             foot={isHistory ? historyFoot : editFoot}
         >
             {loading ? (
-                <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>불러오는 중…</div>
+                <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-500)', fontSize: 13 }}>불러오는 중…</div>
             ) : isHistory ? (
                 <HistoryView
                     history={history} expanded={histExpanded} onToggle={setHistExpanded} fmtTs={fmtTs}
@@ -457,7 +457,7 @@ function PromptEditModal({ focus, onClose, onChanged }) {
                         />
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, color: 'var(--ink-400)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, color: 'var(--ink-500)' }}>
                         <span>모델 {meta?.model || '—'}</span>
                         <span>·</span>
                         <span>현재 버전 v{meta?.version ?? 0}{meta?.is_default ? ' (기본값)' : ''}</span>
@@ -485,11 +485,11 @@ function HistoryView({ history, expanded, onToggle, fmtTs, baseUncertain = '', b
     const baseline = { version: 0, uncertain_def: baseUncertain, contradiction_def: baseContradiction, isBaseline: true };
     const prevOf = (idx) => history?.[idx + 1] || baseline;
     if (history === null) {
-        return <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>이력 불러오는 중…</div>;
+        return <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-500)', fontSize: 13 }}>이력 불러오는 중…</div>;
     }
     if (history.length === 0) {
         return (
-            <div style={{ padding: 28, textAlign: 'center', color: 'var(--ink-400)', fontSize: 13, lineHeight: 1.6 }}>
+            <div style={{ padding: 28, textAlign: 'center', color: 'var(--ink-500)', fontSize: 13, lineHeight: 1.6 }}>
                 <Icon name="history" size={22} style={{ color: 'var(--ink-300)', marginBottom: 8 }} />
                 <div>아직 변경 이력이 없습니다.</div>
                 <div style={{ fontSize: 11.5 }}>현재 기본값으로 동작 중 — 저장하면 이력이 쌓입니다.</div>
@@ -521,7 +521,7 @@ function HistoryView({ history, expanded, onToggle, fmtTs, baseUncertain = '', b
                                         <span key={lbl} style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 9999, background: 'var(--primary-soft-flat)', color: 'var(--primary)' }}>{lbl}</span>
                                     ))}
                                 </div>
-                                <div style={{ fontSize: 11.5, color: 'var(--ink-400)', marginTop: 4 }}>
+                                <div style={{ fontSize: 11.5, color: 'var(--ink-500)', marginTop: 4 }}>
                                     {fmtTs(h.updated_at)}{h.updated_by_name ? ` · ${h.updated_by_name}` : ''}
                                 </div>
                             </div>
@@ -534,14 +534,14 @@ function HistoryView({ history, expanded, onToggle, fmtTs, baseUncertain = '', b
                                     const prevLabel = prev.isBaseline ? '기본값' : `v${prev.version}`;
                                     const changed = DIFF_FIELDS.filter((f) => (h[f.key] || '') !== (prev[f.key] || ''));
                                     if (changed.length === 0) {
-                                        return <div style={{ fontSize: 11.5, fontStyle: 'italic', color: 'var(--ink-400)' }}>이 버전에서 바뀐 기준이 없습니다.</div>;
+                                        return <div style={{ fontSize: 11.5, fontStyle: 'italic', color: 'var(--ink-500)' }}>이 버전에서 바뀐 기준이 없습니다.</div>;
                                     }
                                     return changed.map((f) => (
                                         <div key={f.key}>
                                             <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 5 }}>{f.label}</div>
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'white' }}>
                                                 <div style={{ padding: '6px 10px', background: 'var(--background-soft)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border-soft)', fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--ink-500)' }}>이전 ({prevLabel})</div>
-                                                <div style={{ padding: '6px 10px', background: '#EEF4FB', borderBottom: '1px solid var(--border-soft)', fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', color: '#055AAF' }}>현재 (v{h.version})</div>
+                                                <div style={{ padding: '6px 10px', background: 'var(--primary-soft-flat)', borderBottom: '1px solid var(--border-soft)', fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--primary)' }}>현재 (v{h.version})</div>
                                                 <div style={{ padding: '9px 10px', borderRight: '1px solid var(--border)', fontSize: 12, color: 'var(--ink-600)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
                                                     <DiffText value={prev[f.key]} other={h[f.key]} mode="before" />
                                                 </div>
@@ -1024,7 +1024,7 @@ export default function BatchManage() {
                                 <input type="number" min={0} value={scope.maxMin} onChange={(e) => setSk('maxMin', +e.target.value)} style={{ ...bInput, width: 64 }} />
                                 <span style={{ fontSize: 12.5, color: 'var(--ink-500)' }}>분 미만</span>
                             </div>
-                            <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>너무 짧은 콜(단순 문의)과 비정상적으로 긴 콜을 검토 대상에서 제외합니다.</div>
+                            <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 7, lineHeight: 1.45 }}>너무 짧은 콜(단순 문의)과 비정상적으로 긴 콜을 검토 대상에서 제외합니다.</div>
                         </div>
                         {/* 배치 주기 */}
                         <div>
@@ -1037,7 +1037,7 @@ export default function BatchManage() {
                                     <input type="time" value={scope.time} onChange={(e) => setSk('time', e.target.value)} style={{ ...bInput, width: 150 }} />
                                 )}
                             </div>
-                            <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
+                            <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 7, lineHeight: 1.45 }}>
                                 {scope.freq === 'daily' ? `매일 ${scope.time}(KST)에 조건에 맞는 미선별 콜을 일괄 수기평가 대상으로 도장합니다.` : scope.freq === 'realtime' ? 'AI 평가가 끝나는 즉시 조건에 맞는 콜을 수기평가 대상으로 도장합니다.' : scope.freq === 'hourly' ? '매시간 정각에 조건에 맞는 미선별 콜을 일괄 도장합니다.' : "자동 도장 없이, 관리자가 '지금 실행'을 누를 때만 도장합니다."}
                             </div>
                         </div>
@@ -1102,15 +1102,15 @@ export default function BatchManage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                             <Icon name="list-checks" size={14} style={{ color: 'var(--ink-500)' }} />
                             <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-900)' }}>적용 평가 항목</span>
-                            <span style={{ fontSize: 11, color: 'var(--ink-400)' }}>· 체크 해제한 항목은 검사 제외 ({Math.max(0, evalItems.length - excluded.size)}/{evalItems.length})</span>
+                            <span style={{ fontSize: 11, color: 'var(--ink-500)' }}>· 체크 해제한 항목은 검사 제외 ({Math.max(0, evalItems.length - excluded.size)}/{evalItems.length})</span>
                         </div>
-                        <div style={{ fontSize: 11, color: 'var(--ink-400)', marginBottom: 10, lineHeight: 1.5, background: 'var(--warning-soft)', border: '1px solid var(--warning-border)', borderRadius: 8, padding: '8px 11px' }}>
+                        <div style={{ fontSize: 11, color: 'var(--ink-500)', marginBottom: 10, lineHeight: 1.5, background: 'var(--warning-soft)', border: '1px solid var(--warning-border)', borderRadius: 8, padding: '8px 11px' }}>
                             <Icon name="info" size={12} style={{ verticalAlign: '-2px', marginRight: 4, color: 'var(--warning-ink)' }} />
                             조건에 따라 자동으로 <strong>‘해당 없음’</strong>으로 처리되는 항목은 신뢰도 검증에서 제외하는 것을 권장합니다.
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
                             {evalItems.length === 0 && (
-                                <span style={{ fontSize: 12, color: 'var(--ink-400)' }}>평가된 콜이 없어 항목이 비어 있습니다.</span>
+                                <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>평가된 콜이 없어 항목이 비어 있습니다.</span>
                             )}
                             {evalItems.map((it) => {
                                 const incl = !excluded.has(it.order_no);
@@ -1124,7 +1124,7 @@ export default function BatchManage() {
                                             display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 9999,
                                             border: `1px solid ${incl ? 'var(--primary-soft-border)' : 'var(--border)'}`,
                                             background: incl ? 'var(--primary-soft-flat)' : 'white',
-                                            color: incl ? 'var(--primary)' : 'var(--ink-400)',
+                                            color: incl ? 'var(--primary)' : 'var(--ink-500)',
                                             fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
                                             textDecoration: incl ? 'none' : 'line-through',
                                         }}
@@ -1143,7 +1143,7 @@ export default function BatchManage() {
                     on={on.risk} onToggle={() => toggle('risk')}>
                     <SubRule locked label="금칙어 감지" desc="응대 중 금칙어(비속어·부적절 표현)가 감지된 경우" />
                     <SubRule locked label="고객 리스크 신호" desc="민원·불만·해지 언급, 강한 부정 감정이 감지된 경우" />
-                    <div style={{ fontSize: 11, color: 'var(--ink-400)', padding: '2px 4px', lineHeight: 1.5 }}>
+                    <div style={{ fontSize: 11, color: 'var(--ink-500)', padding: '2px 4px', lineHeight: 1.5 }}>
                         리스크 항목은 신뢰성·컴플라이언스를 위해 항상 포함되며 개별로 끌 수 없습니다.
                     </div>
                 </FilterCard>
@@ -1183,13 +1183,13 @@ export default function BatchManage() {
                             {goldenCoverage && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid var(--border-soft)' }}>
                                     <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink-900)', fontVariantNumeric: 'tabular-nums' }}>골든 {goldenCoverage.golden_count ?? 0}건</span>
-                                    <span style={{ fontSize: 11.5, color: 'var(--ink-400)' }}>· 대화 {goldenCoverage.conversation_count ?? 0}건</span>
+                                    <span style={{ fontSize: 11.5, color: 'var(--ink-500)' }}>· 대화 {goldenCoverage.conversation_count ?? 0}건</span>
                                     <span style={{ marginLeft: 6, fontSize: 11.5, color: 'var(--ink-500)' }}>
                                         학습 기준 <b style={{ color: 'var(--ink-800)' }}>{fmtIndexedAt(goldenCoverage.latest_indexed_at) || '미학습'}</b>
-                                        <span style={{ color: 'var(--ink-400)' }}> ({goldenCoverage.indexed_count ?? 0}건 색인)</span>
+                                        <span style={{ color: 'var(--ink-500)' }}> ({goldenCoverage.indexed_count ?? 0}건 색인)</span>
                                     </span>
                                     {goldenCoverage.needs_relearn && (
-                                        <span style={{ fontSize: 10.5, fontWeight: 700, color: '#B42318', background: '#FEF3F2', border: '1px solid #FECDCA', borderRadius: 999, padding: '2px 9px', lineHeight: 1.6 }}>
+                                        <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--destructive)', background: 'var(--destructive-soft)', border: '1px solid var(--destructive-soft)', borderRadius: 999, padding: '2px 9px', lineHeight: 1.6 }}>
                                             재학습 필요 · 미학습 {Math.max(0, (goldenCoverage.golden_count || 0) - (goldenCoverage.indexed_count || 0))}건
                                         </span>
                                     )}
@@ -1244,11 +1244,11 @@ export default function BatchManage() {
                                 <div style={{ marginTop: 12, padding: '10px 12px', background: '#EFF8FF', border: '1px solid #B2DDFF', borderRadius: 9 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: goldenAuto.progress && goldenAuto.progress.total ? 6 : 0 }}>
                                         <span className="animate-pulse" style={{ width: 8, height: 8, borderRadius: 999, background: '#2E90FA', flexShrink: 0 }} />
-                                        <span style={{ fontSize: 12, fontWeight: 700, color: '#175CD3' }}>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>
                                             {goldenAuto.source === 'schedule' ? '자동 학습(스케줄러) 진행 중…' : '학습 진행 중…'}
                                         </span>
                                         {goldenAuto.progress && goldenAuto.progress.total ? (
-                                            <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#175CD3', fontVariantNumeric: 'tabular-nums' }}>
+                                            <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>
                                                 {goldenAuto.progress.processed}/{goldenAuto.progress.total} · 신규 {goldenAuto.progress.saved ?? 0}
                                             </span>
                                         ) : null}
@@ -1266,7 +1266,7 @@ export default function BatchManage() {
                                     ) : null}
                                 </div>
                             ) : null}
-                            <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 7, lineHeight: 1.45 }}>
+                            <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 7, lineHeight: 1.45 }}>
                                 {scope.goldenFreq === 'daily' ? `매일 ${scope.goldenTime}(KST)에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.` : scope.goldenFreq === 'hourly' ? '매시간 정각에 서버 스케줄러가 브랜드별 골든셋 학습(AOSS 색인)을 자동 실행합니다.' : "자동 실행 없이 '지금 실행'으로만 즉시 학습합니다. '지금 실행'은 저장 후 즉시 1회 수동 학습합니다."}
                                 {' '}주기·시각 변경은 아래 저장 버튼으로 저장됩니다.
                             </div>
@@ -1298,7 +1298,7 @@ export default function BatchManage() {
                         <div style={{ padding: 18 }}>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
                                 {evalItems.length === 0 && (
-                                    <span style={{ fontSize: 12, color: 'var(--ink-400)' }}>평가된 콜이 없어 항목이 비어 있습니다.</span>
+                                    <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>평가된 콜이 없어 항목이 비어 있습니다.</span>
                                 )}
                                 {evalItems.map((it) => {
                                     const incl = !goldenExcluded.has(it.order_no);
@@ -1312,7 +1312,7 @@ export default function BatchManage() {
                                                 display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 9999,
                                                 border: `1px solid ${incl ? 'var(--primary-soft-border)' : 'var(--border)'}`,
                                                 background: incl ? 'var(--primary-soft-flat)' : 'white',
-                                                color: incl ? 'var(--primary)' : 'var(--ink-400)',
+                                                color: incl ? 'var(--primary)' : 'var(--ink-500)',
                                                 fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
                                                 textDecoration: incl ? 'none' : 'line-through',
                                             }}
@@ -1322,7 +1322,7 @@ export default function BatchManage() {
                                     );
                                 })}
                             </div>
-                            <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 10, lineHeight: 1.5 }}>
+                            <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 10, lineHeight: 1.5 }}>
                                 골든셋 학습은 <b>전체 평가항목</b>을 색인합니다. 여기서 <b>체크한 항목만 평가 시 RAG(골든셋 few-shot)를 사용</b>하고,
                                 해제한 항목은 평가 시 RAG를 쓰지 않습니다(색인은 그대로 유지 → 나중에 켜면 즉시 반영). 아래 ‘배치 저장’으로 저장됩니다.
                             </div>
@@ -1458,7 +1458,7 @@ export default function BatchManage() {
             {/* 하단 액션 바 — 조건 설정을 마친 뒤 저장(상단에서 하단으로 이동, 자연스러운 흐름). */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14, marginTop: 22 }}>
                 {savedAt && (
-                    <span style={{ fontSize: 12, color: 'var(--ink-400)' }}>
+                    <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>
                         {savedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 저장됨
                     </span>
                 )}

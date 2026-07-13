@@ -12,7 +12,7 @@ function BrandTile({ brand, size = 36 }) {
                 width: size,
                 height: size,
                 borderRadius: Math.round(size * 0.28),
-                background: brand.color || '#055AAF',
+                background: brand.color || 'var(--primary)',
                 color: 'white',
                 display: 'grid',
                 placeItems: 'center',
