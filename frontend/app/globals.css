@@ -743,7 +743,7 @@ tr:last-child td {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  left: 270px; /* 펼침: 사이드바(260) 우측 바로 밖 */
+  left: 216px; /* 펼침: 사이드바(216px) 우측 가장자리에 붙임 */
   z-index: 40;
   width: 24px;
   height: 24px;
