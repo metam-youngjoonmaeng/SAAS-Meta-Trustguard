@@ -65,27 +65,27 @@ export default function DomainEvalPage({ domain, onBack }) {
             {/* 헤더 */}
             <div className="flex items-start gap-3 mb-5">
                 <button onClick={onBack}
-                    className="mt-0.5 inline-flex items-center gap-1 h-[34px] px-3 rounded-lg border border-[#E4E7EC] bg-white text-[13px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer shrink-0">
+                    className="mt-0.5 inline-flex items-center gap-1 h-[34px] px-3 rounded-lg border border-[var(--border)] bg-white text-[13px] font-semibold text-[var(--ink-900)] hover:bg-[var(--muted)] cursor-pointer shrink-0">
                     <ChevronLeft size={15} /> 도메인 목록
                 </button>
                 <div>
-                    <h1 className="text-[20px] font-bold text-[#101828] leading-tight tracking-tight">
-                        {domain.name} <span className="text-[#667085] font-semibold">· 기본 평가체계</span>
+                    <h1 className="text-[20px] font-bold text-[var(--ink-900)] leading-tight tracking-tight">
+                        {domain.name} <span className="text-[var(--ink-500)] font-semibold">· 기본 평가체계</span>
                     </h1>
-                    <p className="text-[12.5px] text-[#667085] mt-1 leading-snug">
+                    <p className="text-[12.5px] text-[var(--ink-500)] mt-1 leading-snug">
                         이 도메인으로 <b>신규 브랜드를 생성</b>하면 아래 <b>활성</b> 평가항목·펜타곤 축이 그 브랜드로 자동 복제됩니다. (기존 브랜드에는 영향 없음)
                     </p>
                 </div>
             </div>
 
-            {error && <p className="text-sm text-[#D92D20] mb-3">{error}</p>}
+            {error && <p className="text-sm text-[var(--destructive)] mb-3">{error}</p>}
 
             {loading ? (
-                <div className="flex justify-center py-20"><Loader2 className="h-5 w-5 animate-spin text-[#667085]" /></div>
+                <div className="flex justify-center py-20"><Loader2 className="h-5 w-5 animate-spin text-[var(--ink-500)]" /></div>
             ) : (
                 <div className="grid gap-5" style={{ gridTemplateColumns: '320px minmax(0, 1fr)', height: 'calc(100vh - 240px)', minHeight: 560 }}>
                     {/* ── 좌측 ── */}
-                    <div className="bg-white border border-[#E4E7EC] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
+                    <div className="bg-white border border-[var(--border)] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
                         {/* 평가항목 */}
                         <div className="flex flex-col min-h-0" style={{ flex: '1 1 0%' }}>
                             <SectionHeader
@@ -113,7 +113,7 @@ export default function DomainEvalPage({ domain, onBack }) {
                         </div>
 
                         {/* 펜타곤 축 */}
-                        <div className="flex flex-col shrink-0 border-t-[6px] border-[#F2F4F7]" style={{ flex: '0 0 auto' }}>
+                        <div className="flex flex-col shrink-0 border-t-[6px] border-[var(--muted)]" style={{ flex: '0 0 auto' }}>
                             <SectionHeader
                                 title="Pentagon 평가항목"
                                 count={`활성 ${axes.filter((a) => a.is_active !== false).length} · 전체 ${axes.length}`}
@@ -146,7 +146,7 @@ export default function DomainEvalPage({ domain, onBack }) {
                         <AxisPreview axis={selectedAxis} numChar={AXIS_CHAR[axes.findIndex((a) => a.id === selectedAxis.id)] || `#${selectedAxis.axis_no}`}
                             onEdit={() => setModal({ type: 'edit-axis', axis: selectedAxis })} />
                     ) : (
-                        <div className="bg-white border border-[#E4E7EC] rounded-xl flex items-center justify-center text-[13px] text-[#667085]">
+                        <div className="bg-white border border-[var(--border)] rounded-xl flex items-center justify-center text-[13px] text-[var(--ink-500)]">
                             좌측에서 항목을 선택하세요
                         </div>
                     )}
@@ -183,12 +183,12 @@ export default function DomainEvalPage({ domain, onBack }) {
 /* ── 좌측 섹션 헤더 / 행 / 추가박스 ──────────────────── */
 function SectionHeader({ title, count, onEdit, editDisabled, editTitle }) {
     return (
-        <div className="px-5 py-3 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-2">
-            <h3 className="text-[13px] font-bold text-[#101828] tracking-tight">{title}</h3>
-            <span className="text-[11.5px] text-[#667085] font-medium">{count}</span>
+        <div className="px-5 py-3 border-b border-[var(--muted)] bg-[var(--background-soft)] flex items-center gap-2">
+            <h3 className="text-[13px] font-bold text-[var(--ink-900)] tracking-tight">{title}</h3>
+            <span className="text-[11.5px] text-[var(--ink-500)] font-medium">{count}</span>
             <button type="button" onClick={editDisabled ? undefined : onEdit} disabled={editDisabled} title={editTitle}
                 className={`ml-auto w-7 h-7 grid place-items-center rounded-md transition-colors ${
-                    editDisabled ? 'text-[#D0D5DD] cursor-not-allowed' : 'text-[#055AAF] hover:bg-[#EEF4FB] hover:text-[#1E70E0] cursor-pointer'}`}>
+                    editDisabled ? 'text-[var(--ink-300)] cursor-not-allowed' : 'text-[var(--primary)] hover:bg-[var(--primary-soft-flat)] hover:text-[var(--primary)] cursor-pointer'}`}>
                 <Edit3 size={14} strokeWidth={2.2} />
             </button>
         </div>
@@ -198,7 +198,7 @@ function SectionHeader({ title, count, onEdit, editDisabled, editTitle }) {
 function AddBox({ label, onClick }) {
     return (
         <button type="button" onClick={onClick}
-            className="w-full mt-1.5 mb-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-dashed border-[#D0D5DD] bg-white text-[12.5px] font-semibold text-[#667085] hover:border-[#055AAF] hover:text-[#055AAF] hover:bg-[#F7FAFD] transition-colors cursor-pointer">
+            className="w-full mt-1.5 mb-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-dashed border-[var(--border-strong)] bg-white text-[12.5px] font-semibold text-[var(--ink-500)] hover:border-[var(--primary)] hover:text-[var(--primary)] hover:bg-[var(--background-soft)] transition-colors cursor-pointer">
             <Plus size={13} strokeWidth={2.5} />{label}
         </button>
     );
@@ -207,17 +207,17 @@ function AddBox({ label, onClick }) {
 function ItemRow({ orderNo, category, label, selected, onSelect, onEdit, inactive }) {
     return (
         <div onClick={onSelect}
-            className={`group relative flex items-center gap-2 px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${selected ? 'bg-[#EEF4FB]' : 'hover:bg-[#F9FAFB]'}`}>
+            className={`group relative flex items-center gap-2 px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${selected ? 'bg-[var(--primary-soft-flat)]' : 'hover:bg-[var(--background-soft)]'}`}>
             <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="text-[10px] font-bold text-[#98A2B3] tabular-nums">#{String(orderNo).padStart(2, '0')}</span>
-                    <span className="text-[10px] font-semibold text-[#667085] truncate">{category}</span>
-                    {inactive && <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[#F2F4F7] text-[#98A2B3]">비활성</span>}
+                    <span className="text-[10px] font-bold text-[var(--ink-500)] tabular-nums">#{String(orderNo).padStart(2, '0')}</span>
+                    <span className="text-[10px] font-semibold text-[var(--ink-500)] truncate">{category}</span>
+                    {inactive && <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[var(--muted)] text-[var(--ink-500)]">비활성</span>}
                 </div>
-                <div className={`text-[12.5px] font-bold truncate ${inactive ? 'text-[#98A2B3]' : selected ? 'text-[#055AAF]' : 'text-[#101828]'}`}>{label}</div>
+                <div className={`text-[12.5px] font-bold truncate ${inactive ? 'text-[var(--ink-500)]' : selected ? 'text-[var(--primary)]' : 'text-[var(--ink-900)]'}`}>{label}</div>
             </div>
             <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(); }} title="편집"
-                className="w-6 h-6 grid place-items-center rounded-md text-[#98A2B3] hover:bg-white hover:text-[#055AAF] hover:shadow-sm transition-all cursor-pointer">
+                className="w-6 h-6 grid place-items-center rounded-md text-[var(--ink-500)] hover:bg-white hover:text-[var(--primary)] hover:shadow-sm transition-all cursor-pointer">
                 <ChevronRight size={14} />
             </button>
         </div>
@@ -227,12 +227,12 @@ function ItemRow({ orderNo, category, label, selected, onSelect, onEdit, inactiv
 function AxisRow({ numChar, label, selected, onSelect, onEdit, inactive }) {
     return (
         <div onClick={onSelect}
-            className={`group relative flex items-center gap-2 px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${selected ? 'bg-[#EEF4FB]' : 'hover:bg-[#F9FAFB]'}`}>
-            <span className={`text-[14px] font-bold tabular-nums ${selected ? 'text-[#055AAF]' : 'text-[#98A2B3]'}`}>{numChar}</span>
-            <div className={`flex-1 text-[12.5px] font-bold truncate ${inactive ? 'text-[#98A2B3]' : selected ? 'text-[#055AAF]' : 'text-[#101828]'}`}>{label}</div>
-            {inactive && <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[#F2F4F7] text-[#98A2B3]">비활성</span>}
+            className={`group relative flex items-center gap-2 px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${selected ? 'bg-[var(--primary-soft-flat)]' : 'hover:bg-[var(--background-soft)]'}`}>
+            <span className={`text-[14px] font-bold tabular-nums ${selected ? 'text-[var(--primary)]' : 'text-[var(--ink-500)]'}`}>{numChar}</span>
+            <div className={`flex-1 text-[12.5px] font-bold truncate ${inactive ? 'text-[var(--ink-500)]' : selected ? 'text-[var(--primary)]' : 'text-[var(--ink-900)]'}`}>{label}</div>
+            {inactive && <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[var(--muted)] text-[var(--ink-500)]">비활성</span>}
             <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(); }} title="편집"
-                className="w-6 h-6 grid place-items-center rounded-md text-[#98A2B3] hover:bg-white hover:text-[#055AAF] hover:shadow-sm transition-all cursor-pointer">
+                className="w-6 h-6 grid place-items-center rounded-md text-[var(--ink-500)] hover:bg-white hover:text-[var(--primary)] hover:shadow-sm transition-all cursor-pointer">
                 <ChevronRight size={14} />
             </button>
         </div>
@@ -242,20 +242,20 @@ function AxisRow({ numChar, label, selected, onSelect, onEdit, inactive }) {
 /* ── 우측 미리보기 ───────────────────────────────────── */
 function ItemPreview({ item, axisIndex, onEdit }) {
     return (
-        <div className="bg-white border border-[#E4E7EC] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-3">
-                <h3 className="text-[14px] font-bold text-[#101828] tracking-tight truncate">{item.item}</h3>
-                <span className="text-[11.5px] text-[#667085]">{item.category}</span>
+        <div className="bg-white border border-[var(--border)] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex items-center gap-3">
+                <h3 className="text-[14px] font-bold text-[var(--ink-900)] tracking-tight truncate">{item.item}</h3>
+                <span className="text-[11.5px] text-[var(--ink-500)]">{item.category}</span>
                 {item.is_active !== false
-                    ? <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#E8F6ED] text-[#2F9759]">활성</span>
-                    : <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#F2F4F7] text-[#667085]">비활성</span>}
+                    ? <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--success-soft)] text-[var(--success)]">활성</span>
+                    : <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--ink-500)]">비활성</span>}
                 <button type="button" onClick={onEdit}
-                    className="ml-auto h-[32px] px-3.5 rounded-full bg-[#055AAF] text-white text-[12px] font-semibold hover:bg-[#1E70E0] shadow-sm inline-flex items-center gap-1.5 cursor-pointer">
+                    className="ml-auto h-[32px] px-3.5 rounded-full bg-[var(--primary)] text-white text-[12px] font-semibold hover:bg-[var(--primary)] shadow-sm inline-flex items-center gap-1.5 cursor-pointer">
                     <Edit3 size={12} />편집하기
                 </button>
             </div>
 
-            <div className="px-5 py-2.5 bg-[#FAFBFC] border-b border-[#F2F4F7] flex items-center gap-3 flex-wrap text-[12px] text-[#667085]">
+            <div className="px-5 py-2.5 bg-[var(--background-soft)] border-b border-[var(--muted)] flex items-center gap-3 flex-wrap text-[12px] text-[var(--ink-500)]">
                 <MetaPair label="채점 방식" value={item.scoring_type === 'yes_no' ? 'Y/N' : '점수제'} />
                 <MetaDivider />
                 <MetaPair label="만점" value={item.scoring_type === 'yes_no' ? 'Y/N' : `${item.max_score ?? '-'}점`} />
@@ -269,13 +269,13 @@ function ItemPreview({ item, axisIndex, onEdit }) {
                 <div className="flex-1 min-h-0 overflow-y-auto">
                     <PreviewSection title="항목 평가 설명">
                         {item.criterion
-                            ? <div className="text-[13px] text-[#475467] leading-relaxed whitespace-pre-wrap">{item.criterion}</div>
-                            : <div className="text-[13px] text-[#98A2B3] italic leading-relaxed">아직 설정된 평가 설명이 없습니다. 우상단 편집하기에서 입력하세요.</div>}
+                            ? <div className="text-[13px] text-[var(--ink-700)] leading-relaxed whitespace-pre-wrap">{item.criterion}</div>
+                            : <div className="text-[13px] text-[var(--ink-500)] italic leading-relaxed">아직 설정된 평가 설명이 없습니다. 우상단 편집하기에서 입력하세요.</div>}
                     </PreviewSection>
                 </div>
                 <div className="flex flex-col shrink-0">
-                    <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2">점수 기준 {item.scoring_type !== 'yes_no' && `(만점 ${item.max_score ?? '-'}점)`}</div>
-                    <pre className="min-h-[120px] max-h-[40vh] text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3 overflow-auto">{item.prompt_template || `"${item.item}" 항목을 어떻게 평가할지 기준을 작성하세요.\n\n비워두면 신규 브랜드에도 빈 값으로 복제됩니다. (브랜드별로 추후 보완 가능)`}</pre>
+                    <div className="text-[10.5px] font-bold text-[var(--ink-500)] tracking-[0.06em] uppercase mb-2">점수 기준 {item.scoring_type !== 'yes_no' && `(만점 ${item.max_score ?? '-'}점)`}</div>
+                    <pre className="min-h-[120px] max-h-[40vh] text-[12px] font-mono text-[var(--ink-700)] leading-relaxed whitespace-pre-wrap bg-[var(--background-soft)] border border-[var(--border)] rounded-lg p-3 overflow-auto">{item.prompt_template || `"${item.item}" 항목을 어떻게 평가할지 기준을 작성하세요.\n\n비워두면 신규 브랜드에도 빈 값으로 복제됩니다. (브랜드별로 추후 보완 가능)`}</pre>
                 </div>
             </div>
         </div>
@@ -284,20 +284,20 @@ function ItemPreview({ item, axisIndex, onEdit }) {
 
 function AxisPreview({ axis, numChar, onEdit }) {
     return (
-        <div className="bg-white border border-[#E4E7EC] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-3">
-                <span className="text-[18px] font-bold text-[#055AAF] tabular-nums">{numChar}</span>
-                <h3 className="text-[14px] font-bold text-[#101828] tracking-tight truncate">{axis.label}</h3>
+        <div className="bg-white border border-[var(--border)] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex items-center gap-3">
+                <span className="text-[18px] font-bold text-[var(--primary)] tabular-nums">{numChar}</span>
+                <h3 className="text-[14px] font-bold text-[var(--ink-900)] tracking-tight truncate">{axis.label}</h3>
                 {axis.is_active !== false
-                    ? <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#E8F6ED] text-[#2F9759]">활성</span>
-                    : <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#F2F4F7] text-[#667085]">비활성</span>}
+                    ? <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--success-soft)] text-[var(--success)]">활성</span>
+                    : <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--ink-500)]">비활성</span>}
                 <button type="button" onClick={onEdit}
-                    className="ml-auto h-[32px] px-3.5 rounded-full bg-[#055AAF] text-white text-[12px] font-semibold hover:bg-[#1E70E0] shadow-sm inline-flex items-center gap-1.5 cursor-pointer">
+                    className="ml-auto h-[32px] px-3.5 rounded-full bg-[var(--primary)] text-white text-[12px] font-semibold hover:bg-[var(--primary)] shadow-sm inline-flex items-center gap-1.5 cursor-pointer">
                     <Edit3 size={12} />편집하기
                 </button>
             </div>
 
-            <div className="px-5 py-2.5 bg-[#FAFBFC] border-b border-[#F2F4F7] flex items-center gap-3 flex-wrap text-[12px] text-[#667085]">
+            <div className="px-5 py-2.5 bg-[var(--background-soft)] border-b border-[var(--muted)] flex items-center gap-3 flex-wrap text-[12px] text-[var(--ink-500)]">
                 <MetaPair label="축 번호" value={`${numChar} (${axis.axis_no})`} />
                 <MetaDivider />
                 <MetaPair label="등급 척도" value="우수 / 보통 / 주의 / 실패" />
@@ -306,11 +306,11 @@ function AxisPreview({ axis, numChar, onEdit }) {
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
                 <PreviewSection title="설명">
                     {axis.description
-                        ? <div className="text-[13px] text-[#475467] leading-relaxed whitespace-pre-wrap">{axis.description}</div>
-                        : <div className="text-[13px] text-[#98A2B3] italic">이 축이 측정하는 영역에 대한 설명을 입력하세요.</div>}
+                        ? <div className="text-[13px] text-[var(--ink-700)] leading-relaxed whitespace-pre-wrap">{axis.description}</div>
+                        : <div className="text-[13px] text-[var(--ink-500)] italic">이 축이 측정하는 영역에 대한 설명을 입력하세요.</div>}
                 </PreviewSection>
                 <PreviewSection title="평가 프롬프트">
-                    <pre className="text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3">{axis.prompt_template || `이 축에 매핑된 평가항목 결과와 상담 전사를 바탕으로\n"${axis.label}" 영역의 종합 등급·분석·요약을 생성하세요.`}</pre>
+                    <pre className="text-[12px] font-mono text-[var(--ink-700)] leading-relaxed whitespace-pre-wrap bg-[var(--background-soft)] border border-[var(--border)] rounded-lg p-3">{axis.prompt_template || `이 축에 매핑된 평가항목 결과와 상담 전사를 바탕으로\n"${axis.label}" 영역의 종합 등급·분석·요약을 생성하세요.`}</pre>
                 </PreviewSection>
             </div>
         </div>
@@ -320,7 +320,7 @@ function AxisPreview({ axis, numChar, onEdit }) {
 function PreviewSection({ title, children }) {
     return (
         <div>
-            <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2">{title}</div>
+            <div className="text-[10.5px] font-bold text-[var(--ink-500)] tracking-[0.06em] uppercase mb-2">{title}</div>
             {children}
         </div>
     );
@@ -328,12 +328,12 @@ function PreviewSection({ title, children }) {
 function MetaPair({ label, value }) {
     return (
         <span className="inline-flex items-center gap-1.5">
-            <span className="text-[#98A2B3] font-semibold">{label}</span>
-            <span className="text-[#344054] font-semibold">{value}</span>
+            <span className="text-[var(--ink-500)] font-semibold">{label}</span>
+            <span className="text-[var(--ink-700)] font-semibold">{value}</span>
         </span>
     );
 }
-function MetaDivider() { return <span className="w-px h-3 bg-[#E4E7EC]" />; }
+function MetaDivider() { return <span className="w-px h-3 bg-[var(--border)]" />; }
 
 /* ── 평가항목 편집 모달 ──────────────────────────────── */
 function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClose }) {
@@ -381,12 +381,12 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
                             ))}
                         </select>
                         {axisLabels.length === 0 && (
-                            <div className="mt-1.5 text-[11px] text-[#98A2B3]">먼저 아래 Pentagon 축을 추가하면 여기서 매핑할 수 있습니다.</div>
+                            <div className="mt-1.5 text-[11px] text-[var(--ink-500)]">먼저 아래 Pentagon 축을 추가하면 여기서 매핑할 수 있습니다.</div>
                         )}
                     </FormGroup>
                 ) : (
                     <FormGroup label="Pentagon 매핑">
-                        <div className="text-[12px] text-[#98A2B3] bg-[#F2F4F7] rounded-lg px-3 py-2.5">Y/N(컴플라이언스 체크) 항목은 펜타곤에 반영되지 않습니다.</div>
+                        <div className="text-[12px] text-[var(--ink-500)] bg-[var(--muted)] rounded-lg px-3 py-2.5">Y/N(컴플라이언스 체크) 항목은 펜타곤에 반영되지 않습니다.</div>
                     </FormGroup>
                 )}
 
@@ -418,7 +418,7 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
                         <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} error={stepErr} aiOriginals={aiStepOriginals} />
                     ) : (
                         <>
-                            <div className="text-[12px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5 leading-relaxed mb-2.5">충족 / 위반 으로만 판정합니다. 점수·총점·펜타곤에는 반영되지 않습니다.</div>
+                            <div className="text-[12px] text-[var(--ink-500)] bg-[var(--muted)] rounded-lg px-3 py-2.5 leading-relaxed mb-2.5">충족 / 위반 으로만 판정합니다. 점수·총점·펜타곤에는 반영되지 않습니다.</div>
                             <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4}
                                 placeholder="충족 / 위반 판정 기준 (선택, 비워두면 추후 작성)"
                                 className="form-textarea-pretty font-mono text-[12px]" />
@@ -433,7 +433,7 @@ function ItemModal({ mode, item, axisLabels, domainId, onSaved, onDeleted, onClo
                     </div>
                 </FormGroup>
 
-                {err && <div className="text-[12px] text-[#B42318]">{err}</div>}
+                {err && <div className="text-[12px] text-[var(--destructive)]">{err}</div>}
             </div>
 
             <ModalFooter
@@ -512,7 +512,7 @@ function AxisModal({ mode, axis, nextNo, domainId, onSaved, onDeleted, onClose }
                         <button type="button" onClick={() => setIsActive(false)} className={pillBtn(!isActive)}>비활성 (복제 제외)</button>
                     </div>
                 </FormGroup>
-                {err && <div className="text-[12px] text-[#B42318]">{err}</div>}
+                {err && <div className="text-[12px] text-[var(--destructive)]">{err}</div>}
             </div>
 
             <ModalFooter
@@ -555,9 +555,9 @@ function ModalShell({ title, onClose, widthClass = 'max-w-md', children }) {
         <div className="fixed inset-0 z-[1000] flex items-center justify-center px-4" style={{ background: 'rgba(15,23,42,0.4)' }}
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <div className={`w-full ${widthClass} bg-white rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col`}>
-                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[#E4E7EC] shrink-0">
-                    <h3 className="text-base font-bold text-[#101828]">{title}</h3>
-                    <button onClick={onClose} className="w-7 h-7 grid place-items-center rounded-md text-[#667085] hover:bg-[#F2F4F7] cursor-pointer"><X size={14} /></button>
+                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[var(--border)] shrink-0">
+                    <h3 className="text-base font-bold text-[var(--ink-900)]">{title}</h3>
+                    <button onClick={onClose} className="w-7 h-7 grid place-items-center rounded-md text-[var(--ink-500)] hover:bg-[var(--muted)] cursor-pointer"><X size={14} /></button>
                 </div>
                 <div className="overflow-y-auto flex-1">{children}</div>
             </div>
@@ -568,13 +568,13 @@ function ModalShell({ title, onClose, widthClass = 'max-w-md', children }) {
 
 function ModalFooter({ onCancel, onPrimary, primaryLabel, extraLeft }) {
     return (
-        <div className="px-6 pb-5 pt-3 border-t border-[#F2F4F7] bg-[#FAFBFC] flex items-center justify-between shrink-0">
+        <div className="px-6 pb-5 pt-3 border-t border-[var(--muted)] bg-[var(--background-soft)] flex items-center justify-between shrink-0">
             <div>{extraLeft}</div>
             <div className="flex gap-2">
                 <button type="button" onClick={onCancel}
-                    className="h-[38px] px-5 rounded-xl border border-[#E4E7EC] bg-white text-[13px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer">취소</button>
+                    className="h-[38px] px-5 rounded-xl border border-[var(--border)] bg-white text-[13px] font-semibold text-[var(--ink-900)] hover:bg-[var(--muted)] cursor-pointer">취소</button>
                 <button type="button" onClick={onPrimary}
-                    className="h-[38px] px-5 rounded-xl bg-[#055AAF] text-white text-[13px] font-semibold hover:bg-[#1E70E0] shadow-sm inline-flex items-center gap-1.5 cursor-pointer">
+                    className="h-[38px] px-5 rounded-xl bg-[var(--primary)] text-white text-[13px] font-semibold hover:bg-[var(--primary)] shadow-sm inline-flex items-center gap-1.5 cursor-pointer">
                     <Save size={12} />{primaryLabel}
                 </button>
             </div>
@@ -585,7 +585,7 @@ function ModalFooter({ onCancel, onPrimary, primaryLabel, extraLeft }) {
 function DeleteBtn({ onClick, disabled }) {
     return (
         <button type="button" onClick={onClick} disabled={disabled}
-            className="h-[38px] px-4 rounded-xl border border-[#FCA5A5] bg-white text-[13px] font-semibold text-[#D92D20] hover:bg-red-50 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+            className="h-[38px] px-4 rounded-xl border border-[var(--destructive-soft)] bg-white text-[13px] font-semibold text-[var(--destructive)] hover:bg-[var(--destructive-soft)] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
             <Trash2 size={12} />삭제
         </button>
     );
@@ -594,8 +594,8 @@ function DeleteBtn({ onClick, disabled }) {
 function FormGroup({ label, required, children }) {
     return (
         <div>
-            <label className="block text-[11.5px] font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
-                {label} {required && <span className="text-[#D92D20]">*</span>}
+            <label className="block text-[11.5px] font-semibold text-[var(--ink-500)] mb-1.5 uppercase tracking-wide">
+                {label} {required && <span className="text-[var(--destructive)]">*</span>}
             </label>
             {children}
         </div>
@@ -604,5 +604,5 @@ function FormGroup({ label, required, children }) {
 
 function pillBtn(active) {
     return `flex-1 h-[38px] rounded-xl border text-[13px] font-semibold cursor-pointer ${
-        active ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'}`;
+        active ? 'bg-[var(--primary-soft)] border-[var(--primary)] text-[var(--primary)]' : 'bg-white border-[var(--border)] text-[var(--ink-500)] hover:bg-[var(--muted)]'}`;
 }
