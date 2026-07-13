@@ -168,7 +168,7 @@ const BrandSelector = ({ brands, value, onChange, lockSingle = false }) => {
                             color: 'var(--text-muted)',
                         }}
                     >
-                        {selected.domain_name ? `${selected.domain_name} · 브랜드` : '관리 중인 브랜드'}
+                        {selected.domain_name || '관리 중인 브랜드'}
                     </div>
                     <div
                         style={{
