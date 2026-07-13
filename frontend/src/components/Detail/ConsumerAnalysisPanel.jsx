@@ -23,14 +23,14 @@ function densityClasses(density) {
     // 단일 색상(블루)의 농도 차이만. 카테고리에 의미 부여 금지.
     switch (density) {
         case 'strong':
-            return { bar: 'bg-[#055AAF]', label: 'text-[#055AAF]' };
+            return { bar: 'bg-[var(--primary)]', label: 'text-[var(--primary)]' };
         case 'medium':
-            return { bar: 'bg-[#3B82F6]/80', label: 'text-[#1E70E0]' };
+            return { bar: 'bg-[var(--primary)]/80', label: 'text-[var(--primary)]' };
         case 'soft':
-            return { bar: 'bg-[#3B82F6]/40', label: 'text-[#475467]' };
+            return { bar: 'bg-[var(--primary)]/40', label: 'text-[var(--ink-700)]' };
         case 'mute':
         default:
-            return { bar: 'bg-[#D0D5DD]', label: 'text-[#98A2B3]' };
+            return { bar: 'bg-[var(--ink-300)]', label: 'text-[var(--ink-500)]' };
     }
 }
 
@@ -38,20 +38,20 @@ function KeywordsCard({ keywords, disabled, onJumpToTurn }) {
     const list = Array.isArray(keywords) ? keywords : [];
     return (
         <div
-            className={`bg-white rounded-xl border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] overflow-hidden flex flex-col h-[280px] shrink-0 ${
+            className={`bg-white rounded-xl border border-[var(--border)] shadow-[0_1px_2px_rgba(16,24,40,0.04)] overflow-hidden flex flex-col h-[280px] shrink-0 ${
                 disabled ? 'opacity-60' : ''
             }`}
         >
-            <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex justify-between items-center">
-                <h3 className="text-[14px] font-semibold text-[#101828] tracking-tight flex items-center gap-2.5">
-                    <AlertTriangle size={16} className="text-[#475467]" />
+            <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex justify-between items-center">
+                <h3 className="text-[14px] font-semibold text-[var(--ink-900)] tracking-tight flex items-center gap-2.5">
+                    <AlertTriangle size={16} className="text-[var(--ink-700)]" />
                     금칙어 감지
                 </h3>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#F2F4F7] text-[#475467] tabular-nums">{list.length}건</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[var(--muted)] text-[var(--ink-700)] tabular-nums">{list.length}건</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-gray-50/30">
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-[var(--muted)]/30">
                 {disabled ? (
-                    <div className="h-full flex flex-col items-center justify-center text-[11px] text-[#98A2B3] gap-1">
+                    <div className="h-full flex flex-col items-center justify-center text-[11px] text-[var(--ink-500)] gap-1">
                         <Shield size={20} strokeWidth={1.5} />
                         <p>분석대상이 아닌 콜입니다.</p>
                     </div>
@@ -61,10 +61,10 @@ function KeywordsCard({ keywords, disabled, onJumpToTurn }) {
                         const lvlNum = lvl.match(/Level\s*([0-9])/i)?.[1] || '';
                         const lvlTone =
                             lvlNum === '1'
-                                ? 'bg-rose-100 text-rose-800'
+                                ? 'bg-[var(--destructive-soft)] text-[var(--destructive)]'
                                 : lvlNum === '2'
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-blue-100 text-[#055AAF]';
+                                  ? 'bg-[var(--warning-soft)] text-[var(--warning)]'
+                                  : 'bg-[var(--primary-soft)] text-[var(--primary)]';
                         const canJump = Number.isFinite(Number(k.line_no)) && typeof onJumpToTurn === 'function';
                         const Wrapper = canJump ? 'button' : 'div';
                         const wrapperProps = canJump
@@ -78,28 +78,28 @@ function KeywordsCard({ keywords, disabled, onJumpToTurn }) {
                             <Wrapper
                                 key={k.keyword_id ?? `${k.line_no}_${k.keyword}`}
                                 {...wrapperProps}
-                                className={`bg-white rounded-lg border border-[#E4E7EC] p-2.5 flex flex-col gap-1.5 shadow-sm text-left w-full transition-colors ${
-                                    canJump ? 'cursor-pointer hover:bg-[#055AAF]/5 hover:border-[#055AAF]/30' : ''
+                                className={`bg-white rounded-lg border border-[var(--border)] p-2.5 flex flex-col gap-1.5 shadow-sm text-left w-full transition-colors ${
+                                    canJump ? 'cursor-pointer hover:bg-[var(--primary)]/5 hover:border-[var(--primary)]/30' : ''
                                 }`}
                             >
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${lvlTone}`}>
                                         {lvl || 'Level -'}
                                     </span>
-                                    <span className="text-[10px] font-bold text-[#475467]">
+                                    <span className="text-[10px] font-bold text-[var(--ink-700)]">
                                         {k.major_category || '-'} · {k.sub_category || '-'}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-[12px] font-extrabold text-[#101828]">「{k.keyword}」</span>
+                                    <span className="text-[12px] font-extrabold text-[var(--ink-900)]">「{k.keyword}」</span>
                                     {Number.isFinite(Number(k.line_no)) && (
-                                        <span className="text-[10px] font-bold text-[#055AAF] ml-auto">
+                                        <span className="text-[10px] font-bold text-[var(--primary)] ml-auto">
                                             turn #{k.line_no}
                                         </span>
                                     )}
                                 </div>
                                 {k.line_text && (
-                                    <p className="text-[11px] text-[#475467] leading-relaxed line-clamp-2">{k.line_text}</p>
+                                    <p className="text-[11px] text-[var(--ink-700)] leading-relaxed line-clamp-2">{k.line_text}</p>
                                 )}
                             </Wrapper>
                         );
@@ -131,23 +131,23 @@ function AiCategoriesCard({ categories, disabled }) {
 
     return (
         <div
-            className={`bg-white rounded-xl border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] overflow-hidden flex flex-col flex-1 min-h-0 ${
+            className={`bg-white rounded-xl border border-[var(--border)] shadow-[0_1px_2px_rgba(16,24,40,0.04)] overflow-hidden flex flex-col flex-1 min-h-0 ${
                 disabled ? 'opacity-60' : ''
             }`}
         >
-            <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex justify-between items-center">
-                <h3 className="text-[14px] font-semibold text-[#101828] tracking-tight flex items-center gap-2.5">
-                    <BarChart3 size={16} className="text-[#475467]" />
+            <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex justify-between items-center">
+                <h3 className="text-[14px] font-semibold text-[var(--ink-900)] tracking-tight flex items-center gap-2.5">
+                    <BarChart3 size={16} className="text-[var(--ink-700)]" />
                     AI 유형분류 적합도 (12)
                 </h3>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#F2F4F7] text-[#475467] tabular-nums">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[var(--muted)] text-[var(--ink-700)] tabular-nums">
                     {CONSUMER_FIT_THRESHOLD}+ {aboveThreshold.length}건
                 </span>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
                 {disabled && (
-                    <div className="px-3 py-2 bg-gray-50 rounded-lg text-[11px] text-[#667085] flex items-center gap-2">
+                    <div className="px-3 py-2 bg-[var(--muted)] rounded-lg text-[11px] text-[var(--ink-500)] flex items-center gap-2">
                         <Shield size={14} />
                         분석대상이 아닌 콜이라 적합도가 의미를 갖지 않습니다 (참고용 점수).
                     </div>
@@ -165,12 +165,12 @@ function AiCategoriesCard({ categories, disabled }) {
                                 return (
                                     <div
                                         key={r.category_no}
-                                        className="flex items-center gap-2 px-3 py-2 bg-blue-50/60 border border-blue-100 rounded-lg"
+                                        className="flex items-center gap-2 px-3 py-2 bg-[var(--primary-soft)]/60 border border-[var(--primary)] rounded-lg"
                                     >
-                                        <span className="text-[11px] font-mono font-bold text-[#055AAF]">
+                                        <span className="text-[11px] font-mono font-bold text-[var(--primary)]">
                                             #{r.category_no}
                                         </span>
-                                        <span className="text-[12px] font-bold text-[#101828] flex-1 truncate">
+                                        <span className="text-[12px] font-bold text-[var(--ink-900)] flex-1 truncate">
                                             {r.major_category} · {r.sub_category}
                                         </span>
                                         <span className={`text-[14px] font-extrabold ${tone.label}`}>
@@ -191,15 +191,15 @@ function AiCategoriesCard({ categories, disabled }) {
                         return (
                             <div key={r.category_no}>
                                 <div className="flex items-center justify-between mb-1">
-                                    <span className="text-[12px] text-[#475467] font-semibold truncate pr-2">
-                                        <span className="font-mono text-[#98A2B3] mr-1">#{r.category_no}</span>
+                                    <span className="text-[12px] text-[var(--ink-700)] font-semibold truncate pr-2">
+                                        <span className="font-mono text-[var(--ink-500)] mr-1">#{r.category_no}</span>
                                         {r.sub_category}
                                     </span>
                                     <span className={`text-[13px] font-bold ${tone.label}`}>
                                         {Math.round(r.score)}
                                     </span>
                                 </div>
-                                <div className="h-2 bg-[#F2F4F7] rounded-full overflow-hidden">
+                                <div className="h-2 bg-[var(--muted)] rounded-full overflow-hidden">
                                     <div
                                         className={`h-full ${tone.bar} transition-all`}
                                         style={{ width: `${widthPct}%` }}
