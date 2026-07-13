@@ -17,19 +17,19 @@ import { scenById, catMeta, scoreClass } from '../views/evalMgmt/mockData';
 
 // 알림 타입 → 배지/아이콘.
 const TYPE_META = {
-    review_approved: { label: '승인', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: CheckCircle2 },
-    review_edited: { label: '수정 반영', cls: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]', Icon: Pencil },
-    review_submitted: { label: '검토요청', cls: 'bg-[#EEF4FB] text-[#055AAF] border-[#BFD4F2]', Icon: ClipboardCheck },
-    review_revised: { label: '반려', cls: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]', Icon: Pencil },
-    review_acknowledged: { label: '동의', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: CheckCircle2 },
-    review_reobjected: { label: '이의제기', cls: 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]', Icon: Undo2 },
-    coaching_assigned: { label: '코칭 배정', cls: 'bg-[#F4F3FF] text-[#5925DC] border-[#D9D6FE]', Icon: GraduationCap },
-    coaching_completed: { label: '코칭 완료', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: Award },
-    golden_learn_completed: { label: '학습 완료', cls: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]', Icon: Sparkles },
-    golden_learn_skipped: { label: '학습 대상 없음', cls: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]', Icon: Sparkles },
-    golden_learn_failed: { label: '학습 실패', cls: 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]', Icon: Sparkles },
+    review_approved: { label: '승인', cls: 'bg-[var(--success-soft)] text-[var(--success)] border-[var(--success-soft)]', Icon: CheckCircle2 },
+    review_edited: { label: '수정 반영', cls: 'bg-[var(--warning-soft)] text-[var(--warning)] border-[var(--warning-soft)]', Icon: Pencil },
+    review_submitted: { label: '검토요청', cls: 'bg-[var(--primary-soft-flat)] text-[var(--primary)] border-[var(--primary-soft-flat)]', Icon: ClipboardCheck },
+    review_revised: { label: '반려', cls: 'bg-[var(--warning-soft)] text-[var(--warning)] border-[var(--warning-soft)]', Icon: Pencil },
+    review_acknowledged: { label: '동의', cls: 'bg-[var(--success-soft)] text-[var(--success)] border-[var(--success-soft)]', Icon: CheckCircle2 },
+    review_reobjected: { label: '이의제기', cls: 'bg-[var(--destructive-soft)] text-[var(--destructive)] border-[var(--destructive-soft)]', Icon: Undo2 },
+    coaching_assigned: { label: '코칭 배정', cls: 'bg-[var(--violet-soft)] text-[var(--violet)] border-[var(--violet-border)]', Icon: GraduationCap },
+    coaching_completed: { label: '코칭 완료', cls: 'bg-[var(--success-soft)] text-[var(--success)] border-[var(--success-soft)]', Icon: Award },
+    golden_learn_completed: { label: '학습 완료', cls: 'bg-[var(--success-soft)] text-[var(--success)] border-[var(--success-soft)]', Icon: Sparkles },
+    golden_learn_skipped: { label: '학습 대상 없음', cls: 'bg-[var(--warning-soft)] text-[var(--warning)] border-[var(--warning-soft)]', Icon: Sparkles },
+    golden_learn_failed: { label: '학습 실패', cls: 'bg-[var(--destructive-soft)] text-[var(--destructive)] border-[var(--destructive-soft)]', Icon: Sparkles },
 };
-const metaOf = (t) => TYPE_META[t] || { label: '알림', cls: 'bg-[#F2F4F7] text-[#667085] border-[#E4E7EC]', Icon: Bell };
+const metaOf = (t) => TYPE_META[t] || { label: '알림', cls: 'bg-[var(--muted)] text-[var(--ink-500)] border-[var(--border)]', Icon: Bell };
 
 // 알림 → 이동할 해시. qa_call=상세, coaching=평가/코칭 화면(eval-mgmt; 역할별로 적합 화면 렌더).
 function hashFor(n) {
@@ -86,7 +86,7 @@ function CoachingPlanModal({ coaching, onClose }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <span className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700 }}>새 코칭</span>
-                            <span className="pill" style={{ background: isChat ? '#eef6ee' : 'var(--primary-soft)', color: isChat ? '#3a7a3a' : 'var(--primary)', fontSize: 10.5, fontWeight: 700 }}>
+                            <span className="pill" style={{ background: isChat ? 'var(--success-soft)' : 'var(--primary-soft)', color: isChat ? 'var(--success)' : 'var(--primary)', fontSize: 10.5, fontWeight: 700 }}>
                                 <Icon name={isChat ? 'message-square' : 'phone'} size={9} />{isChat ? '채팅' : '전화'}
                             </span>
                         </div>
@@ -236,13 +236,13 @@ export default function NotificationBell() {
             <button
                 type="button"
                 onClick={() => setOpen(true)}
-                className="relative inline-flex items-center justify-center w-9 h-9 rounded-lg text-[#475467] hover:bg-[#F2F4F7] transition-colors"
+                className="relative inline-flex items-center justify-center w-9 h-9 rounded-lg text-[var(--ink-700)] hover:bg-[var(--muted)] transition-colors"
                 title="알림"
                 aria-label="알림 센터 열기"
             >
                 <Bell size={18} />
                 {unread > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[#F04438] text-white text-[10px] font-bold leading-[16px] text-center">
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[var(--destructive)] text-white text-[10px] font-bold leading-[16px] text-center">
                         {unread > 99 ? '99+' : unread}
                     </span>
                 )}
@@ -256,23 +256,23 @@ export default function NotificationBell() {
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* 헤더 */}
-                        <div className="flex items-center gap-2 px-5 py-4 border-b border-[#E4E7EC]">
-                            <Bell size={18} className="text-[#055AAF]" />
-                            <h2 className="text-[15px] font-bold text-[#101828]">알림 센터</h2>
+                        <div className="flex items-center gap-2 px-5 py-4 border-b border-[var(--border)]">
+                            <Bell size={18} className="text-[var(--primary)]" />
+                            <h2 className="text-[15px] font-bold text-[var(--ink-900)]">알림 센터</h2>
                             <button
                                 type="button"
                                 onClick={clearAll}
-                                className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-[#E4E7EC] text-[12px] text-[#667085] hover:bg-[#F9FAFB]"
+                                className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-[var(--border)] text-[12px] text-[var(--ink-500)] hover:bg-[var(--background-soft)]"
                             >
                                 <Trash2 size={12} />전체 삭제
                             </button>
-                            <button type="button" onClick={() => setOpen(false)} className="p-1 text-[#98A2B3] hover:text-[#475467]">
+                            <button type="button" onClick={() => setOpen(false)} className="p-1 text-[var(--ink-500)] hover:text-[var(--ink-700)]">
                                 <X size={18} />
                             </button>
                         </div>
 
                         {/* 탭 */}
-                        <div className="flex gap-1 p-2 bg-[#F9FAFB] border-b border-[#E4E7EC]">
+                        <div className="flex gap-1 p-2 bg-[var(--background-soft)] border-b border-[var(--border)]">
                             {[
                                 { k: 'current', label: `현재 알림 (${current.length})` },
                                 { k: 'past', label: `지난 알림 (${past.length})` },
@@ -281,7 +281,7 @@ export default function NotificationBell() {
                                     key={t.k}
                                     onClick={() => setTab(t.k)}
                                     className={`flex-1 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${
-                                        tab === t.k ? 'bg-[#055AAF] text-white' : 'text-[#667085] hover:bg-[#EEF2F7]'
+                                        tab === t.k ? 'bg-[var(--primary)] text-white' : 'text-[var(--ink-500)] hover:bg-[var(--border)]'
                                     }`}
                                 >
                                     {t.label}
@@ -292,7 +292,7 @@ export default function NotificationBell() {
                         {/* 목록 */}
                         <div className="flex-1 overflow-y-auto p-3 space-y-2">
                             {visible.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center text-center py-16 text-[#98A2B3]">
+                                <div className="flex flex-col items-center justify-center text-center py-16 text-[var(--ink-500)]">
                                     <Bell size={28} className="mb-3 opacity-50" />
                                     <div className="text-[13px]">{tab === 'current' ? '새 알림이 없습니다' : '지난 알림이 없습니다'}</div>
                                 </div>
@@ -304,16 +304,16 @@ export default function NotificationBell() {
                                             key={n.id}
                                             onClick={() => goTo(n)}
                                             className={`group relative rounded-xl border p-3 cursor-pointer transition-colors ${
-                                                n.read ? 'bg-white border-[#EEF2F7] hover:bg-[#FAFBFC]' : 'bg-[#FFFCF5] border-[#FEDF89] hover:bg-[#FFF8E8]'
+                                                n.read ? 'bg-white border-[var(--border)] hover:bg-[var(--background-soft)]' : 'bg-[var(--background-soft)] border-[var(--warning-soft)] hover:bg-[var(--warning-soft)]'
                                             }`}
                                         >
                                             <div className="flex items-center gap-2 mb-1 pr-6">
-                                                <m.Icon size={14} className="text-[#475467] shrink-0" />
-                                                <span className="text-[13px] font-bold text-[#101828] truncate">{n.title}</span>
+                                                <m.Icon size={14} className="text-[var(--ink-700)] shrink-0" />
+                                                <span className="text-[13px] font-bold text-[var(--ink-900)] truncate">{n.title}</span>
                                                 <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${m.cls}`}>{m.label}</span>
                                             </div>
-                                            {n.body && <div className="text-[12px] text-[#475467] leading-relaxed mb-1 pr-2">{n.body}</div>}
-                                            <div className="flex items-center gap-2 text-[11px] text-[#98A2B3]">
+                                            {n.body && <div className="text-[12px] text-[var(--ink-700)] leading-relaxed mb-1 pr-2">{n.body}</div>}
+                                            <div className="flex items-center gap-2 text-[11px] text-[var(--ink-500)]">
                                                 <span>{fmtTime(n.created_at)}</span>
                                                 {n.resource_type === 'qa_call' && <span>· 클릭 시 상세로 이동</span>}
                                                 {n.resource_type === 'coaching' && <span>· 클릭 시 {n.type === 'coaching_assigned' ? '코칭 플랜 보기' : '코칭으로 이동'}</span>}
@@ -322,7 +322,7 @@ export default function NotificationBell() {
                                             <button
                                                 type="button"
                                                 onClick={(e) => remove(e, n.id)}
-                                                className="absolute top-2 right-2 p-1 text-[#C0C6D0] opacity-0 group-hover:opacity-100 hover:text-[#475467] transition-opacity"
+                                                className="absolute top-2 right-2 p-1 text-[var(--ink-300)] opacity-0 group-hover:opacity-100 hover:text-[var(--ink-700)] transition-opacity"
                                                 title="삭제"
                                             >
                                                 <X size={14} />

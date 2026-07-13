@@ -128,7 +128,7 @@ function SkillItemAccordion({ item, prevOverlay, hasParent }) {
                             <div style={{ padding: '6px 10px', background: 'var(--muted)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', fontSize: 9.5, fontWeight: 800, color: 'var(--ink-500)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                                 이전 버전 {hasParent ? '' : '(없음)'}
                             </div>
-                            <div style={{ padding: '6px 10px', background: '#EEF4FB', borderBottom: '1px solid var(--border)', fontSize: 9.5, fontWeight: 800, color: '#055AAF', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                            <div style={{ padding: '6px 10px', background: 'var(--primary-soft-flat)', borderBottom: '1px solid var(--border)', fontSize: 9.5, fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                                 이번 버전 {item.changed ? '(갱신)' : '(승계)'}
                             </div>
                             <div style={{ padding: '10px 12px', borderRight: '1px solid var(--border)', background: 'white', fontSize: 11.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 340, overflowY: 'auto', color: 'var(--ink-700)', fontFamily: 'var(--font-mono)' }}>

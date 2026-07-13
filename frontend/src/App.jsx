@@ -12,6 +12,7 @@ import KsqiMgmt from './views/KsqiMgmt';
 import KsqiEval from './views/KsqiEval';
 import Sidebar from './components/Sidebar';
 import Nav from './components/Nav';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import ProfileModal from './components/ProfileModal';
 import PageContainer from './components/PageContainer';
 import {
@@ -249,6 +250,17 @@ function App() {
         return raw ? Number(raw) : null;
     });
     const [profileModalOpen, setProfileModalOpen] = useState(false);
+    // 사이드바 접기 — 브랜드 드롭다운 옆 토글로 제어, 새로고침에도 유지(localStorage).
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+        try { return localStorage.getItem('tg_sidebar_collapsed') === '1'; } catch { return false; }
+    });
+    const toggleSidebar = useCallback(() => {
+        setSidebarCollapsed((v) => {
+            const next = !v;
+            try { localStorage.setItem('tg_sidebar_collapsed', next ? '1' : '0'); } catch { /* noop */ }
+            return next;
+        });
+    }, []);
 
     const clearSession = async () => {
         // 서버에 로그아웃 통보 (test1 샌드박스 계정인 경우 세션 변경분 휘발 처리).
@@ -618,7 +630,18 @@ function App() {
                     onBrandChange={handleBrandChange}
                     onTabClick={handleSidebarTabClick}
                     ksqiEnabled={ksqiEnabled}
+                    collapsed={sidebarCollapsed}
                 />
+                {/* 사이드바 접기/펴기 — 사이드바 밖 좌상단에 고정. 접어도 남아있어 다시 펼 수 있음. */}
+                <button
+                    type="button"
+                    onClick={toggleSidebar}
+                    className={`sidebar-edge-toggle${sidebarCollapsed ? ' is-collapsed' : ''}`}
+                    aria-label={sidebarCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
+                    title={sidebarCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
+                >
+                    {sidebarCollapsed ? <ChevronRight size={20} strokeWidth={2.25} /> : <ChevronLeft size={20} strokeWidth={2.25} />}
+                </button>
                 <main className="app-shell-main">
                 {/* key 에 활성 브랜드 포함 — 브랜드 전환 시 현재 탭 전체 리마운트로 자체 fetch 뷰
                     (상담사 평가관리·배치·사용자 등)도 새 브랜드 데이터로 즉시 재조회. 이전 브랜드의

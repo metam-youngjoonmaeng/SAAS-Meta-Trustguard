@@ -9,11 +9,11 @@ const GOLD = {
     ink: '#7D5A00',
 };
 
-const PRIMARY = '#055AAF';
+const PRIMARY = 'var(--primary)';
 const PRIMARY_RING = 'rgba(5, 90, 175, 0.18)';
-const BORDER = '#E4E7EC';
-const BORDER_STRONG = '#D0D5DD';
-const INK_400 = '#98A2B3';
+const BORDER = 'var(--border)';
+const BORDER_STRONG = 'var(--border-strong)';
+const INK_400 = 'var(--ink-400)';
 
 function ManualJudgmentCell({ judgment, goldSet, onJudgment, onGoldSet, canManageGold = true }) {
     const activeIndex = STOPS.indexOf(judgment);

@@ -766,22 +766,22 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center py-40">
-                <div className="w-10 h-10 border-4 border-[#055AAF]/20 border-t-[#055AAF] rounded-full animate-spin"></div>
-                <p className="mt-4 font-semibold text-[#667085]">분석 데이터를 로딩 중입니다...</p>
+                <div className="w-10 h-10 border-4 border-[var(--primary)]/20 border-t-[var(--primary)] rounded-full animate-spin"></div>
+                <p className="mt-4 font-semibold text-[var(--ink-500)]">분석 데이터를 로딩 중입니다...</p>
             </div>
         );
     }
 
     const sttPanel = (
-        <div className="bg-white rounded-[14px] border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col lg:h-[884px] overflow-hidden animate-in slide-in-from-right-4 duration-500">
-            <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex justify-between items-center">
+        <div className="bg-white rounded-[14px] border border-[var(--border)] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col lg:h-[884px] overflow-hidden animate-in slide-in-from-right-4 duration-500">
+            <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex justify-between items-center">
                 <div className="flex items-center gap-2.5">
-                    <MessageSquare size={16} className="text-[#475467]" />
-                    <h3 className="text-[14px] font-semibold text-[#101828] tracking-tight">STT 전사</h3>
+                    <MessageSquare size={16} className="text-[var(--ink-700)]" />
+                    <h3 className="text-[14px] font-semibold text-[var(--ink-900)] tracking-tight">STT 전사</h3>
                 </div>
                 <button
                     onClick={() => setRightView('analysis')}
-                    className="text-[#98A2B3] hover:text-[#101828] transition-colors"
+                    className="text-[var(--ink-400)] hover:text-[var(--ink-900)] transition-colors"
                     aria-label="분석 화면으로"
                 >
                     <X size={16} />
@@ -816,21 +816,21 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                             data-highlighted={reallyMatched ? 'true' : undefined}
                             className={`flex flex-col ${isAgent ? 'items-start' : 'items-end'} transition-all duration-500`}
                         >
-                            <div className="text-[10px] text-[#98A2B3] mb-1 font-mono tabular-nums px-1">
+                            <div className="text-[10px] text-[var(--ink-400)] mb-1 font-mono tabular-nums px-1">
                                 {n.speaker} · {formatTime(n.ts)}
                             </div>
                             <div
                                 className={`max-w-[88%] px-3 py-2 rounded-lg text-[13px] leading-relaxed transition-all ${
                                     reallyMatched
-                                        ? 'bg-[#FFFAEB] text-[#B54708] ring-2 ring-[#FEC84B]/40'
+                                        ? 'bg-[var(--warning-soft)] text-[var(--warning)] ring-2 ring-[var(--warning-fill)]/40'
                                         : isAgent
-                                          ? 'bg-[#F2F4F7] text-[#101828]'
-                                          : 'bg-[#055AAF] text-white'
+                                          ? 'bg-[var(--muted)] text-[var(--ink-900)]'
+                                          : 'bg-[var(--primary)] text-white'
                                 }`}
                             >
                                 {n.text}
                                 {reallyMatched && (
-                                    <div className="mt-1.5 text-[10px] font-semibold text-[#B54708] flex items-center gap-1">
+                                    <div className="mt-1.5 text-[10px] font-semibold text-[var(--warning)] flex items-center gap-1">
                                         <ListCheck size={10} /> 평가 해당 발화
                                     </div>
                                 )}
@@ -839,7 +839,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                     );
                 })}
                 {conversationNodes.length === 0 && (
-                    <div className="py-20 text-center text-[#98A2B3] text-[13px]">녹취록 데이터가 없습니다.</div>
+                    <div className="py-20 text-center text-[var(--ink-400)] text-[13px]">녹취록 데이터가 없습니다.</div>
                 )}
             </div>
         </div>
@@ -851,7 +851,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                 {/* 상단 제목 제거(상단바 브레드크럼이 대체) — 상담사/상담번호 + 수기평가 사유 딱지 + 목록으로 */}
                 <div className="flex items-start justify-between gap-4 mb-5">
                     <div className="min-w-0">
-                        <p className="text-sm text-[#667085] truncate">
+                        <p className="text-sm text-[var(--ink-500)] truncate">
                             {`${call.agent_name || '-'} 상담사 | 상담번호: ${call.call_no || '-'}`}
                         </p>
                         {(() => {
@@ -859,11 +859,11 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                             if (!Array.isArray(reasons) || reasons.length === 0) return null;
                             return (
                                 <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                                    <span className="text-[11px] text-[#98A2B3]">수기평가 대상 사유</span>
+                                    <span className="text-[11px] text-[var(--ink-400)]">수기평가 대상 사유</span>
                                     {reasons.map((r, i) => (
                                         <span
                                             key={i}
-                                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]"
+                                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--warning-soft)] text-[var(--warning)] border border-[var(--warning-soft)]"
                                         >
                                             {r}
                                         </span>
@@ -874,42 +874,42 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                     </div>
                     <button
                         onClick={onBack}
-                        className="shrink-0 px-4 py-2 border border-[#D0D5DD] rounded-lg text-sm font-semibold text-[#344054] hover:bg-gray-50 flex items-center gap-2"
+                        className="shrink-0 px-4 py-2 border border-[var(--border-strong)] rounded-lg text-sm font-semibold text-[var(--ink-700)] hover:bg-[var(--muted)] flex items-center gap-2"
                     >
                         <ArrowLeft size={16} />
                         목록으로
                     </button>
                 </div>
 
-                <div className="bg-white rounded-[14px] border border-[#E4E7EC] shadow-sm overflow-x-auto mb-6">
+                <div className="bg-white rounded-[14px] border border-[var(--border)] shadow-sm overflow-x-auto mb-6">
                     <table className="w-full min-w-[1180px] border-collapse">
                         <thead>
-                            <tr className="bg-[#F9FAFB] text-[10px] text-[#667085]">
-                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">상담번호</th>
-                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">상담일시</th>
-                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">상담시간</th>
-                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">부서</th>
-                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">직무</th>
-                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">상담사ID</th>
-                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">상담사명</th>
-                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">고객번호</th>
-                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">고객등급</th>
-                                <th className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">AI평가</th>
+                            <tr className="bg-[var(--background-soft)] text-[10px] text-[var(--ink-500)]">
+                                <th className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">상담번호</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">상담일시</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">상담시간</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">부서</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">직무</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">상담사ID</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">상담사명</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">고객번호</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">고객등급</th>
+                                <th className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">AI평가</th>
                                 <th className="px-2.5 py-1.5 text-center">검수상태</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr className="text-[11px] text-[#101828]">
-                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.call_no || '-'}</td>
-                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{formatDateTime(call.call_datetime)}</td>
-                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{formatDuration(call.duration_sec)}</td>
-                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.department || department || '-'}</td>
-                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.role || (isConsumer ? '전체' : '-')}</td>
-                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.agent_id || '-'}</td>
-                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.agent_name || '-'}</td>
-                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.customer_no || '-'}</td>
-                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">{call.customer_grade || '-'}</td>
-                                <td className="px-2.5 py-1.5 text-center border-r border-[#EEF2F7]">
+                            <tr className="text-[11px] text-[var(--ink-900)]">
+                                <td className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">{call.call_no || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">{formatDateTime(call.call_datetime)}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">{formatDuration(call.duration_sec)}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">{call.department || department || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">{call.role || (isConsumer ? '전체' : '-')}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">{call.agent_id || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">{call.agent_name || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">{call.customer_no || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">{call.customer_grade || '-'}</td>
+                                <td className="px-2.5 py-1.5 text-center border-r border-[var(--border)]">
                                     {isConsumer
                                         ? '-'
                                         : call.ai_score === null || call.ai_score === undefined || call.ai_score === ''
@@ -920,7 +920,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                 </td>
                                 <td className="px-2.5 py-1.5 text-center">
                                     {isConsumer ? (
-                                        <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-[12px] font-semibold bg-[#F9FAFB] text-[#98A2B3]">
+                                        <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-[12px] font-semibold bg-[var(--background-soft)] text-[var(--ink-400)]">
                                             -
                                         </span>
                                     ) : (
@@ -983,12 +983,12 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                         표 전체 높이로 늘어남 → h-[884px] 로 확정해 카드 안에서만 스크롤되게 함. */}
                     <div className="lg:w-2/3 flex flex-col gap-6 min-h-0 lg:h-[884px]">
                         {/* Main Content Tabs */}
-                        <div className="bg-white rounded-[14px] border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col flex-1 min-h-0 lg:h-[884px] w-full overflow-hidden">
-                            <div className="px-5 py-3 border-b border-[#F2F4F7] bg-[#FAFBFC]">
+                        <div className="bg-white rounded-[14px] border border-[var(--border)] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col flex-1 min-h-0 lg:h-[884px] w-full overflow-hidden">
+                            <div className="px-5 py-3 border-b border-[var(--muted)] bg-[var(--background-soft)]">
                                 <div className="flex justify-between items-center">
                                     <div className="flex items-center gap-2.5 min-w-0">
-                                        <ListCheck size={16} className="text-[#475467] shrink-0" />
-                                        <h3 className="text-[14px] font-semibold text-[#101828] tracking-tight shrink-0">상세 체크리스트</h3>
+                                        <ListCheck size={16} className="text-[var(--ink-700)] shrink-0" />
+                                        <h3 className="text-[14px] font-semibold text-[var(--ink-900)] tracking-tight shrink-0">상세 체크리스트</h3>
                                         {goldSetCount > 0 && (
                                             <span
                                                 className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap"
@@ -1008,7 +1008,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                             setHighlightText('');
                                             setRightView('stt');
                                         }}
-                                        className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-[#475467] hover:bg-[#F9FAFB] border border-[#E4E7EC] inline-flex items-center gap-1.5 transition-colors"
+                                        className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-[var(--ink-700)] hover:bg-[var(--background-soft)] border border-[var(--border)] inline-flex items-center gap-1.5 transition-colors"
                                     >
                                         <MessageSquare size={13} />
                                         STT전사
@@ -1016,13 +1016,13 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                 </div>
                                 {reviewProgress.total > 0 && (
                                     <div className="mt-2.5 flex items-center gap-3">
-                                        <div className="flex-1 h-1.5 rounded-full bg-[#EAECF0] overflow-hidden">
+                                        <div className="flex-1 h-1.5 rounded-full bg-[var(--muted)] overflow-hidden">
                                             <div
-                                                className="h-full rounded-full bg-[#055AAF] transition-[width] duration-300"
+                                                className="h-full rounded-full bg-[var(--primary)] transition-[width] duration-300"
                                                 style={{ width: `${reviewProgress.pct}%` }}
                                             />
                                         </div>
-                                        <span className="text-[11.5px] font-semibold text-[#667085] tabular-nums shrink-0">
+                                        <span className="text-[11.5px] font-semibold text-[var(--ink-500)] tabular-nums shrink-0">
                                             {reviewProgress.pct}% · {reviewProgress.total}개 항목 중 {reviewProgress.done}완료
                                         </span>
                                     </div>
@@ -1033,17 +1033,17 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                 <table className="w-full h-full min-w-[1040px] text-center">
                                     <thead>
                                         <tr>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-20">구분</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-20">평가항목</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-44 text-left">평가 이유</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-44 text-left">평가 발화</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-24">AI평가</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-40">수기평가</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-24">당월평균</th>
-                                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-2.5 py-2.5 text-[12px] font-semibold text-[#667085] w-24">직무평균</th>
+                                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-2.5 py-2.5 text-[12px] font-semibold text-[var(--ink-500)] w-20">구분</th>
+                                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-2.5 py-2.5 text-[12px] font-semibold text-[var(--ink-500)] w-20">평가항목</th>
+                                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-2.5 py-2.5 text-[12px] font-semibold text-[var(--ink-500)] w-44 text-left">평가 이유</th>
+                                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-2.5 py-2.5 text-[12px] font-semibold text-[var(--ink-500)] w-44 text-left">평가 발화</th>
+                                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-2.5 py-2.5 text-[12px] font-semibold text-[var(--ink-500)] w-24">AI평가</th>
+                                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-2.5 py-2.5 text-[12px] font-semibold text-[var(--ink-500)] w-40">수기평가</th>
+                                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-2.5 py-2.5 text-[12px] font-semibold text-[var(--ink-500)] w-24">당월평균</th>
+                                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-2.5 py-2.5 text-[12px] font-semibold text-[var(--ink-500)] w-24">직무평균</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-[#F2F4F7]">
+                                    <tbody className="divide-y divide-[var(--muted)]">
                                         {(() => {
                                             // 카테고리 rowSpan 은 '연속된 같은 카테고리' run 단위로 계산한다.
                                             // 전체 개수로 합치면 order_no 재정렬로 같은 카테고리가
@@ -1065,19 +1065,19 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                 const showCategory = isFirstInRun(i);
 
                                                 return (
-                                                    <tr key={i} className="hover:bg-[#FAFBFC] transition-colors group">
+                                                    <tr key={i} className="hover:bg-[var(--background-soft)] transition-colors group">
                                                         {showCategory && (
                                                             <td
                                                                 rowSpan={runLength(i)}
-                                                                className="px-2.5 py-2.5 align-top text-[12px] font-semibold text-[#101828] border-r border-[#F2F4F7] bg-[#FAFBFC]/40"
+                                                                className="px-2.5 py-2.5 align-top text-[12px] font-semibold text-[var(--ink-900)] border-r border-[var(--muted)] bg-[var(--background-soft)]/40"
                                                             >
                                                                 {r.category}
                                                             </td>
                                                         )}
-                                                        <td className="px-2.5 py-2.5 align-top text-[13px] font-medium text-[#101828] whitespace-pre-line leading-snug">{r.item}</td>
-                                                        <td className="px-2.5 py-2.5 align-top text-left text-[11px] text-[#475467] leading-relaxed">{r.reason_text}</td>
+                                                        <td className="px-2.5 py-2.5 align-top text-[13px] font-medium text-[var(--ink-900)] whitespace-pre-line leading-snug">{r.item}</td>
+                                                        <td className="px-2.5 py-2.5 align-top text-left text-[11px] text-[var(--ink-700)] leading-relaxed">{r.reason_text}</td>
                                                         <td
-                                                            className="px-2.5 py-2.5 align-top text-left text-[11px] text-[#475467] leading-relaxed cursor-pointer hover:text-[#055AAF] hover:bg-[#FAFBFC] transition-colors group/utt"
+                                                            className="px-2.5 py-2.5 align-top text-left text-[11px] text-[var(--ink-700)] leading-relaxed cursor-pointer hover:text-[var(--primary)] hover:bg-[var(--background-soft)] transition-colors group/utt"
                                                             onClick={() => {
                                                                 const match = r.agent_utterance || '';
                                                                 setHighlightText(match);
@@ -1092,7 +1092,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                     .map((q, qi, arr) => (
                                                                         <span
                                                                             key={qi}
-                                                                            className="flex items-start gap-1.5 rounded hover:bg-[#EFF6FF] transition-colors"
+                                                                            className="flex items-start gap-1.5 rounded hover:bg-[var(--background)] transition-colors"
                                                                             onClick={(e) => {
                                                                                 // 발화별 개별 클릭 — 해당 발화만 하이라이트하고 그 턴으로 스크롤
                                                                                 e.stopPropagation();
@@ -1101,14 +1101,14 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                             }}
                                                                         >
                                                                             {arr.length > 1 && (
-                                                                                <span className="text-[10px] font-bold text-[#667085] bg-[#F2F4F7] rounded px-1 py-px mt-0.5 shrink-0 tabular-nums">
+                                                                                <span className="text-[10px] font-bold text-[var(--ink-500)] bg-[var(--muted)] rounded px-1 py-px mt-0.5 shrink-0 tabular-nums">
                                                                                     {qi + 1}
                                                                                 </span>
                                                                             )}
                                                                             <span className="italic group-hover/utt:underline">"{q}"</span>
                                                                         </span>
                                                                     ))}
-                                                                <span className="text-[11px] text-[#98A2B3] opacity-0 group-hover/utt:opacity-100 transition-opacity flex items-center gap-1 mt-1">
+                                                                <span className="text-[11px] text-[var(--ink-400)] opacity-0 group-hover/utt:opacity-100 transition-opacity flex items-center gap-1 mt-1">
                                                                     <MessageSquare size={11} /> 클릭하여 상담 텍스트 확인
                                                                 </span>
                                                             </div>
@@ -1118,18 +1118,18 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                             {r.scoring_type === 'yes_no' ? (
                                                                 // Y/N 2분법 — '했다' 확인되면 Y, 그 외(안 함·확인 안 됨) 전부 N.
                                                                 r.earned_ai > 0 ? (
-                                                                    <span className="text-[15px] font-bold text-[#067647]">Y</span>
+                                                                    <span className="text-[15px] font-bold text-[var(--success)]">Y</span>
                                                                 ) : (
-                                                                    <span className="text-[15px] font-bold text-[#D92D20]">N</span>
+                                                                    <span className="text-[15px] font-bold text-[var(--destructive)]">N</span>
                                                                 )
                                                             ) : (
-                                                                <span className="text-[#101828]">{r.ai_eval_label}</span>
+                                                                <span className="text-[var(--ink-900)]">{r.ai_eval_label}</span>
                                                             )}
                                                         </td>
                                                         {/* 수기평가 — Y/N 항목은 수기평가 불가(점수 무관) */}
                                                         <td className="px-2.5 py-2.5 align-middle">
                                                             {r.scoring_type === 'yes_no' ? (
-                                                                <span className="text-[12px] text-[#98A2B3]">–</span>
+                                                                <span className="text-[12px] text-[var(--ink-400)]">–</span>
                                                             ) : (
                                                                 <ManualJudgmentCell
                                                                     judgment={manualJudgments[r.row_key]?.judgment || ''}
@@ -1140,8 +1140,8 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                 />
                                                             )}
                                                         </td>
-                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] text-[#475467] tabular-nums">{r.scoring_type === 'yes_no' ? '–' : r.monthly_avg}</td>
-                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] text-[#475467] tabular-nums">{r.scoring_type === 'yes_no' ? '–' : r.team_avg}</td>
+                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] text-[var(--ink-700)] tabular-nums">{r.scoring_type === 'yes_no' ? '–' : r.monthly_avg}</td>
+                                                        <td className="px-2.5 py-2.5 align-middle text-[13px] text-[var(--ink-700)] tabular-nums">{r.scoring_type === 'yes_no' ? '–' : r.team_avg}</td>
                                                     </tr>
                                                 );
                                             });
@@ -1157,10 +1157,10 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                         {rightView === 'analysis' ?
                             <div className="flex flex-col gap-6 lg:h-[884px] animate-in slide-in-from-right-4 duration-500">
                                 {/* Radar Chart Card */}
-                                <div className="bg-white rounded-[14px] border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col h-[440px] shrink-0 overflow-visible">
-                                    <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-2.5">
-                                        <BarChart3 size={16} className="text-[#475467]" />
-                                        <h3 className="text-[14px] font-semibold text-[#101828] tracking-tight">Pentagon Diagram</h3>
+                                <div className="bg-white rounded-[14px] border border-[var(--border)] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col h-[440px] shrink-0 overflow-visible">
+                                    <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex items-center gap-2.5">
+                                        <BarChart3 size={16} className="text-[var(--ink-700)]" />
+                                        <h3 className="text-[14px] font-semibold text-[var(--ink-900)] tracking-tight">Pentagon Diagram</h3>
                                     </div>
                                     <div className="flex-1 p-6 flex items-center justify-center relative group/radar">
                                         <RadarChart
@@ -1171,23 +1171,23 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                             size={320}
                                         />
 
-                                        <div className="absolute top-0 right-[calc(100%+20px)] w-[600px] bg-white z-50 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-[#E4E7EC] opacity-0 group-hover/radar:opacity-100 transition-all duration-300 pointer-events-none group-hover/radar:pointer-events-auto overflow-hidden flex flex-col translate-x-4 group-hover/radar:translate-x-0">
-                                            <div className="absolute top-20 -right-2 w-4 h-4 bg-white border-r border-t border-[#E4E7EC] rotate-45 z-10"></div>
-                                            <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-2.5">
-                                                <BarChart3 size={16} className="text-[#475467]" />
-                                                <h4 className="text-[14px] font-semibold text-[#101828] tracking-tight">
-                                                    분석 리포트 가이드 <span className="text-[#667085] font-medium tabular-nums">({reportScoreLabel})</span>
+                                        <div className="absolute top-0 right-[calc(100%+20px)] w-[600px] bg-white z-50 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-[var(--border)] opacity-0 group-hover/radar:opacity-100 transition-all duration-300 pointer-events-none group-hover/radar:pointer-events-auto overflow-hidden flex flex-col translate-x-4 group-hover/radar:translate-x-0">
+                                            <div className="absolute top-20 -right-2 w-4 h-4 bg-white border-r border-t border-[var(--border)] rotate-45 z-10"></div>
+                                            <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex items-center gap-2.5">
+                                                <BarChart3 size={16} className="text-[var(--ink-700)]" />
+                                                <h4 className="text-[14px] font-semibold text-[var(--ink-900)] tracking-tight">
+                                                    분석 리포트 가이드 <span className="text-[var(--ink-500)] font-medium tabular-nums">({reportScoreLabel})</span>
                                                 </h4>
                                             </div>
                                             <div className="flex-1 overflow-auto max-h-[500px]">
                                                 <table className="w-full text-[11px] border-collapse">
-                                                    <thead className="bg-[#F9FAFB] border-b border-[#E4E7EC] sticky top-0 z-20">
+                                                    <thead className="bg-[var(--background-soft)] border-b border-[var(--border)] sticky top-0 z-20">
                                                         <tr>
-                                                            <th className="px-5 py-3 text-left w-32 font-black text-[#101828]">항목</th>
-                                                            <th className="px-5 py-3 text-left font-black text-[#101828]">상세 분석 리포트</th>
+                                                            <th className="px-5 py-3 text-left w-32 font-black text-[var(--ink-900)]">항목</th>
+                                                            <th className="px-5 py-3 text-left font-black text-[var(--ink-900)]">상세 분석 리포트</th>
                                                         </tr>
                                                     </thead>
-                                                    <tbody className="divide-y divide-gray-50">
+                                                    <tbody className="divide-y divide-[var(--muted)]">
                                                         {PENTAGON_LABELS.map((label, idx) => {
                                                             const key = PENTAGON_KEYS[idx];
                                                             const content =
@@ -1195,17 +1195,17 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                                 reportMap[label] ||
                                                                 '분석 데이터가 존재하지 않습니다.';
                                                             return (
-                                                                <tr key={key} className="transition-colors hover:bg-gray-50">
-                                                                    <td className="px-5 py-4 font-black align-top text-[#344054]">{label}</td>
-                                                                    <td className="px-5 py-4 text-[#475467] leading-relaxed whitespace-pre-line text-[12px]">{content}</td>
+                                                                <tr key={key} className="transition-colors hover:bg-[var(--muted)]">
+                                                                    <td className="px-5 py-4 font-black align-top text-[var(--ink-700)]">{label}</td>
+                                                                    <td className="px-5 py-4 text-[var(--ink-700)] leading-relaxed whitespace-pre-line text-[12px]">{content}</td>
                                                                 </tr>
                                                             );
                                                         })}
                                                     </tbody>
                                                 </table>
                                             </div>
-                                            <div className="p-3 bg-gray-50 border-t border-[#E4E7EC] text-[10px] text-center text-[#98A2B3] flex items-center justify-center gap-2 font-medium">
-                                                <div className="w-1.5 h-1.5 bg-[#055AAF] rounded-full animate-pulse"></div>
+                                            <div className="p-3 bg-[var(--muted)] border-t border-[var(--border)] text-[10px] text-center text-[var(--ink-400)] flex items-center justify-center gap-2 font-medium">
+                                                <div className="w-1.5 h-1.5 bg-[var(--primary)] rounded-full animate-pulse"></div>
                                                 차트 위에서 마우스를 떼면 분석 리포트가 닫힙니다.
                                             </div>
                                         </div>
@@ -1213,17 +1213,17 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                 </div>
 
                                 {/* Analysis Comments / Admin Actions */}
-                                <div className="bg-white rounded-[14px] border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col h-[420px] shrink-0 overflow-hidden">
-                                    <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-2.5">
-                                        <MessageSquare size={16} className="text-[#475467]" />
-                                        <h3 className="text-[14px] font-semibold text-[#101828] tracking-tight">관리자 코멘트</h3>
+                                <div className="bg-white rounded-[14px] border border-[var(--border)] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col h-[420px] shrink-0 overflow-hidden">
+                                    <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex items-center gap-2.5">
+                                        <MessageSquare size={16} className="text-[var(--ink-700)]" />
+                                        <h3 className="text-[14px] font-semibold text-[var(--ink-900)] tracking-tight">관리자 코멘트</h3>
                                     </div>
 
-                                    <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/30">
+                                    <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-[var(--muted)]/30">
                                         {adminComments.length > 0 ? (
                                             adminComments.map((c, i) => (
-                                                <div key={i} className="bg-white p-4 rounded-xl border border-[#D0D5DD] shadow-sm relative overflow-hidden group">
-                                                    <div className="absolute top-0 left-0 bottom-0 w-1 bg-[#055AAF]"></div>
+                                                <div key={i} className="bg-white p-4 rounded-xl border border-[var(--border-strong)] shadow-sm relative overflow-hidden group">
+                                                    <div className="absolute top-0 left-0 bottom-0 w-1 bg-[var(--primary)]"></div>
                                                     {canEditComments && (
                                                     <button
                                                         onClick={() => {
@@ -1235,15 +1235,15 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                             setSelectedCommentIdx(i);
                                                             setCommentDraft(c.text || '');
                                                         }}
-                                                        className={`absolute top-3 right-3 w-4 h-4 rounded border ${selectedCommentIdx === i ? 'bg-[#055AAF] border-[#055AAF]' : 'border-[#D0D5DD] bg-white'}`}
+                                                        className={`absolute top-3 right-3 w-4 h-4 rounded border ${selectedCommentIdx === i ? 'bg-[var(--primary)] border-[var(--primary)]' : 'border-[var(--border-strong)] bg-white'}`}
                                                         aria-label="코멘트 선택"
                                                     />
                                                     )}
                                                     <div className="flex justify-between items-center mb-2">
-                                                        <span className="text-[10px] font-extrabold text-[#101828]">{c.author || 'QA 매니저'}</span>
-                                                        <span className="text-[9px] text-[#98A2B3]">{formatDateTime(c.created_at)}</span>
+                                                        <span className="text-[10px] font-extrabold text-[var(--ink-900)]">{c.author || 'QA 매니저'}</span>
+                                                        <span className="text-[9px] text-[var(--ink-400)]">{formatDateTime(c.created_at)}</span>
                                                     </div>
-                                                    <p className="text-xs text-[#344054] leading-relaxed line-clamp-4 group-hover:line-clamp-none transition-all">
+                                                    <p className="text-xs text-[var(--ink-700)] leading-relaxed line-clamp-4 group-hover:line-clamp-none transition-all">
                                                         {c.text}
                                                     </p>
                                                 </div>
@@ -1256,9 +1256,10 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                     </div>
 
                                     {canEditComments && (
-                                    <div className="p-4 border-t border-[#E4E7EC] bg-white">
+                                    <div className="p-4 border-t border-[var(--border)] bg-white">
+
                                         <textarea
-                                            className="w-full p-3 bg-[#F9FAFB] border border-[#D0D5DD] rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#055AAF]/20 focus:border-[#055AAF] transition-all resize-none mb-3"
+                                            className="w-full p-3 bg-[var(--background-soft)] border border-[var(--border-strong)] rounded-xl text-xs outline-none focus:ring-2 focus:ring-[var(--primary)]/20 focus:border-[var(--primary)] transition-all resize-none mb-3"
                                             placeholder={selectedCommentIdx === null ? "상담사 코칭을 위한 코멘트를 입력하세요..." : "선택한 코멘트 내용을 수정하세요..."}
                                             rows={3}
                                             value={commentDraft}
@@ -1266,11 +1267,11 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                             disabled={isCommentSaving}
                                         />
                                         {commentSaveError && (
-                                            <p className="mb-3 text-[11px] text-[#B42318]">{commentSaveError}</p>
+                                            <p className="mb-3 text-[11px] text-[var(--destructive)]">{commentSaveError}</p>
                                         )}
                                         <div className="grid grid-cols-3 gap-2">
                                             <button
-                                                className="py-2 border border-[#D0D5DD] rounded-lg text-xs font-semibold text-[#344054] hover:bg-gray-50 transition-colors"
+                                                className="py-2 border border-[var(--border-strong)] rounded-lg text-xs font-semibold text-[var(--ink-700)] hover:bg-[var(--muted)] transition-colors"
                                                 disabled={isCommentSaving}
                                                 onClick={async () => {
                                                     if (!commentDraft.trim()) return;
@@ -1288,7 +1289,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                 {isCommentSaving ? '저장 중...' : '저장'}
                                             </button>
                                             <button
-                                                className="py-2 border border-[#D0D5DD] rounded-lg text-xs font-semibold text-[#344054] hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                                className="py-2 border border-[var(--border-strong)] rounded-lg text-xs font-semibold text-[var(--ink-700)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50"
                                                 disabled={isCommentSaving || selectedCommentIdx === null || !commentDraft.trim()}
                                                 onClick={async () => {
                                                     if (selectedCommentIdx === null || !commentDraft.trim()) return;
@@ -1303,7 +1304,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                                 수정
                                             </button>
                                             <button
-                                                className="py-2 border border-[#D0D5DD] rounded-lg text-xs font-semibold text-[#344054] hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                                className="py-2 border border-[var(--border-strong)] rounded-lg text-xs font-semibold text-[var(--ink-700)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50"
                                                 disabled={isCommentSaving || selectedCommentIdx === null}
                                                 onClick={async () => {
                                                     if (selectedCommentIdx === null) return;

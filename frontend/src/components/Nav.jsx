@@ -119,24 +119,24 @@ const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, 
                             <button
                                 type="button"
                                 onClick={onHomeClick}
-                                className="flex items-center text-[#667085] hover:text-[#055AAF] transition-colors shrink-0"
+                                className="flex items-center text-[var(--ink-500)] hover:text-[var(--primary)] transition-colors shrink-0"
                                 aria-label="평가 리스트(홈)"
                             >
                                 <Home size={15} />
                             </button>
                             {crumbs.map((c, i) => (
                                 <React.Fragment key={i}>
-                                    <ChevronRight size={13} className="text-[#D0D5DD] shrink-0" />
+                                    <ChevronRight size={13} className="text-[var(--ink-300)] shrink-0" />
                                     {c.onClick ? (
                                         <button
                                             type="button"
                                             onClick={c.onClick}
-                                            className="text-[#667085] hover:text-[#055AAF] font-medium transition-colors truncate"
+                                            className="text-[var(--ink-500)] hover:text-[var(--primary)] font-medium transition-colors truncate"
                                         >
                                             {c.label}
                                         </button>
                                     ) : (
-                                        <span className={`truncate ${i === crumbs.length - 1 ? 'text-[#101828] font-semibold' : 'text-[#667085]'}`}>
+                                        <span className={`truncate ${i === crumbs.length - 1 ? 'text-[var(--ink-900)] font-semibold' : 'text-[var(--ink-500)]'}`}>
                                             {c.label}
                                         </span>
                                     )}

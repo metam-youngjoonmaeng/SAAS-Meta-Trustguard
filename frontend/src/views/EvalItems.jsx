@@ -167,7 +167,7 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                     <button
                         type="button"
                         onClick={() => setModal({ type: 'history' })}
-                        className="flex items-center gap-2 px-5 py-2 bg-white border border-[#D0D5DD] rounded-lg text-sm font-semibold text-[#344054] hover:bg-[#F9FAFB] shadow-sm transition-all"
+                        className="flex items-center gap-2 px-5 py-2 bg-white border border-[var(--border-strong)] rounded-lg text-sm font-semibold text-[var(--ink-700)] hover:bg-[var(--background-soft)] shadow-sm transition-all"
                     >
                         <History size={15} />
                         변경 이력
@@ -184,7 +184,7 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                 }}
             >
                 {/* ── 좌측 ── */}
-                <div className="bg-white border border-[#E4E7EC] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
+                <div className="bg-white border border-[var(--border)] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
                     {/* 섹션 1: 체크리스트 */}
                     {/* 체크리스트는 남는 공간을 모두 차지하고(많으면 내부 스크롤),
                         Pentagon 은 내용 높이에 맞춰(5축+추가 항상 노출, 스크롤 없음). */}
@@ -210,7 +210,7 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                             })}
                         </div>
                         {/* 추가 버튼 = 스크롤 밖 고정 푸터 — 리스트가 길어도 항상 노출 (2026-07-08 QA 피드백) */}
-                        <div className="px-2 pb-1.5 shrink-0 border-t border-[#F2F4F7] bg-white">
+                        <div className="px-2 pb-1.5 shrink-0 border-t border-[var(--muted)] bg-white">
                             <AddBox
                                 label="새 평가항목 추가"
                                 onClick={() => setModal({ type: 'new-item' })}
@@ -219,7 +219,7 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                     </div>
 
                     {/* 섹션 2: Pentagon — 내용 높이에 맞춰 고정(축이 적어도 스크롤 없이 전부 노출) */}
-                    <div className="flex flex-col shrink-0 border-t-[6px] border-[#F2F4F7]" style={{ flex: '0 0 auto' }}>
+                    <div className="flex flex-col shrink-0 border-t-[6px] border-[var(--muted)]" style={{ flex: '0 0 auto' }}>
                         <SectionHeader
                             title="Pentagon 평가항목"
                             count={`${effectiveAxes.length}축`}
@@ -239,7 +239,7 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                             })}
                         </div>
                         {/* 추가 버튼 = 리스트 밖 고정 푸터 (체크리스트와 동일 구조) */}
-                        <div className="px-2 pb-1.5 shrink-0 border-t border-[#F2F4F7] bg-white">
+                        <div className="px-2 pb-1.5 shrink-0 border-t border-[var(--muted)] bg-white">
                             <AddBox
                                 label="새 Pentagon 축 추가"
                                 onClick={() => setModal({ type: 'new-axis' })}
@@ -265,7 +265,7 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                         onEdit={() => setModal({ type: 'edit-axis', label: selectedAxis.label, idx: selectedAxis.idx, dbAxis: selectedAxis.dbAxis })}
                     />
                 ) : (
-                    <div className="bg-white border border-[#E4E7EC] rounded-xl flex items-center justify-center text-[13px] text-[#667085]">
+                    <div className="bg-white border border-[var(--border)] rounded-xl flex items-center justify-center text-[13px] text-[var(--ink-500)]">
                         좌측에서 항목을 선택하세요
                     </div>
                 )}
@@ -322,8 +322,8 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                     <div
                         className={`flex items-start gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-[12.5px] ${
                             rubricSyncToast.tone === 'success'
-                                ? 'bg-[#ECFDF3] border-[#A6F4C5] text-[#067647]'
-                                : 'bg-[#FFFBFA] border-[#FDA29B] text-[#B42318]'
+                                ? 'bg-[var(--success-soft)] border-[var(--success-soft)] text-[var(--success)]'
+                                : 'bg-[var(--background-soft)] border-[var(--destructive-soft)] text-[var(--destructive)]'
                         }`}
                     >
                         {rubricSyncToast.tone === 'success' ? (
@@ -358,9 +358,9 @@ function SectionHeader({ title, count, extra }) {
     // 편집 진입 = 우측 미리보기 > 편집하기 단일 경로 — 헤더 연필·행 화살표 등 중복 편집
     // 경로는 제거(2026-07-08 QA 피드백). extra: 우측 부가 액션 슬롯.
     return (
-        <div className="px-5 py-3 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-2">
-            <h3 className="text-[13px] font-bold text-[#101828] tracking-tight">{title}</h3>
-            <span className="text-[11.5px] text-[#667085] font-medium">{count}</span>
+        <div className="px-5 py-3 border-b border-[var(--muted)] bg-[var(--background-soft)] flex items-center gap-2">
+            <h3 className="text-[13px] font-bold text-[var(--ink-900)] tracking-tight">{title}</h3>
+            <span className="text-[11.5px] text-[var(--ink-500)] font-medium">{count}</span>
             {extra ? <span className="ml-auto">{extra}</span> : null}
         </div>
     );
@@ -373,7 +373,7 @@ function AddBox({ label, onClick }) {
         <button
             type="button"
             onClick={onClick}
-            className="w-full mt-1.5 mb-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-dashed border-[#D0D5DD] bg-white text-[12.5px] font-semibold text-[#667085] hover:border-[#055AAF] hover:text-[#055AAF] hover:bg-[#F7FAFD] transition-colors cursor-pointer"
+            className="w-full mt-1.5 mb-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-dashed border-[var(--border-strong)] bg-white text-[12.5px] font-semibold text-[var(--ink-500)] hover:border-[var(--primary)] hover:text-[var(--primary)] hover:bg-[var(--background-soft)] transition-colors cursor-pointer"
         >
             <Plus size={13} strokeWidth={2.5} />
             {label}
@@ -391,20 +391,20 @@ function ItemRow({
         <div
             onClick={onSelect}
             className={`flex items-center gap-2 px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${
-                selected ? 'bg-[#EEF4FB]' : 'hover:bg-[#F9FAFB]'
+                selected ? 'bg-[var(--primary-soft-flat)]' : 'hover:bg-[var(--background-soft)]'
             }`}
         >
             <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="text-[10px] font-bold text-[#98A2B3] tabular-nums">#{String(orderNo).padStart(2, '0')}</span>
-                    <span className="text-[10px] font-semibold text-[#667085] truncate">{category}</span>
+                    <span className="text-[10px] font-bold text-[var(--ink-500)] tabular-nums">#{String(orderNo).padStart(2, '0')}</span>
+                    <span className="text-[10px] font-semibold text-[var(--ink-500)] truncate">{category}</span>
                     {inactive && (
-                        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[#F2F4F7] text-[#98A2B3]">비활성</span>
+                        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[var(--muted)] text-[var(--ink-500)]">비활성</span>
                     )}
                 </div>
                 <div className="flex items-center gap-1.5 min-w-0">
                     <span className={`text-[12.5px] font-bold truncate ${
-                        inactive ? 'text-[#98A2B3]' : selected ? 'text-[#055AAF]' : 'text-[#101828]'
+                        inactive ? 'text-[var(--ink-500)]' : selected ? 'text-[var(--primary)]' : 'text-[var(--ink-900)]'
                     }`}>
                         {label}
                     </span>
@@ -420,11 +420,11 @@ function AxisRow({ axisNo, label, selected, onSelect }) {
         <div
             onClick={onSelect}
             className={`flex items-center gap-2 px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${
-                selected ? 'bg-[#EEF4FB]' : 'hover:bg-[#F9FAFB]'
+                selected ? 'bg-[var(--primary-soft-flat)]' : 'hover:bg-[var(--background-soft)]'
             }`}
         >
-            <span className={`text-[14px] font-bold tabular-nums ${selected ? 'text-[#055AAF]' : 'text-[#98A2B3]'}`}>{numChar}</span>
-            <div className={`flex-1 text-[12.5px] font-bold truncate ${selected ? 'text-[#055AAF]' : 'text-[#101828]'}`}>
+            <span className={`text-[14px] font-bold tabular-nums ${selected ? 'text-[var(--primary)]' : 'text-[var(--ink-500)]'}`}>{numChar}</span>
+            <div className={`flex-1 text-[12.5px] font-bold truncate ${selected ? 'text-[var(--primary)]' : 'text-[var(--ink-900)]'}`}>
                 {label}
             </div>
         </div>
@@ -437,25 +437,25 @@ function ItemPreview({ item, def, onEdit }) {
     const maxPoints = parsePoints(item.validation_time);
 
     return (
-        <div className="bg-white border border-[#E4E7EC] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-3">
-                <h3 className="text-[14px] font-bold text-[#101828] tracking-tight truncate">{def?.item || item.item}</h3>
-                <span className="text-[11.5px] text-[#667085]">{def?.category || item.category}</span>
+        <div className="bg-white border border-[var(--border)] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex items-center gap-3">
+                <h3 className="text-[14px] font-bold text-[var(--ink-900)] tracking-tight truncate">{def?.item || item.item}</h3>
+                <span className="text-[11.5px] text-[var(--ink-500)]">{def?.category || item.category}</span>
                 {(def?.is_active ?? true) ? (
-                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#E8F6ED] text-[#2F9759]">활성</span>
+                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--success-soft)] text-[var(--success)]">활성</span>
                 ) : (
-                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#F2F4F7] text-[#667085]">비활성</span>
+                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--ink-500)]">비활성</span>
                 )}
                 <button
                     type="button"
                     onClick={onEdit}
-                    className="ml-auto h-[32px] px-3.5 rounded-full bg-[#055AAF] text-white text-[12px] font-semibold hover:bg-[#1E70E0] shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
+                    className="ml-auto h-[32px] px-3.5 rounded-full bg-[var(--primary)] text-white text-[12px] font-semibold hover:bg-[var(--primary)] shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
                 >
                     <Edit3 size={12} />편집하기
                 </button>
             </div>
 
-            <div className="px-5 py-2.5 bg-[#FAFBFC] border-b border-[#F2F4F7] flex items-center gap-3 flex-wrap text-[12px] text-[#667085]">
+            <div className="px-5 py-2.5 bg-[var(--background-soft)] border-b border-[var(--muted)] flex items-center gap-3 flex-wrap text-[12px] text-[var(--ink-500)]">
                 <MetaPair label="채점 방식" value={def?.scoring_type === 'yes_no' ? 'Y/N' : '점수제'} />
                 <MetaDivider />
                 <MetaPair label="만점" value={def?.scoring_type === 'yes_no' ? '1점' : `${def?.max_score ?? maxPoints}점`} />
@@ -470,9 +470,9 @@ function ItemPreview({ item, def, onEdit }) {
                         <div className="flex-1 min-h-0 overflow-y-auto">
                             <PreviewSection title="항목 평가 설명">
                                 {def?.criterion ? (
-                                    <div className="text-[13px] text-[#475467] leading-relaxed whitespace-pre-wrap">{def.criterion}</div>
+                                    <div className="text-[13px] text-[var(--ink-700)] leading-relaxed whitespace-pre-wrap">{def.criterion}</div>
                                 ) : (
-                                    <div className="text-[13px] text-[#98A2B3] italic leading-relaxed">
+                                    <div className="text-[13px] text-[var(--ink-500)] italic leading-relaxed">
                                         아직 설정된 평가 설명이 없습니다. 우상단 편집하기에서 입력하세요.
                                     </div>
                                 )}
@@ -480,8 +480,8 @@ function ItemPreview({ item, def, onEdit }) {
                         </div>
 
                         <div className="flex flex-col shrink-0">
-                            <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2">점수 기준 {def?.scoring_type !== 'yes_no' && `(만점 ${def?.max_score ?? maxPoints}점)`}</div>
-                            <pre className="min-h-[120px] max-h-[40vh] text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3 overflow-auto">{def?.prompt_template ? def.prompt_template : `만점 ${def?.max_score ?? maxPoints}점 기준으로 "${item.item}" 항목의 점수 단계별 판정 조건을 작성하세요.
+                            <div className="text-[10.5px] font-bold text-[var(--ink-500)] tracking-[0.06em] uppercase mb-2">점수 기준 {def?.scoring_type !== 'yes_no' && `(만점 ${def?.max_score ?? maxPoints}점)`}</div>
+                            <pre className="min-h-[120px] max-h-[40vh] text-[12px] font-mono text-[var(--ink-700)] leading-relaxed whitespace-pre-wrap bg-[var(--background-soft)] border border-[var(--border)] rounded-lg p-3 overflow-auto">{def?.prompt_template ? def.prompt_template : `만점 ${def?.max_score ?? maxPoints}점 기준으로 "${item.item}" 항목의 점수 단계별 판정 조건을 작성하세요.
 
 예: ${def?.max_score ?? maxPoints}점(완전 충족) / 부분 점수(일부 충족) / 0점(미충족) — 각 단계의 조건과 감점·만점 사유를 구체적으로.
 
@@ -499,25 +499,25 @@ function AxisPreview({ axisNo, label, dbAxis, onEdit }) {
     const desc = dbAxis?.description || PENTAGON_MOCK_DESC[label] || '(이 축이 측정하는 영역에 대한 설명을 입력하세요)';
     const isActive = dbAxis?.is_active ?? true;
     return (
-        <div className="bg-white border border-[#E4E7EC] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-3">
-                <span className="text-[18px] font-bold text-[#055AAF] tabular-nums">{numChar}</span>
-                <h3 className="text-[14px] font-bold text-[#101828] tracking-tight truncate">{label}</h3>
+        <div className="bg-white border border-[var(--border)] rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex items-center gap-3">
+                <span className="text-[18px] font-bold text-[var(--primary)] tabular-nums">{numChar}</span>
+                <h3 className="text-[14px] font-bold text-[var(--ink-900)] tracking-tight truncate">{label}</h3>
                 {isActive ? (
-                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#E8F6ED] text-[#2F9759]">활성</span>
+                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--success-soft)] text-[var(--success)]">활성</span>
                 ) : (
-                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#F2F4F7] text-[#667085]">비활성</span>
+                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--ink-500)]">비활성</span>
                 )}
                 <button
                     type="button"
                     onClick={onEdit}
-                    className="ml-auto h-[32px] px-3.5 rounded-full bg-[#055AAF] text-white text-[12px] font-semibold hover:bg-[#1E70E0] shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
+                    className="ml-auto h-[32px] px-3.5 rounded-full bg-[var(--primary)] text-white text-[12px] font-semibold hover:bg-[var(--primary)] shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
                 >
                     <Edit3 size={12} />편집하기
                 </button>
             </div>
 
-            <div className="px-5 py-2.5 bg-[#FAFBFC] border-b border-[#F2F4F7] flex items-center gap-3 flex-wrap text-[12px] text-[#667085]">
+            <div className="px-5 py-2.5 bg-[var(--background-soft)] border-b border-[var(--muted)] flex items-center gap-3 flex-wrap text-[12px] text-[var(--ink-500)]">
                 <MetaPair label="축 번호" value={`${numChar} (${axisNo})`} />
                 <MetaDivider />
                 <MetaPair label="등급 척도" value="우수 / 보통 / 주의 / 실패" />
@@ -526,14 +526,14 @@ function AxisPreview({ axisNo, label, dbAxis, onEdit }) {
 
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
                 <PreviewSection title="설명">
-                    <div className="text-[13px] text-[#475467] leading-relaxed">{desc}</div>
+                    <div className="text-[13px] text-[var(--ink-700)] leading-relaxed">{desc}</div>
                 </PreviewSection>
 
                 <PreviewSection title="평가 프롬프트">
                     {dbAxis?.prompt_template ? (
-                        <pre className="text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3">{dbAxis.prompt_template}</pre>
+                        <pre className="text-[12px] font-mono text-[var(--ink-700)] leading-relaxed whitespace-pre-wrap bg-[var(--background-soft)] border border-[var(--border)] rounded-lg p-3">{dbAxis.prompt_template}</pre>
                     ) : (
-                        <div className="text-[13px] text-[#98A2B3] italic">
+                        <div className="text-[13px] text-[var(--ink-500)] italic">
                             평가 프롬프트가 비어 있습니다. [편집하기]에서 작성하면 평가 에이전트가 이 프롬프트로 "{label}" 축을 판단합니다.
                         </div>
                     )}
@@ -546,7 +546,7 @@ function AxisPreview({ axisNo, label, dbAxis, onEdit }) {
 function PreviewSection({ title, children }) {
     return (
         <div>
-            <div className="text-[10.5px] font-bold text-[#98A2B3] tracking-[0.06em] uppercase mb-2">{title}</div>
+            <div className="text-[10.5px] font-bold text-[var(--ink-500)] tracking-[0.06em] uppercase mb-2">{title}</div>
             {children}
         </div>
     );
@@ -555,14 +555,14 @@ function PreviewSection({ title, children }) {
 function MetaPair({ label, value }) {
     return (
         <span className="inline-flex items-center gap-1.5">
-            <span className="text-[#98A2B3] font-semibold">{label}</span>
-            <span className="text-[#344054] font-semibold">{value}</span>
+            <span className="text-[var(--ink-500)] font-semibold">{label}</span>
+            <span className="text-[var(--ink-700)] font-semibold">{value}</span>
         </span>
     );
 }
 
 function MetaDivider() {
-    return <span className="w-px h-3 bg-[#E4E7EC]" />;
+    return <span className="w-px h-3 bg-[var(--border)]" />;
 }
 
 /* ── 변경 이력 ─────────────────────────────────────────────── */
@@ -742,24 +742,24 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
     return (
         <ModalShell title={skillMode ? 'LLM 스킬 버전 이력' : '평가항목 변경 이력'} onClose={onClose} widthClass="max-w-[920px]">
             {/* 필터 바 — 우측 'LLM 스킬 관리' 토글: 스킬 버전만 모아 활성화/롤백 관리 */}
-            <div className="px-6 py-3 border-b border-[#F2F4F7] bg-[#FAFBFC] flex items-center gap-2 flex-wrap text-[12px]">
+            <div className="px-6 py-3 border-b border-[var(--muted)] bg-[var(--background-soft)] flex items-center gap-2 flex-wrap text-[12px]">
                 {skillMode ? (
-                    <span className="text-[11.5px] text-[#667085]">
+                    <span className="text-[11.5px] text-[var(--ink-500)]">
                         LLM 스킬 학습 버전 — 이전 버전 대비 변경 확인 · 활성화/롤백 관리
                     </span>
                 ) : (
                     <>
-                        <span className="text-[10.5px] font-bold text-[#667085] tracking-[0.06em] uppercase mr-1">부서</span>
+                        <span className="text-[10.5px] font-bold text-[var(--ink-500)] tracking-[0.06em] uppercase mr-1">부서</span>
                         <button type="button" onClick={() => setDeptFilter('')} className={chipBtn(deptFilter === '')}>전체</button>
                         {departments.map((d) => (
                             <button key={d} type="button" onClick={() => setDeptFilter(d)} className={chipBtn(deptFilter === d)}>{d}</button>
                         ))}
-                        <span className="w-px h-4 bg-[#E4E7EC] mx-1.5" />
-                        <span className="text-[10.5px] font-bold text-[#667085] tracking-[0.06em] uppercase mr-1">변경 종류</span>
+                        <span className="w-px h-4 bg-[var(--border)] mx-1.5" />
+                        <span className="text-[10.5px] font-bold text-[var(--ink-500)] tracking-[0.06em] uppercase mr-1">변경 종류</span>
                         <select
                             value={typeFilter}
                             onChange={(e) => setTypeFilter(e.target.value)}
-                            className="h-[30px] px-2 rounded-md border border-[#E4E7EC] bg-white text-[12px] cursor-pointer"
+                            className="h-[30px] px-2 rounded-md border border-[var(--border)] bg-white text-[12px] cursor-pointer"
                         >
                             <option value="">전체</option>
                             {Object.entries(CHANGE_TYPE_LABEL)
@@ -776,8 +776,8 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
                         onClick={() => { setExpanded(null); setSkillMode(!skillMode); }}
                         className={`ml-auto h-[30px] px-3 rounded-md border text-[12px] font-bold cursor-pointer ${
                             skillMode
-                                ? 'bg-[#055AAF] border-[#055AAF] text-white'
-                                : 'bg-white border-[#B2DDFF] text-[#055AAF] hover:bg-[#EEF4FB]'
+                                ? 'bg-[var(--primary)] border-[var(--primary)] text-white'
+                                : 'bg-white border-[var(--primary-soft-border)] text-[var(--primary)] hover:bg-[var(--primary-soft-flat)]'
                         }`}
                     >
                         {skillMode ? '← 전체 이력' : 'LLM 스킬 관리'}
@@ -787,17 +787,17 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
 
             <div className="px-6 py-5 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 140px)' }}>
                 {loading ? (
-                    <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
-                        <div className="text-[12.5px] text-[#667085]">불러오는 중…</div>
+                    <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--background-soft)]">
+                        <div className="text-[12.5px] text-[var(--ink-500)]">불러오는 중…</div>
                     </div>
                 ) : error ? (
-                    <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[#FDA29B] bg-[#FFFBFA]">
-                        <div className="text-[12.5px] text-[#B42318]">{error}</div>
+                    <div className="py-8 px-6 text-center rounded-xl border border-dashed border-[var(--destructive-soft)] bg-[var(--background-soft)]">
+                        <div className="text-[12.5px] text-[var(--destructive)]">{error}</div>
                     </div>
                 ) : mergedEntries.length === 0 ? (
-                    <div className="py-12 px-6 text-center rounded-xl border border-dashed border-[#E4E7EC] bg-[#FAFBFC]">
-                        <Info size={20} className="text-[#98A2B3] mx-auto mb-2" />
-                        <div className="text-[12.5px] text-[#667085]">
+                    <div className="py-12 px-6 text-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--background-soft)]">
+                        <Info size={20} className="text-[var(--ink-400)] mx-auto mb-2" />
+                        <div className="text-[12.5px] text-[var(--ink-500)]">
                             {skillMode ? '학습된 LLM 스킬 버전이 없습니다' : '변경 이력이 없습니다'}
                         </div>
                     </div>
@@ -812,7 +812,7 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
                                 const det = skillDetails[v.version_id];
                                 const isActive = skillMeta?.active_version_id === v.version_id;
                                 return (
-                                    <div key={rowKey} className="rounded-xl bg-white border border-[#E4E7EC]">
+                                    <div key={rowKey} className="rounded-xl bg-white border border-[var(--border)]">
                                         {/* 헤더 — 관리 버튼(활성화/롤백)을 품어야 해서 button 중첩 대신 div+onClick */}
                                         <div
                                             role="button"
@@ -828,22 +828,22 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
                                                     if (!isOpen && !det) loadSkillDiff(v.version_id);
                                                 }
                                             }}
-                                            className="w-full px-4 py-3 flex items-center gap-3 text-left cursor-pointer hover:bg-[#FAFBFC] rounded-xl"
+                                            className="w-full px-4 py-3 flex items-center gap-3 text-left cursor-pointer hover:bg-[var(--background-soft)] rounded-xl"
                                         >
                                             <ChevronRight
                                                 size={14}
-                                                className={`text-[#98A2B3] transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`}
+                                                className={`text-[var(--ink-400)] transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`}
                                             />
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="text-[12.5px] font-bold text-[#101828] truncate">LLM 스킬 보완 룰 {v.version_id}</span>
-                                                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#EEF4FB] text-[#055AAF]">LLM 스킬</span>
-                                                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#EEF4FB] text-[#055AAF]">{CHANGE_TYPE_LABEL.skill_version}</span>
+                                                    <span className="text-[12.5px] font-bold text-[var(--ink-900)] truncate">LLM 스킬 보완 룰 {v.version_id}</span>
+                                                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--primary-soft-flat)] text-[var(--primary)]">LLM 스킬</span>
+                                                    <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--primary-soft-flat)] text-[var(--primary)]">{CHANGE_TYPE_LABEL.skill_version}</span>
                                                     {isActive && (
-                                                        <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#ECFDF3] text-[#067647]">활성</span>
+                                                        <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--success-soft)] text-[var(--success)]">활성</span>
                                                     )}
                                                 </div>
-                                                <div className="text-[11px] text-[#667085] mt-0.5">
+                                                <div className="text-[11px] text-[var(--ink-500)] mt-0.5">
                                                     {formatChangedAt(v.created_at)} · 정정 케이스 {v.case_count ?? 0}건 · 항목 {(v.items_changed || []).length}개 갱신
                                                 </div>
                                             </div>
@@ -854,7 +854,7 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
                                                             type="button"
                                                             disabled={skillActBusy}
                                                             onClick={() => handleSkillActivate(v.version_id)}
-                                                            className="h-[28px] px-2.5 rounded-md border border-[#E4E7EC] bg-white text-[11.5px] font-bold text-[#475467] cursor-pointer hover:bg-[#FAFBFC] disabled:opacity-50"
+                                                            className="h-[28px] px-2.5 rounded-md border border-[var(--border)] bg-white text-[11.5px] font-bold text-[var(--ink-700)] cursor-pointer hover:bg-[var(--background-soft)] disabled:opacity-50"
                                                         >
                                                             비활성화
                                                         </button>
@@ -863,7 +863,7 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
                                                             type="button"
                                                             disabled={skillActBusy}
                                                             onClick={() => handleSkillActivate(v.version_id)}
-                                                            className="h-[28px] px-2.5 rounded-md border border-[#055AAF] bg-[#055AAF] text-[11.5px] font-bold text-white cursor-pointer hover:bg-[#1E70E0] disabled:opacity-50"
+                                                            className="h-[28px] px-2.5 rounded-md border border-[var(--primary)] bg-[var(--primary)] text-[11.5px] font-bold text-white cursor-pointer hover:bg-[var(--primary-light)] disabled:opacity-50"
                                                         >
                                                             이 버전 활성화
                                                         </button>
@@ -874,24 +874,24 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
                                         {isOpen && (
                                             <div className="px-4 pb-4">
                                                 {!det || det.loading ? (
-                                                    <div className="text-[11.5px] text-[#667085] px-3 py-2">불러오는 중…</div>
+                                                    <div className="text-[11.5px] text-[var(--ink-500)] px-3 py-2">불러오는 중…</div>
                                                 ) : det.error ? (
-                                                    <div className="text-[11.5px] text-[#B42318] px-3 py-2">{det.error}</div>
+                                                    <div className="text-[11.5px] text-[var(--destructive)] px-3 py-2">{det.error}</div>
                                                 ) : !det.items.length ? (
-                                                    <div className="text-[11.5px] italic text-[#98A2B3] px-3 py-2">항목 overlay 가 없습니다.</div>
+                                                    <div className="text-[11.5px] italic text-[var(--ink-400)] px-3 py-2">항목 overlay 가 없습니다.</div>
                                                 ) : (
                                                     det.items.map((it) => (
-                                                        <div key={it.item_number} className="grid gap-0 rounded-lg border border-[#E4E7EC] overflow-hidden mb-2.5 last:mb-0" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                                                            <div className="px-3 py-2 bg-[#FAFBFC] border-r border-[#E4E7EC] text-[10.5px] font-bold text-[#667085] tracking-[0.06em] uppercase">
+                                                        <div key={it.item_number} className="grid gap-0 rounded-lg border border-[var(--border)] overflow-hidden mb-2.5 last:mb-0" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                                                            <div className="px-3 py-2 bg-[var(--background-soft)] border-r border-[var(--border)] text-[10.5px] font-bold text-[var(--ink-500)] tracking-[0.06em] uppercase">
                                                                 {it.item_name} · 이전 버전 {det.hasParent ? `(${det.parentId})` : '(없음)'}
                                                             </div>
-                                                            <div className="px-3 py-2 bg-[#EEF4FB] text-[10.5px] font-bold text-[#055AAF] tracking-[0.06em] uppercase">
+                                                            <div className="px-3 py-2 bg-[var(--primary-soft-flat)] text-[10.5px] font-bold text-[var(--primary)] tracking-[0.06em] uppercase">
                                                                 {it.item_name} · 이번 버전 {it.changed ? '(갱신)' : '(승계)'}
                                                             </div>
-                                                            <div className="px-3 py-2.5 text-[12px] text-[#475467] leading-relaxed whitespace-pre-wrap border-r border-[#E4E7EC] bg-white" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                                                            <div className="px-3 py-2.5 text-[12px] text-[var(--ink-700)] leading-relaxed whitespace-pre-wrap border-r border-[var(--border)] bg-white" style={{ maxHeight: 320, overflowY: 'auto' }}>
                                                                 <DiffText value={det.hasParent ? it.prev : ''} other={it.cur} mode="before" />
                                                             </div>
-                                                            <div className="px-3 py-2.5 text-[12px] text-[#101828] leading-relaxed whitespace-pre-wrap bg-white" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                                                            <div className="px-3 py-2.5 text-[12px] text-[var(--ink-900)] leading-relaxed whitespace-pre-wrap bg-white" style={{ maxHeight: 320, overflowY: 'auto' }}>
                                                                 <DiffText value={it.cur} other={det.hasParent ? it.prev : ''} mode="after" />
                                                             </div>
                                                         </div>
@@ -913,29 +913,29 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
                             const itemLabel = entry.item_name || `(항목 #${entry.order_no})`;
                             const categoryLabel = entry.category_name || '';
                             return (
-                                <div key={rowKey} className="rounded-xl bg-white border border-[#E4E7EC]">
+                                <div key={rowKey} className="rounded-xl bg-white border border-[var(--border)]">
                                     <button
                                         type="button"
                                         onClick={() => setExpanded(isOpen ? null : rowKey)}
-                                        className="w-full px-4 py-3 flex items-center gap-3 text-left cursor-pointer hover:bg-[#FAFBFC] rounded-xl"
+                                        className="w-full px-4 py-3 flex items-center gap-3 text-left cursor-pointer hover:bg-[var(--background-soft)] rounded-xl"
                                     >
                                         <ChevronRight
                                             size={14}
-                                            className={`text-[#98A2B3] transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`}
+                                            className={`text-[var(--ink-500)] transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`}
                                         />
                                         <div className="min-w-0 flex-1">
                                             <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="text-[12.5px] font-bold text-[#101828] truncate">{itemLabel}</span>
+                                                <span className="text-[12.5px] font-bold text-[var(--ink-900)] truncate">{itemLabel}</span>
                                                 {categoryLabel && (
-                                                    <span className="text-[10.5px] text-[#667085]">{categoryLabel}</span>
+                                                    <span className="text-[10.5px] text-[var(--ink-500)]">{categoryLabel}</span>
                                                 )}
-                                                <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#F2F4F7] text-[#475467]">{entry.department}</span>
-                                                <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#EEF4FB] text-[#055AAF]">{label}</span>
+                                                <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--ink-700)]">{entry.department}</span>
+                                                <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--primary-soft-flat)] text-[var(--primary)]">{label}</span>
                                                 {entry.version !== null && entry.version !== undefined && (
-                                                    <span className="text-[10.5px] text-[#98A2B3]">v{entry.version}</span>
+                                                    <span className="text-[10.5px] text-[var(--ink-500)]">v{entry.version}</span>
                                                 )}
                                             </div>
-                                            <div className="text-[11px] text-[#667085] mt-0.5">
+                                            <div className="text-[11px] text-[var(--ink-500)] mt-0.5">
                                                 {afterAt} · {actorLabel}
                                             </div>
                                         </div>
@@ -943,22 +943,22 @@ export function HistoryModal({ departments = [], onClose, initialSkillMode = fal
                                     {isOpen && (
                                         <div className="px-4 pb-4">
                                             {fields.length === 0 ? (
-                                                <div className="text-[11.5px] italic text-[#98A2B3] px-3 py-2">
+                                                <div className="text-[11.5px] italic text-[var(--ink-500)] px-3 py-2">
                                                     변경된 필드가 기록되지 않았습니다.
                                                 </div>
                                             ) : (
                                                 fields.map((f) => (
-                                                    <div key={f.key} className="grid gap-0 rounded-lg border border-[#E4E7EC] overflow-hidden mb-2.5 last:mb-0" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                                                        <div className="px-3 py-2 bg-[#FAFBFC] border-r border-[#E4E7EC] text-[10.5px] font-bold text-[#667085] tracking-[0.06em] uppercase">
+                                                    <div key={f.key} className="grid gap-0 rounded-lg border border-[var(--border)] overflow-hidden mb-2.5 last:mb-0" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                                                        <div className="px-3 py-2 bg-[var(--background-soft)] border-r border-[var(--border)] text-[10.5px] font-bold text-[var(--ink-500)] tracking-[0.06em] uppercase">
                                                             {f.label} · 이전 {beforeAtStr ? `(~ ${beforeAtStr})` : ''}
                                                         </div>
-                                                        <div className="px-3 py-2 bg-[#EEF4FB] text-[10.5px] font-bold text-[#055AAF] tracking-[0.06em] uppercase">
+                                                        <div className="px-3 py-2 bg-[var(--primary-soft-flat)] text-[10.5px] font-bold text-[var(--primary)] tracking-[0.06em] uppercase">
                                                             {f.label} · 현재 ({afterAt}~)
                                                         </div>
-                                                        <div className="px-3 py-2.5 text-[12px] text-[#475467] leading-relaxed whitespace-pre-wrap border-r border-[#E4E7EC] bg-white">
+                                                        <div className="px-3 py-2.5 text-[12px] text-[var(--ink-700)] leading-relaxed whitespace-pre-wrap border-r border-[var(--border)] bg-white">
                                                             <DiffText value={f.before} other={f.after} mode="before" />
                                                         </div>
-                                                        <div className="px-3 py-2.5 text-[12px] text-[#101828] leading-relaxed whitespace-pre-wrap bg-white">
+                                                        <div className="px-3 py-2.5 text-[12px] text-[var(--ink-900)] leading-relaxed whitespace-pre-wrap bg-white">
                                                             <DiffText value={f.after} other={f.before} mode="after" />
                                                         </div>
                                                     </div>
@@ -1041,7 +1041,7 @@ function diffOps(aStr, bStr) {
 // LLM 스킬 버전 diff(SkillPromptManage)에서도 동일 형식으로 재사용하도록 export.
 export function DiffText({ value, other, mode }) {
     const cur = value === null || value === undefined ? '' : String(value);
-    if (cur === '') return <span className="italic text-[#98A2B3]">(없음)</span>;
+    if (cur === '') return <span className="italic text-[var(--ink-500)]">(없음)</span>;
     const oth = other === null || other === undefined ? '' : String(other);
     const before = mode === 'before' ? cur : oth;
     const after = mode === 'before' ? oth : cur;
@@ -1051,10 +1051,10 @@ export function DiffText({ value, other, mode }) {
             {ops.map((op, idx) => {
                 if (op.t === 'eq') return <span key={idx}>{op.v}</span>;
                 if (mode === 'before' && op.t === 'del') {
-                    return <mark key={idx} className="bg-[#FEE4E2] text-[#B42318] rounded-[3px] px-0.5">{op.v}</mark>;
+                    return <mark key={idx} className="bg-[var(--destructive-soft)] text-[var(--destructive)] rounded-[3px] px-0.5">{op.v}</mark>;
                 }
                 if (mode === 'after' && op.t === 'ins') {
-                    return <mark key={idx} className="bg-[#DCFAE6] text-[#067647] rounded-[3px] px-0.5">{op.v}</mark>;
+                    return <mark key={idx} className="bg-[var(--success-soft)] text-[var(--success)] rounded-[3px] px-0.5">{op.v}</mark>;
                 }
                 return null; // before 칸의 ins / after 칸의 del 은 숨김
             })}
@@ -1128,7 +1128,7 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                     <FormGroup label="적용 부서" required>
                         <div className="flex flex-wrap gap-1.5">
                             {departments.length === 0 ? (
-                                <div className="text-[12.5px] text-[#98A2B3] italic">
+                                <div className="text-[12.5px] text-[var(--ink-500)] italic">
                                     이 브랜드에 등록된 부서가 없습니다.
                                 </div>
                             ) : (
@@ -1153,7 +1153,7 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                                 </>
                             )}
                         </div>
-                        <div className="mt-1.5 text-[11px] text-[#98A2B3]">
+                        <div className="mt-1.5 text-[11px] text-[var(--ink-500)]">
                             여러 부서를 선택하면 부서별로 별도 row 가 발행됩니다. 부서·직무 자체의 추가/삭제는 별도 탭에서 관리합니다.
                         </div>
                     </FormGroup>
@@ -1227,8 +1227,8 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                         <ScoreStepsEditor maxScore={maxScore} onMaxScore={setMaxScore} steps={steps} onSteps={setSteps} error={stepErr} aiOriginals={aiStepOriginals} />
                     ) : (
                         <>
-                            <div className="text-[12.5px] text-[#667085] bg-[#F2F4F7] rounded-lg px-3 py-2.5 leading-relaxed mb-2.5">
-                                충족 / 위반 으로만 판정합니다. <span className="text-[#475467] font-medium">점수·총점·펜타곤에는 반영되지 않고</span>, 컴플라이언스 체크(이행·위반 모니터링)에만 사용됩니다.
+                            <div className="text-[12.5px] text-[var(--ink-500)] bg-[var(--muted)] rounded-lg px-3 py-2.5 leading-relaxed mb-2.5">
+                                충족 / 위반 으로만 판정합니다. <span className="text-[var(--ink-700)] font-medium">점수·총점·펜타곤에는 반영되지 않고</span>, 컴플라이언스 체크(이행·위반 모니터링)에만 사용됩니다.
                             </div>
                             <textarea
                                 value={prompt}
@@ -1263,7 +1263,7 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                 )}
 
                 {saveError && (
-                    <div className="text-[12px] text-[#B42318]">{saveError}</div>
+                    <div className="text-[12px] text-[var(--destructive)]">{saveError}</div>
                 )}
             </div>
 
@@ -1356,7 +1356,7 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                                 }
                             }}
                             disabled={saving}
-                            className="h-[38px] px-4 rounded-xl border border-[#FCA5A5] bg-white text-[13px] font-semibold text-[#D92D20] hover:bg-red-50 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            className="h-[38px] px-4 rounded-xl border border-[var(--destructive-soft)] bg-white text-[13px] font-semibold text-[var(--destructive)] hover:bg-[var(--destructive-soft)] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
                             <Trash2 size={12} />삭제
                         </button>
@@ -1391,9 +1391,9 @@ function AxisModal({ mode, axisNo, nextAxisNo, label, dbAxis, onSaved, onClose }
         <ModalShell title={title} onClose={onClose} widthClass="max-w-[560px]">
             <div className="px-6 py-5 space-y-4">
                 <FormGroup label="축 번호">
-                    <div className="text-[13px] font-semibold text-[#475467] flex items-center gap-2">
-                        <span className="text-[18px] font-bold text-[#055AAF]">{numChar}</span>
-                        <span className="text-[#667085]">{isEdit ? `축 (${effectiveNo})` : `신규 축 #${effectiveNo}`}</span>
+                    <div className="text-[13px] font-semibold text-[var(--ink-700)] flex items-center gap-2">
+                        <span className="text-[18px] font-bold text-[var(--primary)]">{numChar}</span>
+                        <span className="text-[var(--ink-500)]">{isEdit ? `축 (${effectiveNo})` : `신규 축 #${effectiveNo}`}</span>
                     </div>
                 </FormGroup>
 
@@ -1437,7 +1437,7 @@ function AxisModal({ mode, axisNo, nextAxisNo, label, dbAxis, onSaved, onClose }
                 )}
 
                 {saveError && (
-                    <div className="text-[12px] text-[#B42318]">{saveError}</div>
+                    <div className="text-[12px] text-[var(--destructive)]">{saveError}</div>
                 )}
             </div>
 
@@ -1484,7 +1484,7 @@ function AxisModal({ mode, axisNo, nextAxisNo, label, dbAxis, onSaved, onClose }
                                 window.alert('삭제 기능은 별도 작업 예정입니다. "비활성" 으로 설정하세요.');
                             }}
                             disabled={saving}
-                            className="h-[38px] px-4 rounded-xl border border-[#FCA5A5] bg-white text-[13px] font-semibold text-[#D92D20] hover:bg-red-50 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            className="h-[38px] px-4 rounded-xl border border-[var(--destructive-soft)] bg-white text-[13px] font-semibold text-[var(--destructive)] hover:bg-[var(--destructive-soft)] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
                             <Trash2 size={12} />삭제
                         </button>
@@ -1507,11 +1507,11 @@ function ModalShell({ title, onClose, widthClass = 'max-w-md', children }) {
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div className={`w-full ${widthClass} bg-white rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col`}>
-                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[#E4E7EC] shrink-0">
-                    <h3 className="text-base font-bold text-[#101828]">{title}</h3>
+                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[var(--border)] shrink-0">
+                    <h3 className="text-base font-bold text-[var(--ink-900)]">{title}</h3>
                     <button
                         onClick={onClose}
-                        className="w-7 h-7 grid place-items-center rounded-md text-[#667085] hover:bg-[#F2F4F7] cursor-pointer"
+                        className="w-7 h-7 grid place-items-center rounded-md text-[var(--ink-500)] hover:bg-[var(--muted)] cursor-pointer"
                     >
                         <X size={14} />
                     </button>
@@ -1526,16 +1526,16 @@ function ModalShell({ title, onClose, widthClass = 'max-w-md', children }) {
 function ModalFooter({ onCancel, onPrimary, primaryLabel, extraLeft, primaryTone = 'primary' }) {
     const isDanger = primaryTone === 'danger';
     const primaryClass = isDanger
-        ? 'h-[38px] px-5 rounded-xl bg-[#D92D20] text-white text-[13px] font-semibold hover:bg-[#B42318] shadow-sm inline-flex items-center gap-1.5 cursor-pointer'
-        : 'h-[38px] px-5 rounded-xl bg-[#055AAF] text-white text-[13px] font-semibold hover:bg-[#1E70E0] shadow-sm inline-flex items-center gap-1.5 cursor-pointer';
+        ? 'h-[38px] px-5 rounded-xl bg-[var(--destructive)] text-white text-[13px] font-semibold hover:bg-[var(--destructive)] shadow-sm inline-flex items-center gap-1.5 cursor-pointer'
+        : 'h-[38px] px-5 rounded-xl bg-[var(--primary)] text-white text-[13px] font-semibold hover:bg-[var(--primary)] shadow-sm inline-flex items-center gap-1.5 cursor-pointer';
     return (
-        <div className="px-6 pb-5 pt-3 border-t border-[#F2F4F7] bg-[#FAFBFC] flex items-center justify-between shrink-0">
+        <div className="px-6 pb-5 pt-3 border-t border-[var(--muted)] bg-[var(--background-soft)] flex items-center justify-between shrink-0">
             <div>{extraLeft}</div>
             <div className="flex gap-2">
                 <button
                     type="button"
                     onClick={onCancel}
-                    className="h-[38px] px-5 rounded-xl border border-[#E4E7EC] bg-white text-[13px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer"
+                    className="h-[38px] px-5 rounded-xl border border-[var(--border)] bg-white text-[13px] font-semibold text-[var(--ink-900)] hover:bg-[var(--muted)] cursor-pointer"
                 >
                     취소
                 </button>
@@ -1554,8 +1554,8 @@ function ModalFooter({ onCancel, onPrimary, primaryLabel, extraLeft, primaryTone
 function FormGroup({ label, required, children }) {
     return (
         <div>
-            <label className="block text-[11.5px] font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
-                {label} {required && <span className="text-[#D92D20]">*</span>}
+            <label className="block text-[11.5px] font-semibold text-[var(--ink-500)] mb-1.5 uppercase tracking-wide">
+                {label} {required && <span className="text-[var(--destructive)]">*</span>}
             </label>
             {children}
         </div>
@@ -1567,16 +1567,16 @@ function FormGroup({ label, required, children }) {
 function pillBtn(active) {
     return `flex-1 h-[38px] rounded-xl border text-[13px] font-semibold cursor-pointer ${
         active
-            ? 'bg-blue-50 border-blue-200 text-blue-700'
-            : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'
+            ? 'bg-[var(--primary-soft)] border-[var(--primary)] text-[var(--primary)]'
+            : 'bg-white border-[var(--border)] text-[var(--ink-500)] hover:bg-[var(--muted)]'
     }`;
 }
 
 function chipBtn(active) {
     return `h-[30px] px-3 rounded-full border text-[12px] font-semibold cursor-pointer transition-colors ${
         active
-            ? 'bg-[#055AAF] border-[#055AAF] text-white hover:bg-[#1E70E0]'
-            : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7] hover:border-[#D0D5DD]'
+            ? 'bg-[var(--primary)] border-[var(--primary)] text-white hover:bg-[var(--primary)]'
+            : 'bg-white border-[var(--border)] text-[var(--ink-500)] hover:bg-[var(--muted)] hover:border-[var(--border-strong)]'
     }`;
 }
 

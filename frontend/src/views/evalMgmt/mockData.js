@@ -222,7 +222,7 @@ export const TUTOR_CATEGORIES = [
     { key: 'cancel', label: '취소/반품/교환/환불', color: '#e8590c' },
     { key: 'product', label: '상품/재고', color: '#7048e8' },
     { key: 'account', label: '회원/계정', color: '#d6336c' },
-    { key: 'promo', label: '혜택/프로모션', color: '#2f9e44' },
+    { key: 'promo', label: '혜택/프로모션', color: 'var(--success)' },
     { key: 'system', label: '시스템/기술', color: '#1098ad' },
     { key: 'etc', label: '기타/일반', color: '#868e96' },
 ];

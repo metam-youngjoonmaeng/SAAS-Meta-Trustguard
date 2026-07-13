@@ -261,7 +261,7 @@ function CoachingPanel({ coaching, agents = [], onAssign, onUnassign, onRemove, 
                     <CoachingCarousel
                         label={
                             <>
-                                <Icon name="sparkles" size={11} style={{ color: 'var(--ink-400)' }} /> 추천 교육 그룹 · 배정 대기 {pending.length}
+                                <Icon name="sparkles" size={11} style={{ color: 'var(--ink-500)' }} /> 추천 교육 그룹 · 배정 대기 {pending.length}
                             </>
                         }
                         items={pending}
@@ -354,7 +354,7 @@ function CoachingHistory({ rows }) {
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                                         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-900)' }}>{g.mainArea}</span>
                                         {g.mainAreaN > 1 && (
-                                            <span className="pill" style={{ background: '#fff3e0', color: '#b27a14', fontSize: 9.5, fontWeight: 700 }}>
+                                            <span className="pill" style={{ background: 'var(--cat-product-soft)', color: 'var(--warning)', fontSize: 9.5, fontWeight: 700 }}>
                                                 <Icon name="repeat" size={9} />×{g.mainAreaN}
                                             </span>
                                         )}
@@ -363,11 +363,11 @@ function CoachingHistory({ rows }) {
                                 <div style={{ flexShrink: 0, textAlign: 'right' }}>
                                     <div className="muted-text" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 3 }}>점수 변화</div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-                                        <span className="mono" style={{ fontSize: 11.5, color: 'var(--ink-400)' }}>{fmtScore(g.firstScore)}</span>
+                                        <span className="mono" style={{ fontSize: 11.5, color: 'var(--ink-500)' }}>{fmtScore(g.firstScore)}</span>
                                         <Icon name="arrow-right" size={11} style={{ color: 'var(--ink-300)' }} />
                                         <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)' }}>{fmtScore(g.lastScore)}</span>
                                         {g.gain != null && (
-                                            <span className="pill" style={{ background: g.gain > 0 ? '#e8f6ed' : 'var(--muted)', color: g.gain > 0 ? '#2f9759' : 'var(--ink-500)', fontSize: 10, fontWeight: 700 }}>
+                                            <span className="pill" style={{ background: g.gain > 0 ? 'var(--success-soft)' : 'var(--muted)', color: g.gain > 0 ? 'var(--success)' : 'var(--ink-500)', fontSize: 10, fontWeight: 700 }}>
                                                 <Icon name={g.gain > 0 ? 'trending-up' : g.gain < 0 ? 'trending-down' : 'minus'} size={9} />{g.gain > 0 ? `+${g.gain}` : g.gain}
                                             </span>
                                         )}
@@ -399,16 +399,16 @@ function CoachingHistory({ rows }) {
                                                 ) : (() => {
                                                     const allDone = h.scenarios > 0 && h.done >= h.scenarios;
                                                     return (
-                                                        <span className="pill" style={{ background: allDone ? '#e8f6ed' : 'var(--primary-soft)', color: allDone ? '#2f9759' : 'var(--primary)', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                                                        <span className="pill" style={{ background: allDone ? 'var(--success-soft)' : 'var(--primary-soft)', color: allDone ? 'var(--success)' : 'var(--primary)', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
                                                             <Icon name={allDone ? 'check' : 'loader'} size={9} />{h.done}/{h.scenarios} {allDone ? '완료' : '진행'}
                                                         </span>
                                                     );
                                                 })()}
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, width: 110, justifyContent: 'flex-end' }}>
-                                                    <span className="mono" style={{ fontSize: 11, color: 'var(--ink-400)' }}>{fmtScore(h.scoreBefore)}</span>
+                                                    <span className="mono" style={{ fontSize: 11, color: 'var(--ink-500)' }}>{fmtScore(h.scoreBefore)}</span>
                                                     <Icon name="arrow-right" size={10} style={{ color: 'var(--ink-300)' }} />
                                                     <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-900)' }}>{h.hasAfter ? h.scoreAfter : '측정 전'}</span>
-                                                    {gain != null && gain > 0 && <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: '#2f9759' }}>+{gain}</span>}
+                                                    {gain != null && gain > 0 && <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--success)' }}>+{gain}</span>}
                                                 </div>
                                             </div>
                                         );
@@ -553,7 +553,7 @@ function CoachingMiniCard({ g, members, onOpen, onArchive }) {
                         tabIndex={0}
                         onClick={(e) => { e.stopPropagation(); onArchive?.(g.key); }}
                         title="완료된 코칭을 보드에서 정리합니다 (코칭 이력엔 유지됩니다)"
-                        style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, display: 'grid', placeItems: 'center', color: 'var(--ink-400)', cursor: 'pointer' }}
+                        style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, display: 'grid', placeItems: 'center', color: 'var(--ink-500)', cursor: 'pointer' }}
                     >
                         <Icon name="x" size={14} />
                     </span>
@@ -563,7 +563,7 @@ function CoachingMiniCard({ g, members, onOpen, onArchive }) {
             </div>
             {measurable && (
                 <div style={{ height: 4, borderRadius: 999, background: 'var(--muted)', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: g.allDone ? '#12B76A' : 'var(--primary)', borderRadius: 999, transition: 'width var(--t-base)' }} />
+                    <div style={{ height: '100%', width: `${pct}%`, background: g.allDone ? 'var(--success)' : 'var(--primary)', borderRadius: 999, transition: 'width var(--t-base)' }} />
                 </div>
             )}
             {allScen.length > 0 && (
@@ -578,7 +578,7 @@ function CoachingMiniCard({ g, members, onOpen, onArchive }) {
                         );
                     })}
                     {scenOverflow > 0 && (
-                        <span className="pill" style={{ background: 'transparent', color: 'var(--ink-400)', fontSize: 10, fontWeight: 600, border: 'none' }}>… 외 {scenOverflow}건</span>
+                        <span className="pill" style={{ background: 'transparent', color: 'var(--ink-500)', fontSize: 10, fontWeight: 600, border: 'none' }}>… 외 {scenOverflow}건</span>
                     )}
                 </div>
             )}
@@ -1228,7 +1228,7 @@ function CoachingCreateModal({ agents = [], onClose, onCreate, windowed = false,
                                             onClick={() => toggleScenario(s.code)}
                                             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', border: on ? '1px solid var(--primary)' : '1px solid transparent', borderRadius: 8, background: on ? 'var(--primary-soft)' : 'transparent', transition: 'all var(--t-base)' }}
                                         >
-                                            <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: on ? 'var(--primary)' : 'var(--ink-400)', width: 28, flexShrink: 0 }}>{s.code}</span>
+                                            <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: on ? 'var(--primary)' : 'var(--ink-500)', width: 28, flexShrink: 0 }}>{s.code}</span>
                                             <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-900)' }}>{s.title}</span>
                                             <span className="muted-text" style={{ fontSize: 10.5, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                                                 <Icon name="message-square" size={10} />FAQ {s.faq}
@@ -1472,10 +1472,10 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                     </span>
                 </div>
                 <div className="kpi">
-                    <span className="eyebrow" style={{ color: '#2f9759' }}>
+                    <span className="eyebrow" style={{ color: 'var(--success)' }}>
                         <Icon name="trophy" />우수 ({SCORE_HIGH}+)
                     </span>
-                    <div className="value" style={{ color: '#2f9759' }}>
+                    <div className="value" style={{ color: 'var(--success)' }}>
                         {excellent}<span className="unit">건</span>
                     </div>
                     <div className="foot">{filtered.length ? Math.round((excellent / filtered.length) * 100) : 0}%</div>
@@ -1605,8 +1605,8 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                                         const [d, t] = full.split(' ');
                                         return (
                                             <div style={{ lineHeight: 1.35 }}>
-                                                <div style={{ fontSize: 12, color: '#475467' }}>{d}</div>
-                                                <div style={{ fontSize: 11, color: '#98A2B3' }}>{t || ''}</div>
+                                                <div style={{ fontSize: 12, color: 'var(--ink-700)' }}>{d}</div>
+                                                <div style={{ fontSize: 11, color: 'var(--ink-500)' }}>{t || ''}</div>
                                             </div>
                                         );
                                     })()}
@@ -1633,7 +1633,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                                                 <Icon name="user-check" size={10} />{r.reviewRound}차 검토
                                             </span>
                                         ) : (
-                                            <span className="muted-text" style={{ fontSize: 11.5, color: 'var(--ink-400)' }}>미검토</span>
+                                            <span className="muted-text" style={{ fontSize: 11.5, color: 'var(--ink-500)' }}>미검토</span>
                                         )}
                                     </div>
                                     <div onClick={(e) => e.stopPropagation()}>
@@ -1641,11 +1641,11 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                                         {(() => {
                                             const RS = {
                                                 pending: { label: '대기', bg: 'var(--muted)', ink: 'var(--ink-500)', dot: 'var(--ink-400)' },
-                                                in_review: { label: '검수중', bg: '#E4E7EC', ink: '#344054', dot: '#475467' },
+                                                in_review: { label: '검수중', bg: 'var(--border)', ink: 'var(--ink-700)', dot: 'var(--ink-700)' },
                                                 review_done: { label: '검토요청', bg: 'var(--primary-soft)', ink: 'var(--primary)', dot: 'var(--primary)' },
-                                                admin_revised: { label: '반려', bg: '#FFFAEB', ink: '#B54708', dot: '#F79009' },
-                                                objection: { label: '이의제기', bg: '#FEF3F2', ink: '#B42318', dot: '#D92D20' },
-                                                approved: { label: '확정', bg: '#ECFDF3', ink: '#067647', dot: '#12B76A' },
+                                                admin_revised: { label: '반려', bg: 'var(--warning-soft)', ink: 'var(--warning)', dot: 'var(--warning)' },
+                                                objection: { label: '이의제기', bg: 'var(--destructive-soft)', ink: 'var(--destructive)', dot: 'var(--destructive)' },
+                                                approved: { label: '확정', bg: 'var(--success-soft)', ink: 'var(--success)', dot: 'var(--success)' },
                                             };
                                             const k = r.reviewStatus === 'completed' ? 'approved' : (r.reviewStatus || 'pending');
                                             const m = RS[k] || RS.pending;
@@ -1656,7 +1656,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                                             );
                                         })()}
                                     </div>
-                                    <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-400)' }}>
+                                    <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-500)' }}>
                                         <Icon name="chevron-right" size={14} />
                                     </div>
                                 </div>
@@ -1711,7 +1711,7 @@ function AdminResults({ embedded, beforeList, results = [], loading = false, onR
                             <Gauge value={drawerItem.score} label="AI 평가" size={100} />
                             <div style={{ flex: 1 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
-                                    <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-400)' }}>{drawerItem.id}</span>
+                                    <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-500)' }}>{drawerItem.id}</span>
                                     <StatusPill status={drawerItem.status} />
                                     <ChannelChip channel={drawerItem.channel} />
                                 </div>

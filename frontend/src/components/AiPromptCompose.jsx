@@ -75,7 +75,7 @@ export default function AiPromptCompose({
     return (
         <>
             <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] text-[#98A2B3]">초안을 적고 AI 로 다듬을 수 있습니다</span>
+                <span className="text-[11px] text-[var(--ink-400)]">초안을 적고 AI 로 다듬을 수 있습니다</span>
                 <div className="flex items-center gap-1.5">
                     {/* 생성 모드 토글 — 단계가 있을 때만. 기본=따르기(단계 베이스 설명 작성, 단계 불변). */}
                     {hasStepRows && (
@@ -86,13 +86,13 @@ export default function AiPromptCompose({
                                 onChange={(e) => setFollowSteps(e.target.checked)}
                                 className="w-3.5 h-3.5 accent-primary cursor-pointer"
                             />
-                            <span className="text-[11.5px] font-medium text-[#475467]">점수 단계 따르기</span>
+                            <span className="text-[11.5px] font-medium text-[var(--ink-700)]">점수 단계 따르기</span>
                         </label>
                     )}
                     {/* ⓘ 도움말 — hover 툴팁(group-hover). cursor-help + 아래로 펼침(우측 정렬). */}
                     <span className="relative group inline-flex items-center">
-                        <Info size={14} className="text-[#98A2B3] group-hover:text-primary cursor-help" />
-                        <span className="pointer-events-none absolute right-0 top-full mt-1.5 w-[310px] z-50 hidden group-hover:block bg-[#101828] text-white text-[11.5px] leading-relaxed rounded-lg px-3 py-2.5 shadow-lg">
+                        <Info size={14} className="text-[var(--ink-400)] group-hover:text-primary cursor-help" />
+                        <span className="pointer-events-none absolute right-0 top-full mt-1.5 w-[310px] z-50 hidden group-hover:block bg-[var(--ink-900)] text-white text-[11.5px] leading-relaxed rounded-lg px-3 py-2.5 shadow-lg">
                             평가 기준을 대충 적어두고 버튼을 누르면, AI 가 평가에 바로 쓸 수 있도록 깔끔하게 정리해 줍니다.
                             <br />· 무엇을 보고 어떤 순서로 판정할지 읽기 쉬운 문장으로 다시 써 줍니다
                             <br />· 점수 단계 문구는 그대로 두고, AI 가 만든 정밀 판정 기준을 설명에 함께 담습니다
@@ -106,7 +106,7 @@ export default function AiPromptCompose({
                         disabled={composing}
                         className={`inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border text-[12px] font-semibold ${
                             composing
-                                ? 'border-[#E4E7EC] bg-[#F9FAFB] text-[#98A2B3] cursor-default'
+                                ? 'border-[var(--border)] bg-[var(--background-soft)] text-[var(--ink-400)] cursor-default'
                                 : 'border-primary-soft-border bg-primary-soft text-primary hover:bg-primary-tint cursor-pointer'
                         }`}
                     >
@@ -114,7 +114,7 @@ export default function AiPromptCompose({
                     </button>
                 </div>
             </div>
-            {error && <div className="mb-1.5 text-[11.5px] text-[#B42318]">{error}</div>}
+            {error && <div className="mb-1.5 text-[11.5px] text-[var(--destructive)]">{error}</div>}
             {/* 생성 중 오버레이 — 편집 창 전체 위에 스피너 링 + 펄스 ✦ + 도트(재생성 시 검토 모달 위에도 노출). */}
             {composing &&
                 typeof document !== 'undefined' &&
@@ -137,14 +137,14 @@ export default function AiPromptCompose({
                                     className="ai-compose-ring absolute inset-0 rounded-full"
                                     style={{
                                         background:
-                                            'conic-gradient(from 0deg, var(--primary), var(--primary-accent) 40%, rgba(5,90,175,0.06) 75%, var(--primary))',
+                                            'conic-gradient(from 0deg, var(--primary), var(--primary-accent) 40%, color-mix(in srgb, var(--primary) 6%, transparent) 75%, var(--primary))',
                                         WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px))',
                                         mask: 'radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px))',
                                     }}
                                 />
                                 <Sparkles size={22} className="ai-compose-core absolute inset-0 m-auto text-primary" />
                             </div>
-                            <div className="text-[14px] font-bold text-[#101828]">
+                            <div className="text-[14px] font-bold text-[var(--ink-900)]">
                                 AI 프롬프트 다듬는 중
                                 <span className="ml-0.5 text-primary">
                                     <span className="ai-compose-dot">.</span>
@@ -152,7 +152,7 @@ export default function AiPromptCompose({
                                     <span className="ai-compose-dot" style={{ animationDelay: '.3s' }}>.</span>
                                 </span>
                             </div>
-                            <div className="mt-1.5 text-[11.5px] text-[#667085] leading-relaxed">
+                            <div className="mt-1.5 text-[11.5px] text-[var(--ink-500)] leading-relaxed">
                                 초안을 분석해 판정 기준과 절차를 구성하고 있어요.
                                 <br />
                                 보통 10~20초 정도 걸립니다.
@@ -248,14 +248,14 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
     return createPortal(
         <div className="fixed inset-0 z-[1100] flex items-center justify-center px-4" style={{ background: 'rgba(15,23,42,0.45)' }}>
             <div className="w-full max-w-[880px] bg-white rounded-2xl shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
-                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[#E4E7EC] shrink-0">
-                    <h3 className="text-base font-bold text-[#101828] inline-flex items-center gap-1.5">
+                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[var(--border)] shrink-0">
+                    <h3 className="text-base font-bold text-[var(--ink-900)] inline-flex items-center gap-1.5">
                         <Sparkles size={15} className="text-primary" /> AI 생성 결과 검토
                     </h3>
                     <button
                         type="button"
                         onClick={() => confirmDiscard('생성본에 직접 수정한 내용이 사라집니다. 닫을까요?') && onClose()}
-                        className="w-7 h-7 grid place-items-center rounded-md text-[#667085] hover:bg-[#F2F4F7] cursor-pointer"
+                        className="w-7 h-7 grid place-items-center rounded-md text-[var(--ink-500)] hover:bg-[var(--muted)] cursor-pointer"
                     >
                         <X size={14} />
                     </button>
@@ -263,9 +263,9 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
 
                 <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
                     {warnings.length > 0 && (
-                        <div className="bg-[#FFFAEB] border border-[#FEDF89] rounded-lg px-3 py-2.5 space-y-1">
+                        <div className="bg-[var(--warning-soft)] border border-[var(--warning-soft)] rounded-lg px-3 py-2.5 space-y-1">
                             {warnings.map((w, i) => (
-                                <div key={i} className="flex items-start gap-1.5 text-[11.5px] text-[#B54708]">
+                                <div key={i} className="flex items-start gap-1.5 text-[11.5px] text-[var(--warning)]">
                                     <AlertTriangle size={12} className="mt-0.5 shrink-0" /> <span>{w}</span>
                                 </div>
                             ))}
@@ -274,14 +274,14 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <div className="text-[11.5px] font-semibold text-[#667085] uppercase tracking-wide mb-1.5">현재 설명 (원본)</div>
-                            <pre className="h-[320px] overflow-auto text-[12px] font-mono text-[#475467] leading-relaxed whitespace-pre-wrap bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg p-3">
+                            <div className="text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wide mb-1.5">현재 설명 (원본)</div>
+                            <pre className="h-[320px] overflow-auto text-[12px] font-mono text-[var(--ink-700)] leading-relaxed whitespace-pre-wrap bg-[var(--background-soft)] border border-[var(--border)] rounded-lg p-3">
                                 {original || '(비어 있음)'}
                             </pre>
                         </div>
                         <div>
                             <div className="text-[11.5px] font-semibold text-primary uppercase tracking-wide mb-1.5">
-                                AI 생성본 — 직접 수정 가능{edited && <span className="ml-1.5 text-[#B54708] normal-case">(수정됨)</span>}
+                                AI 생성본 — 직접 수정 가능{edited && <span className="ml-1.5 text-[var(--warning)] normal-case">(수정됨)</span>}
                             </div>
                             <textarea
                                 value={text}
@@ -304,7 +304,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                                 <div className="text-[12.5px] font-semibold text-primary">
                                     만점 변경 제안: {Number(currentMax) > 0 ? `${Number(currentMax)}점` : '(미설정)'} → {suggestedMax}점
                                 </div>
-                                <div className="text-[11.5px] text-[#667085] mt-0.5">
+                                <div className="text-[11.5px] text-[var(--ink-500)] mt-0.5">
                                     초안의 점수 체계에 맞춰 만점과 아래 단계를 함께 교체합니다. 체크를 해제하면 만점·단계는 그대로 두고 설명만 적용됩니다.
                                 </div>
                             </div>
@@ -313,7 +313,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
 
                     {!isYn && stepRows.length > 0 && (
                         <div>
-                            <div className="text-[11.5px] font-semibold text-[#667085] uppercase tracking-wide mb-1.5">
+                            <div className="text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wide mb-1.5">
                                 {stepsLocked
                                     ? `단계 구성 제안 — 만점 변경 채택 시 아래 단계로 전체 교체 (새 척도 ${suggestedMax}점 기준)`
                                     : fromScratch
@@ -325,10 +325,10 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                             <div className={hasMaxChange && !maxChecked ? 'opacity-45 pointer-events-none select-none' : ''}>
                             {/* 전체 교체 모드(만점 변경·처음부터 작성) — 기존 단계 구성을 참고로 병기. */}
                             {(stepsLocked || fromScratch) && (currentSteps || []).length > 0 && (
-                                <div className="mb-2 bg-[#FAFBFC] border border-[#E4E7EC] rounded-lg px-3 py-2">
-                                    <div className="text-[11px] font-semibold text-[#98A2B3] mb-1">기존 단계 (참고 — 채택 시 아래 제안으로 교체됩니다)</div>
+                                <div className="mb-2 bg-[var(--background-soft)] border border-[var(--border)] rounded-lg px-3 py-2">
+                                    <div className="text-[11px] font-semibold text-[var(--ink-400)] mb-1">기존 단계 (참고 — 채택 시 아래 제안으로 교체됩니다)</div>
                                     {(currentSteps || []).map((s, i) => (
-                                        <div key={i} className="text-[11.5px] text-[#667085] leading-relaxed">
+                                        <div key={i} className="text-[11.5px] text-[var(--ink-500)] leading-relaxed">
                                             <span className="font-semibold">{s.score}점</span> — {String(s.desc || '').trim() || '(조건 없음)'}
                                         </div>
                                     ))}
@@ -346,7 +346,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                                                     className="shrink-0 w-4 h-4 accent-primary cursor-pointer"
                                                 />
                                             )}
-                                            <span className="shrink-0 w-[52px] text-center text-[12px] font-bold text-[#344054] bg-[#F2F4F7] rounded-md py-1.5">
+                                            <span className="shrink-0 w-[52px] text-center text-[12px] font-bold text-[var(--ink-700)] bg-[var(--muted)] rounded-md py-1.5">
                                                 {r.score}점
                                             </span>
                                             <input
@@ -359,10 +359,10 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                                                 <span
                                                     className={`shrink-0 w-[44px] text-center text-[10.5px] font-semibold rounded-full py-0.5 ${
                                                         r.isNew
-                                                            ? 'bg-[#EFF8FF] text-[#175CD3]'
+                                                            ? 'bg-[var(--primary-tint)] text-[var(--primary)]'
                                                             : r.isChanged
-                                                              ? 'bg-[#FDF2FA] text-[#C11574]'
-                                                              : 'bg-[#F2F4F7] text-[#98A2B3]'
+                                                              ? 'bg-[var(--diff-changed-soft)] text-[var(--diff-changed)]'
+                                                              : 'bg-[var(--muted)] text-[var(--ink-400)]'
                                                     }`}
                                                 >
                                                     {r.isNew ? '신규' : r.isChanged ? '변경' : '동일'}
@@ -371,7 +371,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                                         </div>
                                         {/* 단계 따르기 모드 — 교체될 기존 문구를 항상 병기("AI 가 이렇게 바꿨다" 비교). */}
                                         {!rowsBecomeSteps && (
-                                            <div className="mt-1 ml-[60px] text-[11px] text-[#98A2B3] leading-relaxed">
+                                            <div className="mt-1 ml-[60px] text-[11px] text-[var(--ink-400)] leading-relaxed">
                                                 기존: {(currentByScore[r.score] || '').trim() || '(빈 조건)'}
                                             </div>
                                         )}
@@ -384,7 +384,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
 
                     {isYn && ynText && (
                         <div>
-                            <div className="text-[11.5px] font-semibold text-[#667085] uppercase tracking-wide mb-1.5">충족/위반 판정 기준 제안</div>
+                            <div className="text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wide mb-1.5">충족/위반 판정 기준 제안</div>
                             <div className="flex items-start gap-2">
                                 <input
                                     type="checkbox"
@@ -403,7 +403,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                     )}
                 </div>
 
-                <div className="px-6 pb-5 pt-3 border-t border-[#F2F4F7] bg-[#FAFBFC] flex items-center justify-between shrink-0">
+                <div className="px-6 pb-5 pt-3 border-t border-[var(--border-soft)] bg-[var(--background-soft)] flex items-center justify-between shrink-0">
                     <button
                         type="button"
                         disabled={busy}
@@ -414,8 +414,8 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                         }}
                         className={`inline-flex items-center gap-1.5 h-[38px] px-4 rounded-xl border text-[13px] font-semibold ${
                             busy
-                                ? 'border-[#E4E7EC] bg-[#F9FAFB] text-[#98A2B3] cursor-default'
-                                : 'border-[#E4E7EC] bg-white text-[#475467] hover:bg-[#F2F4F7] cursor-pointer'
+                                ? 'border-[var(--border)] bg-[var(--background-soft)] text-[var(--ink-400)] cursor-default'
+                                : 'border-[var(--border)] bg-white text-[var(--ink-700)] hover:bg-[var(--muted)] cursor-pointer'
                         }`}
                     >
                         <RefreshCw size={13} className={busy ? 'animate-spin' : ''} /> {busy ? '다시 생성 중…' : '다시 생성'}
@@ -424,7 +424,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                         <button
                             type="button"
                             onClick={() => confirmDiscard('생성본에 직접 수정한 내용이 사라집니다. 닫을까요?') && onClose()}
-                            className="h-[38px] px-5 rounded-xl border border-[#E4E7EC] bg-white text-[13px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer"
+                            className="h-[38px] px-5 rounded-xl border border-[var(--border)] bg-white text-[13px] font-semibold text-[var(--ink-900)] hover:bg-[var(--muted)] cursor-pointer"
                         >
                             취소
                         </button>
@@ -453,7 +453,7 @@ function ReviewModal({ original, result, isYn, currentSteps, currentMax, fromScr
                             }}
                             className={`h-[38px] px-5 rounded-xl text-[13px] font-semibold shadow-sm inline-flex items-center gap-1.5 ${
                                 !text.trim() || busy
-                                    ? 'bg-[#EAECF0] text-[#98A2B3] cursor-default'
+                                    ? 'bg-[var(--muted)] text-[var(--ink-400)] cursor-default'
                                     : 'bg-primary text-white hover:bg-primary-hover cursor-pointer'
                             }`}
                         >

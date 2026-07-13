@@ -63,13 +63,13 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
     const mismatch = stepsMaxMismatch(maxScore, steps);
     // 저장 시도(error) + 실제 불일치일 때만 빨간 테두리. 고치면(불일치 해소) 자동으로 사라짐.
     const showRed = error && mismatch;
-    const redStyle = showRed ? { borderColor: '#F04438', boxShadow: '0 0 0 3px rgba(240,68,56,0.10)' } : null;
+    const redStyle = showRed ? { borderColor: 'var(--destructive)', boxShadow: '0 0 0 3px color-mix(in srgb, var(--destructive) 10%, transparent)' } : null;
 
     return (
         <div className="space-y-3.5">
             {/* AI 교체 연출 — 흰색에서 핵심컬러 소프트(var(--primary-tint))로 천천히 페이드인한 뒤 영구 유지 + 아이콘 팝 + 기존 줄 페이드 */}
             <style>{`
-                @keyframes aiFillSweep { 0% { background-color: #FFFFFF; border-color: #E4E7EC; } 100% { background-color: var(--primary-tint); border-color: var(--primary-soft-border); } }
+                @keyframes aiFillSweep { 0% { background-color: #FFFFFF; border-color: var(--border); } 100% { background-color: var(--primary-tint); border-color: var(--primary-soft-border); } }
                 @keyframes aiIconPop { 0% { transform: translateY(-50%) scale(0) rotate(-30deg); opacity: 0; } 60% { transform: translateY(-50%) scale(1.3) rotate(8deg); opacity: 1; } 100% { transform: translateY(-50%) scale(1) rotate(0deg); opacity: 1; } }
                 @keyframes aiFadeSlide { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
                 .ai-filled-input { animation: aiFillSweep 2.4s ease-in-out; }
@@ -78,7 +78,7 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
             `}</style>
             {/* 만점 */}
             <div className="flex items-center gap-2">
-                <span className="text-[13px] font-medium text-[#344054] w-10">만점</span>
+                <span className="text-[13px] font-medium text-[var(--ink-700)] w-10">만점</span>
                 <input
                     type="number"
                     min="1"
@@ -88,30 +88,30 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
                     className="form-input-pretty text-center"
                     style={{ width: 96, ...(redStyle || {}) }}
                 />
-                <span className="text-[13px] text-[#667085]">점</span>
+                <span className="text-[13px] text-[var(--ink-500)]">점</span>
             </div>
 
             {/* 점수 단계 */}
             <div>
                 <div className="flex items-center justify-between mb-2">
-                    <span className="text-[12.5px] font-semibold text-[#344054]">점수 단계</span>
+                    <span className="text-[12.5px] font-semibold text-[var(--ink-700)]">점수 단계</span>
                     <button
                         type="button"
                         onClick={addRow}
-                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-[#BFD4F2] bg-[#EEF4FB] text-[#055AAF] text-[12px] font-semibold hover:bg-[#E1EDFB] cursor-pointer"
+                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-[var(--primary-soft-flat)] bg-[var(--primary-soft-flat)] text-[var(--primary)] text-[12px] font-semibold hover:bg-[var(--primary-tint)] cursor-pointer"
                     >
                         <Plus size={13} /> 단계 추가
                     </button>
                 </div>
 
                 {steps.length === 0 ? (
-                    <div className="text-[12px] text-[#98A2B3] italic bg-[#FAFBFC] border border-dashed border-[#E4E7EC] rounded-lg px-3 py-3 text-center">
+                    <div className="text-[12px] text-[var(--ink-500)] italic bg-[var(--background-soft)] border border-dashed border-[var(--border)] rounded-lg px-3 py-3 text-center">
                         “단계 추가”를 눌러 점수 단계를 만드세요. (예: 10점 · 5점 · 0점)
                     </div>
                 ) : (
                     <div className="space-y-2">
                         {/* 헤더 라벨 */}
-                        <div className="flex items-center gap-2 px-0.5 text-[11px] font-semibold text-[#98A2B3] tracking-[0.02em]">
+                        <div className="flex items-center gap-2 px-0.5 text-[11px] font-semibold text-[var(--ink-500)] tracking-[0.02em]">
                             <span style={{ width: 92 }} className="shrink-0">단계 점수</span>
                             <span className="flex-1">이 점수를 주는 조건 · 설명</span>
                             <span style={{ width: 32 }} className="shrink-0" />
@@ -136,7 +136,7 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
                                                 className="form-input-pretty text-center pr-6"
                                                 style={redStyle || undefined}
                                             />
-                                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-[#98A2B3] pointer-events-none">점</span>
+                                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-[var(--ink-500)] pointer-events-none">점</span>
                                         </div>
                                         <div className="relative flex-1">
                                             <input
@@ -163,21 +163,21 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
                                             type="button"
                                             onClick={() => removeRow(i)}
                                             title="이 단계 삭제"
-                                            className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg text-[#98A2B3] hover:text-[#D92D20] hover:bg-red-50 cursor-pointer"
+                                            className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg text-[var(--ink-500)] hover:text-[var(--destructive)] hover:bg-[var(--destructive-soft)] cursor-pointer"
                                         >
                                             <X size={15} />
                                         </button>
                                     </div>
                                     {aiReplaced && (
                                         <div className="ai-orig-line mt-1 ml-[100px] mr-10 flex items-start gap-2">
-                                            <span className="text-[11px] text-[#98A2B3] leading-relaxed flex-1">
+                                            <span className="text-[11px] text-[var(--ink-400)] leading-relaxed flex-1">
                                                 기존: {orig.trim() || '(빈 조건)'}
                                             </span>
                                             <button
                                                 type="button"
                                                 onClick={() => setRow(i, { desc: orig })}
                                                 title="기존 문구로 되돌리기"
-                                                className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-md border border-[#E4E7EC] bg-white text-[#475467] text-[11px] font-semibold hover:bg-[#F2F4F7] cursor-pointer"
+                                                className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--ink-700)] text-[11px] font-semibold hover:bg-[var(--bg-subtle)] cursor-pointer"
                                             >
                                                 <Undo2 size={11} /> 되돌리기
                                             </button>
@@ -191,11 +191,11 @@ export default function ScoreStepsEditor({ maxScore, onMaxScore, steps, onSteps,
 
                 {mismatch && (
                     showRed ? (
-                        <div className="mt-2 text-[11.5px] font-medium text-[#B42318] bg-[#FEF3F2] border border-[#FDA29B] rounded-md px-2.5 py-1.5">
+                        <div className="mt-2 text-[11.5px] font-medium text-[var(--destructive)] bg-[var(--destructive-soft)] border border-[var(--destructive-soft)] rounded-md px-2.5 py-1.5">
                             ✕ 최고 단계 점수({topScore}점)와 만점({maxScore}점)이 일치해야 저장할 수 있습니다.
                         </div>
                     ) : (
-                        <div className="mt-2 text-[11.5px] text-[#B54708] bg-[#FFFAEB] border border-[#FEDF89] rounded-md px-2.5 py-1.5">
+                        <div className="mt-2 text-[11.5px] text-[var(--warning)] bg-[var(--warning-soft)] border border-[var(--warning-soft)] rounded-md px-2.5 py-1.5">
                             ⚠ 최고 단계 점수({topScore}점)와 만점({maxScore}점)이 다릅니다. 일치시켜 주세요.
                         </div>
                     )

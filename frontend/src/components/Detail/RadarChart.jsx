@@ -61,14 +61,14 @@ const RadarChart = ({ labels, teamData, overallData, agentData, size = 300 }) =>
             <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="overflow-visible">
                 {/* Grid lines */}
                 {gridPaths.map((path, i) => (
-                    <path key={i} d={path} fill="none" stroke="#E4E7EC" strokeWidth="1" />
+                    <path key={i} d={path} fill="none" stroke="var(--border)" strokeWidth="1" />
                 ))}
 
                 {/* Axes */}
                 {labels.map((_, i) => {
                     const edge = getPoint(i, 100);
                     return (
-                        <line key={i} x1={center} y1={center} x2={edge.x} y2={edge.y} stroke="#E4E7EC" />
+                        <line key={i} x1={center} y1={center} x2={edge.x} y2={edge.y} stroke="var(--border)" />
                     );
                 })}
 
@@ -82,7 +82,7 @@ const RadarChart = ({ labels, teamData, overallData, agentData, size = 300 }) =>
                             exit={{ opacity: 0, scale: 0.5 }}
                             transition={{ duration: 1, ease: "easeOut" }}
                             fill="transparent"
-                            stroke="#15803D"
+                            stroke="var(--success)"
                             strokeWidth="2"
                             strokeDasharray="2 2"
                         />
@@ -98,8 +98,8 @@ const RadarChart = ({ labels, teamData, overallData, agentData, size = 300 }) =>
                             animate={{ d: teamPath, opacity: 1 }}
                             exit={{ opacity: 0 }}
                             transition={{ duration: 1, ease: "backOut" }}
-                            fill="rgba(217, 119, 6, 0.04)"
-                            stroke="#D97706"
+                            fill="color-mix(in srgb, var(--warning) 4%, transparent)"
+                            stroke="var(--warning)"
                             strokeWidth="2.2"
                             strokeDasharray="5 2"
                         />
@@ -115,8 +115,8 @@ const RadarChart = ({ labels, teamData, overallData, agentData, size = 300 }) =>
                             animate={{ d: agentPath, scale: 1, opacity: 1 }}
                             exit={{ opacity: 0, scale: 0.5 }}
                             transition={{ duration: 1, ease: "circOut" }}
-                            fill="rgba(5, 90, 175, 0.12)"
-                            stroke="#055AAF"
+                            fill="color-mix(in srgb, var(--primary) 12%, transparent)"
+                            stroke="var(--primary)"
                             strokeWidth="2.8"
                         />
                     )}
@@ -131,7 +131,7 @@ const RadarChart = ({ labels, teamData, overallData, agentData, size = 300 }) =>
                             key={i}
                             x={p.x}
                             y={p.y}
-                            fill="#667085"
+                            fill="var(--ink-500)"
                             fontSize="10"
                             fontWeight="600"
                             textAnchor={anchor}
@@ -154,7 +154,7 @@ const RadarChart = ({ labels, teamData, overallData, agentData, size = 300 }) =>
                                     animate={{ cx: p.x, cy: p.y, r: 3.4 }}
                                     exit={{ r: 0 }}
                                     transition={{ duration: 0.8 }}
-                                    fill="#055AAF"
+                                    fill="var(--primary)"
                                 />
                             )}
                         </AnimatePresence>
@@ -166,23 +166,23 @@ const RadarChart = ({ labels, teamData, overallData, agentData, size = 300 }) =>
             <div className="flex gap-3 mt-0 text-[11px] font-bold">
                 <button
                     onClick={() => toggleSeries('overall')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all transform active:scale-95 ${visible.overall ? 'bg-green-50/50 border-green-200 text-[#15803D] shadow-sm' : 'bg-gray-50 border-gray-200 text-gray-300 opacity-60'}`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all transform active:scale-95 ${visible.overall ? 'bg-[var(--success-soft)]/50 border-[var(--success)] text-[var(--success)] shadow-sm' : 'bg-[var(--muted)] border-[var(--border)] text-[var(--ink-400)] opacity-60'}`}
                 >
-                    <span className={`w-2 h-2 rounded-full border border-dotted ${visible.overall ? 'border-[#15803D] bg-green-100' : 'border-gray-300 bg-gray-100'}`}></span>
+                    <span className={`w-2 h-2 rounded-full border border-dotted ${visible.overall ? 'border-[var(--success)] bg-[var(--success-soft)]' : 'border-[var(--border)] bg-[var(--muted)]'}`}></span>
                     전체평균
                 </button>
                 <button
                     onClick={() => toggleSeries('team')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all transform active:scale-95 ${visible.team ? 'bg-amber-50/50 border-amber-200 text-[#D97706] shadow-sm' : 'bg-gray-50 border-gray-200 text-gray-300 opacity-60'}`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all transform active:scale-95 ${visible.team ? 'bg-[var(--warning-soft)]/50 border-[var(--warning)] text-[var(--warning)] shadow-sm' : 'bg-[var(--muted)] border-[var(--border)] text-[var(--ink-400)] opacity-60'}`}
                 >
-                    <span className={`w-2 h-2 rounded-full border border-dashed ${visible.team ? 'border-[#D97706] bg-amber-100' : 'border-gray-300 bg-gray-100'}`}></span>
+                    <span className={`w-2 h-2 rounded-full border border-dashed ${visible.team ? 'border-[var(--warning)] bg-[var(--warning-soft)]' : 'border-[var(--border)] bg-[var(--muted)]'}`}></span>
                     직무평균
                 </button>
                 <button
                     onClick={() => toggleSeries('agent')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full shadow-md transition-all transform active:scale-95 ${visible.agent ? 'bg-[#055AAF] text-white' : 'bg-gray-100 border-gray-300 text-gray-400 shadow-none opacity-60'}`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full shadow-md transition-all transform active:scale-95 ${visible.agent ? 'bg-[var(--primary)] text-white' : 'bg-[var(--muted)] border-[var(--border)] text-[var(--ink-400)] shadow-none opacity-60'}`}
                 >
-                    <span className={`w-2 h-2 rounded-full ${visible.agent ? 'bg-white' : 'bg-gray-300'}`}></span>
+                    <span className={`w-2 h-2 rounded-full ${visible.agent ? 'bg-white' : 'bg-[var(--muted)]'}`}></span>
                     상담사
                 </button>
             </div>

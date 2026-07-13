@@ -7,12 +7,12 @@ import { Check, CornerUpLeft, Flag, Send, RotateCcw, History, Info, Clock, Check
 
 // 토큰(전역 CSS var 미정의 → 디자인의 hex 로 직접 매핑, 팔레트는 동일).
 const C = {
-    primary: '#055AAF', primaryActive: '#044a93', primarySoft: '#EEF4FB', primaryBorder: '#BFD4F2',
-    success: '#067647', successSoft: '#ECFDF3', successBorder: '#ABEFC6', green: '#12B76A', greenHover: '#0E9F5B',
-    warnInk: '#B54708', warnSoft: '#FFFAEB', warnBorder: '#FEDF89', warnDot: '#F79009',
-    destr: '#D92D20', destrInk: '#B42318', destrSoft: '#FEF3F2', destrBorder: '#FECDCA',
-    ink900: '#101828', ink700: '#344054', ink600: '#475467', ink500: '#667085', ink400: '#98A2B3', ink300: '#D0D5DD',
-    muted: '#F2F4F7', border: '#E4E7EC', borderSoft: '#F2F4F7', borderStrong: '#D0D5DD', bgSoft: '#FAFBFC', bg: '#F9FAFB',
+    primary: 'var(--primary)', primaryActive: '#044a93', primarySoft: 'var(--primary-soft-flat)', primaryBorder: 'var(--primary-soft-flat)',
+    success: 'var(--success)', successSoft: 'var(--success-soft)', successBorder: 'var(--success-soft)', green: 'var(--success)', greenHover: '#0E9F5B',
+    warnInk: 'var(--warning)', warnSoft: 'var(--warning-soft)', warnBorder: 'var(--warning-soft)', warnDot: 'var(--warning)',
+    destr: 'var(--destructive)', destrInk: 'var(--destructive)', destrSoft: 'var(--destructive-soft)', destrBorder: 'var(--destructive-soft)',
+    ink900: 'var(--ink-900)', ink700: 'var(--ink-700)', ink600: 'var(--ink-700)', ink500: 'var(--ink-500)', ink400: 'var(--ink-400)', ink300: 'var(--ink-300)',
+    muted: 'var(--muted)', border: 'var(--border)', borderSoft: 'var(--muted)', borderStrong: 'var(--border-strong)', bgSoft: 'var(--background-soft)', bg: 'var(--background-soft)',
 };
 
 // 6단계 스텝퍼 + 상태→단계 매핑(internal status 기준).

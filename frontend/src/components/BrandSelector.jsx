@@ -12,7 +12,7 @@ function BrandTile({ brand, size = 36 }) {
                 width: size,
                 height: size,
                 borderRadius: Math.round(size * 0.28),
-                background: brand.color || '#055AAF',
+                background: brand.color || 'var(--primary)',
                 color: 'white',
                 display: 'grid',
                 placeItems: 'center',
@@ -168,7 +168,7 @@ const BrandSelector = ({ brands, value, onChange, lockSingle = false }) => {
                             color: 'var(--text-muted)',
                         }}
                     >
-                        {selected.domain_name ? `${selected.domain_name} · 브랜드` : '관리 중인 브랜드'}
+                        {selected.domain_name || '관리 중인 브랜드'}
                     </div>
                     <div
                         style={{

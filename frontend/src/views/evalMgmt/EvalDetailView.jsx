@@ -213,7 +213,7 @@ function ManualJudgment({ judgment, goldSet, onJudgment, onGoldSet }) {
                     {STOPS.map((s, i) => {
                         const on = activeIndex === i;
                         return (
-                            <button key={s} onClick={() => onJudgment(s)} style={{ background: 'transparent', border: 'none', padding: '0 2px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: on ? 700 : 500, color: on ? 'var(--primary)' : 'var(--ink-400)', letterSpacing: '0.01em', transition: 'color var(--t-base)' }}>
+                            <button key={s} onClick={() => onJudgment(s)} style={{ background: 'transparent', border: 'none', padding: '0 2px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: on ? 700 : 500, color: on ? 'var(--primary)' : 'var(--ink-500)', letterSpacing: '0.01em', transition: 'color var(--t-base)' }}>
                                 {s}
                             </button>
                         );
@@ -252,12 +252,12 @@ function ManualJudgment({ judgment, goldSet, onJudgment, onGoldSet }) {
                     <button
                         onClick={() => onGoldSet(!goldSet)}
                         title={goldSet ? '골드셋에서 제외' : '골드셋으로 등록'}
-                        style={{ background: 'transparent', border: 'none', padding: '2px 6px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: goldSet ? 700 : 600, color: goldSet ? GOLD.ink : 'var(--ink-400)', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', letterSpacing: '0.01em', transition: 'color var(--t-base)' }}
+                        style={{ background: 'transparent', border: 'none', padding: '2px 6px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: goldSet ? 700 : 600, color: goldSet ? GOLD.ink : 'var(--ink-500)', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', letterSpacing: '0.01em', transition: 'color var(--t-base)' }}
                         onMouseEnter={(e) => {
                             if (!goldSet) e.currentTarget.style.color = 'var(--ink-700)';
                         }}
                         onMouseLeave={(e) => {
-                            if (!goldSet) e.currentTarget.style.color = 'var(--ink-400)';
+                            if (!goldSet) e.currentTarget.style.color = 'var(--ink-500)';
                         }}
                     >
                         <Icon name="star" size={11} style={{ fill: goldSet ? GOLD.fill : 'transparent', color: goldSet ? GOLD.base : 'var(--ink-400)', transition: 'fill var(--t-base), color var(--t-base)' }} />
@@ -282,17 +282,17 @@ function PentagonCard({ series, setSeries }) {
             <div style={{ display: 'flex', justifyContent: 'center', gap: 6, padding: '0 20px 18px', flexWrap: 'wrap' }}>
                 {[
                     { k: 'all', label: '전체평균', color: 'var(--ink-500)', style: 'outline' },
-                    { k: 'job', label: '직무평균', color: '#3a72e2', style: 'outline-blue' },
-                    { k: 'agent', label: '상담사', color: '#3a72e2', style: 'solid' },
+                    { k: 'job', label: '직무평균', color: 'var(--cat-account)', style: 'outline-blue' },
+                    { k: 'agent', label: '상담사', color: 'var(--cat-account)', style: 'solid' },
                 ].map((s) => {
                     const on = series === s.k;
                     return (
                         <button
                             key={s.k}
                             onClick={() => setSeries(s.k)}
-                            style={{ padding: '6px 12px', height: 30, borderRadius: 9999, border: s.style === 'outline' ? '1.5px solid var(--border-strong)' : s.style === 'outline-blue' ? '1.5px dashed #3a72e2' : '1.5px solid #3a72e2', background: on ? (s.style === 'solid' ? '#3a72e2' : s.style === 'outline-blue' ? '#eff6ff' : 'var(--background-soft)') : 'white', color: on ? (s.style === 'solid' ? 'white' : '#3a72e2') : 'var(--ink-500)', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, transition: 'all var(--t-base)', whiteSpace: 'nowrap' }}
+                            style={{ padding: '6px 12px', height: 30, borderRadius: 9999, border: s.style === 'outline' ? '1.5px solid var(--border-strong)' : s.style === 'outline-blue' ? '1.5px dashed var(--cat-account)' : '1.5px solid var(--cat-account)', background: on ? (s.style === 'solid' ? 'var(--cat-account)' : s.style === 'outline-blue' ? 'var(--background)' : 'var(--background-soft)') : 'white', color: on ? (s.style === 'solid' ? 'white' : 'var(--cat-account)') : 'var(--ink-500)', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, transition: 'all var(--t-base)', whiteSpace: 'nowrap' }}
                         >
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.style === 'solid' ? (on ? 'white' : '#3a72e2') : s.style === 'outline-blue' ? '#3a72e2' : 'transparent', border: s.style === 'outline' ? '1.5px solid var(--ink-400)' : 'none' }}></span>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.style === 'solid' ? (on ? 'white' : 'var(--cat-account)') : s.style === 'outline-blue' ? 'var(--cat-account)' : 'transparent', border: s.style === 'outline' ? '1.5px solid var(--ink-400)' : 'none' }}></span>
                             <span>{s.label}</span>
                         </button>
                     );
@@ -329,21 +329,21 @@ function PentagonChart({ activeSeries }) {
             })}
 
             {activeSeries !== 'job' && (
-                <polygon points={PENTAGON_SERIES.job.map((v, i) => point(v, i).join(',')).join(' ')} fill="rgba(58, 114, 226, 0.06)" stroke="#3a72e2" strokeWidth="1.5" strokeDasharray="4 3" strokeLinejoin="round" opacity="0.55" />
+                <polygon points={PENTAGON_SERIES.job.map((v, i) => point(v, i).join(',')).join(' ')} fill="rgba(58, 114, 226, 0.06)" stroke="var(--cat-account)" strokeWidth="1.5" strokeDasharray="4 3" strokeLinejoin="round" opacity="0.55" />
             )}
 
             {activeSeries === 'all' && (
                 <polygon points={PENTAGON_SERIES.all.map((v, i) => point(v, i).join(',')).join(' ')} fill="rgba(28, 36, 64, 0.08)" stroke="var(--ink-700)" strokeWidth="2" strokeLinejoin="round" />
             )}
             {activeSeries === 'job' && (
-                <polygon points={PENTAGON_SERIES.job.map((v, i) => point(v, i).join(',')).join(' ')} fill="rgba(58, 114, 226, 0.16)" stroke="#3a72e2" strokeWidth="2" strokeDasharray="6 4" strokeLinejoin="round" />
+                <polygon points={PENTAGON_SERIES.job.map((v, i) => point(v, i).join(',')).join(' ')} fill="rgba(58, 114, 226, 0.16)" stroke="var(--cat-account)" strokeWidth="2" strokeDasharray="6 4" strokeLinejoin="round" />
             )}
             {activeSeries === 'agent' && (
                 <>
-                    <polygon points={PENTAGON_SERIES.agent.map((v, i) => point(v, i).join(',')).join(' ')} fill="rgba(58, 114, 226, 0.18)" stroke="#3a72e2" strokeWidth="2" strokeLinejoin="round" />
+                    <polygon points={PENTAGON_SERIES.agent.map((v, i) => point(v, i).join(',')).join(' ')} fill="rgba(58, 114, 226, 0.18)" stroke="var(--cat-account)" strokeWidth="2" strokeLinejoin="round" />
                     {PENTAGON_SERIES.agent.map((v, i) => {
                         const [x, y] = point(v, i);
-                        return <circle key={i} cx={x} cy={y} r="3.5" fill="#3a72e2" stroke="white" strokeWidth="1.5" />;
+                        return <circle key={i} cx={x} cy={y} r="3.5" fill="var(--cat-account)" stroke="white" strokeWidth="1.5" />;
                     })}
                 </>
             )}
@@ -375,7 +375,7 @@ function CommentCard({ value, onChange, saved, onSave, onDelete }) {
                 {saved ? (
                     <div style={{ padding: '12px 14px', background: 'var(--background)', borderRadius: 10, fontSize: 13, color: 'var(--ink-700)', lineHeight: 1.55, marginBottom: 14 }}>{saved}</div>
                 ) : (
-                    <div style={{ padding: '60px 12px', textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>등록된 코멘트가 없습니다.</div>
+                    <div style={{ padding: '60px 12px', textAlign: 'center', color: 'var(--ink-500)', fontSize: 13 }}>등록된 코멘트가 없습니다.</div>
                 )}
 
                 <textarea
@@ -444,9 +444,9 @@ function SttBubble({ who, time, text }) {
             <div style={{ fontSize: 11, color: 'var(--ink-500)', fontWeight: 600, marginBottom: 4, padding: '0 4px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <span>{who}</span>
                 <span style={{ color: 'var(--ink-300)' }}>·</span>
-                <span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-400)' }}>{time}</span>
+                <span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-500)' }}>{time}</span>
             </div>
-            <div style={{ maxWidth: '85%', padding: '10px 14px', borderRadius: isAgent ? '14px 14px 14px 4px' : '14px 14px 4px 14px', background: isAgent ? 'var(--background)' : '#3a72e2', color: isAgent ? 'var(--ink-900)' : 'white', fontSize: 13, lineHeight: 1.5, border: isAgent ? '1px solid var(--border)' : 'none', wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
+            <div style={{ maxWidth: '85%', padding: '10px 14px', borderRadius: isAgent ? '14px 14px 14px 4px' : '14px 14px 4px 14px', background: isAgent ? 'var(--background)' : 'var(--cat-account)', color: isAgent ? 'var(--ink-900)' : 'white', fontSize: 13, lineHeight: 1.5, border: isAgent ? '1px solid var(--border)' : 'none', wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
                 {text}
             </div>
         </div>

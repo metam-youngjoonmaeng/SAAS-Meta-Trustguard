@@ -49,17 +49,17 @@ export default function OrgSwitcher() {
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg border border-[#E4E7EC] text-[#344054] hover:bg-[#F9FAFB] transition-colors max-w-[200px]"
+                className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg border border-[var(--border)] text-[var(--ink-700)] hover:bg-[var(--background-soft)] transition-colors max-w-[200px]"
                 title="소속 조직 전환"
             >
-                <Building2 size={15} className="text-[#667085] shrink-0" />
+                <Building2 size={15} className="text-[var(--ink-500)] shrink-0" />
                 <span className="text-[13px] font-semibold truncate">{current?.org_name || '조직'}</span>
-                <ChevronDown size={14} className="text-[#98A2B3] shrink-0" />
+                <ChevronDown size={14} className="text-[var(--ink-400)] shrink-0" />
             </button>
 
             {open && (
-                <div className="absolute right-0 top-[calc(100%+6px)] z-[120] w-[240px] bg-white rounded-xl border border-[#E4E7EC] shadow-xl overflow-hidden">
-                    <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-[#98A2B3] border-b border-[#F2F4F7]">소속 조직 전환</div>
+                <div className="absolute right-0 top-[calc(100%+6px)] z-[120] w-[240px] bg-white rounded-xl border border-[var(--border)] shadow-xl overflow-hidden">
+                    <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-[var(--ink-400)] border-b border-[var(--border)]">소속 조직 전환</div>
                     <div className="max-h-[280px] overflow-y-auto py-1">
                         {items.map((m) => (
                             <button
@@ -67,16 +67,16 @@ export default function OrgSwitcher() {
                                 type="button"
                                 onClick={() => pick(m)}
                                 disabled={busy}
-                                className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F9FAFB] transition-colors ${m.current ? 'bg-[#F4F3FF]' : ''}`}
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[var(--background-soft)] transition-colors ${m.current ? 'bg-[var(--violet-soft)]' : ''}`}
                             >
-                                <Building2 size={14} className="text-[#667085] shrink-0" />
+                                <Building2 size={14} className="text-[var(--ink-500)] shrink-0" />
                                 <span className="flex-1 min-w-0">
-                                    <span className="block text-[13px] font-semibold text-[#101828] truncate">{m.org_name || `조직 ${m.org_id}`}</span>
-                                    <span className="block text-[11px] text-[#667085]">{ROLE_LABEL[m.role] || m.role}{m.department ? ` · ${m.department}` : ''}</span>
+                                    <span className="block text-[13px] font-semibold text-[var(--ink-900)] truncate">{m.org_name || `조직 ${m.org_id}`}</span>
+                                    <span className="block text-[11px] text-[var(--ink-500)]">{ROLE_LABEL[m.role] || m.role}{m.department ? ` · ${m.department}` : ''}</span>
                                 </span>
                                 {m.current
-                                    ? <Check size={15} className="text-[#5925DC] shrink-0" />
-                                    : (busy ? <Loader2 size={14} className="animate-spin text-[#98A2B3] shrink-0" /> : null)}
+                                    ? <Check size={15} className="text-[var(--violet)] shrink-0" />
+                                    : (busy ? <Loader2 size={14} className="animate-spin text-[var(--ink-400)] shrink-0" /> : null)}
                             </button>
                         ))}
                     </div>

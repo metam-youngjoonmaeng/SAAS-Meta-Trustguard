@@ -9,7 +9,7 @@ import {
 
 // 대분류 구분 칸은 디자인 시스템 중성 톤으로 통일.
 // 방향성 색상(긍정/부정/위험) 부여 금지 — rowSpan 그룹핑과 항목명으로 충분히 구분됨.
-const CATEGORY_NEUTRAL = 'bg-[#F2F4F7] text-[#344054]';
+const CATEGORY_NEUTRAL = 'bg-[var(--muted)] text-[var(--ink-700)]';
 
 /**
  * 소비자보호부 좌측 — 20개 평가항목 Y/N 표.
@@ -52,42 +52,42 @@ function ConsumerEvalTable({ rows, onChangeYn, onChangeDetail, saveStatus, onSho
     const editable = typeof onChangeYn === 'function';
 
     return (
-        <div className="bg-white rounded-xl border border-[#E4E7EC] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col h-full min-h-0 w-full overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#F2F4F7] bg-[#FAFBFC] flex justify-between items-center">
+        <div className="bg-white rounded-xl border border-[var(--border)] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col h-full min-h-0 w-full overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex justify-between items-center">
                 <div className="flex items-center gap-2.5 min-w-0">
-                    <ListCheck size={16} className="text-[#475467] shrink-0" />
-                    <h3 className="text-[14px] font-semibold text-[#101828] tracking-tight shrink-0">상세 체크리스트</h3>
+                    <ListCheck size={16} className="text-[var(--ink-700)] shrink-0" />
+                    <h3 className="text-[14px] font-semibold text-[var(--ink-900)] tracking-tight shrink-0">상세 체크리스트</h3>
                     {saveStatus === 'saving' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#F2F4F7] text-[#667085] truncate">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#98A2B3] animate-pulse" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[var(--muted)] text-[var(--ink-500)] truncate">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--ink-400)] animate-pulse" />
                             저장 중
                         </span>
                     )}
                     {saveStatus === 'saved' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#F2F4F7] text-[#475467] truncate">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#12B76A]" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[var(--muted)] text-[var(--ink-700)] truncate">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
                             저장됨
                         </span>
                     )}
                     {saveStatus === 'error' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#FFFAEB] text-[#B54708] truncate">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#B54708]" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[var(--warning-soft)] text-[var(--warning)] truncate">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)]" />
                             저장 실패
                         </span>
                     )}
                 </div>
                 <div className="flex items-center gap-2 text-[11px] font-medium">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#F2F4F7] text-[#475467] tabular-nums">
-                        합계 <strong className="text-[#101828] font-semibold">{earnedTotal}</strong>/{CONSUMER_TOTAL_MAX}
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[var(--muted)] text-[var(--ink-700)] tabular-nums">
+                        합계 <strong className="text-[var(--ink-900)] font-semibold">{earnedTotal}</strong>/{CONSUMER_TOTAL_MAX}
                     </span>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#F2F4F7] text-[#475467] tabular-nums">
-                        미충족 <strong className="text-[#101828] font-semibold">{summary.totalViolations}</strong>건
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[var(--muted)] text-[var(--ink-700)] tabular-nums">
+                        미충족 <strong className="text-[var(--ink-900)] font-semibold">{summary.totalViolations}</strong>건
                     </span>
                     {typeof onShowStt === 'function' && (
                         <button
                             type="button"
                             onClick={onShowStt}
-                            className="ml-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-[#475467] hover:bg-[#F9FAFB] border border-[#E4E7EC] inline-flex items-center gap-1.5 transition-colors"
+                            className="ml-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-[var(--ink-700)] hover:bg-[var(--background-soft)] border border-[var(--border)] inline-flex items-center gap-1.5 transition-colors"
                         >
                             <MessageSquare size={13} />
                             STT전사
@@ -100,14 +100,14 @@ function ConsumerEvalTable({ rows, onChangeYn, onChangeDetail, saveStatus, onSho
                 <table className="w-full text-left min-w-[820px]">
                     <thead>
                         <tr>
-                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#98A2B3] w-[100px]">구분</th>
-                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#98A2B3] w-[240px]">평가항목</th>
-                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#98A2B3] w-14 text-center">Y / N</th>
-                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#98A2B3] w-64">평가 발화</th>
-                            <th className="sticky top-0 z-10 bg-[#FAFBFC] border-b border-[#F2F4F7] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#98A2B3] w-56">평가 이유</th>
+                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-500)] w-[100px]">구분</th>
+                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-500)] w-[240px]">평가항목</th>
+                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-500)] w-14 text-center">Y / N</th>
+                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-500)] w-64">평가 발화</th>
+                            <th className="sticky top-0 z-10 bg-[var(--background-soft)] border-b border-[var(--muted)] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-500)] w-56">평가 이유</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-[var(--table-border)]">
                         {(() => {
                             const rendered = [];
                             const seenCat = new Set();
@@ -126,13 +126,13 @@ function ConsumerEvalTable({ rows, onChangeYn, onChangeDetail, saveStatus, onSho
                                     <tr
                                         key={c.item_no}
                                         className={`text-xs ${
-                                            isViolation ? 'bg-amber-50/40' : 'hover:bg-gray-50/30'
+                                            isViolation ? 'bg-[var(--warning-soft)]/40' : 'hover:bg-[var(--muted)]/30'
                                         } transition-colors`}
                                     >
                                         {showCategory && (
                                             <td
                                                 rowSpan={catRowsCount}
-                                                className={`px-3 py-3 text-center font-black text-[11px] border-r border-gray-100 align-middle leading-tight ${catTone}`}
+                                                className={`px-3 py-3 text-center font-black text-[11px] border-r border-[var(--border)] align-middle leading-tight ${catTone}`}
                                             >
                                                 <div>{c.major_category}</div>
                                                 <div className="mt-1 text-[10px] font-bold opacity-80">
@@ -141,7 +141,7 @@ function ConsumerEvalTable({ rows, onChangeYn, onChangeDetail, saveStatus, onSho
                                             </td>
                                         )}
                                         <td
-                                            className="px-3 py-3 text-left text-[#101828] leading-relaxed cursor-help"
+                                            className="px-3 py-3 text-left text-[var(--ink-900)] leading-relaxed cursor-help"
                                             title={`${c.criterion} (#${c.major_category.charAt(0)}-${c.sub_no})`}
                                         >
                                             {c.item_text}
@@ -154,16 +154,16 @@ function ConsumerEvalTable({ rows, onChangeYn, onChangeDetail, saveStatus, onSho
                                                         onChange={(e) => onChangeYn(c.item_no, e.target.value)}
                                                         className={`w-full appearance-none rounded-lg px-3 py-1 text-[11px] font-bold cursor-pointer pr-7 outline-none border transition-all ${
                                                             isViolation
-                                                                ? 'bg-amber-50 border-amber-300 text-amber-800'
+                                                                ? 'bg-[var(--warning-soft)] border-[var(--warning)] text-[var(--warning)]'
                                                                 : yn === 'Y'
-                                                                  ? 'bg-blue-50 border-blue-200 text-[#055AAF]'
-                                                                  : 'bg-white border-[#D0D5DD] text-[#344054]'
+                                                                  ? 'bg-[var(--primary-soft)] border-[var(--primary)] text-[var(--primary)]'
+                                                                  : 'bg-white border-[var(--border-strong)] text-[var(--ink-700)]'
                                                         }`}
                                                     >
                                                         <option value="Y">Y</option>
                                                         <option value="N">N</option>
                                                     </select>
-                                                    <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-[#667085]">
+                                                    <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-[var(--ink-500)]">
                                                         <ChevronDown size={12} />
                                                     </div>
                                                 </div>
@@ -171,10 +171,10 @@ function ConsumerEvalTable({ rows, onChangeYn, onChangeDetail, saveStatus, onSho
                                                 <span
                                                     className={`min-w-[2.5rem] px-2 py-0.5 inline-flex items-center justify-center rounded-md text-[11px] font-bold ${
                                                         isViolation
-                                                            ? 'bg-amber-50 text-amber-800'
+                                                            ? 'bg-[var(--warning-soft)] text-[var(--warning)]'
                                                             : yn === 'Y'
-                                                              ? 'bg-[#E3F0FF] text-[#055AAF]'
-                                                              : 'bg-[#F2F4F7] text-[#98A2B3]'
+                                                              ? 'bg-[var(--primary-soft-flat)] text-[var(--primary)]'
+                                                              : 'bg-[var(--muted)] text-[var(--ink-500)]'
                                                     }`}
                                                 >
                                                     {yn || '-'}
@@ -196,7 +196,7 @@ function ConsumerEvalTable({ rows, onChangeYn, onChangeDetail, saveStatus, onSho
                                                     }
                                                     className={`group w-full text-left flex gap-1.5 items-start rounded-md px-2 py-1 -mx-2 -my-1 transition-colors ${
                                                         typeof onJumpToTurn === 'function' && r.evidence_line_no != null
-                                                            ? 'hover:bg-[#055AAF]/5 cursor-pointer'
+                                                            ? 'hover:bg-[var(--primary)]/5 cursor-pointer'
                                                             : 'cursor-default'
                                                     }`}
                                                     title={
@@ -209,8 +209,8 @@ function ConsumerEvalTable({ rows, onChangeYn, onChangeDetail, saveStatus, onSho
                                                         <span
                                                             className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
                                                                 isViolation
-                                                                    ? 'bg-amber-100 text-amber-800 group-hover:bg-amber-200'
-                                                                    : 'bg-[#055AAF]/10 text-[#055AAF] group-hover:bg-[#055AAF]/15'
+                                                                    ? 'bg-[var(--warning-soft)] text-[var(--warning)] group-hover:brightness-95'
+                                                                    : 'bg-[var(--primary)]/10 text-[var(--primary)] group-hover:bg-[var(--primary)]/15'
                                                             }`}
                                                         >
                                                             #{r.evidence_line_no}
@@ -219,33 +219,33 @@ function ConsumerEvalTable({ rows, onChangeYn, onChangeDetail, saveStatus, onSho
                                                     <span
                                                         className={`line-clamp-3 ${
                                                             isViolation
-                                                                ? 'text-amber-900 group-hover:text-amber-950'
-                                                                : 'text-[#101828] group-hover:text-[#055AAF]'
+                                                                ? 'text-[var(--warning)]'
+                                                                : 'text-[var(--ink-900)] group-hover:text-[var(--primary)]'
                                                         }`}
                                                     >
                                                         “{r.evidence_text}”
                                                     </span>
                                                 </button>
                                             ) : (
-                                                <span className="text-[#98A2B3]">-</span>
+                                                <span className="text-[var(--ink-400)]">-</span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-4 text-left text-xs text-[#475467] leading-relaxed align-top">
+                                        <td className="px-4 py-4 text-left text-xs text-[var(--ink-700)] leading-relaxed align-top">
                                             {editable && isViolation ? (
                                                 <textarea
                                                     rows={2}
                                                     value={r.detail_text || ''}
                                                     onChange={(e) => onChangeDetail?.(c.item_no, e.target.value)}
                                                     placeholder="위반 사유를 입력하세요"
-                                                    className="w-full p-0 bg-transparent border-0 text-xs text-[#475467] leading-relaxed outline-none focus:ring-0 resize-none"
+                                                    className="w-full p-0 bg-transparent border-0 text-xs text-[var(--ink-700)] leading-relaxed outline-none focus:ring-0 resize-none"
                                                 />
                                             ) : isViolation ? (
                                                 <div className="flex gap-1.5 items-start">
-                                                    <MessageSquare size={11} className="text-amber-600 mt-0.5 shrink-0" />
+                                                    <MessageSquare size={11} className="text-[var(--warning)] mt-0.5 shrink-0" />
                                                     <span>{r.detail_text || '-'}</span>
                                                 </div>
                                             ) : (
-                                                <span className="text-[#98A2B3]">-</span>
+                                                <span className="text-[var(--ink-400)]">-</span>
                                             )}
                                         </td>
                                     </tr>

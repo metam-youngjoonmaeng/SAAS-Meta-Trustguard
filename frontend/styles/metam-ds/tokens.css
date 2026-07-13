@@ -1,0 +1,179 @@
+/* @metam/ds v0.1 — synced 2026-07-07 from ics-3.0-metam-ds@149727c. 수정 금지 — 업그레이드는 디렉터리 교체로. */
+/* ===========================================================================
+   MetaM DS — "Halo on Carbon" tokens (ported from claude.ai/design "MetaM ARS DS").
+   Carbon-derived neutral ramp + MetaM blue/red brand + reserved AI gradient.
+   Token NAMES are unchanged from the previous Paste set so every consumer
+   (bg-primary, text-ink-700, var(--r-xs), --shadow-focus-ring …) reskins with
+   no component edits. VALUES swapped to MetaM; WCAG 2.2 AA re-verified in code.
+   Notes:
+     - --border-strong uses gray-500 #8D8D8D (3.32:1 white / 3.02:1 canvas) — MetaM's
+       gray-400 #A8A8A8 (2.38:1) would fail the >=3:1 interactive-edge requirement.
+     - --warning keeps the dark amber-brown #8D3118 (7.26:1 on tint) — MetaM amber
+       #B06B00 is a FILL color and fails AA (3.79:1) as text.
+   The @theme inline block exposes the tokens as Tailwind v4 utilities.
+   =========================================================================== */
+:root {
+  /* ---- Type (unchanged; Pretendard. MetaM display=Albert Sans not yet loaded) ---- */
+  --font-sans:
+    "Pretendard Variable", "Pretendard", ui-sans-serif, system-ui,
+    "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* ---- Brand / action ---- */
+  --primary: #1F5FE0;            /* << MetaM blue-500 (primary/accent); white label 5.57:1 */
+  --primary-foreground: #FFFFFF;
+  --primary-soft: rgba(31, 95, 224, 0.08);  /* << retinted to MetaM blue */
+  --primary-soft-flat: #EEF3FD;  /* << MetaM blue-50 — selected row / info badge */
+  --primary-ring: #1F5FE0;       /* << solid focus ring */
+  --brand-navy: #161616;         /* << MetaM Carbon ink (surface-inverse) — nav rail / reversed */
+
+  /* ---- Surfaces ---- */
+  --background: #F4F4F4;          /* << MetaM gray-50 canvas */
+  --background-soft: #FAFAFA;     /* << near-white raised */
+  --card: #ffffff;
+  --panel: #ffffff;
+
+  /* ---- Ink ramp (MetaM Carbon neutral grays) ---- */
+  --foreground: #161616;          /* << gray-950 — 18.10:1 on white */
+  --ink-900: #161616;             /* << */
+  --ink-700: #525252;             /* << gray-700 — 7.81:1 (AAA) */
+  --ink-500: #6F6F6F;             /* << gray-600 — 5.02/4.57/4.81: AA on white/canvas/soft */
+  --ink-400: #8D8D8D;             /* << gray-500 — 3.32:1: placeholder/disabled/large ONLY */
+  --ink-300: #C6C6C6;             /* << gray-300 — decorative only */
+  --muted-foreground: #6F6F6F;    /* << mirror ink-500 */
+
+  /* ---- Neutrals / borders (two-tier) ---- */
+  --muted: #E8E8E8;               /* << gray-100 */
+  --border: #E0E0E0;              /* << gray-200 — hairline dividers/card edges (1.4.11 exempt) */
+  --border-strong: #8D8D8D;       /* << INTERACTIVE control edge — gray-500, 3.32 white / 3.02 canvas (>=3:1) */
+
+  /* ---- Table / dense surfaces (consultation screens) ---- */
+  --table-header: #E8E8E8;        /* << gray-100 */
+  --table-border: #E0E0E0;        /* << align to --border */
+  --row-hover: #F4F4F4;           /* << gray-50 neutral hover */
+  --scrollbar: #C6C6C6;           /* << gray-300 */
+
+  /* ---- State (AA both directions: text + fill) ---- */
+  --destructive: #D32029;         /* << MetaM red-600 — 5.24 white / 4.62 soft */
+  --destructive-soft: #FDEDED;    /* << red-50 */
+  --success: #0F7038;             /* << MetaM green-600 — 6.19 white / 5.55 soft (AA as text AND white-on-fill) */
+  --success-soft: #E8F6EE;        /* << green-50 */
+  --warning: #8D3118;             /* keep — dark amber-brown, 8.12 white / 7.26 tint (MetaM amber fails AA as text) */
+  --warning-soft: #FBF1E0;        /* << MetaM amber-50 */
+  --warning-fill: #B06B00;        /* MetaM amber fill — non-text 신호색(감정 중립/중간). AA-exempt(1.4.11 비텍스트) */
+
+  /* ---- Point (MetaM accent — live/urgent/recording) ---- */
+  --point: #F03D3E;               /* << MetaM red-500 — dots/accents/left-bars (non-text) */
+  --point-soft: #FDEDED;          /* << red-50 */
+
+  /* ---- AI (reserved — AI surfaces ONLY: copilot, prompt, assistant turns) ---- */
+  --ai-violet: #6D5EFC;
+  --ai-cyan: #12AECF;
+  --ai-gradient: linear-gradient(90deg, #6D5EFC 0%, #12AECF 100%);
+  --ai-gradient-diag: linear-gradient(135deg, #6D5EFC 0%, #12AECF 100%);
+  --ai-tint: #F2F0FF;             /* violet 8% on white */
+  --ai-border: #C9C2FD;
+
+  /* ---- Consultation category colors (currently UNUSED in code; left as-is) ---- */
+  --cat-payment: #d04443;   --cat-payment-soft: #fdecec;
+  --cat-delivery: #4dbd75;  --cat-delivery-soft: #e8f6ed;
+  --cat-product: #e8a045;   --cat-product-soft: #fff3e0;
+  --cat-account: #3a72e2;   --cat-account-soft: #e0ebfb;
+  --cat-tech: #6f7ede;      --cat-tech-soft: #e8ebf9;
+  --cat-claim: #e05a8a;     --cat-claim-soft: #fce8f1;
+  --cat-policy: #7a63c8;    --cat-policy-soft: #ece8f6;
+  --cat-service: #2ba8a4;   --cat-service-soft: #e0f5f4;
+
+  /* ---- Shadows (Carbon-flat: subtle, cool-gray) ---- */
+  --shadow-xs: 0 1px 2px rgba(22, 22, 22, 0.06);
+  --shadow-sm: 0 1px 3px rgba(22, 22, 22, 0.08), 0 1px 2px rgba(22, 22, 22, 0.04);
+  --shadow-md: 0 4px 12px rgba(22, 22, 22, 0.10), 0 1px 3px rgba(22, 22, 22, 0.06);
+  --shadow-lg: 0 12px 28px rgba(22, 22, 22, 0.14), 0 2px 6px rgba(22, 22, 22, 0.08);
+  --shadow-xl: 0 20px 48px rgba(22, 22, 22, 0.16);
+  --shadow-glow-primary: 0 0 0 4px rgba(31, 95, 224, 0.25), var(--shadow-md);
+  --shadow-focus-ring: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--primary-ring);
+  --shadow-ai: 0 0 0 1px var(--ai-border), 0 6px 20px rgba(109, 94, 252, 0.18); /* << focused AI input */
+
+  /* ---- Radii (Carbon: small) ---- */
+  --r-xs: 4px;                    /* control corner */
+  --r-sm: 8px;                    /* cards */
+  --r-md: 10px;                   /* overlays/menus */
+  --r-lg: 12px;                   /* modals */
+  --r-xl: 14px;
+  --r-2xl: 16px;
+  --r-3xl: 20px;
+  --r-4xl: 24px;
+  --r-pill: 9999px;
+
+  /* legacy radius aliases (kept for any shared components) */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* ---- Layout metrics (MetaM enterprise density) ---- */
+  --topnav-height: 60px;
+  --sidebar-width: 260px;
+  --control-height: 32px;         /* << MetaM default control (component numbers handled in Phase 2) */
+  --grid-row-height: 36px;        /* << MetaM table rows */
+
+  /* ---- Motion ---- */
+  --t-base: 150ms ease;
+  --t-slow: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --t-spring: 400ms cubic-bezier(0.4, 1.6, 0.5, 1);
+}
+
+html[data-fontsize="default"] {
+  --ics-root-font-size: 14px;
+  font-size: var(--ics-root-font-size);
+}
+
+html[data-fontsize="medium"] {
+  --ics-root-font-size: 15px;
+  font-size: var(--ics-root-font-size);
+}
+
+html[data-fontsize="large"] {
+  --ics-root-font-size: 16px;
+  --control-height: 36px;
+  --grid-row-height: 38px;
+  font-size: var(--ics-root-font-size);
+}
+
+[data-theme="default"] {
+  --primary: #1F5FE0;
+  --primary-foreground: #FFFFFF;
+  --primary-soft: rgba(31, 95, 224, 0.08);
+  --primary-soft-flat: #EEF3FD;
+  --primary-ring: #1F5FE0;
+  --brand-navy: #161616;
+  --background: #F4F4F4;
+  --background-soft: #FAFAFA;
+  --table-header: #E8E8E8;
+  --row-hover: #F4F4F4;
+}
+
+[data-theme="green"] {
+  --primary: #007A63;
+  --primary-foreground: #FFFFFF;
+  --primary-soft: rgba(0, 122, 99, 0.08);
+  --primary-soft-flat: #E5F7F3;
+  --primary-ring: #007A63;
+  --brand-navy: #103D36;
+  --background: #F3F7F5;
+  --background-soft: #F8FBFA;
+  --table-header: #E7F1EE;
+  --row-hover: #EEF6F3;
+}
+
+[data-theme="yellow"] {
+  --primary: #8D4F00;
+  --primary-foreground: #FFFFFF;
+  --primary-soft: rgba(141, 79, 0, 0.08);
+  --primary-soft-flat: #FFF4DB;
+  --primary-ring: #8D4F00;
+  --brand-navy: #2F2C26;
+  --background: #F7F5F0;
+  --background-soft: #FCFAF5;
+  --table-header: #F0E9DB;
+  --row-hover: #F7F0E3;
+}

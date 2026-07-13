@@ -79,14 +79,14 @@ export default function ProfileModal({ currentUser, forceChange = false, onClose
             }}
         >
             <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
-                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[#E4E7EC]">
-                    <h3 className="text-base font-bold text-[#101828]">
+                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[var(--border)]">
+                    <h3 className="text-base font-bold text-[var(--ink-900)]">
                         {forceChange ? '비밀번호 변경 (초기 비밀번호)' : '내 프로필'}
                     </h3>
                     {!forceChange && (
                         <button
                             onClick={onClose}
-                            className="w-7 h-7 grid place-items-center rounded-md text-[#667085] hover:bg-[#F2F4F7] cursor-pointer"
+                            className="w-7 h-7 grid place-items-center rounded-md text-[var(--ink-500)] hover:bg-[var(--muted)] cursor-pointer"
                         >
                             <X size={14} />
                         </button>
@@ -95,7 +95,7 @@ export default function ProfileModal({ currentUser, forceChange = false, onClose
 
                 {forceChange && (
                     <div className="px-6 pt-4">
-                        <div className="rounded-xl bg-[#FFF7E6] border border-[#FCD9A6] px-3.5 py-2.5 text-[12px] text-[#92400E] leading-relaxed">
+                        <div className="rounded-xl bg-[var(--warning-soft)] border border-[var(--warning-soft)] px-3.5 py-2.5 text-[12px] text-[var(--warning)] leading-relaxed">
                             보안을 위해 새 비밀번호로 변경해야 다음 작업을 계속할 수 있습니다.
                         </div>
                     </div>
@@ -104,19 +104,19 @@ export default function ProfileModal({ currentUser, forceChange = false, onClose
                 <div className="px-6 py-5 space-y-5">
                     {!forceChange && (
                         <div className="flex items-center gap-4">
-                            <div className="w-[72px] h-[72px] rounded-full bg-[#055AAF] text-white grid place-items-center font-bold text-2xl shrink-0">
+                            <div className="w-[72px] h-[72px] rounded-full bg-[var(--primary)] text-white grid place-items-center font-bold text-2xl shrink-0">
                                 {getInitial(currentUser?.display_name || currentUser?.login_id)}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <div className="text-[13px] font-semibold text-[#101828]">{currentUser?.display_name}</div>
-                                <div className="text-[11.5px] text-[#667085] font-mono mt-0.5">{currentUser?.login_id}</div>
+                                <div className="text-[13px] font-semibold text-[var(--ink-900)]">{currentUser?.display_name}</div>
+                                <div className="text-[11.5px] text-[var(--ink-500)] font-mono mt-0.5">{currentUser?.login_id}</div>
                             </div>
                         </div>
                     )}
 
                     {!forceChange && (
                         <div>
-                            <label className="block text-[11.5px] font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
+                            <label className="block text-[11.5px] font-semibold text-[var(--ink-500)] mb-1.5 uppercase tracking-wide">
                                 이름
                             </label>
                             <input
@@ -124,63 +124,63 @@ export default function ProfileModal({ currentUser, forceChange = false, onClose
                                 value={draftName}
                                 onChange={(e) => setDraftName(e.target.value)}
                                 maxLength={50}
-                                className="w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF]"
+                                className="w-full h-[40px] px-3 rounded-xl border border-[var(--border)] bg-white text-sm outline-none focus:border-[var(--primary)]"
                             />
                         </div>
                     )}
 
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                            <span className="text-[11.5px] font-semibold text-[#667085] uppercase tracking-wide">
+                            <span className="text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wide">
                                 비밀번호 {forceChange ? '변경' : '변경 (선택)'}
                             </span>
                         </div>
-                        <p className="text-[11.5px] text-[#667085] leading-relaxed">
+                        <p className="text-[11.5px] text-[var(--ink-500)] leading-relaxed">
                             {PASSWORD_POLICY_HINT}
                         </p>
                         <div>
-                            <label className="block text-[11px] font-semibold text-[#667085] mb-1">현재 비밀번호</label>
+                            <label className="block text-[11px] font-semibold text-[var(--ink-500)] mb-1">현재 비밀번호</label>
                             <input
                                 type="password"
                                 value={currentPw}
                                 onChange={(e) => setCurrentPw(e.target.value)}
                                 autoComplete="current-password"
-                                className="w-full h-[38px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF]"
+                                className="w-full h-[38px] px-3 rounded-xl border border-[var(--border)] bg-white text-sm outline-none focus:border-[var(--primary)]"
                             />
                         </div>
                         <div>
-                            <label className="block text-[11px] font-semibold text-[#667085] mb-1">새 비밀번호</label>
+                            <label className="block text-[11px] font-semibold text-[var(--ink-500)] mb-1">새 비밀번호</label>
                             <input
                                 type="password"
                                 value={newPw}
                                 onChange={(e) => setNewPw(e.target.value)}
                                 autoComplete="new-password"
-                                className={`w-full h-[38px] px-3 rounded-xl border bg-white text-sm outline-none focus:border-[#055AAF] ${
-                                    wantsPasswordChange && newPw && !newPwValid ? 'border-[#FDA29B]' : 'border-[#E4E7EC]'
+                                className={`w-full h-[38px] px-3 rounded-xl border bg-white text-sm outline-none focus:border-[var(--primary)] ${
+                                    wantsPasswordChange && newPw && !newPwValid ? 'border-[var(--destructive-soft)]' : 'border-[var(--border)]'
                                 }`}
                             />
                             {wantsPasswordChange && newPw && !newPwValid && (
-                                <p className="text-[11px] text-[#B42318] mt-1">규칙에 맞지 않습니다.</p>
+                                <p className="text-[11px] text-[var(--destructive)] mt-1">규칙에 맞지 않습니다.</p>
                             )}
                         </div>
                         <div>
-                            <label className="block text-[11px] font-semibold text-[#667085] mb-1">새 비밀번호 확인</label>
+                            <label className="block text-[11px] font-semibold text-[var(--ink-500)] mb-1">새 비밀번호 확인</label>
                             <input
                                 type="password"
                                 value={confirmPw}
                                 onChange={(e) => setConfirmPw(e.target.value)}
                                 autoComplete="new-password"
-                                className={`w-full h-[38px] px-3 rounded-xl border bg-white text-sm outline-none focus:border-[#055AAF] ${
-                                    wantsPasswordChange && confirmPw && !confirmOk ? 'border-[#FDA29B]' : 'border-[#E4E7EC]'
+                                className={`w-full h-[38px] px-3 rounded-xl border bg-white text-sm outline-none focus:border-[var(--primary)] ${
+                                    wantsPasswordChange && confirmPw && !confirmOk ? 'border-[var(--destructive-soft)]' : 'border-[var(--border)]'
                                 }`}
                             />
                             {wantsPasswordChange && confirmPw && !confirmOk && (
-                                <p className="text-[11px] text-[#B42318] mt-1">새 비밀번호가 일치하지 않습니다.</p>
+                                <p className="text-[11px] text-[var(--destructive)] mt-1">새 비밀번호가 일치하지 않습니다.</p>
                             )}
                         </div>
                     </div>
 
-                    {error && <p className="text-[12px] text-[#B42318]">{error}</p>}
+                    {error && <p className="text-[12px] text-[var(--destructive)]">{error}</p>}
                 </div>
 
                 <div className="px-6 pb-5 flex gap-2 justify-end">
@@ -188,7 +188,7 @@ export default function ProfileModal({ currentUser, forceChange = false, onClose
                         <button
                             type="button"
                             onClick={onClose}
-                            className="h-[38px] px-5 rounded-xl border border-[#E4E7EC] bg-white text-[13px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer"
+                            className="h-[38px] px-5 rounded-xl border border-[var(--border)] bg-white text-[13px] font-semibold text-[var(--ink-900)] hover:bg-[var(--muted)] cursor-pointer"
                         >
                             취소
                         </button>
@@ -197,7 +197,7 @@ export default function ProfileModal({ currentUser, forceChange = false, onClose
                         type="button"
                         onClick={onSave}
                         disabled={!canSave}
-                        className="h-[38px] px-5 rounded-xl bg-[#055AAF] text-white text-[13px] font-semibold hover:bg-[#1E70E0] shadow-sm disabled:opacity-50 cursor-pointer"
+                        className="h-[38px] px-5 rounded-xl bg-[var(--primary)] text-white text-[13px] font-semibold hover:bg-[var(--primary)] shadow-sm disabled:opacity-50 cursor-pointer"
                     >
                         {saving ? <Loader2 size={14} className="animate-spin inline" /> : '저장'}
                     </button>

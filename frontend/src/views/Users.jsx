@@ -20,18 +20,18 @@ function deptOptionsFor(orgId, current) {
     const cur = String(current || '').trim();
     return cur && !base.includes(cur) ? [cur, ...base] : base;
 }
-const FLD_SELECT = 'w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF] disabled:bg-[#F2F4F7] disabled:text-[#667085] cursor-pointer';
+const FLD_SELECT = 'w-full h-[40px] px-3 rounded-xl border border-[var(--border)] bg-white text-sm outline-none focus:border-[var(--primary)] disabled:bg-[var(--muted)] disabled:text-[var(--ink-500)] cursor-pointer';
 
 // ── 색 팔레트 (원본 BrandsSection AVATAR_PALETTE 동일) ────────────
 const AVATAR_PALETTE = [
-    { bg: '#dbeafe', fg: '#1d4ed8' },
-    { bg: '#dcfce7', fg: '#15803d' },
-    { bg: '#fef3c7', fg: '#b45309' },
-    { bg: '#fee2e2', fg: '#b91c1c' },
+    { bg: 'var(--primary-soft-flat)', fg: 'var(--primary)' },
+    { bg: 'var(--success-soft)', fg: 'var(--success)' },
+    { bg: 'var(--warning-soft)', fg: 'var(--warning)' },
+    { bg: 'var(--destructive-soft)', fg: 'var(--destructive)' },
     { bg: '#ede9fe', fg: '#6d28d9' },
     { bg: '#cffafe', fg: '#0e7490' },
     { bg: '#fce7f3', fg: '#be185d' },
-    { bg: '#f1f5f9', fg: '#475569' },
+    { bg: 'var(--background)', fg: 'var(--ink-700)' },
 ];
 
 function avatarPalette(name, id) {
@@ -106,7 +106,7 @@ function relativeTime(iso) {
 // ── 통계 카드 ────────────────────────────────────────────────
 function StatCard({ icon: Icon, tone, label, value, sub }) {
     return (
-        <div className="bg-white border border-[#E4E7EC] rounded-2xl px-5 py-4">
+        <div className="bg-white border border-[var(--border)] rounded-2xl px-5 py-4">
             <div className="flex items-center gap-2.5 mb-2">
                 <div
                     className={`w-7 h-7 rounded-full grid place-items-center ${tone}`}
@@ -114,12 +114,12 @@ function StatCard({ icon: Icon, tone, label, value, sub }) {
                 >
                     <Icon size={14} />
                 </div>
-                <span className="text-[12px] font-semibold text-[#475467]">{label}</span>
+                <span className="text-[12px] font-semibold text-[var(--ink-700)]">{label}</span>
             </div>
-            <div className="text-[28px] font-bold text-[#101828] leading-none tabular-nums">
+            <div className="text-[28px] font-bold text-[var(--ink-900)] leading-none tabular-nums">
                 {Number(value || 0).toLocaleString('ko-KR')}
             </div>
-            {sub && <div className="text-[11.5px] text-[#667085] mt-2">{sub}</div>}
+            {sub && <div className="text-[11.5px] text-[var(--ink-500)] mt-2">{sub}</div>}
         </div>
     );
 }
@@ -128,14 +128,14 @@ function StatCard({ icon: Icon, tone, label, value, sub }) {
 function RoleChip({ role }) {
     if (role === 'super_admin') {
         return (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#6d28d9]">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--cat-policy)]">
                 <ShieldCheck size={11} strokeWidth={2.5} />
                 최고관리자
             </span>
         );
     }
     return (
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1d4ed8]">
+        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--primary)]">
             <ShieldCheck size={11} strokeWidth={2.5} />
             관리자
         </span>
@@ -195,7 +195,7 @@ function RowMenu({ onEdit, onResetPw, onManageOrgs, onDelete, disabled }) {
             <button
                 type="button"
                 disabled
-                className="w-7 h-7 grid place-items-center rounded-md text-[#D0D5DD] cursor-not-allowed"
+                className="w-7 h-7 grid place-items-center rounded-md text-[var(--ink-300)] cursor-not-allowed"
             >
                 <MoreVertical size={14} />
             </button>
@@ -208,14 +208,14 @@ function RowMenu({ onEdit, onResetPw, onManageOrgs, onDelete, disabled }) {
                 ref={btnRef}
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="w-7 h-7 grid place-items-center rounded-md text-[#667085] hover:bg-[#F2F4F7] cursor-pointer"
+                className="w-7 h-7 grid place-items-center rounded-md text-[var(--ink-500)] hover:bg-[var(--muted)] cursor-pointer"
             >
                 <MoreVertical size={14} />
             </button>
             {open && createPortal(
                 <div
                     ref={menuRef}
-                    className="fixed z-[120] w-[140px] bg-white border border-[#E4E7EC] rounded-lg shadow-lg py-1"
+                    className="fixed z-[120] w-[140px] bg-white border border-[var(--border)] rounded-lg shadow-lg py-1"
                     style={{
                         top: coords.top,
                         left: coords.left,
@@ -227,7 +227,7 @@ function RowMenu({ onEdit, onResetPw, onManageOrgs, onDelete, disabled }) {
                             setOpen(false);
                             onEdit();
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-[#101828] hover:bg-[#F9FAFB] cursor-pointer"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-[var(--ink-900)] hover:bg-[var(--background-soft)] cursor-pointer"
                     >
                         <Pencil size={12} /> 편집
                     </button>
@@ -236,7 +236,7 @@ function RowMenu({ onEdit, onResetPw, onManageOrgs, onDelete, disabled }) {
                             setOpen(false);
                             onResetPw();
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-[#101828] hover:bg-[#F9FAFB] cursor-pointer"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-[var(--ink-900)] hover:bg-[var(--background-soft)] cursor-pointer"
                     >
                         <KeyRound size={12} /> 비번 재설정
                     </button>
@@ -246,18 +246,18 @@ function RowMenu({ onEdit, onResetPw, onManageOrgs, onDelete, disabled }) {
                                 setOpen(false);
                                 onManageOrgs();
                             }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-[#101828] hover:bg-[#F9FAFB] cursor-pointer"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-[var(--ink-900)] hover:bg-[var(--background-soft)] cursor-pointer"
                         >
                             <Building2 size={12} /> 소속 관리
                         </button>
                     )}
-                    <div className="my-1 border-t border-[#E4E7EC]" />
+                    <div className="my-1 border-t border-[var(--border)]" />
                     <button
                         onClick={() => {
                             setOpen(false);
                             onDelete();
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-[#D92D20] hover:bg-red-50 cursor-pointer"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-[var(--destructive)] hover:bg-[var(--destructive-soft)] cursor-pointer"
                     >
                         <Trash2 size={12} /> 삭제
                     </button>
@@ -276,14 +276,14 @@ function RowMenu({ onEdit, onResetPw, onManageOrgs, onDelete, disabled }) {
 function Fld({ label, required, children }) {
     return (
         <div>
-            <label className="block text-[11.5px] font-semibold text-[#667085] mb-1.5 uppercase tracking-wide">
-                {label} {required && <span className="text-[#D92D20]">*</span>}
+            <label className="block text-[11.5px] font-semibold text-[var(--ink-500)] mb-1.5 uppercase tracking-wide">
+                {label} {required && <span className="text-[var(--destructive)]">*</span>}
             </label>
             {children}
         </div>
     );
 }
-const FLD_INPUT = 'w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF] disabled:bg-[#F2F4F7] disabled:text-[#667085]';
+const FLD_INPUT = 'w-full h-[40px] px-3 rounded-xl border border-[var(--border)] bg-white text-sm outline-none focus:border-[var(--primary)] disabled:bg-[var(--muted)] disabled:text-[var(--ink-500)]';
 
 function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
     const isEdit = Boolean(initial.user_id);
@@ -302,9 +302,9 @@ function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
     });
     const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
     const ROLES = [
-        { key: 'super_admin', label: '슈퍼관리자', on: 'bg-purple-50 border-purple-200 text-purple-700' },
-        { key: 'admin', label: '관리자', on: 'bg-blue-50 border-blue-200 text-blue-700' },
-        { key: 'agent', label: '상담사', on: 'bg-teal-50 border-teal-200 text-teal-700' },
+        { key: 'super_admin', label: '슈퍼관리자', on: 'bg-[var(--cat-policy-soft)] border-[var(--cat-policy)] text-[var(--cat-policy)]' },
+        { key: 'admin', label: '관리자', on: 'bg-[var(--primary-soft)] border-[var(--primary)] text-[var(--primary)]' },
+        { key: 'agent', label: '상담사', on: 'bg-[var(--cat-service-soft)] border-[var(--cat-service)] text-[var(--cat-service)]' },
     ];
 
     return createPortal(
@@ -314,9 +314,9 @@ function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
-                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[#E4E7EC] shrink-0">
-                    <h3 className="text-base font-bold text-[#101828]">{isEdit ? '사용자 정보' : '새 사용자'}</h3>
-                    <button onClick={onClose} className="w-7 h-7 grid place-items-center rounded-md text-[#667085] hover:bg-[#F2F4F7] cursor-pointer">
+                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[var(--border)] shrink-0">
+                    <h3 className="text-base font-bold text-[var(--ink-900)]">{isEdit ? '사용자 정보' : '새 사용자'}</h3>
+                    <button onClick={onClose} className="w-7 h-7 grid place-items-center rounded-md text-[var(--ink-500)] hover:bg-[var(--muted)] cursor-pointer">
                         <X size={14} />
                     </button>
                 </div>
@@ -348,7 +348,7 @@ function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
                             <div className="flex gap-1.5">
                                 {ROLES.map((r) => (
                                     <button key={r.key} type="button" onClick={() => set('role', r.key)}
-                                        className={`flex-1 h-[40px] rounded-xl border text-[12.5px] font-semibold cursor-pointer ${draft.role === r.key ? r.on : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'}`}>
+                                        className={`flex-1 h-[40px] rounded-xl border text-[12.5px] font-semibold cursor-pointer ${draft.role === r.key ? r.on : 'bg-white border-[var(--border)] text-[var(--ink-500)] hover:bg-[var(--muted)]'}`}>
                                         {r.label}
                                     </button>
                                 ))}
@@ -358,7 +358,7 @@ function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
                             <div className="flex gap-2">
                                 {[true, false].map((v) => (
                                     <button key={String(v)} type="button" onClick={() => set('is_active', v)}
-                                        className={`flex-1 h-[40px] rounded-xl border text-[13px] font-semibold cursor-pointer ${draft.is_active === v ? (v ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700') : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'}`}>
+                                        className={`flex-1 h-[40px] rounded-xl border text-[13px] font-semibold cursor-pointer ${draft.is_active === v ? (v ? 'bg-[var(--success-soft)] border-[var(--success)] text-[var(--success)]' : 'bg-[var(--warning-soft)] border-[var(--warning)] text-[var(--warning)]') : 'bg-white border-[var(--border)] text-[var(--ink-500)] hover:bg-[var(--muted)]'}`}>
                                         {v ? '활성' : '비활성'}
                                     </button>
                                 ))}
@@ -381,7 +381,7 @@ function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
                                     <div className="flex gap-2">
                                         {['Y', 'N'].map((v) => (
                                             <button key={v} type="button" onClick={() => set('dup_login_yn', v)}
-                                                className={`flex-1 h-[40px] rounded-xl border text-[13px] font-semibold cursor-pointer ${draft.dup_login_yn === v ? (v === 'Y' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-[#F2F4F7] border-[#D0D5DD] text-[#475467]') : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'}`}>
+                                                className={`flex-1 h-[40px] rounded-xl border text-[13px] font-semibold cursor-pointer ${draft.dup_login_yn === v ? (v === 'Y' ? 'bg-[var(--primary-soft)] border-[var(--primary)] text-[var(--primary)]' : 'bg-[var(--muted)] border-[var(--border-strong)] text-[var(--ink-700)]') : 'bg-white border-[var(--border)] text-[var(--ink-500)] hover:bg-[var(--muted)]'}`}>
                                                 {v === 'Y' ? '허용 (Y)' : '불가 (N)'}
                                             </button>
                                         ))}
@@ -409,7 +409,7 @@ function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
                     </div>
 
                     {!isEdit && (
-                        <div className="mt-4 rounded-xl bg-[#F0F7FF] border border-[#CFE3FA] px-3.5 py-2.5 text-[12px] text-[#1E40AF] leading-relaxed">
+                        <div className="mt-4 rounded-xl bg-[var(--primary-soft-flat)] border border-[var(--primary-soft-border)] px-3.5 py-2.5 text-[12px] text-[var(--primary)] leading-relaxed">
                             <strong className="font-bold">초기 비밀번호가 자동 발급됩니다.</strong>{' '}
                             계정 생성 직후 안내되며, 사용자가 첫 로그인 시 본인이 직접 변경하도록 강제됩니다.
                             (입사일·내선 등 인사정보는 생성 후 편집에서 입력)
@@ -417,11 +417,11 @@ function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
                     )}
                 </div>
 
-                <div className="px-6 pb-5 pt-3 flex gap-2 justify-end border-t border-[#F2F4F7] shrink-0">
-                    <button type="button" onClick={onClose} className="h-[38px] px-5 rounded-xl border border-[#E4E7EC] bg-white text-[13px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer">취소</button>
+                <div className="px-6 pb-5 pt-3 flex gap-2 justify-end border-t border-[var(--muted)] shrink-0">
+                    <button type="button" onClick={onClose} className="h-[38px] px-5 rounded-xl border border-[var(--border)] bg-white text-[13px] font-semibold text-[var(--ink-900)] hover:bg-[var(--muted)] cursor-pointer">취소</button>
                     <button type="button" onClick={() => onSave(draft)}
                         disabled={!draft.login_id.trim() || !draft.display_name.trim() || saving}
-                        className="h-[38px] px-5 rounded-xl bg-[#055AAF] text-white text-[13px] font-semibold hover:bg-[#1E70E0] shadow-sm disabled:opacity-50 cursor-pointer">
+                        className="h-[38px] px-5 rounded-xl bg-[var(--primary)] text-white text-[13px] font-semibold hover:bg-[var(--primary)] shadow-sm disabled:opacity-50 cursor-pointer">
                         {saving ? <Loader2 size={14} className="animate-spin inline" /> : '저장'}
                     </button>
                 </div>
@@ -460,20 +460,20 @@ function BulkEditModal({ targets, currentUserId, brands, onSave, onClose, saving
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
-                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[#E4E7EC]">
-                    <h3 className="text-base font-bold text-[#101828]">
+                <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-[var(--border)]">
+                    <h3 className="text-base font-bold text-[var(--ink-900)]">
                         선택한 사용자 일괄 수정
                     </h3>
                     <button
                         onClick={onClose}
-                        className="w-7 h-7 grid place-items-center rounded-md text-[#667085] hover:bg-[#F2F4F7] cursor-pointer"
+                        className="w-7 h-7 grid place-items-center rounded-md text-[var(--ink-500)] hover:bg-[var(--muted)] cursor-pointer"
                     >
                         <X size={14} />
                     </button>
                 </div>
 
                 <div className="px-6 py-5 space-y-4">
-                    <div className="rounded-xl bg-[#F0F7FF] border border-[#CFE3FA] px-3.5 py-2.5 text-[12px] text-[#1E40AF] leading-relaxed">
+                    <div className="rounded-xl bg-[var(--primary-soft-flat)] border border-[var(--primary-soft-border)] px-3.5 py-2.5 text-[12px] text-[var(--primary)] leading-relaxed">
                         <strong className="font-bold">{targets.length}명</strong>을 한 번에 수정합니다.
                         변경할 항목만 체크하세요 — 체크하지 않은 항목은 기존 값이 유지됩니다.
                     </div>
@@ -493,9 +493,9 @@ function BulkEditModal({ targets, currentUserId, brands, onSave, onClose, saving
                                     className={`flex-1 h-[38px] rounded-xl border text-[13px] font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                                         draft.role === r
                                             ? r === 'super_admin'
-                                                ? 'bg-purple-50 border-purple-200 text-purple-700'
-                                                : 'bg-blue-50 border-blue-200 text-blue-700'
-                                            : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'
+                                                ? 'bg-[var(--cat-policy-soft)] border-[var(--cat-policy)] text-[var(--cat-policy)]'
+                                                : 'bg-[var(--primary-soft)] border-[var(--primary)] text-[var(--primary)]'
+                                            : 'bg-white border-[var(--border)] text-[var(--ink-500)] hover:bg-[var(--muted)]'
                                     }`}
                                 >
                                     {r === 'super_admin' ? '최고관리자' : '관리자'}
@@ -513,7 +513,7 @@ function BulkEditModal({ targets, currentUserId, brands, onSave, onClose, saving
                             value={draft.department || ''}
                             disabled={!enable.department}
                             onChange={(e) => set('department', e.target.value)}
-                            className="w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF] disabled:bg-[#F2F4F7] disabled:text-[#98A2B3] cursor-pointer disabled:cursor-not-allowed"
+                            className="w-full h-[40px] px-3 rounded-xl border border-[var(--border)] bg-white text-sm outline-none focus:border-[var(--primary)] disabled:bg-[var(--muted)] disabled:text-[var(--ink-400)] cursor-pointer disabled:cursor-not-allowed"
                         >
                             <option value="">미지정</option>
                             {deptOptionsFor(draft.org_id, draft.department).map((d) => (
@@ -537,7 +537,7 @@ function BulkEditModal({ targets, currentUserId, brands, onSave, onClose, saving
                                     return { ...d, org_id: nextOrg, department: opts.includes(d.department) ? d.department : '' };
                                 });
                             }}
-                            className="w-full h-[40px] px-3 rounded-xl border border-[#E4E7EC] bg-white text-sm outline-none focus:border-[#055AAF] disabled:bg-[#F2F4F7]"
+                            className="w-full h-[40px] px-3 rounded-xl border border-[var(--border)] bg-white text-sm outline-none focus:border-[var(--primary)] disabled:bg-[var(--muted)]"
                         >
                             <option value="">미지정</option>
                             {brands.map((b) => (
@@ -563,9 +563,9 @@ function BulkEditModal({ targets, currentUserId, brands, onSave, onClose, saving
                                     className={`flex-1 h-[38px] rounded-xl border text-[13px] font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                                         draft.is_active === v
                                             ? v
-                                                ? 'bg-green-50 border-green-200 text-green-700'
-                                                : 'bg-amber-50 border-amber-200 text-amber-700'
-                                            : 'bg-white border-[#E4E7EC] text-[#667085] hover:bg-[#F2F4F7]'
+                                                ? 'bg-[var(--success-soft)] border-[var(--success)] text-[var(--success)]'
+                                                : 'bg-[var(--warning-soft)] border-[var(--warning)] text-[var(--warning)]'
+                                            : 'bg-white border-[var(--border)] text-[var(--ink-500)] hover:bg-[var(--muted)]'
                                     }`}
                                 >
                                     {v ? '활성' : '비활성'}
@@ -575,7 +575,7 @@ function BulkEditModal({ targets, currentUserId, brands, onSave, onClose, saving
                     </BulkField>
 
                     {willExcludeSelf && (
-                        <div className="rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-[12px] text-amber-800 leading-relaxed">
+                        <div className="rounded-xl bg-[var(--warning-soft)] border border-[var(--warning)] px-3.5 py-2.5 text-[12px] text-[var(--warning)] leading-relaxed">
                             <strong className="font-bold">본인 계정은 제외됩니다.</strong>{' '}
                             역할/상태 일괄 변경에서 본인을 변경하면 락아웃 위험이 있어 자동으로 빠집니다.
                             본인 계정을 변경하려면 사용자 편집을 사용하세요.
@@ -585,14 +585,14 @@ function BulkEditModal({ targets, currentUserId, brands, onSave, onClose, saving
 
                 <div className="px-6 pb-5 flex gap-2 justify-end items-center">
                     {anyEnabled && (
-                        <span className="mr-auto text-[12px] text-[#667085]">
-                            대상 <strong className="text-[#101828] font-bold">{effectiveCount}명</strong>
+                        <span className="mr-auto text-[12px] text-[var(--ink-500)]">
+                            대상 <strong className="text-[var(--ink-900)] font-bold">{effectiveCount}명</strong>
                         </span>
                     )}
                     <button
                         type="button"
                         onClick={onClose}
-                        className="h-[38px] px-5 rounded-xl border border-[#E4E7EC] bg-white text-[13px] font-semibold text-[#101828] hover:bg-[#F2F4F7] cursor-pointer"
+                        className="h-[38px] px-5 rounded-xl border border-[var(--border)] bg-white text-[13px] font-semibold text-[var(--ink-900)] hover:bg-[var(--muted)] cursor-pointer"
                     >
                         취소
                     </button>
@@ -600,7 +600,7 @@ function BulkEditModal({ targets, currentUserId, brands, onSave, onClose, saving
                         type="button"
                         onClick={() => onSave({ enable, draft })}
                         disabled={!anyEnabled || effectiveCount === 0 || saving}
-                        className="h-[38px] px-5 rounded-xl bg-[#055AAF] text-white text-[13px] font-semibold hover:bg-[#1E70E0] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        className="h-[38px] px-5 rounded-xl bg-[var(--primary)] text-white text-[13px] font-semibold hover:bg-[var(--primary)] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                         {saving ? <Loader2 size={14} className="animate-spin inline" /> : '적용'}
                     </button>
@@ -620,10 +620,10 @@ function BulkField({ enabled, onToggle, label, children }) {
                     onChange={onToggle}
                     className="cursor-pointer"
                 />
-                <span className={`text-[11.5px] font-semibold uppercase tracking-wide ${enabled ? 'text-[#055AAF]' : 'text-[#98A2B3]'}`}>
+                <span className={`text-[11.5px] font-semibold uppercase tracking-wide ${enabled ? 'text-[var(--primary)]' : 'text-[var(--ink-500)]'}`}>
                     {label}
                 </span>
-                {!enabled && <span className="text-[11px] text-[#98A2B3] font-normal normal-case tracking-normal">변경 안 함</span>}
+                {!enabled && <span className="text-[11px] text-[var(--ink-500)] font-normal normal-case tracking-normal">변경 안 함</span>}
             </label>
             <div className={enabled ? '' : 'opacity-60'}>
                 {children}
@@ -650,30 +650,30 @@ function InitialPasswordModal({ user, initialPassword, onClose, mode }) {
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl overflow-hidden">
-                <div className="px-6 pt-5 pb-3 border-b border-[#E4E7EC]">
-                    <h3 className="text-base font-bold text-[#101828]">
+                <div className="px-6 pt-5 pb-3 border-b border-[var(--border)]">
+                    <h3 className="text-base font-bold text-[var(--ink-900)]">
                         {mode === 'reset' ? '비밀번호 재설정 완료' : '초기 비밀번호 발급'}
                     </h3>
                 </div>
                 <div className="px-6 py-5 space-y-3">
-                    <p className="text-[13px] text-[#475467] leading-relaxed">
-                        <strong className="text-[#101828]">{user?.display_name || user?.login_id}</strong> 님의
+                    <p className="text-[13px] text-[var(--ink-700)] leading-relaxed">
+                        <strong className="text-[var(--ink-900)]">{user?.display_name || user?.login_id}</strong> 님의
                         {mode === 'reset' ? ' 비밀번호가 초기화되었습니다.' : ' 계정이 생성되었습니다.'}
                         <br />사용자에게 아래 초기 비밀번호를 안전한 경로로 안내해 주세요.
                     </p>
-                    <div className="flex items-center gap-2 p-3 rounded-xl bg-[#F9FAFB] border border-[#E4E7EC]">
-                        <code className="flex-1 font-mono text-[14px] font-bold text-[#101828] tracking-wide">
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-[var(--background-soft)] border border-[var(--border)]">
+                        <code className="flex-1 font-mono text-[14px] font-bold text-[var(--ink-900)] tracking-wide">
                             {initialPassword}
                         </code>
                         <button
                             type="button"
                             onClick={copy}
-                            className="h-[30px] px-3 rounded-lg border border-[#E4E7EC] bg-white text-[12px] font-semibold text-[#475467] hover:bg-[#F2F4F7] cursor-pointer"
+                            className="h-[30px] px-3 rounded-lg border border-[var(--border)] bg-white text-[12px] font-semibold text-[var(--ink-700)] hover:bg-[var(--muted)] cursor-pointer"
                         >
                             {copied ? '복사됨' : '복사'}
                         </button>
                     </div>
-                    <p className="text-[11.5px] text-[#667085]">
+                    <p className="text-[11.5px] text-[var(--ink-500)]">
                         사용자는 첫 로그인 시 새 비밀번호로 변경해야 합니다.
                     </p>
                 </div>
@@ -681,7 +681,7 @@ function InitialPasswordModal({ user, initialPassword, onClose, mode }) {
                     <button
                         type="button"
                         onClick={onClose}
-                        className="h-[36px] px-5 rounded-xl bg-[#055AAF] text-white text-[13px] font-semibold hover:bg-[#1E70E0] cursor-pointer"
+                        className="h-[36px] px-5 rounded-xl bg-[var(--primary)] text-white text-[13px] font-semibold hover:bg-[var(--primary)] cursor-pointer"
                     >
                         확인
                     </button>
@@ -735,25 +735,25 @@ function MembershipsModal({ user, brands, onClose, onChanged }) {
         <div className="fixed inset-0 z-[130] flex items-center justify-center p-4" onClick={onClose}>
             <div className="absolute inset-0 bg-black/30" />
             <div className="relative bg-white rounded-2xl shadow-2xl w-[520px] max-w-[94vw] max-h-[88vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center gap-2 px-5 py-4 border-b border-[#E4E7EC]">
-                    <Building2 size={16} className="text-[#055AAF]" />
-                    <h3 className="text-base font-bold text-[#101828] truncate">소속 관리 · {user.display_name || user.login_id}</h3>
-                    <button type="button" onClick={onClose} className="ml-auto p-1 text-[#98A2B3] hover:text-[#475467]"><X size={18} /></button>
+                <div className="flex items-center gap-2 px-5 py-4 border-b border-[var(--border)]">
+                    <Building2 size={16} className="text-[var(--primary)]" />
+                    <h3 className="text-base font-bold text-[var(--ink-900)] truncate">소속 관리 · {user.display_name || user.login_id}</h3>
+                    <button type="button" onClick={onClose} className="ml-auto p-1 text-[var(--ink-400)] hover:text-[var(--ink-700)]"><X size={18} /></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                    {err && <div className="text-[13px] text-[#B42318]">{err}</div>}
+                    {err && <div className="text-[13px] text-[var(--destructive)]">{err}</div>}
                     <div className="space-y-2">
-                        {rows === null && <div className="text-[13px] text-[#98A2B3]">불러오는 중…</div>}
-                        {rows && rows.length === 0 && <div className="text-[13px] text-[#98A2B3]">소속이 없습니다.</div>}
+                        {rows === null && <div className="text-[13px] text-[var(--ink-400)]">불러오는 중…</div>}
+                        {rows && rows.length === 0 && <div className="text-[13px] text-[var(--ink-400)]">소속이 없습니다.</div>}
                         {rows && rows.map((r) => (
-                            <div key={r.trainee_id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[#E4E7EC]">
-                                <Building2 size={15} className="text-[#667085] shrink-0" />
+                            <div key={r.trainee_id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[var(--border)]">
+                                <Building2 size={15} className="text-[var(--ink-500)] shrink-0" />
                                 <div className="flex-1 min-w-0">
-                                    <div className="text-[13px] font-semibold text-[#101828] truncate">
+                                    <div className="text-[13px] font-semibold text-[var(--ink-900)] truncate">
                                         {r.org_name || `조직 ${r.org_id}`}
-                                        {r.is_active_membership && <span className="ml-2 text-[10px] font-bold text-[#5925DC]">현재 활성</span>}
+                                        {r.is_active_membership && <span className="ml-2 text-[10px] font-bold text-[var(--violet)]">현재 활성</span>}
                                     </div>
-                                    <div className="text-[11px] text-[#667085]">
+                                    <div className="text-[11px] text-[var(--ink-500)]">
                                         {ROLE_LABEL_M[r.role] || r.role}{r.department ? ` · ${r.department}` : ''}{r.status !== 'active' ? ` · ${r.status}` : ''}
                                     </div>
                                 </div>
@@ -762,17 +762,17 @@ function MembershipsModal({ user, brands, onClose, onChanged }) {
                                     onClick={() => remove(r.trainee_id)}
                                     disabled={busy || (rows && rows.length <= 1)}
                                     title={rows && rows.length <= 1 ? '마지막 소속은 제거할 수 없습니다(계정 삭제를 사용하세요)' : '소속 제거'}
-                                    className="p-1.5 rounded-md text-[#98A2B3] hover:text-[#D92D20] hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                                    className="p-1.5 rounded-md text-[var(--ink-400)] hover:text-[var(--destructive)] hover:bg-[var(--destructive-soft)] disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                                 >
                                     <Trash2 size={14} />
                                 </button>
                             </div>
                         ))}
                     </div>
-                    <div className="border-t border-[#F2F4F7] pt-4">
-                        <div className="text-[11px] font-bold uppercase tracking-wide text-[#98A2B3] mb-2">새 소속 추가</div>
+                    <div className="border-t border-[var(--border)] pt-4">
+                        <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--ink-400)] mb-2">새 소속 추가</div>
                         {availBrands.length === 0 ? (
-                            <div className="text-[13px] text-[#98A2B3]">추가할 수 있는 조직이 없습니다(모든 조직에 소속됨).</div>
+                            <div className="text-[13px] text-[var(--ink-400)]">추가할 수 있는 조직이 없습니다(모든 조직에 소속됨).</div>
                         ) : (
                             <>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -790,15 +790,15 @@ function MembershipsModal({ user, brands, onClose, onChanged }) {
                                         {deptOptionsFor(Number(orgId), dept).map((d) => <option key={d} value={d}>{d}</option>)}
                                     </select>
                                 </div>
-                                <button type="button" onClick={add} disabled={busy || !orgId} className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#055AAF] text-white text-[13px] font-semibold hover:opacity-90 disabled:opacity-50">
+                                <button type="button" onClick={add} disabled={busy || !orgId} className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-[13px] font-semibold hover:opacity-90 disabled:opacity-50">
                                     {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}소속 추가
                                 </button>
                             </>
                         )}
                     </div>
                 </div>
-                <div className="flex items-center px-5 py-4 border-t border-[#E4E7EC]">
-                    <button type="button" onClick={onClose} className="ml-auto px-3.5 py-2 rounded-lg border border-[#E4E7EC] text-[13px] font-semibold text-[#475467] hover:bg-[#F9FAFB]">닫기</button>
+                <div className="flex items-center px-5 py-4 border-t border-[var(--border)]">
+                    <button type="button" onClick={onClose} className="ml-auto px-3.5 py-2 rounded-lg border border-[var(--border)] text-[13px] font-semibold text-[var(--ink-700)] hover:bg-[var(--background-soft)]">닫기</button>
                 </div>
             </div>
         </div>,
@@ -824,42 +824,42 @@ function LoginHistoryTab() {
     if (loading) {
         return (
             <div className="flex justify-center py-12">
-                <Loader2 className="h-5 w-5 animate-spin text-[#667085]" />
+                <Loader2 className="h-5 w-5 animate-spin text-[var(--ink-500)]" />
             </div>
         );
     }
 
     return (
-        <div className="bg-white border border-[#E4E7EC] rounded-xl overflow-hidden">
+        <div className="bg-white border border-[var(--border)] rounded-xl overflow-hidden">
             <table className="w-full text-sm">
                 <thead>
-                    <tr className="border-b border-[#E4E7EC] bg-[#F9FAFB]">
-                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[#667085] uppercase tracking-wider">로그인 시각</th>
-                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[#667085] uppercase tracking-wider">사용자</th>
-                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[#667085] uppercase tracking-wider">역할</th>
-                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[#667085] uppercase tracking-wider">IP</th>
+                    <tr className="border-b border-[var(--border)] bg-[var(--background-soft)]">
+                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">로그인 시각</th>
+                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">사용자</th>
+                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">역할</th>
+                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">IP</th>
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-[#E4E7EC]">
+                <tbody className="divide-y divide-[var(--border)]">
                     {rows.length === 0 && (
                         <tr>
-                            <td colSpan={4} className="px-4 py-10 text-center text-sm text-[#667085]">로그인 이력이 없습니다</td>
+                            <td colSpan={4} className="px-4 py-10 text-center text-sm text-[var(--ink-500)]">로그인 이력이 없습니다</td>
                         </tr>
                     )}
                     {rows.map((r) => (
-                        <tr key={r.audit_id} className="hover:bg-[#F9FAFB]">
-                            <td className="px-4 py-3 text-[12.5px] text-[#101828] tabular-nums">{fmtDateTime(r.created_at)}</td>
+                        <tr key={r.audit_id} className="hover:bg-[var(--background-soft)]">
+                            <td className="px-4 py-3 text-[12.5px] text-[var(--ink-900)] tabular-nums">{fmtDateTime(r.created_at)}</td>
                             <td className="px-4 py-3">
                                 <div className="flex items-center gap-2.5">
                                     <Avatar name={r.display_name || r.login_id} id={r.user_id} size={28} />
                                     <div>
-                                        <div className="text-[13px] font-semibold text-[#101828]">{r.display_name || '—'}</div>
-                                        <div className="text-[11.5px] text-[#667085] font-mono">{r.login_id}</div>
+                                        <div className="text-[13px] font-semibold text-[var(--ink-900)]">{r.display_name || '—'}</div>
+                                        <div className="text-[11.5px] text-[var(--ink-500)] font-mono">{r.login_id}</div>
                                     </div>
                                 </div>
                             </td>
                             <td className="px-4 py-3"><RoleChip role={r.role} /></td>
-                            <td className="px-4 py-3 text-[11.5px] text-[#98A2B3] tabular-nums">{r.client_ip || '—'}</td>
+                            <td className="px-4 py-3 text-[11.5px] text-[var(--ink-400)] tabular-nums">{r.client_ip || '—'}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -1097,16 +1097,16 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
 
             {loading ? (
                 <div className="flex justify-center py-12">
-                    <Loader2 className="h-5 w-5 animate-spin text-[#667085]" />
+                    <Loader2 className="h-5 w-5 animate-spin text-[var(--ink-500)]" />
                 </div>
             ) : (
                 <div className="space-y-4">
                     {/* 통계 4카드 */}
                     <div className="grid grid-cols-4 gap-3.5">
-                        <StatCard icon={UsersIcon} tone="bg-blue-50 text-blue-600" label="총 사용자" value={totalUsers} sub={`등록된 전체 관리자`} />
-                        <StatCard icon={Activity} tone="bg-green-50 text-green-600" label="활성 사용자" value={activeUsers} sub={`${activeRate}%의 사용자가 활성 상태`} />
-                        <StatCard icon={UserMinus} tone="bg-amber-50 text-amber-700" label="비활성 사용자" value={inactiveUsers} sub={`비활성 처리된 계정`} />
-                        <StatCard icon={ShieldAlert} tone="bg-purple-50 text-purple-700" label="최고관리자" value={superAdmins} sub={`전체의 ${superRate}%`} />
+                        <StatCard icon={UsersIcon} tone="bg-[var(--primary-soft)] text-[var(--primary)]" label="총 사용자" value={totalUsers} sub={`등록된 전체 관리자`} />
+                        <StatCard icon={Activity} tone="bg-[var(--success-soft)] text-[var(--success)]" label="활성 사용자" value={activeUsers} sub={`${activeRate}%의 사용자가 활성 상태`} />
+                        <StatCard icon={UserMinus} tone="bg-[var(--warning-soft)] text-[var(--warning)]" label="비활성 사용자" value={inactiveUsers} sub={`비활성 처리된 계정`} />
+                        <StatCard icon={ShieldAlert} tone="bg-[var(--cat-policy-soft)] text-[var(--cat-policy)]" label="최고관리자" value={superAdmins} sub={`전체의 ${superRate}%`} />
                     </div>
 
                     {/* 서브 탭 */}
@@ -1115,14 +1115,14 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                             onClick={() => setTab('users')}
                             className={`inline-flex items-center gap-1.5 h-[30px] px-3 rounded-full text-[12.5px] font-semibold transition-colors cursor-pointer ${
                                 tab === 'users'
-                                    ? 'bg-[#E3F0FF] text-[#055AAF]'
-                                    : 'bg-white border border-[#E4E7EC] text-[#667085] hover:bg-[#F9FAFB]'
+                                    ? 'bg-[var(--primary-soft-flat)] text-[var(--primary)]'
+                                    : 'bg-white border border-[var(--border)] text-[var(--ink-500)] hover:bg-[var(--background-soft)]'
                             }`}
                         >
                             <UsersIcon size={12} />
                             사용자
                             <span className={`ml-0.5 inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded-full text-[10.5px] font-bold ${
-                                tab === 'users' ? 'bg-[#055AAF] text-white' : 'bg-[#F2F4F7] text-[#667085]'
+                                tab === 'users' ? 'bg-[var(--primary)] text-white' : 'bg-[var(--muted)] text-[var(--ink-500)]'
                             }`}>
                                 {totalUsers}
                             </span>
@@ -1131,30 +1131,30 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                             onClick={() => setTab('history')}
                             className={`inline-flex items-center gap-1.5 h-[30px] px-3 rounded-full text-[12.5px] font-semibold transition-colors cursor-pointer ${
                                 tab === 'history'
-                                    ? 'bg-[#E3F0FF] text-[#055AAF]'
-                                    : 'bg-white border border-[#E4E7EC] text-[#667085] hover:bg-[#F9FAFB]'
+                                    ? 'bg-[var(--primary-soft-flat)] text-[var(--primary)]'
+                                    : 'bg-white border border-[var(--border)] text-[var(--ink-500)] hover:bg-[var(--background-soft)]'
                             }`}
                         >
                             <KeyRound size={12} />
                             로그인 이력
-                            <span className="ml-0.5 text-[#98A2B3]">—</span>
+                            <span className="ml-0.5 text-[var(--ink-400)]">—</span>
                         </button>
                     </div>
 
-                    {error && <p className="text-sm text-[#D92D20]">{error}</p>}
+                    {error && <p className="text-sm text-[var(--destructive)]">{error}</p>}
 
                     {tab === 'users' ? (
                         <>
                             {/* 필터 / 액션 바 */}
                             <div className="flex items-center gap-2 flex-wrap">
                                 <div className="relative">
-                                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#98A2B3]" />
+                                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-400)]" />
                                     <input
                                         type="text"
                                         placeholder="이름 · ID · 부서 검색"
                                         value={search}
                                         onChange={(e) => setSearch(e.target.value)}
-                                        className="h-[36px] w-[280px] pl-8 pr-3 rounded-full border border-[#E4E7EC] bg-white text-[12.5px] outline-none focus:border-[#055AAF]"
+                                        className="h-[36px] w-[280px] pl-8 pr-3 rounded-full border border-[var(--border)] bg-white text-[12.5px] outline-none focus:border-[var(--primary)]"
                                     />
                                 </div>
                                 <DropdownLabel label="상태" value={statusFilter} onChange={setStatusFilter}
@@ -1181,14 +1181,14 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                     <button
                                         disabled
                                         title="추후 지원"
-                                        className="inline-flex items-center gap-1.5 h-[36px] px-4 rounded-full border border-[#E4E7EC] bg-white text-[12.5px] font-semibold text-[#98A2B3] cursor-not-allowed"
+                                        className="inline-flex items-center gap-1.5 h-[36px] px-4 rounded-full border border-[var(--border)] bg-white text-[12.5px] font-semibold text-[var(--ink-500)] cursor-not-allowed"
                                     >
                                         <Upload size={12} /> CSV 업로드
                                     </button>
                                     {isSuperAdmin && (
                                         <button
                                             onClick={() => setModalState({ open: true, target: null })}
-                                            className="inline-flex items-center gap-1.5 h-[36px] px-4 rounded-full bg-[#055AAF] text-white text-[12.5px] font-semibold hover:bg-[#1E70E0] shadow-sm cursor-pointer"
+                                            className="inline-flex items-center gap-1.5 h-[36px] px-4 rounded-full bg-[var(--primary)] text-white text-[12.5px] font-semibold hover:bg-[var(--primary)] shadow-sm cursor-pointer"
                                         >
                                             <Plus size={13} /> 사용자 추가
                                         </button>
@@ -1199,11 +1199,11 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                             {/* 선택 액션바 — 선택 시에만 노출, super_admin 만 일괄 수정 가능.
                                 현재 필터에 가려진 선택 항목이 있으면 사용자에게 명시. */}
                             {selected.size > 0 && (
-                                <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[#E3F0FF] border border-[#CFE3FA]">
-                                    <span className="text-[12.5px] text-[#055AAF]">
+                                <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[var(--primary-soft-flat)] border border-[var(--primary-soft-border)]">
+                                    <span className="text-[12.5px] text-[var(--primary)]">
                                         <strong className="font-bold">{visibleSelectedIds.length}명</strong> 선택됨
                                         {hiddenSelectedCount > 0 && (
-                                            <span className="ml-1.5 text-[#667085] font-normal">
+                                            <span className="ml-1.5 text-[var(--ink-500)] font-normal">
                                                 (필터로 가려진 {hiddenSelectedCount}명 제외)
                                             </span>
                                         )}
@@ -1213,14 +1213,14 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                             <button
                                                 onClick={() => setBulkOpen(true)}
                                                 disabled={visibleSelectedIds.length === 0}
-                                                className="inline-flex items-center gap-1.5 h-[32px] px-3.5 rounded-full bg-[#055AAF] text-white text-[12.5px] font-semibold hover:bg-[#1E70E0] shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="inline-flex items-center gap-1.5 h-[32px] px-3.5 rounded-full bg-[var(--primary)] text-white text-[12.5px] font-semibold hover:bg-[var(--primary)] shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 <Pencil size={12} /> 일괄 수정
                                             </button>
                                         )}
                                         <button
                                             onClick={() => setSelected(new Set())}
-                                            className="inline-flex items-center gap-1.5 h-[32px] px-3.5 rounded-full border border-[#CFE3FA] bg-white text-[12.5px] font-semibold text-[#055AAF] hover:bg-[#F0F7FF] cursor-pointer"
+                                            className="inline-flex items-center gap-1.5 h-[32px] px-3.5 rounded-full border border-[var(--primary-soft-border)] bg-white text-[12.5px] font-semibold text-[var(--primary)] hover:bg-[var(--primary-soft-flat)] cursor-pointer"
                                         >
                                             선택 해제
                                         </button>
@@ -1229,10 +1229,10 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                             )}
 
                             {/* 테이블 */}
-                            <div className="bg-white border border-[#E4E7EC] rounded-xl overflow-hidden">
+                            <div className="bg-white border border-[var(--border)] rounded-xl overflow-hidden">
                                 <table className="w-full text-sm">
                                     <thead>
-                                        <tr className="border-b border-[#E4E7EC]">
+                                        <tr className="border-b border-[var(--border)]">
                                             <th className="px-4 py-3 w-[44px]">
                                                 <input
                                                     type="checkbox"
@@ -1241,18 +1241,18 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                                     className="cursor-pointer"
                                                 />
                                             </th>
-                                            <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[#667085]">사용자</th>
-                                            <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[#667085]">부서</th>
-                                            <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[#667085]">상태</th>
-                                            <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[#667085]">마지막 로그인</th>
-                                            <th className="px-4 py-3 text-right text-[11.5px] font-semibold text-[#667085] pr-6">로그인</th>
+                                            <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)]">사용자</th>
+                                            <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)]">부서</th>
+                                            <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)]">상태</th>
+                                            <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)]">마지막 로그인</th>
+                                            <th className="px-4 py-3 text-right text-[11.5px] font-semibold text-[var(--ink-500)] pr-6">로그인</th>
                                             <th className="px-4 py-3 w-[48px]"></th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-[#E4E7EC]">
+                                    <tbody className="divide-y divide-[var(--border)]">
                                         {filtered.length === 0 && (
                                             <tr>
-                                                <td colSpan={7} className="px-4 py-10 text-center text-sm text-[#667085]">
+                                                <td colSpan={7} className="px-4 py-10 text-center text-sm text-[var(--ink-500)]">
                                                     {search || statusFilter !== 'all' || roleFilter !== 'all'
                                                         ? '검색 결과가 없습니다'
                                                         : '사용자가 없습니다'}
@@ -1269,7 +1269,7 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                             return (
                                                 <tr
                                                     key={u.user_id}
-                                                    className={`hover:bg-[#F9FAFB] ${isSuperAdmin ? 'cursor-pointer' : ''}`}
+                                                    className={`hover:bg-[var(--background-soft)] ${isSuperAdmin ? 'cursor-pointer' : ''}`}
                                                     onClick={isSuperAdmin ? () => setModalState({ open: true, target: u }) : undefined}
                                                 >
                                                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1285,38 +1285,38 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                                                             <Avatar name={u.display_name} id={u.user_id} size={36} />
                                                             <div className="min-w-0">
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className="text-[13px] font-semibold text-[#101828]">{u.display_name}</span>
+                                                                    <span className="text-[13px] font-semibold text-[var(--ink-900)]">{u.display_name}</span>
                                                                     <RoleChip role={u.role} />
                                                                 </div>
-                                                                <div className="text-[11.5px] text-[#667085] font-mono mt-0.5 truncate">
+                                                                <div className="text-[11.5px] text-[var(--ink-500)] font-mono mt-0.5 truncate">
                                                                     {u.login_id}
                                                                 </div>
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td className="px-4 py-3 text-[12.5px] text-[#475467]">
+                                                    <td className="px-4 py-3 text-[12.5px] text-[var(--ink-700)]">
                                                         {u.department || '—'}
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        <span className="inline-flex items-center gap-1.5 text-[12px] text-[#475467]">
-                                                            <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                                        <span className="inline-flex items-center gap-1.5 text-[12px] text-[var(--ink-700)]">
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-[var(--success)]' : 'bg-[var(--ink-500)]'}`} />
                                                             {active ? '활성' : '비활성'}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         {rel ? (
                                                             <>
-                                                                <div className="text-[12.5px] font-semibold text-[#101828]">{rel}</div>
-                                                                <div className="text-[11px] text-[#667085] mt-0.5 tabular-nums">{abs}</div>
+                                                                <div className="text-[12.5px] font-semibold text-[var(--ink-900)]">{rel}</div>
+                                                                <div className="text-[11px] text-[var(--ink-500)] mt-0.5 tabular-nums">{abs}</div>
                                                             </>
                                                         ) : (
                                                             <>
-                                                                <div className="text-[12.5px] font-semibold text-[#98A2B3]">—</div>
-                                                                <div className="text-[11px] text-[#667085] mt-0.5 tabular-nums">{abs}</div>
+                                                                <div className="text-[12.5px] font-semibold text-[var(--ink-400)]">—</div>
+                                                                <div className="text-[11px] text-[var(--ink-500)] mt-0.5 tabular-nums">{abs}</div>
                                                             </>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3 text-right tabular-nums text-[13px] font-semibold text-[#101828] pr-6">
+                                                    <td className="px-4 py-3 text-right tabular-nums text-[13px] font-semibold text-[var(--ink-900)] pr-6">
                                                         {Number(u.login_count || 0).toLocaleString('ko-KR')}
                                                     </td>
                                                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
@@ -1403,12 +1403,12 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
 
 function DropdownLabel({ label, value, onChange, options }) {
     return (
-        <label className="inline-flex items-center h-[36px] pl-3 pr-2 rounded-full border border-[#E4E7EC] bg-white text-[12.5px] text-[#475467] gap-1.5 cursor-pointer">
-            <span className="text-[#667085]">{label}:</span>
+        <label className="inline-flex items-center h-[36px] pl-3 pr-2 rounded-full border border-[var(--border)] bg-white text-[12.5px] text-[var(--ink-700)] gap-1.5 cursor-pointer">
+            <span className="text-[var(--ink-500)]">{label}:</span>
             <select
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
-                className="appearance-none bg-transparent outline-none font-semibold text-[#101828] pr-4 cursor-pointer"
+                className="appearance-none bg-transparent outline-none font-semibold text-[var(--ink-900)] pr-4 cursor-pointer"
                 style={{ backgroundImage: 'none' }}
             >
                 {options.map((o) => (
@@ -1417,7 +1417,7 @@ function DropdownLabel({ label, value, onChange, options }) {
                     </option>
                 ))}
             </select>
-            <ChevronDown size={12} className="text-[#98A2B3] -ml-3 pointer-events-none" />
+            <ChevronDown size={12} className="text-[var(--ink-400)] -ml-3 pointer-events-none" />
         </label>
     );
 }
