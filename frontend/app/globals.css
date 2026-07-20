@@ -269,16 +269,14 @@ body {
   object-fit: contain;
 }
 
+/* ics-3.0 top-header 와 동일한 "MetaM" 워드마크(색은 인라인 span: Meta #525252 / M var(--primary)). */
 .app-nav-wordmark {
-  font-family: 'Moneygraphy Rounded', var(--font-display);
-  font-weight: 600;
-  font-size: 14.5px;
-  color: var(--text-strong);
-  opacity: 0.85;
-  letter-spacing: -0.005em;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   line-height: 1;
-  margin-top: 1px;
   white-space: nowrap;
+  user-select: none;
 }
 
 .app-nav-dev-badge {
@@ -310,44 +308,46 @@ body {
   gap: 6px;
 }
 
+/* ics-3.0 top-header 시계와 동일 — primary·mono·tabular. 값은 세션 카운트다운. */
 .app-nav-timer {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 4px;
-  font-size: 13px;
+  gap: 5px;
+  font-family: var(--font-mono, ui-monospace, 'SFMono-Regular', Menlo, monospace);
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--primary);
   font-variant-numeric: tabular-nums;
 }
 
+/* ics-3.0 top-header 로그아웃과 동일 — primary 아웃라인. */
 .app-nav-logout {
   height: 32px;
-  padding: 0 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border-strong);
+  padding: 0 12px;
+  border-radius: var(--r-xs, 4px);
+  border: 1px solid var(--primary);
   background: white;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
-  color: var(--text-strong);
+  color: var(--primary);
   cursor: pointer;
   transition: var(--transition);
 }
 
 .app-nav-logout:hover {
-  background: var(--bg-subtle);
+  background: var(--primary-soft, rgba(5, 90, 175, 0.08));
 }
 
+/* ics-3.0 top-header 사용자 알약칩과 동일 — background-soft + border, rounded-full. */
 .app-nav-user {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   height: 32px;
-  padding: 0 10px 0 4px;
-  border-radius: 8px;
-  border: 1px solid var(--border-strong);
-  background: white;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
 }
 
 .app-nav-user-button {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock3, ShieldCheck, Shield, Headset, Home, ChevronRight } from 'lucide-react';
+import { Clock, Home, ChevronRight } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import OrgSwitcher from './OrgSwitcher';
 /* SAMPLE_UPLOAD_FEATURE */ import SampleUploadModal from './SampleUploadModal';
@@ -15,14 +15,9 @@ function formatRemainingTime(ms) {
     const mm = Math.floor((totalSeconds % 3600) / 60);
     const ss = totalSeconds % 60;
     const pad = (n) => String(n).padStart(2, '0');
-    return `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+    // ics-3.0 top-header 시계와 동일한 표기(HH시 MM분 SS초). 값은 세션 남은시간 카운트다운.
+    return `${pad(hh)}시 ${pad(mm)}분 ${pad(ss)}초`;
 }
-
-const ROLE_META = {
-    super_admin: { label: '최고관리자', Icon: ShieldCheck, variant: 'super' },
-    admin:       { label: '관리자',     Icon: Shield,      variant: 'admin' },
-    agent:       { label: '상담사',     Icon: Headset,     variant: 'agent' },
-};
 
 // 탭 → 라벨 (사이드바와 동일). 상단바 브레드크럼 표시용.
 const TAB_LABELS = {
@@ -81,21 +76,7 @@ function buildCrumbs(activeTab, role, detailOrigin, onNavTab, settingsSection) {
     return label ? [{ label }] : [];
 }
 
-function initialsOf(user) {
-    if (!user) return '?';
-    const src = String(user.display_name || user.login_id || '').trim();
-    if (!src) return '?';
-    // 한글: 첫 글자, 영문: 단어 최대 2개의 첫 글자
-    const isHangul = /[가-힣]/.test(src);
-    if (isHangul) return src.slice(0, 1);
-    const parts = src.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    return src.slice(0, 2).toUpperCase();
-}
-
-const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, activeTab, detailOrigin, settingsSection, onNavTab, onSampleUploaded }) => {
-    const roleMeta = user?.role ? ROLE_META[user.role] : null;
-    const displayName = user?.display_name || user?.login_id || '';
+const Nav = ({ onHomeClick, onLogout, remainingMs, isDev, user, activeTab, detailOrigin, settingsSection, onNavTab, onSampleUploaded }) => {
     const crumbs = buildCrumbs(activeTab, user?.role, detailOrigin, onNavTab, settingsSection);
     return (
         <nav className="app-nav">
@@ -106,8 +87,11 @@ const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, 
                     className="app-nav-brand"
                     aria-label="홈으로 이동"
                 >
-                    <img src="/metam_logo.png" alt="메타엠 로고" className="app-nav-logo" />
-                    <span className="app-nav-wordmark">Meta-Trustguard</span>
+                    {/* ics-3.0 top-header 와 동일한 "MetaM" 워드마크 */}
+                    <span className="app-nav-wordmark">
+                        <span style={{ color: '#525252' }}>Meta</span>
+                        <span style={{ color: 'var(--primary)' }}>M</span>
+                    </span>
                     {isDev && <span className="app-nav-dev-badge">DEV</span>}
                 </button>
 
@@ -150,26 +134,9 @@ const Nav = ({ onHomeClick, onLogout, onProfileClick, remainingMs, isDev, user, 
                         )}
                         {user && <OrgSwitcher />}
                         {user && <NotificationBell />}
-                        {user && (
-                            <button
-                                type="button"
-                                onClick={onProfileClick}
-                                className="app-nav-user app-nav-user-button"
-                                title={onProfileClick ? '내 프로필 열기' : (user.login_id || '')}
-                            >
-                                <span className="app-nav-user-avatar">{initialsOf(user)}</span>
-                                <span className="app-nav-user-name">{displayName}</span>
-                                {roleMeta && (
-                                    <span className={`app-nav-user-role app-nav-user-role-${roleMeta.variant}`}>
-                                        <roleMeta.Icon size={11} />
-                                        {roleMeta.label}
-                                    </span>
-                                )}
-                            </button>
-                        )}
                         {remainingMs != null && (
                             <div className="app-nav-timer">
-                                <Clock3 size={14} />
+                                <Clock size={14} />
                                 <span>{formatRemainingTime(remainingMs)}</span>
                             </div>
                         )}
