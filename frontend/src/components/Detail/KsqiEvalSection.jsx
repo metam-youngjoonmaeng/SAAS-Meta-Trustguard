@@ -1,10 +1,11 @@
 import React from 'react';
-import { Gauge } from 'lucide-react';
+import { Gauge, MessageSquare } from 'lucide-react';
 
 // KSQI 평가 — 브랜드 루브릭(단일 100점 축)과 별개로 병렬 실행되는 독립 평가 축.
 // 두 영역(A 서비스품질 / B 공감) 각각 100점 환산 + 우수/미달 판정. 순수 표시 전용(read-only).
 // 데이터 계약: evaluation.ksqi_report — { area_a, area_b, overall, items[12], summary }.
-// 항목 표는 원본 평가표의 '대분류(구분)'별로 묶어 소계를 함께 표시한다.
+// 항목 표 컬럼: 구분(영역·대분류+소계) / 평가항목 / 평가 이유 / 평가 발화 / AI평가.
+// 평가 발화 클릭 시 onQuoteClick(quote) 로 STT 전사 해당 턴으로 이동(상세 체크리스트와 동일 UX).
 
 // 항목번호 → 대분류(구분). 원본 KSQI STT 평가표 기준. 리포트 item 에 category 가 없으면(구버전) 이 맵으로 파생.
 const KSQI_CATEGORY_BY_NUMBER = {
@@ -104,13 +105,51 @@ function buildAreaGroups(items) {
         .filter(Boolean);
 }
 
+// 평가 발화 셀 — 근거 인용을 발화별로 클릭 가능하게 렌더. 클릭 시 onQuoteClick(quote).
+function EvidenceCell({ evidence, onQuoteClick }) {
+    if (!evidence.length) return <span className="text-[#98A2B3]">-</span>;
+    const clickable = typeof onQuoteClick === 'function';
+    return (
+        <div className="flex flex-col gap-1 group/utt">
+            {evidence.map((ev, qi) => {
+                const quote = ev?.quote ?? '';
+                return (
+                    <span
+                        key={qi}
+                        onClick={clickable && quote ? (e) => onQuoteClick(quote, e) : undefined}
+                        className={`flex items-start gap-1.5 rounded px-0.5 transition-colors ${
+                            clickable && quote
+                                ? 'cursor-pointer hover:bg-[#F2F4F7] hover:text-[#055AAF]'
+                                : ''
+                        }`}
+                    >
+                        <span className="shrink-0 mt-0.5 text-[10px] font-bold text-[#667085] bg-[#F2F4F7] rounded px-1 py-px tabular-nums">
+                            {qi + 1}
+                        </span>
+                        <span className="text-[#475467]">
+                            {ev?.speaker && <span className="text-[#98A2B3] mr-1">{ev.speaker}:</span>}
+                            <span className="italic">"{quote}"</span>
+                        </span>
+                    </span>
+                );
+            })}
+            {clickable && (
+                <span className="text-[10.5px] text-[#98A2B3] opacity-0 group-hover/utt:opacity-100 transition-opacity flex items-center gap-1 mt-0.5">
+                    <MessageSquare size={10} /> 클릭하여 상담 텍스트 확인
+                </span>
+            )}
+        </div>
+    );
+}
+
 /**
- * KSQI 평가 섹션 — 영역(A/B) 요약 카드 + 대분류(구분)별 소계 그룹 항목표.
+ * KSQI 평가 섹션 — 영역(A/B) 요약 카드 + 대분류(구분)별 항목표.
  * props:
  *   report: { area_a, area_b, overall, items[], summary } | null
+ *   onQuoteClick?: (quote: string, e: MouseEvent) => void  — 평가 발화 클릭 시 STT 전사 팝오버(클릭 위치 앵커) 열기(선택).
  * report 가 없으면(null/undefined) 아무것도 렌더하지 않음 → 비-KSQI 브랜드에서 완전 무영향.
  */
-export default function KsqiEvalSection({ report }) {
+export default function KsqiEvalSection({ report, onQuoteClick }) {
     if (!report) return null;
 
     const items = Array.isArray(report.items) ? report.items : [];
@@ -141,16 +180,16 @@ export default function KsqiEvalSection({ report }) {
                 <AreaCard label="B 공감" area={report.area_b} />
             </div>
 
-            {/* 항목 표 — 영역(A→B) + 대분류(구분)별 소계 그룹 */}
+            {/* 항목 표 — 구분(영역·대분류) / 평가항목 / 평가 이유 / 평가 발화 / AI평가 */}
             <div className="rounded-[10px] border border-[#E4E7EC] bg-white overflow-x-auto">
-                <table className="w-full min-w-[680px] text-left border-collapse">
+                <table className="w-full min-w-[720px] text-left border-collapse">
                     <thead>
                         <tr>
+                            <th className={`${th} w-28`}>구분</th>
                             <th className={`${th} w-32`}>평가항목</th>
-                            <th className={`${th} w-24 text-center`}>판정</th>
-                            <th className={`${th} w-16 text-center`}>점수</th>
-                            <th className={`${th} w-48`}>평가이유</th>
-                            <th className={`${th} w-56`}>근거 발화</th>
+                            <th className={`${th} w-48`}>평가 이유</th>
+                            <th className={`${th} w-56`}>평가 발화</th>
+                            <th className={`${th} w-24 text-center`}>AI평가</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-[#F2F4F7]">
@@ -167,22 +206,6 @@ export default function KsqiEvalSection({ report }) {
                             areaGroups.map((g) =>
                                 g.cats.map((c) => (
                                     <React.Fragment key={`${g.area}-${c.catName}`}>
-                                        {/* 대분류(구분) 소계 헤더 행 */}
-                                        <tr className="bg-[#F9FAFB]">
-                                            <td colSpan={5} className="px-2.5 py-2 border-t border-[#EAECF0]">
-                                                <span className="inline-flex items-center gap-1.5 flex-wrap">
-                                                    <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold text-[#475467] bg-[#EAECF0]">
-                                                        {g.area}
-                                                    </span>
-                                                    <span className="text-[12px] font-bold text-[#344054]">
-                                                        {c.catName}
-                                                    </span>
-                                                    <span className="text-[11px] font-semibold text-[#667085] tabular-nums">
-                                                        · 소계 {c.raw}/{c.max}
-                                                    </span>
-                                                </span>
-                                            </td>
-                                        </tr>
                                         {c.items.map((item, i) => {
                                             const verdict = itemVerdict(item);
                                             const evidence = Array.isArray(item?.evidence) ? item.evidence : [];
@@ -191,22 +214,32 @@ export default function KsqiEvalSection({ report }) {
                                                     key={item?.item_number ?? `${c.catName}-${i}`}
                                                     className="hover:bg-[#FAFBFC] transition-colors align-top"
                                                 >
-                                                    <td className="px-2.5 py-2.5 align-top text-[12.5px] font-medium text-[#101828] leading-snug pl-6">
+                                                    {/* 구분 — 영역(A/B) 배지 + 대분류 + 소계 (연속 항목 rowSpan 병합) */}
+                                                    {i === 0 && (
+                                                        <td
+                                                            rowSpan={c.items.length}
+                                                            className="px-2.5 py-2.5 align-top border-r border-[#EEF2F7] bg-[#FBFCFD]"
+                                                        >
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="inline-flex items-center gap-1.5">
+                                                                    <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold text-[#475467] bg-[#EAECF0]">
+                                                                        {g.area}
+                                                                    </span>
+                                                                    <span className="text-[12px] font-bold text-[#344054]">
+                                                                        {c.catName}
+                                                                    </span>
+                                                                </span>
+                                                                <span className="text-[10.5px] font-semibold text-[#667085] tabular-nums pl-0.5">
+                                                                    소계 {c.raw}/{c.max}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                    )}
+                                                    {/* 평가항목 */}
+                                                    <td className="px-2.5 py-2.5 align-top text-[12.5px] font-medium text-[#101828] leading-snug">
                                                         {item?.item_name || '-'}
                                                     </td>
-                                                    <td className="px-2.5 py-2.5 text-center align-top">
-                                                        <span
-                                                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-semibold border whitespace-nowrap ${verdict.cls}`}
-                                                        >
-                                                            {verdict.label}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-2.5 py-2.5 text-center align-top text-[12.5px] font-semibold text-[#101828] tabular-nums">
-                                                        {item?.score ?? '-'}
-                                                        <span className="text-[#98A2B3] font-normal">
-                                                            /{item?.max_score ?? '-'}
-                                                        </span>
-                                                    </td>
+                                                    {/* 평가 이유 */}
                                                     <td className="px-2.5 py-2.5 align-top text-[11px] text-[#475467] leading-relaxed">
                                                         {item?.rationale ? (
                                                             item.rationale
@@ -214,30 +247,25 @@ export default function KsqiEvalSection({ report }) {
                                                             <span className="text-[#98A2B3]">-</span>
                                                         )}
                                                     </td>
+                                                    {/* 평가 발화 (클릭 → STT 전사 이동) */}
                                                     <td className="px-2.5 py-2.5 align-top text-[11px] leading-relaxed">
-                                                        {evidence.length > 0 ? (
-                                                            <div className="flex flex-col gap-1">
-                                                                {evidence.map((ev, qi) => (
-                                                                    <span key={qi} className="flex items-start gap-1.5">
-                                                                        <span className="shrink-0 mt-0.5 text-[10px] font-bold text-[#667085] bg-[#F2F4F7] rounded px-1 py-px tabular-nums">
-                                                                            {qi + 1}
-                                                                        </span>
-                                                                        <span className="text-[#475467]">
-                                                                            {ev?.speaker && (
-                                                                                <span className="text-[#98A2B3] mr-1">
-                                                                                    {ev.speaker}:
-                                                                                </span>
-                                                                            )}
-                                                                            <span className="italic">
-                                                                                "{ev?.quote ?? ''}"
-                                                                            </span>
-                                                                        </span>
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-[#98A2B3]">-</span>
-                                                        )}
+                                                        <EvidenceCell evidence={evidence} onQuoteClick={onQuoteClick} />
+                                                    </td>
+                                                    {/* AI평가 — 점수 + 판정 배지 통합 */}
+                                                    <td className="px-2.5 py-2.5 text-center align-top">
+                                                        <div className="flex flex-col items-center gap-1">
+                                                            <span className="text-[12.5px] font-semibold text-[#101828] tabular-nums">
+                                                                {item?.score ?? '-'}
+                                                                <span className="text-[#98A2B3] font-normal">
+                                                                    /{item?.max_score ?? '-'}
+                                                                </span>
+                                                            </span>
+                                                            <span
+                                                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap ${verdict.cls}`}
+                                                            >
+                                                                {verdict.label}
+                                                            </span>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
