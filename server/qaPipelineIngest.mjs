@@ -850,15 +850,21 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
                 const ms = asNumber(ev.max_score);
                 return ms !== null && ms > 0 ? ms : 5;
             })();
-            sumEarned += aiEval;
-            sumMax += itemMax;
-            checklist.push({
-                order_no: ono,
-                category: safeStr(slot.category).trim(),
-                item: safeStr(slot.item).trim() || itemNameOf(ev),
-                agent_utterance: agentQuoteOf(ev),
-                validation_time: `배점 ${itemMax}`,
-            });
+            // ★ 2026-07-14: 추가항목도 Y/N 이면 총점·체크리스트 제외 (루브릭 매퍼와 동일 정책 —
+            //   목록 분모 파서가 체크리스트 행을 배점 합산하므로 행 부재만이 분모 제외 수단).
+            //   additiveMeta 에 scoring_type 미동봉이면 기존과 byte-identical (무회귀).
+            const isYesNoAdd = safeStr(slot.scoring_type).trim().toLowerCase() === 'yes_no';
+            if (!isYesNoAdd) {
+                sumEarned += aiEval;
+                sumMax += itemMax;
+                checklist.push({
+                    order_no: ono,
+                    category: safeStr(slot.category).trim(),
+                    item: safeStr(slot.item).trim() || itemNameOf(ev),
+                    agent_utterance: agentQuoteOf(ev),
+                    validation_time: `배점 ${itemMax}`,
+                });
+            }
             evaluations.push({
                 order_no: ono,
                 category: safeStr(slot.category).trim(),
@@ -968,22 +974,26 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
         })();
         const aiEval = round1(score);
         // Y/N(컴플라이언스 체크) 항목은 콜 총점(ai_score)·만점 합산에서 제외 — 점수 무관 순수 모니터링
-        // (기획 docs/YN_EVAL_ITEM_PLAN §4.2). 결과 행(checklist/evaluations)은 그대로 기록 →
-        // qa_evaluation_rows 에 충족(ai_eval>0)/미충족(ai_eval=0)으로 남아 위반율 집계에 사용.
+        // (기획 docs/YN_EVAL_ITEM_PLAN §4.2). 평가 행(evaluations)만 기록 →
+        // qa_evaluation_rows 에 충족(ai_eval>0)/미충족(ai_eval=0)으로 남아 위반율 집계·상세 Y/N 표시에 사용.
+        // ★ 2026-07-14: Y/N 항목은 qa_checklist_rows 에 미기록 — 10.13 배포 대시보드 목록 분모 파서
+        //   (parseMaxPointsFromValidationTime)가 체크리스트 행을 무조건 배점(최소 5)으로 합산해
+        //   금지어 행이 있으면 합계가 /105 로 표기됨 (0713 RCA: 분모 제외는 행 부재만 가능).
+        //   총점(ai_score)은 이미 Y/N 제외라 체크리스트 생략이 점수 무영향.
         const isYesNo = safeStr(slot.scoring_type).trim().toLowerCase() === 'yes_no';
         if (!isYesNo) {
             rawTotal += aiEval;
             sumEarned += aiEval;
             sumMax += itemMax;
-        }
 
-        checklist.push({
-            order_no: orderNo,
-            category: slot.category,
-            item: slot.item,
-            agent_utterance: agentQuoteOf(ev),
-            validation_time: `배점 ${itemMax}`,
-        });
+            checklist.push({
+                order_no: orderNo,
+                category: slot.category,
+                item: slot.item,
+                agent_utterance: agentQuoteOf(ev),
+                validation_time: `배점 ${itemMax}`,
+            });
+        }
         evaluations.push({
             order_no: orderNo,
             category: slot.category,

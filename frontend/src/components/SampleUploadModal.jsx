@@ -144,8 +144,9 @@ export default function SampleUploadModal({ onUploaded }) {
     const [resultMsg, setResultMsg] = useState('');
     const [toast, setToast] = useState(null);
     const [orgNames, setOrgNames] = useState({});
-    // 평가 백엔드 대상 — EC2 고정 (2026-06-22 사용자 지시: prod qa-pipeline 54.235.200.151:8081 사용). 로컬 테스트 시 'local'.
-    const pipelineTarget = 'ec2';
+    // 평가 백엔드 대상 — 로컬 8081(host.docker.internal:8081) 연동: asdf 설명력 루브릭 few-shot 로컬 실험.
+    // 운영(EC2 54.235.200.151:8081) 복귀 시 'ec2' 로 되돌릴 것.
+    const pipelineTarget = 'local';
     // 진행 중 평가 — 창을 닫아도 유지 (컴포넌트는 버튼과 함께 상시 마운트)
     const [running, setRunning] = useState(null); // { qa_id, startedAt }
     const [elapsedSec, setElapsedSec] = useState(0);
@@ -245,11 +246,21 @@ export default function SampleUploadModal({ onUploaded }) {
     const handleRunAi = () => {
         if (!validation.ready || running) return;
         const consultationId = resolveConsultationId(parsedInput, inputFile?.name).id;
+        const orgId = currentOrgId();
+        // 저장 PK(qa_calls."ID")는 브랜드+실행마다 유니크하게 만든다 — 같은 상담번호를 다른
+        // 브랜드에 올리거나 같은 브랜드에서 두 번 돌려도 서로 덮어쓰지 않고 독립 레코드로 남는다.
+        // (PK 가 ("ID") 단독이라, ID 를 유니크화하지 않으면 ingest 의 ON CONFLICT ("ID") DO UPDATE 가
+        //  기존 브랜드 행을 하이재킹하거나 재실행분을 덮어써 버린다.)
+        // 표시용 상담번호(CALL_SEQ)·UID 에는 원본 ID 를 넣어 리스트/상세 화면엔 원본만 보이게 한다.
+        const storageId = `${orgId}__${consultationId}__${Date.now()}`;
         const transcript = String(parsedInput.transcript || '').trim();
         const call = {
-            qa_id: consultationId,
-            consultation_id: consultationId,
-            org_id: currentOrgId(),
+            qa_id: storageId,
+            consultation_id: storageId,
+            // CALL_SEQ(화면 상담번호)·UID 는 원본 유지 — 서버: callSeq = call.call_seq || id.
+            call_seq: consultationId,
+            uid: consultationId,
+            org_id: orgId,
             // pipeline_target: 서버 어댑터가 평가 백엔드 base URL 을 선택 (local | ec2)
             pipeline_target: pipelineTarget,
             // transcript: qa-pipeline /evaluate 전달용 원문 문자열.
