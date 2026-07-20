@@ -17,14 +17,23 @@ LOCAL_PORT="${LOCAL_PORT:-13306}"
 REMOTE_HOST="${REMOTE_HOST:-127.0.0.1}"
 REMOTE_PORT="${REMOTE_PORT:-3306}"
 
-# autossh 자체 모니터 포트 비활성(-M 0) + ssh keepalive 로 끊김 감지·재연결.
-export AUTOSSH_GATETIME=0
+# ── 재연결 루프 (autossh 미사용) ──────────────────────────────────
+# 원래 `sshpass -p PW autossh` 였으나, autossh 가 spawn 하는 자식 ssh 를 sshpass 가
+# 제대로 못 다뤄 연결이 서질 않았다(직접 `sshpass -e ssh -N -L` 는 정상 인증·포워딩 확인).
+# autossh 의 유일한 역할은 끊김 시 재연결 → 단순 while 루프로 대체하고 검증된 `sshpass -e ssh` 사용.
+# ServerAlive 로 끊김 감지 → ssh 종료 → 루프가 재접속.
+export SSHPASS="$IPCC_SSH_PASS"
 
 echo "[xhub-tunnel] ${IPCC_SSH_USER}@${IPCC_SSH_HOST}:${SSH_PORT} → 0.0.0.0:${LOCAL_PORT} ⇒ ${REMOTE_HOST}:${REMOTE_PORT}"
-exec sshpass -p "$IPCC_SSH_PASS" autossh -M 0 -N \
-  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-  -o PreferredAuthentications=password -o PubkeyAuthentication=no \
-  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes \
-  -p "$SSH_PORT" \
-  -L "0.0.0.0:${LOCAL_PORT}:${REMOTE_HOST}:${REMOTE_PORT}" \
-  "${IPCC_SSH_USER}@${IPCC_SSH_HOST}"
+while :; do
+  sshpass -e ssh -N \
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+    -o NumberOfPasswordPrompts=1 -o ConnectTimeout=30 \
+    -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes \
+    -p "$SSH_PORT" \
+    -L "0.0.0.0:${LOCAL_PORT}:${REMOTE_HOST}:${REMOTE_PORT}" \
+    "${IPCC_SSH_USER}@${IPCC_SSH_HOST}" || true
+  echo "[xhub-tunnel] 연결 종료 — 5초 후 재접속"
+  sleep 5
+done
