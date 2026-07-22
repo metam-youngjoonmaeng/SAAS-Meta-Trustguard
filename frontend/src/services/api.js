@@ -637,7 +637,7 @@ export async function removeUserMembership(userId, traineeId) {
 }
 
 /* ── 본인 프로필 (셀프-편집) ───────────────────────────────────
- * 신규 사용자는 초기 비밀번호 발급 + must_change_password=true 로 시작.
+ * 신규 사용자는 초기 비밀번호 발급으로 시작(첫 로그인 강제 변경 없음).
  * 본인은 다음만 변경 가능: display_name, password.
  * (login_id / role / org_id / is_active 변경 불가 — super_admin 만 가능) */
 export async function fetchMe() {

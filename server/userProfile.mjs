@@ -3,8 +3,6 @@
 // - GET   /api/me           : 현재 세션 사용자의 단일 사용자 객체 반환 (login 응답과 동일 형태)
 //
 // 비밀번호 정책: 영문·숫자·특수문자[@$!%*#?&] 1자 이상씩 + 8~20자.
-// must_change_password 플래그가 true 인 사용자는 비번 변경 전까지 다른 API 호출이 차단되지 않지만
-// 프론트에서 강제 모달을 띄워 사용자가 즉시 변경하도록 한다.
 // (프로필 이미지 업로드 기능은 폐지 — 사용자 식별은 display_name 텍스트만 사용)
 
 import crypto from 'crypto';
@@ -32,7 +30,6 @@ export function buildMeResponse(row, sessionToken) {
         org_name: row.org_name ?? null,
         department: row.department ?? null,
         email: row.email ?? null,
-        must_change_password: Boolean(row.must_change_password),
         ...(sessionToken ? { session_token: sessionToken } : {}),
     };
 }
@@ -44,7 +41,7 @@ export function createUserProfileRouter(pool) {
         try {
             const { rows } = await pool.query(
                 `SELECT au.user_id, au.login_id, au.display_name, au.role, au.is_active,
-                        au.org_id, au.department, au.email, au.must_change_password,
+                        au.org_id, au.department, au.email,
                         o.name AS org_name
                  FROM public.admin_users au
                  LEFT JOIN public.organizations o ON o.id = au.org_id
@@ -129,15 +126,12 @@ export function createUserProfileRouter(pool) {
             if (newPassword !== null) {
                 fields.push(`password_hash = $${idx++}`);
                 values.push(sha256Hex(newPassword));
-                // 비번을 본인이 직접 변경했으면 강제 변경 플래그 해제.
-                fields.push(`must_change_password = false`);
             }
             fields.push(`updated_at = now()`);
             values.push(userId);
             const { rows: updated } = await pool.query(
                 `UPDATE public.admin_users SET ${fields.join(', ')} WHERE user_id = $${idx}
-                 RETURNING user_id, login_id, display_name, role, org_id, department,
-                           must_change_password`,
+                 RETURNING user_id, login_id, display_name, role, org_id, department`,
                 values
             );
 

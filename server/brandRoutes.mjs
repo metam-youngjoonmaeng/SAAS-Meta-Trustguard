@@ -25,7 +25,6 @@ function sha256Hex(s) {
 
 // 신규 사용자에게 자동 부여되는 초기 비밀번호. 반드시 INITIAL_USER_PASSWORD env 로 설정한다.
 // (하드코딩 폴백 제거 — 미설정 시 약한 기본값을 조용히 쓰지 않고 에러로 막는다.)
-// 신규 계정은 must_change_password=true 로 시작 → 첫 로그인 시 강제 변경.
 function resolveInitialPassword() {
     const fromEnv = String(process.env.INITIAL_USER_PASSWORD || '').trim();
     if (!fromEnv) {
@@ -879,7 +878,6 @@ export function createBrandRouter(pool) {
                 `SELECT u.user_id, u.login_id, u.display_name, u.role, u.is_active,
                         u.org_id, o.name AS org_name, u.department,
                         u.email, u.hire_date, u.leave_date, u.extension, u.dup_login_yn,
-                        u.must_change_password,
                         u.created_at, u.updated_at,
                         (SELECT MAX(al.created_at) FROM public.qa_audit_logs al
                          WHERE al.user_id = u.user_id
@@ -903,7 +901,6 @@ export function createBrandRouter(pool) {
     // POST /api/admin/users
     // 관리자(super_admin)는 신규 사용자의 로그인ID/이름/역할/소속만 지정. 비밀번호는 관리자가 정할 수 없으며
     // 서버가 초기 비밀번호(INITIAL_USER_PASSWORD env, 필수)를 자동 부여한다.
-    // 사용자는 첫 로그인 시 must_change_password=true 로 비밀번호 변경 강제.
     router.post('/admin/users', requireSuperAdmin, async (req, res) => {
         const loginId = String(req.body?.login_id || '').trim();
         const displayName = String(req.body?.display_name || '').trim();
@@ -921,9 +918,9 @@ export function createBrandRouter(pool) {
         try {
             const initialPassword = resolveInitialPassword();
             const { rows } = await pool.query(
-                `INSERT INTO public.admin_users (login_id, password_hash, display_name, role, org_id, department, must_change_password)
-                 VALUES ($1, $2, $3, $4, $5, $6, true)
-                 RETURNING user_id, login_id, display_name, role, is_active, org_id, department, created_at, updated_at, must_change_password`,
+                `INSERT INTO public.admin_users (login_id, password_hash, display_name, role, org_id, department)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 RETURNING user_id, login_id, display_name, role, is_active, org_id, department, created_at, updated_at`,
                 [loginId, sha256Hex(initialPassword), displayName, role, orgId, department]
             );
             await insertQaAuditLog(pool, {
@@ -1054,7 +1051,7 @@ export function createBrandRouter(pool) {
     });
 
     // POST /api/admin/users/:id/reset-password
-    // 관리자가 사용자 비밀번호를 임의 값으로 정하지 못하게 함 — 초기 비밀번호로 강제 재설정 + must_change_password=true.
+    // 관리자가 사용자 비밀번호를 임의 값으로 정하지 못하게 함 — 초기 비밀번호로 재설정.
     // 비번 분실 사용자에게 super_admin 이 안내해 줄 수 있도록 응답에 초기 비밀번호 포함.
     router.post('/admin/users/:id/reset-password', requireSuperAdmin, async (req, res) => {
         const id = Number(req.params.id);
@@ -1066,7 +1063,7 @@ export function createBrandRouter(pool) {
             const initialPassword = resolveInitialPassword();
             const { rows } = await pool.query(
                 `UPDATE public.admin_users
-                    SET password_hash = $1, must_change_password = true, updated_at = now()
+                    SET password_hash = $1, updated_at = now()
                  WHERE user_id = $2
                  RETURNING user_id, login_id, display_name`,
                 [sha256Hex(initialPassword), id]
@@ -1082,7 +1079,7 @@ export function createBrandRouter(pool) {
                 resource_id: String(id),
                 http_method: 'POST',
                 http_path: `/api/admin/users/${id}/reset-password`,
-                detail_json: JSON.stringify({ reset_by_admin: true, must_change_password: true }),
+                detail_json: JSON.stringify({ reset_by_admin: true }),
                 success: true,
             });
             res.json({ ok: true, initial_password: initialPassword, user: rows[0] });

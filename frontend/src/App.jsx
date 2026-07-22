@@ -543,10 +543,6 @@ function App() {
         syncStoredActor(patch);
     };
 
-    // 첫 로그인 시 must_change_password=true 면 ProfileModal 을 강제 노출.
-    // ICS 세션은 비번 개념이 없으므로 강제 변경 팝업을 띄우지 않는다.
-    const forceChangePassword = currentUser?.auth_source !== 'ics' && Boolean(currentUser?.must_change_password);
-
     const handleSidebarTabClick = (tab) => {
         if (tab === 'dashboard') navigateHash(DASHBOARD_HASH);
         else if (tab === 'logs') navigateHash(LOGS_HASH);
@@ -703,10 +699,9 @@ function App() {
                 </PageContainer>
                 </main>
             </div>
-            {(profileModalOpen || forceChangePassword) && currentUser && (
+            {profileModalOpen && currentUser && (
                 <ProfileModal
                     currentUser={currentUser}
-                    forceChange={forceChangePassword}
                     onClose={() => setProfileModalOpen(false)}
                     onSaved={handleProfileSaved}
                 />

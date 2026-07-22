@@ -270,7 +270,7 @@ function RowMenu({ onEdit, onResetPw, onManageOrgs, onDelete, disabled }) {
 
 // ── 사용자 모달 (생성/편집) ─────────────────────────────────
 // 비밀번호 입력 필드는 의도적으로 제거됨 — 신규 계정은 서버가 초기 비밀번호를 자동 부여하고
-// (must_change_password=true), 본인이 첫 로그인 시 ProfileModal 에서 직접 변경하는 흐름.
+// 본인이 ProfileModal 에서 직접 변경한다.
 // "비번 재설정"은 별도 confirm 흐름(handleResetPw)에서 처리.
 // 라벨 + 입력 래퍼 (2열 그리드 셀)
 function Fld({ label, required, children }) {
@@ -965,7 +965,7 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
             if (resp?.initial_password) {
                 setInitialPwInfo({ user: resp.user || u, initial_password: resp.initial_password, mode: 'reset' });
             }
-            // must_change_password 플래그 갱신을 위해 목록 재조회.
+            // 재설정 결과 반영을 위해 목록 재조회.
             await load();
         } catch (e) {
             setError(e?.message || '비밀번호 재설정 실패');

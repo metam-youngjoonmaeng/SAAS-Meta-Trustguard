@@ -1036,7 +1036,7 @@ app.post('/api/auth/login', async (req, res) => {
     try {
         const { rows } = await pool.query(
             `SELECT user_id, login_id, display_name, role, org_id, is_active, password_hash,
-                    must_change_password, department
+                    department
              FROM admin_users
              WHERE login_id = $1
              LIMIT 1`,
@@ -1154,7 +1154,6 @@ app.post('/api/auth/login', async (req, res) => {
                 role: row.role,
                 org_id: row.org_id ?? null,
                 department: row.department ?? null,
-                must_change_password: Boolean(row.must_change_password),
                 session_token: sessionToken,
             },
         });

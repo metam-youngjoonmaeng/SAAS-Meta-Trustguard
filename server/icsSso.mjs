@@ -166,11 +166,11 @@ export function createIcsSsoRouter(pool, { createSession }) {
         // ICS USER_NM/EMAIL 은 암호화 저장(복호화 키 없음) → 표시명은 userCd 유지.
         const displayName = userCd;
         const defaultOrgId = Number(process.env.ICS_SSO_DEFAULT_ORG_ID || 0) || null;
-        // ICS 사용자는 SSO 전용 — 직접 로그인 불가하도록 랜덤(매칭 불가) 해시. 비번변경 팝업 없음(must_change=false).
+        // ICS 사용자는 SSO 전용 — 직접 로그인 불가하도록 랜덤(매칭 불가) 해시.
         const randomHash = crypto.randomBytes(32).toString('hex');
 
         const returningCols =
-            'user_id, login_id, display_name, role, org_id, department, must_change_password';
+            'user_id, login_id, display_name, role, org_id, department';
         let row;
         try {
             // admin_users 는 twin 스키마에서 INSTEAD OF 트리거 뷰(users+trainee_registrations 로 라우팅).
@@ -191,8 +191,8 @@ export function createIcsSsoRouter(pool, { createSession }) {
             } else {
                 const ins = await pool.query(
                     `INSERT INTO public.admin_users
-                        (login_id, password_hash, display_name, role, is_active, org_id, must_change_password, created_at, updated_at)
-                     VALUES ($1, $2, $3, $4, 1, $5, false, now(), now())
+                        (login_id, password_hash, display_name, role, is_active, org_id, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, 1, $5, now(), now())
                      RETURNING ${returningCols}`,
                     [loginId, randomHash, displayName, role, defaultOrgId]
                 );
@@ -227,7 +227,6 @@ export function createIcsSsoRouter(pool, { createSession }) {
                 role: row.role,
                 org_id: row.org_id ?? null,
                 department: row.department ?? null,
-                must_change_password: false,
                 auth_source: 'ics', // 프론트: ICS 임베드 세션 표시(로그아웃 숨김 + 직접접속 분리)
                 session_token: sessionToken,
             },
