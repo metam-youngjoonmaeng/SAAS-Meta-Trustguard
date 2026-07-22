@@ -1233,18 +1233,89 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         client.release();
     }
 
-    // KSQI STT 보고서 적재(보조 축) — 브랜드 채점(위 트랜잭션 COMMIT 완료)과 분리한 별도 UPDATE.
-    // qa_calls.ksqi_report(로컬 임시 jsonb) 에 저장하되, 컬럼 부재/실패는 조용히 스킵해 브랜드 적재에
-    // 영향 주지 않는다(보조 모듈 = 메인 무영향 원칙, 파이프라인 swallow 설계와 동형). prod 는 담당자가
-    // 동일 컬럼(ADD COLUMN IF NOT EXISTS ksqi_report jsonb) 을 추가하면 자동 동작.
+    // KSQI STT 보고서 적재(보조 축) — 브랜드 채점(위 트랜잭션 COMMIT 완료)과 분리한 별도 트랜잭션.
+    // 일반 평가와 동형의 정규화 3테이블에 저장: qa_ksqi_rows(항목 점수·사유) + qa_ksqi_evidence
+    // (항목별 근거 발화) + qa_ksqi_summary(영역 A/B·전체 집계). 재적재는 DELETE 후 INSERT 로 멱등.
+    // 테이블 부재/실패는 조용히 스킵해 브랜드 적재에 영향 주지 않는다(보조 모듈 = 메인 무영향 원칙).
+    // 스키마는 docker/init/postgres/65_qa_ksqi_rows.sql (기존 jsonb 백필 포함).
     if (mapped?.ksqi_report) {
+        const kr = mapped.ksqi_report;
+        const kc = await pool.connect();
         try {
-            await pool.query(`UPDATE qa_calls SET ksqi_report = $2 WHERE "ID" = $1`, [
-                id,
-                JSON.stringify(mapped.ksqi_report),
-            ]);
+            await kc.query('BEGIN');
+            await kc.query('DELETE FROM qa_ksqi_evidence WHERE "ID" = $1', [id]);
+            await kc.query('DELETE FROM qa_ksqi_rows WHERE "ID" = $1', [id]);
+            await kc.query('DELETE FROM qa_ksqi_summary WHERE "ID" = $1', [id]);
+            const num = (v) => (v == null || Number.isNaN(Number(v)) ? null : Number(v));
+            const items = Array.isArray(kr.items) ? kr.items : [];
+            for (const it of items) {
+                const itemNo = Math.trunc(Number(it?.item_number));
+                if (!Number.isFinite(itemNo)) continue;
+                await kc.query(
+                    `INSERT INTO qa_ksqi_rows ("ID", item_number, item_name, area, kind, score, max_score, na, defect, rationale)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                     ON CONFLICT ("ID", item_number) DO NOTHING`,
+                    [
+                        id,
+                        itemNo,
+                        safeStr(it?.item_name),
+                        safeStr(it?.area),
+                        safeStr(it?.kind) || 'llm',
+                        num(it?.score),
+                        num(it?.max_score),
+                        it?.na === true,
+                        it?.defect === true,
+                        safeStr(it?.rationale),
+                    ]
+                );
+                const evs = Array.isArray(it?.evidence) ? it.evidence : [];
+                for (let i = 0; i < evs.length; i++) {
+                    await kc.query(
+                        `INSERT INTO qa_ksqi_evidence ("ID", item_number, seq, speaker, quote)
+                         VALUES ($1,$2,$3,$4,$5)
+                         ON CONFLICT ("ID", item_number, seq) DO NOTHING`,
+                        [id, itemNo, i + 1, safeStr(evs[i]?.speaker), safeStr(evs[i]?.quote)]
+                    );
+                }
+            }
+            await kc.query(
+                `INSERT INTO qa_ksqi_summary ("ID",
+                    area_a_raw, area_a_max, area_a_scaled, area_a_grade, area_a_excellent,
+                    area_b_raw, area_b_max, area_b_scaled, area_b_grade, area_b_excellent,
+                    overall_raw, overall_max, summary)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                [
+                    id,
+                    num(kr.area_a?.raw),
+                    num(kr.area_a?.max),
+                    num(kr.area_a?.scaled),
+                    kr.area_a?.grade ?? null,
+                    typeof kr.area_a?.excellent === 'boolean' ? kr.area_a.excellent : null,
+                    num(kr.area_b?.raw),
+                    num(kr.area_b?.max),
+                    num(kr.area_b?.scaled),
+                    kr.area_b?.grade ?? null,
+                    typeof kr.area_b?.excellent === 'boolean' ? kr.area_b.excellent : null,
+                    num(kr.overall?.raw),
+                    num(kr.overall?.max),
+                    safeStr(kr.summary),
+                ]
+            );
+            await kc.query('COMMIT');
         } catch (e) {
-            console.warn(`[ingest] ksqi_report 적재 스킵 (ID=${id}, 컬럼 부재 가능): ${e.message}`);
+            try {
+                await kc.query('ROLLBACK');
+            } catch {}
+            console.warn(`[ingest] KSQI 정규화 테이블 적재 스킵 (ID=${id}, 테이블 부재 가능): ${e.message}`);
+        } finally {
+            kc.release();
+        }
+        // 전환기 이중 기록 — 기존 qa_calls.ksqi_report(jsonb) 병행 유지. 읽기 경로는 이미 3테이블로
+        // 전환되어 롤백 대비 용도만 남음. 안정화 확인 후 이 블록과 컬럼 제거 예정.
+        try {
+            await pool.query(`UPDATE qa_calls SET ksqi_report = $2 WHERE "ID" = $1`, [id, JSON.stringify(kr)]);
+        } catch (e) {
+            console.warn(`[ingest] ksqi_report(전환기 jsonb) 적재 스킵 (ID=${id}, 컬럼 부재 가능): ${e.message}`);
         }
     }
 

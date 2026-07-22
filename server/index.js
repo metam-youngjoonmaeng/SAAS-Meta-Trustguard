@@ -578,8 +578,9 @@ function toCallRow(row) {
         // 옛 콜=카탈로그 배점 합(80), 루브릭 평가 콜=ev.max_score 합(예: 78). 마이그레이션 불필요.
         // 미적재(체크리스트 없음) 시 null → FE 가 DEFAULT_TOTAL_MAX(80) 폴백.
         total_max: (row.total_max !== undefined && row.total_max !== null) ? Number(row.total_max) || null : null,
-        // KSQI 평가 — 시행 여부 + 영역 점수(별개 축). ksqi_report 컬럼 부재 시 has_ksqi=false·점수 null.
-        // KSQI 평가 워크스페이스 탭의 목록 필터(시행 콜만)·점수 컬럼(A/B/전체)에서 사용.
+        // KSQI 평가 — 시행 여부 + 영역 점수(별개 축). qa_ksqi_summary(정규화 테이블) 조인 결과이며
+        // 테이블 부재 시 has_ksqi=false·점수 null. KSQI 평가 워크스페이스 탭의 목록 필터(시행 콜만)·
+        // 점수 컬럼(A/B/전체)에서 사용.
         has_ksqi: row.has_ksqi === true || row.has_ksqi === 't',
         ksqi_a: row.ksqi_a === null || row.ksqi_a === undefined ? null : Number(row.ksqi_a),
         ksqi_b: row.ksqi_b === null || row.ksqi_b === undefined ? null : Number(row.ksqi_b),
@@ -1278,40 +1279,98 @@ app.post('/api/auth/switch-org', async (req, res) => {
     }
 });
 
-// qa_calls.ksqi_report(로컬 임시 jsonb) 컬럼 존재 여부 — prod 미적용 시 부재. 1회 캐시.
-// 부재 시 /api/calls 가 컬럼을 참조하면 SQL 에러로 리스트 전체가 깨지므로, 존재 여부에 따라
-// SELECT 조각을 분기(부재 시 has_ksqi=false·점수 null)해 무회귀 보장.
-let _qaCallsKsqiColCache = null;
-async function qaCallsHasKsqiColumn(pool) {
-    if (_qaCallsKsqiColCache !== null) return _qaCallsKsqiColCache;
+// KSQI 정규화 테이블(qa_ksqi_rows/evidence/summary — 65_qa_ksqi_rows.sql) 존재 여부 — 미적용 DB 에서
+// 참조하면 SQL 에러로 리스트 전체가 깨지므로, 존재 여부에 따라 SELECT/JOIN 조각을 분기
+// (부재 시 has_ksqi=false·점수 null)해 무회귀 보장. 1회 캐시.
+let _ksqiTablesCache = null;
+async function hasKsqiTables(pool) {
+    if (_ksqiTablesCache !== null) return _ksqiTablesCache;
     try {
         const { rows } = await pool.query(
-            `SELECT 1 FROM information_schema.columns
-             WHERE table_schema = 'public' AND table_name = 'qa_calls' AND column_name = 'ksqi_report' LIMIT 1`
+            `SELECT (to_regclass('public.qa_ksqi_summary') IS NOT NULL
+                 AND to_regclass('public.qa_ksqi_rows') IS NOT NULL
+                 AND to_regclass('public.qa_ksqi_evidence') IS NOT NULL) AS ok`
         );
-        _qaCallsKsqiColCache = rows.length > 0;
+        _ksqiTablesCache = rows[0]?.ok === true;
     } catch {
-        _qaCallsKsqiColCache = false;
+        _ksqiTablesCache = false;
     }
-    return _qaCallsKsqiColCache;
+    return _ksqiTablesCache;
+}
+
+// KSQI 보고서 재조립 — 정규화 3테이블을 기존 응답 계약({items[], area_a, area_b, overall, summary})
+// 형태로 복원. FE(KsqiEval/KsqiEvalSection) 계약 무변경. 미시행·테이블 부재 시 null 폴백(상세 로드 무영향).
+async function loadKsqiReport(pool, qaId) {
+    try {
+        if (!(await hasKsqiTables(pool))) return null;
+        const { rows: sumRows } = await pool.query(`SELECT * FROM public.qa_ksqi_summary WHERE "ID" = $1 LIMIT 1`, [
+            qaId,
+        ]);
+        if (!sumRows[0]) return null;
+        const s = sumRows[0];
+        const { rows: itemRows } = await pool.query(
+            `SELECT item_number, item_name, area, kind, score, max_score, na, defect, rationale
+             FROM public.qa_ksqi_rows WHERE "ID" = $1 ORDER BY item_number`,
+            [qaId]
+        );
+        const { rows: evRows } = await pool.query(
+            `SELECT item_number, speaker, quote FROM public.qa_ksqi_evidence
+             WHERE "ID" = $1 ORDER BY item_number, seq`,
+            [qaId]
+        );
+        const evByItem = new Map();
+        for (const e of evRows) {
+            if (!evByItem.has(e.item_number)) evByItem.set(e.item_number, []);
+            evByItem.get(e.item_number).push({ speaker: e.speaker, quote: e.quote });
+        }
+        const areaObj = (p) => ({
+            raw: s[`${p}_raw`],
+            max: s[`${p}_max`],
+            scaled: s[`${p}_scaled`],
+            grade: s[`${p}_grade`],
+            excellent: s[`${p}_excellent`],
+        });
+        return {
+            items: itemRows.map((r) => ({
+                item_number: r.item_number,
+                item_name: r.item_name,
+                area: r.area,
+                kind: r.kind,
+                score: r.score,
+                max_score: r.max_score,
+                na: r.na,
+                defect: r.defect,
+                rationale: r.rationale,
+                evidence: evByItem.get(r.item_number) || [],
+            })),
+            area_a: areaObj('area_a'),
+            area_b: areaObj('area_b'),
+            overall: { raw: s.overall_raw, max: s.overall_max },
+            summary: s.summary,
+        };
+    } catch {
+        return null;
+    }
 }
 
 app.get('/api/calls', async (req, res) => {
     try {
         const activeOrgId = resolveActiveOrgId(req);
-        // KSQI 점수/유무 컬럼(area_a·area_b scaled + overall) — 컬럼 존재 시에만 추출, 부재 시 안전 폴백.
-        const hasKsqiCol = await qaCallsHasKsqiColumn(pool);
-        const ksqiCols = hasKsqiCol
-            ? `(c.ksqi_report IS NOT NULL) AS has_ksqi,
-               (c.ksqi_report->'area_a'->>'scaled')::float AS ksqi_a,
-               (c.ksqi_report->'area_b'->>'scaled')::float AS ksqi_b,
-               (c.ksqi_report->'overall'->>'raw')::float AS ksqi_overall_raw,
-               (c.ksqi_report->'overall'->>'max')::float AS ksqi_overall_max`
+        // KSQI 점수/유무(area_a·area_b scaled + overall) — qa_ksqi_summary(정규화) 조인으로 추출,
+        // 테이블 부재 시 안전 폴백.
+        const hasKsqi = await hasKsqiTables(pool);
+        const ksqiCols = hasKsqi
+            ? `(ks."ID" IS NOT NULL) AS has_ksqi,
+               ks.area_a_scaled::float AS ksqi_a,
+               ks.area_b_scaled::float AS ksqi_b,
+               ks.overall_raw::float AS ksqi_overall_raw,
+               ks.overall_max::float AS ksqi_overall_max`
             : `false AS has_ksqi,
                NULL::float AS ksqi_a,
                NULL::float AS ksqi_b,
                NULL::float AS ksqi_overall_raw,
                NULL::float AS ksqi_overall_max`;
+        const ksqiJoin = hasKsqi ? `LEFT JOIN public.qa_ksqi_summary ks ON ks."ID" = c."ID"` : '';
         const params = [];
         const conds = [];
         if (activeOrgId != null) {
@@ -1406,6 +1465,7 @@ app.get('/api/calls', async (req, res) => {
                  FROM qa_evaluation_rows
                  GROUP BY "ID"
              ) ev ON ev."ID" = c."ID"
+             ${ksqiJoin}
              ${orgFilter}
              ORDER BY c."CDATE" DESC`,
             params
@@ -1884,18 +1944,9 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
         // 수기평가 대상 사유(상세 배지용) — ['저품질 검증 · 평균점수 미달', ...]
         const manualReviewReasons = Array.isArray(callMeta.manual_review_reasons) ? callMeta.manual_review_reasons : [];
 
-        // KSQI STT 보고서(로컬 임시 jsonb — prod 스키마는 담당자 추가 예정). 브랜드 루브릭과 별개 축이라
-        // 별도 방어 쿼리로 조회 — 컬럼 부재 시 조용히 null 로 폴백해 상세 로드 자체는 무영향(500 방지).
-        let ksqiReport = null;
-        try {
-            const { rows: krRows } = await pool.query(
-                `SELECT ksqi_report FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
-                [qaId]
-            );
-            ksqiReport = krRows[0]?.ksqi_report || null;
-        } catch (krErr) {
-            ksqiReport = null;
-        }
+        // KSQI STT 보고서 — 정규화 3테이블(qa_ksqi_rows/evidence/summary)에서 기존 계약 형태로 재조립.
+        // 브랜드 루브릭과 별개 축이라 별도 방어 조회 — 테이블 부재/미시행 시 null 폴백(상세 로드 무영향).
+        const ksqiReport = await loadKsqiReport(pool, qaId);
 
         // 관리자 코멘트 — qa_admin_comments(qa_id 단일행에 전체 배열 보관). 없으면 [].
         const { rows: acRows } = await pool.query(
