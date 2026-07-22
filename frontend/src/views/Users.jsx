@@ -8,7 +8,7 @@ import {
 import Header from '../components/Header';
 import {
     fetchUsers, createUser, updateUser, deleteUser, resetUserPassword,
-    fetchOrganizations, fetchAuditLogs,
+    fetchOrganizations, fetchLoginHistory,
     fetchUserMemberships, addUserMembership, removeUserMembership,
 } from '../services/api';
 import { getBrandConfig } from '../constants';
@@ -270,7 +270,7 @@ function RowMenu({ onEdit, onResetPw, onManageOrgs, onDelete, disabled }) {
 
 // ── 사용자 모달 (생성/편집) ─────────────────────────────────
 // 비밀번호 입력 필드는 의도적으로 제거됨 — 신규 계정은 서버가 초기 비밀번호를 자동 부여하고
-// (must_change_password=true), 본인이 첫 로그인 시 ProfileModal 에서 직접 변경하는 흐름.
+// 본인이 ProfileModal 에서 직접 변경한다.
 // "비번 재설정"은 별도 confirm 흐름(handleResetPw)에서 처리.
 // 라벨 + 입력 래퍼 (2열 그리드 셀)
 function Fld({ label, required, children }) {
@@ -806,64 +806,144 @@ function MembershipsModal({ user, brands, onClose, onChanged }) {
     );
 }
 
+// 로그인 이벤트 배지 메타 — 성공/로그아웃/실패
+const LOGIN_EVENT_META = {
+    login_success: { label: '로그인', cls: 'bg-[var(--success-soft)] text-[var(--success)]' },
+    logout: { label: '로그아웃', cls: 'bg-[var(--background-soft)] text-[var(--ink-500)]' },
+    login_fail: { label: '로그인 실패', cls: 'bg-[var(--destructive-soft)] text-[var(--destructive)]' },
+};
+const LOGIN_REASON_LABEL = {
+    user_not_found: '계정 없음',
+    inactive: '비활성 계정',
+    bad_password: '비밀번호 불일치',
+    ics_sso: 'ICS SSO',
+};
+function loginUaBrowser(ua) {
+    if (!ua) return '—';
+    if (/Edg\//.test(ua)) return 'Edge';
+    if (/OPR\/|Opera/.test(ua)) return 'Opera';
+    if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) return 'Chrome';
+    if (/Firefox\//.test(ua)) return 'Firefox';
+    if (/Safari\//.test(ua) && !/Chrome/.test(ua)) return 'Safari';
+    return (ua.split(/[ /]/)[0] || '기타').slice(0, 16);
+}
+
 function LoginHistoryTab() {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [days, setDays] = useState(30);
+    const [eventFilter, setEventFilter] = useState('all'); // all | login_success | logout | login_fail
+    const [search, setSearch] = useState('');
 
     useEffect(() => {
+        let alive = true;
+        setLoading(true);
         (async () => {
             try {
-                const data = await fetchAuditLogs({ limit: 200, action: 'AUTH_LOGIN_SUCCESS' });
-                setRows(data);
+                const data = await fetchLoginHistory({ days, limit: 500 });
+                if (alive) setRows(Array.isArray(data) ? data : []);
+            } catch {
+                if (alive) setRows([]);
             } finally {
-                setLoading(false);
+                if (alive) setLoading(false);
             }
         })();
-    }, []);
+        return () => { alive = false; };
+    }, [days]);
 
-    if (loading) {
-        return (
-            <div className="flex justify-center py-12">
-                <Loader2 className="h-5 w-5 animate-spin text-[var(--ink-500)]" />
-            </div>
-        );
-    }
+    const filtered = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        return rows.filter((r) => {
+            if (eventFilter !== 'all' && r.event !== eventFilter) return false;
+            if (!q) return true;
+            return (
+                (r.display_name || '').toLowerCase().includes(q) ||
+                (r.login_id || '').toLowerCase().includes(q) ||
+                (r.client_ip || '').toLowerCase().includes(q)
+            );
+        });
+    }, [rows, eventFilter, search]);
+
+    const SEL = 'px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-white text-[12.5px] text-[var(--ink-700)] focus:outline-none focus:border-[var(--primary)]';
 
     return (
-        <div className="bg-white border border-[var(--border)] rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-                <thead>
-                    <tr className="border-b border-[var(--border)] bg-[var(--background-soft)]">
-                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">로그인 시각</th>
-                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">사용자</th>
-                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">역할</th>
-                        <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">IP</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border)]">
-                    {rows.length === 0 && (
-                        <tr>
-                            <td colSpan={4} className="px-4 py-10 text-center text-sm text-[var(--ink-500)]">로그인 이력이 없습니다</td>
-                        </tr>
-                    )}
-                    {rows.map((r) => (
-                        <tr key={r.audit_id} className="hover:bg-[var(--background-soft)]">
-                            <td className="px-4 py-3 text-[12.5px] text-[var(--ink-900)] tabular-nums">{fmtDateTime(r.created_at)}</td>
-                            <td className="px-4 py-3">
-                                <div className="flex items-center gap-2.5">
-                                    <Avatar name={r.display_name || r.login_id} id={r.user_id} size={28} />
-                                    <div>
-                                        <div className="text-[13px] font-semibold text-[var(--ink-900)]">{r.display_name || '—'}</div>
-                                        <div className="text-[11.5px] text-[var(--ink-500)] font-mono">{r.login_id}</div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td className="px-4 py-3"><RoleChip role={r.role} /></td>
-                            <td className="px-4 py-3 text-[11.5px] text-[var(--ink-400)] tabular-nums">{r.client_ip || '—'}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+        <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+                <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={SEL}>
+                    <option value={7}>최근 7일</option>
+                    <option value={30}>최근 30일</option>
+                    <option value={90}>최근 90일</option>
+                    <option value={365}>최근 1년</option>
+                </select>
+                <select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)} className={SEL}>
+                    <option value="all">전체 이벤트</option>
+                    <option value="login_success">로그인</option>
+                    <option value="logout">로그아웃</option>
+                    <option value="login_fail">로그인 실패</option>
+                </select>
+                <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="이름 · 아이디 · IP 검색"
+                    className="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg border border-[var(--border)] bg-white text-[12.5px] text-[var(--ink-900)] placeholder:text-[var(--ink-400)] focus:outline-none focus:border-[var(--primary)]"
+                />
+                <span className="text-[11.5px] text-[var(--ink-400)] tabular-nums ml-auto">{filtered.length}건</span>
+            </div>
+
+            {loading ? (
+                <div className="flex justify-center py-12">
+                    <Loader2 className="h-5 w-5 animate-spin text-[var(--ink-500)]" />
+                </div>
+            ) : (
+                <div className="bg-white border border-[var(--border)] rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b border-[var(--border)] bg-[var(--background-soft)]">
+                                    <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">시각</th>
+                                    <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">사용자</th>
+                                    <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">이벤트</th>
+                                    <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">역할</th>
+                                    <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">IP</th>
+                                    <th className="px-4 py-3 text-left text-[11.5px] font-semibold text-[var(--ink-500)] uppercase tracking-wider">브라우저</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[var(--border)]">
+                                {filtered.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6} className="px-4 py-10 text-center text-sm text-[var(--ink-500)]">로그인 이력이 없습니다</td>
+                                    </tr>
+                                )}
+                                {filtered.map((r) => {
+                                    const meta = LOGIN_EVENT_META[r.event] || { label: r.event, cls: 'bg-[var(--background-soft)] text-[var(--ink-500)]' };
+                                    const reason = r.event === 'login_fail' && r.reason ? (LOGIN_REASON_LABEL[r.reason] || r.reason) : null;
+                                    return (
+                                        <tr key={r.id} className="hover:bg-[var(--background-soft)]">
+                                            <td className="px-4 py-3 text-[12.5px] text-[var(--ink-900)] tabular-nums whitespace-nowrap">{fmtDateTime(r.created_at)}</td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-2.5">
+                                                    <Avatar name={r.display_name || r.login_id} id={r.user_id} size={28} />
+                                                    <div>
+                                                        <div className="text-[13px] font-semibold text-[var(--ink-900)]">{r.display_name || '—'}</div>
+                                                        <div className="text-[11.5px] text-[var(--ink-500)] font-mono">{r.login_id}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${meta.cls}`}>{meta.label}</span>
+                                                {reason && <span className="ml-1.5 text-[11px] text-[var(--ink-400)]">{reason}</span>}
+                                            </td>
+                                            <td className="px-4 py-3">{r.role === 'admin' || r.role === 'super_admin' ? <RoleChip role={r.role} /> : <span className="text-[11.5px] text-[var(--ink-400)]">상담사</span>}</td>
+                                            <td className="px-4 py-3 text-[11.5px] text-[var(--ink-400)] tabular-nums">{r.client_ip || '—'}</td>
+                                            <td className="px-4 py-3 text-[11.5px] text-[var(--ink-500)]" title={r.user_agent || ''}>{loginUaBrowser(r.user_agent)}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -888,6 +968,7 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
     const [bulkSaving, setBulkSaving] = useState(false);
     // 초기 비밀번호 안내 모달 — 사용자 생성/비번 재설정 직후 super_admin 에게 노출.
     const [initialPwInfo, setInitialPwInfo] = useState(null); // { user, initial_password, mode: 'create'|'reset' }
+    const [historyCount, setHistoryCount] = useState(null); // '로그인 이력' 탭 배지(최근 30일). null=로딩
 
     async function load() {
         setLoading(true);
@@ -905,6 +986,13 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
             setError(e?.message || '로드 실패');
         } finally {
             setLoading(false);
+        }
+        // '로그인 이력' 탭 배지용 건수(최근 30일, org 격리) — 실패해도 사용자 목록엔 영향 없음
+        try {
+            const hist = await fetchLoginHistory({ days: 30, limit: 1000 });
+            setHistoryCount(Array.isArray(hist) ? hist.length : 0);
+        } catch {
+            setHistoryCount(null);
         }
     }
 
@@ -965,7 +1053,7 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
             if (resp?.initial_password) {
                 setInitialPwInfo({ user: resp.user || u, initial_password: resp.initial_password, mode: 'reset' });
             }
-            // must_change_password 플래그 갱신을 위해 목록 재조회.
+            // 재설정 결과 반영을 위해 목록 재조회.
             await load();
         } catch (e) {
             setError(e?.message || '비밀번호 재설정 실패');
@@ -1137,7 +1225,11 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                         >
                             <KeyRound size={12} />
                             로그인 이력
-                            <span className="ml-0.5 text-[var(--ink-400)]">—</span>
+                            <span className={`ml-0.5 inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded-full text-[10.5px] font-bold ${
+                                tab === 'history' ? 'bg-[var(--primary)] text-white' : 'bg-[var(--muted)] text-[var(--ink-500)]'
+                            }`}>
+                                {historyCount == null ? '—' : historyCount}
+                            </span>
                         </button>
                     </div>
 

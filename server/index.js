@@ -13,7 +13,7 @@ import {
     parseStoredEarned,
     validateMergedManualEvals,
 } from './rubricManual.mjs';
-import { AUDIT_ACTION, insertQaAuditLog, pruneOldAuditLogs } from './auditLog.mjs';
+import { AUDIT_ACTION, insertQaAuditLog, insertLoginHistory, pruneOldAuditLogs } from './auditLog.mjs';
 import { logger, requestLogger } from './logger.mjs';
 import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChecklistKeys, LEGACY_STANDARD_ORG_IDS } from './checklistCategorySummary.mjs';
 /* SAMPLE_UPLOAD_FEATURE */ import { ingestSampleToDb, clearSamplesFromDb } from './sampleIngest.mjs';
@@ -1047,7 +1047,7 @@ app.post('/api/auth/login', async (req, res) => {
     try {
         const { rows } = await pool.query(
             `SELECT user_id, login_id, display_name, role, org_id, is_active, password_hash,
-                    must_change_password, department
+                    department
              FROM admin_users
              WHERE login_id = $1
              LIMIT 1`,
@@ -1066,6 +1066,12 @@ app.post('/api/auth/login', async (req, res) => {
                 detail_json: JSON.stringify({ reason: 'user_not_found' }),
                 success: false,
                 error_message: 'invalid credentials',
+            });
+            await insertLoginHistory(pool, {
+                req,
+                actor: { user_id: null, login_id: loginId || '(unknown)', role: null },
+                event: 'login_fail',
+                reason: 'user_not_found',
             });
             res.status(401).json({ message: 'invalid credentials', reason: 'user_not_found' });
             return;
@@ -1088,6 +1094,13 @@ app.post('/api/auth/login', async (req, res) => {
                 success: false,
                 error_message: 'invalid credentials',
             });
+            await insertLoginHistory(pool, {
+                req,
+                actor: { user_id: row.user_id, login_id: row.login_id, display_name: row.display_name, role: row.role },
+                org_id: row.org_id,
+                event: 'login_fail',
+                reason: 'inactive',
+            });
             res.status(401).json({ message: 'invalid credentials', reason: 'inactive' });
             return;
         }
@@ -1108,6 +1121,13 @@ app.post('/api/auth/login', async (req, res) => {
                 detail_json: JSON.stringify({ reason: 'bad_password' }),
                 success: false,
                 error_message: 'invalid credentials',
+            });
+            await insertLoginHistory(pool, {
+                req,
+                actor: { user_id: row.user_id, login_id: row.login_id, display_name: row.display_name, role: row.role },
+                org_id: row.org_id,
+                event: 'login_fail',
+                reason: 'bad_password',
             });
             res.status(401).json({ message: 'invalid credentials', reason: 'bad_password' });
             return;
@@ -1140,6 +1160,12 @@ app.post('/api/auth/login', async (req, res) => {
             detail_json: JSON.stringify({ user_id: row.user_id, role: row.role }),
             success: true,
         });
+        await insertLoginHistory(pool, {
+            req,
+            actor: { user_id: row.user_id, login_id: row.login_id, display_name: row.display_name, role: row.role },
+            org_id: row.org_id,
+            event: 'login_success',
+        });
         // 활성 멤버십 id 확정(다중소속 전환용) — admin_users VIEW 와 동일 우선순위.
         try {
             const { rows: tr } = await pool.query(
@@ -1165,7 +1191,6 @@ app.post('/api/auth/login', async (req, res) => {
                 role: row.role,
                 org_id: row.org_id ?? null,
                 department: row.department ?? null,
-                must_change_password: Boolean(row.must_change_password),
                 session_token: sessionToken,
             },
         });
@@ -1201,6 +1226,17 @@ app.post('/api/auth/logout', async (req, res) => {
             http_method: 'POST',
             http_path: '/api/auth/logout',
             success: true,
+        });
+        await insertLoginHistory(pool, {
+            req,
+            actor: {
+                user_id: sessionBeforeDestroy?.user_id ?? null,
+                login_id: loginId || sessionBeforeDestroy?.login_id || '(unknown)',
+                display_name: sessionBeforeDestroy?.display_name ?? null,
+                role: sessionBeforeDestroy?.role ?? null,
+            },
+            org_id: sessionBeforeDestroy?.org_id ?? null,
+            event: 'logout',
         });
         res.json({ ok: true });
     } catch (error) {

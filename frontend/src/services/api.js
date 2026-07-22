@@ -669,7 +669,7 @@ export async function removeUserMembership(userId, traineeId) {
 }
 
 /* ── 본인 프로필 (셀프-편집) ───────────────────────────────────
- * 신규 사용자는 초기 비밀번호 발급 + must_change_password=true 로 시작.
+ * 신규 사용자는 초기 비밀번호 발급으로 시작(첫 로그인 강제 변경 없음).
  * 본인은 다음만 변경 가능: display_name, password.
  * (login_id / role / org_id / is_active 변경 불가 — super_admin 만 가능) */
 export async function fetchMe() {
@@ -713,6 +713,19 @@ export async function fetchAuditLogs({ limit, before, action } = {}) {
     if (action) params.set('action', String(action));
     const qs = params.toString();
     return request(`/api/admin/audit-logs${qs ? `?${qs}` : ''}`);
+}
+
+/* ── 로그인 이력(login_history) ─────────────────────────────
+ * 감사로그(3일 prune·1일 조회창)와 달리 영속 테이블에서 조회. 02/03 동등 기능.
+ * 응답: [{ id, created_at, user_id, login_id, display_name, role, org_id, event, reason, client_ip, user_agent }]
+ */
+export async function fetchLoginHistory({ days, limit, event } = {}) {
+    const params = new URLSearchParams();
+    if (days) params.set('days', String(days));
+    if (limit) params.set('limit', String(limit));
+    if (event) params.set('event', String(event));
+    const qs = params.toString();
+    return request(`/api/admin/login-history${qs ? `?${qs}` : ''}`);
 }
 
 /* ── Application 로그(파일 기반) ────────────────────────────

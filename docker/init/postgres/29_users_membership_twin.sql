@@ -63,6 +63,9 @@ CREATE INDEX IF NOT EXISTS ix_trainee_registrations_user_id ON public.trainee_re
 CREATE INDEX IF NOT EXISTS ix_trainee_registrations_org_id  ON public.trainee_registrations(org_id);
 -- 05 는 1인=1멤버십 → user_id 유니크(추후 멀티 소속 도입 시 제거)
 CREATE UNIQUE INDEX IF NOT EXISTS uq_trainee_registrations_user_id ON public.trainee_registrations(user_id);
+-- 재시드 멱등 보장: 63 이 must_change_password 컬럼을 DROP 하므로, 재실행 시 30/44/56 의 뷰
+-- 정의(tr.must_change_password 참조)가 깨지지 않도록 여기서 컬럼 존재를 보장한다(63 이 마지막에 다시 DROP).
+ALTER TABLE public.trainee_registrations ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
 
 -- ── 3) auth_sessions (02/03 스키마 그대로 — 파리티용) ─────────
 CREATE TABLE IF NOT EXISTS public.auth_sessions (
@@ -87,7 +90,6 @@ WITH src AS (
         a.role,
         a.is_active,
         a.department,
-        a.must_change_password,
         a.created_at,
         (position('@' in a.login_id) > 0) AS is_ics,
         CASE
@@ -123,10 +125,11 @@ SELECT
     NULLIF(a.department, ''),
     a.role::public.userrole,
     CASE WHEN a.is_active = 1 THEN 'active' ELSE 'suspended' END,
-    -- 로컬 계정은 리셋 비번이므로 강제 변경, ICS/시드는 기존값 유지
+    -- must_change_password 는 63 에서 폐기 → 뷰(admin_users)에서 읽지 않고 리터럴로 백필(재실행 멱등).
+    --   (기능 제거 후이므로 값 의미 없음. 컬럼은 63 이 최종 DROP.)
     CASE WHEN position('@' in a.login_id) = 0
               AND a.login_id NOT IN ('admin1', 'test1')
-         THEN true ELSE a.must_change_password END
+         THEN true ELSE false END
 FROM public.admin_users a
 ON CONFLICT (user_id) DO NOTHING;
 
