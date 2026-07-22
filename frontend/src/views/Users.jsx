@@ -968,6 +968,7 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
     const [bulkSaving, setBulkSaving] = useState(false);
     // 초기 비밀번호 안내 모달 — 사용자 생성/비번 재설정 직후 super_admin 에게 노출.
     const [initialPwInfo, setInitialPwInfo] = useState(null); // { user, initial_password, mode: 'create'|'reset' }
+    const [historyCount, setHistoryCount] = useState(null); // '로그인 이력' 탭 배지(최근 30일). null=로딩
 
     async function load() {
         setLoading(true);
@@ -985,6 +986,13 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
             setError(e?.message || '로드 실패');
         } finally {
             setLoading(false);
+        }
+        // '로그인 이력' 탭 배지용 건수(최근 30일, org 격리) — 실패해도 사용자 목록엔 영향 없음
+        try {
+            const hist = await fetchLoginHistory({ days: 30, limit: 1000 });
+            setHistoryCount(Array.isArray(hist) ? hist.length : 0);
+        } catch {
+            setHistoryCount(null);
         }
     }
 
@@ -1217,7 +1225,11 @@ const Users = ({ role, currentUserId, activeBrandId }) => {
                         >
                             <KeyRound size={12} />
                             로그인 이력
-                            <span className="ml-0.5 text-[var(--ink-400)]">—</span>
+                            <span className={`ml-0.5 inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded-full text-[10.5px] font-bold ${
+                                tab === 'history' ? 'bg-[var(--primary)] text-white' : 'bg-[var(--muted)] text-[var(--ink-500)]'
+                            }`}>
+                                {historyCount == null ? '—' : historyCount}
+                            </span>
                         </button>
                     </div>
 
