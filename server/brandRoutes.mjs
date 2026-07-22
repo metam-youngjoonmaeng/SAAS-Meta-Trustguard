@@ -1274,6 +1274,63 @@ export function createBrandRouter(pool) {
         }
     });
 
+    // GET /api/admin/login-history?days=30&limit=200&event=<filter>
+    // 로그인 이력(login_history) — 02/03 동등 기능. 영속 테이블(prune 대상 아님)에서 조회.
+    // 권한: admin + super_admin (감사로그와 달리 사용자 관리 화면의 탭이므로 admin 도 허용).
+    // org 격리: /admin/users 와 동일 규칙(admin=본인 org, super_admin=활성 브랜드/전체).
+    router.get('/admin/login-history', async (req, res) => {
+        const role = req.session?.role;
+        if (role !== 'admin' && role !== 'super_admin') {
+            res.status(403).json({ message: 'admin 권한이 필요합니다' });
+            return;
+        }
+        const isSuper = role === 'super_admin';
+        const ownOrgId = Number(req.session?.org_id) || null;
+        const rawHeader = String(req.headers['x-active-brand-id'] || '').trim();
+        const rawQuery = String(req.query?.brand_id || '').trim();
+        const raw = rawHeader || rawQuery;
+        let scopeOrgId;
+        if (isSuper) {
+            if (raw.toLowerCase() === 'all') {
+                scopeOrgId = null;
+            } else {
+                const parsed = Number(raw);
+                scopeOrgId = Number.isFinite(parsed) ? parsed : ownOrgId;
+            }
+        } else {
+            scopeOrgId = ownOrgId;
+        }
+        const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);
+        const limit = Math.min(Math.max(Number(req.query?.limit) || 200, 1), 1000);
+        const eventFilter = String(req.query?.event || '').trim();
+        const params = [`${days} days`];
+        const conds = [`created_at >= now() - $1::interval`];
+        if (scopeOrgId != null) {
+            params.push(scopeOrgId);
+            conds.push(`org_id = $${params.length}`);
+        }
+        if (eventFilter) {
+            params.push(eventFilter);
+            conds.push(`event = $${params.length}`);
+        }
+        params.push(limit);
+        try {
+            const { rows } = await pool.query(
+                `SELECT id, created_at, user_id, login_id, display_name, role,
+                        org_id, event, reason, client_ip, user_agent
+                 FROM public.login_history
+                 WHERE ${conds.join(' AND ')}
+                 ORDER BY created_at DESC
+                 LIMIT $${params.length}`,
+                params
+            );
+            res.json(rows);
+        } catch (err) {
+            console.error('GET /api/admin/login-history error:', err);
+            res.status(500).json({ message: 'Failed to list login history.' });
+        }
+    });
+
     // ── 알림 ─────────────────────────────────────────────────
     // 본인(user_id = req.session.user_id) 이 수행한 평가/적재 완료 이벤트만 노출.
     // 데이터는 qa_audit_logs 파생 — 별도 notifications 테이블 없음.

@@ -683,6 +683,19 @@ export async function fetchAuditLogs({ limit, before, action } = {}) {
     return request(`/api/admin/audit-logs${qs ? `?${qs}` : ''}`);
 }
 
+/* ── 로그인 이력(login_history) ─────────────────────────────
+ * 감사로그(3일 prune·1일 조회창)와 달리 영속 테이블에서 조회. 02/03 동등 기능.
+ * 응답: [{ id, created_at, user_id, login_id, display_name, role, org_id, event, reason, client_ip, user_agent }]
+ */
+export async function fetchLoginHistory({ days, limit, event } = {}) {
+    const params = new URLSearchParams();
+    if (days) params.set('days', String(days));
+    if (limit) params.set('limit', String(limit));
+    if (event) params.set('event', String(event));
+    const qs = params.toString();
+    return request(`/api/admin/login-history${qs ? `?${qs}` : ''}`);
+}
+
 /* ── Application 로그(파일 기반) ────────────────────────────
  * winston-daily-rotate-file 가 logs/app-YYYY-MM-DD.log 로 적재한 라인을 파싱해 반환.
  * 응답: { file, exists, lines: [{ ts, level, module, message }, ...] }

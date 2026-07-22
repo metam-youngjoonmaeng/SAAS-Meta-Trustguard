@@ -151,3 +151,47 @@ export async function insertQaAuditLog(pool, p) {
         console.error('[qa-audit] insert failed:', err);
     }
 }
+
+/**
+ * 로그인 이력(login_history) 영속 기록. qa_audit_logs 와 달리 prune 대상이 아님(영구 보존).
+ * 로그인 성공/실패/로그아웃 시점에 감사로그와 병행 호출한다. 실패해도 로그인 흐름을 막지 않는다.
+ * @param {pg.Pool} pool
+ * @param {object} p - { req, actor:{user_id,login_id,display_name,role}, org_id, event, reason }
+ */
+export async function insertLoginHistory(pool, p) {
+    const actor = p.actor || {};
+    const meta = clientMetaFromReq(p.req || {});
+    const row = {
+        user_id: actor.user_id ?? null,
+        login_id: String(actor.login_id || '(unknown)').slice(0, 128),
+        display_name: actor.display_name != null ? String(actor.display_name).slice(0, 200) : null,
+        role: actor.role != null ? String(actor.role).slice(0, 64) : null,
+        org_id: p.org_id != null && p.org_id !== '' ? Number(p.org_id) : null,
+        event: String(p.event || 'login_success').slice(0, 32),
+        reason: p.reason != null ? String(p.reason).slice(0, 64) : null,
+        client_ip: meta.client_ip,
+        user_agent: meta.user_agent,
+    };
+    if (!Number.isFinite(row.org_id)) row.org_id = null;
+    try {
+        await pool.query(
+            `INSERT INTO public.login_history (
+                user_id, login_id, display_name, role, org_id,
+                event, reason, client_ip, user_agent
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [
+                row.user_id,
+                row.login_id,
+                row.display_name,
+                row.role,
+                row.org_id,
+                row.event,
+                row.reason,
+                row.client_ip,
+                row.user_agent,
+            ]
+        );
+    } catch (err) {
+        console.error('[login-history] insert failed:', err);
+    }
+}

@@ -14,6 +14,7 @@
 import crypto from 'crypto';
 import express from 'express';
 import mysql from 'mysql2/promise';
+import { insertLoginHistory } from './auditLog.mjs';
 
 // AUTH_NM(한글 역할명) → 로컬 role 매핑. S-코드는 테넌트마다 달라 한글명 기준(공백 제거 매칭).
 const AUTH_NM_TO_ROLE = {
@@ -218,6 +219,13 @@ export function createIcsSsoRouter(pool, { createSession }) {
         }
 
         const sessionToken = createSession(row);
+        await insertLoginHistory(pool, {
+            req,
+            actor: { user_id: row.user_id, login_id: row.login_id, display_name: row.display_name, role: row.role },
+            org_id: row.org_id,
+            event: 'login_success',
+            reason: 'ics_sso',
+        });
         res.json({
             ok: true,
             user: {
