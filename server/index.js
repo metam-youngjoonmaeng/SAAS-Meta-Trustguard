@@ -486,12 +486,15 @@ function rawPasswordHash(value) {
  *  - bcrypt($2a/$2b/$2y$…, 60자): 쌍둥이 스키마(users) 적재분. bcrypt.compare.
  *  - 그 외(64자 hex): 레거시 SHA-256. sha256Hex 일치.
  *  두 방식 혼재(계정별로 다름) → 한쪽만 보면 한쪽 계정군이 영원히 로그인 불가. */
-function verifyPassword(password, storedRaw) {
+async function verifyPassword(password, storedRaw) {
     const raw = rawPasswordHash(storedRaw);
     if (!raw) return false;
     if (/^\$2[aby]\$/.test(raw)) {
         try {
-            return bcrypt.compareSync(String(password), raw);
+            // 비동기 compare — bcryptjs 는 해싱 라운드 사이에 이벤트루프를 양보하므로
+            // 로그인 검증 중에도 루프가 안 막힌다(다른 요청 인터리브).
+            // compareSync 는 수십~100ms 동안 루프를 완전히 정지 → 동시 로그인 직렬화·부하 급증.
+            return await bcrypt.compare(String(password), raw);
         } catch {
             return false;
         }
@@ -1093,7 +1096,7 @@ app.post('/api/auth/login', async (req, res) => {
             res.status(401).json({ message: 'invalid credentials', reason: 'inactive' });
             return;
         }
-        if (!verifyPassword(password, row.password_hash)) {
+        if (!(await verifyPassword(password, row.password_hash))) {
             await insertQaAuditLog(pool, {
                 req,
                 actor: {
