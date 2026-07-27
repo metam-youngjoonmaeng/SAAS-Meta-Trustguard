@@ -256,11 +256,13 @@ export default function Stats({ activeBrandId, role }) {
                                 <div>
                                     <div className="flex items-end gap-2 h-[180px]">
                                         {daily.map((d, i) => {
+                                            // 평가 콜이 없는 날(count=0, avg=null)은 회색 스텁으로 구분 — 0점과 혼동 방지
+                                            const empty = !d.count;
                                             const s = blueFor(d.avg || 0);
                                             return (
-                                                <div key={i} className="flex-1 flex flex-col items-center justify-end h-full" title={`${d.date}: ${d.avg} (${d.count}건)`}>
-                                                    <span className="text-[10px] font-bold text-[var(--ink-700)] mb-1 tabular-nums">{Math.round(d.avg)}</span>
-                                                    <div className="w-full rounded-t-md transition-all" style={{ height: `${Math.max(6, (d.avg / dailyMax) * 100)}%`, background: s.fill }} />
+                                                <div key={i} className="flex-1 flex flex-col items-center justify-end h-full" title={`${d.date}: ${empty ? '평가 없음' : d.avg} (${d.count}건)`}>
+                                                    <span className="text-[10px] font-bold text-[var(--ink-700)] mb-1 tabular-nums">{empty ? '–' : Math.round(d.avg)}</span>
+                                                    <div className="w-full rounded-t-md transition-all" style={{ height: empty ? '6%' : `${Math.max(6, (d.avg / dailyMax) * 100)}%`, background: empty ? '#E4E7EC' : s.fill }} />
                                                 </div>
                                             );
                                         })}

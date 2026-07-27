@@ -25,6 +25,7 @@ import useDefaultRubricMax from '../hooks/useDefaultRubricMax';
 import { formatDateTime, formatDuration, formatTime } from '../utils/formatters';
 import {
     formatEarnedOverMax,
+    maxPointsOf,
     parseMaxPointsFromValidationTime,
     parseStoredEarned,
 } from '../utils/rubricScore';
@@ -62,7 +63,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     const [commentSaveError, setCommentSaveError] = useState('');
     // 수기평가: AI평가 대비 상대 판단 + (동일일 때만) 골드셋 등록 여부.
     // shape: { [row_key]: { judgment: '낮음'|'동일'|'높음'|'', goldSet: boolean } }
-    // judgment 는 기존 qa_evaluation_rows.manual_eval(double) 에 숫자 인코딩으로 영속 —
+    // judgment 는 기존 qa_call_item_score.manual_eval(double) 에 숫자 인코딩으로 영속 —
     // 서버 PUT /api/evaluations 가 동일→ai / 높음→ai+0.5 / 낮음→ai-0.5 로 변환 저장
     // (신규 테이블/컬럼 없음), goldSet 은 qa_golden_set.
     const [manualJudgments, setManualJudgments] = useState({});
@@ -417,24 +418,24 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         };
 
         // 과거 결과 보존 — 평가 당시 채점됐으나 이후 항목이 삭제(소프트삭제)돼
-        // 현재 활성 템플릿(checklistTemplate)에 없는 항목도 저장된 행(qa_checklist_rows /
-        // qa_evaluation_rows)으로 그대로 표시한다. 활성 항목은 변동 없음.
+        // 현재 활성 템플릿(checklistTemplate)에 없는 항목도 저장된 행(qa_call_item_evidence /
+        // qa_call_item_score)으로 그대로 표시한다. 활성 항목은 변동 없음.
         //  - 템플릿에 이미 있는 order_no 는 건너뜀(중복/거동 변화 방지).
-        //  - 누락 항목은 저장된 category/item/validation_time(평가-시점 만점 동결)으로 부활.
+        //  - 누락 항목은 저장된 category/item/만점(평가-시점 만점 동결)으로 부활.
         const templateOrderNos = new Set(
             checklistTemplate
                 .map((t) => Number(t.order_no))
                 .filter((n) => Number.isFinite(n) && n > 0)
         );
         const orphanByOrderNo = new Map();
-        const collectOrphan = (row, validationTime) => {
+        const collectOrphan = (row, maxScore) => {
             const orderNo = Number(row?.order_no);
             if (!Number.isFinite(orderNo) || orderNo <= 0) return;
             if (templateOrderNos.has(orderNo)) return;
             if (orphanByOrderNo.has(orderNo)) {
-                // checklist_rows 의 validation_time(만점 동결)을 우선 채운다.
-                if (validationTime && !orphanByOrderNo.get(orderNo).validation_time) {
-                    orphanByOrderNo.get(orderNo).validation_time = validationTime;
+                // 저장 행의 만점(평가 시점 동결)을 우선 채운다.
+                if (maxScore != null && orphanByOrderNo.get(orderNo).max_score == null) {
+                    orphanByOrderNo.get(orderNo).max_score = maxScore;
                 }
                 return;
             }
@@ -442,18 +443,19 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                 order_no: orderNo,
                 category: row.category || '',
                 item: row.item || '',
-                validation_time: validationTime || '',
+                max_score: maxScore ?? null,
             });
         };
-        // checklist_rows 가 만점(validation_time)을 보유 → 우선 수집, 이어서 evaluation_rows.
-        checklistRowsRaw.forEach((row) => collectOrphan(row, row.validation_time));
+        // 저장 행이 만점(max_score)을 보유 → 우선 수집, 이어서 evaluation_rows.
+        //   ★ 만점은 숫자 max_score 로 내려온다(구 validation_time 문자열은 maxPointsOf 가 함께 처리).
+        checklistRowsRaw.forEach((row) => collectOrphan(row, maxPointsOf(row)));
         evaluationRowsRaw.forEach((row) => collectOrphan(row, undefined));
         const orphanTemplate = [...orphanByOrderNo.values()]
             .sort((a, b) => a.order_no - b.order_no)
             .map((o) => ({
                 ...o,
-                // 만점 미상(checklist_rows 없음) → 5점 기본 폴백.
-                validation_time: o.validation_time || '배점 5',
+                // 만점 미상(저장 행에 만점 없음) → 5점 기본 폴백.
+                max_score: Number.isFinite(o.max_score) && o.max_score > 0 ? o.max_score : 5,
             }));
         const displayTemplate = [...checklistTemplate, ...orphanTemplate];
 
@@ -475,10 +477,13 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
             const utterance = agentText || '-';
             // 항목 만점: DB(eval_item_defs '기본') order_no 매칭 우선, 없으면 정적 템플릿 폴백.
             const dbMaxPts = rubricMaxByOrderNo[orderNo];
+            // base 는 정적 템플릿(validation_time '배점 10') 또는 부활 항목(max_score 숫자) 둘 다
+            // 올 수 있어 maxPointsOf 로 흡수한다. 둘 다 없을 때만 5점 폴백(기존 동작 유지).
+            const baseMaxPts = maxPointsOf(base);
             const maxPts =
                 Number.isFinite(dbMaxPts) && dbMaxPts > 0
                     ? dbMaxPts
-                    : parseMaxPointsFromValidationTime(base.validation_time);
+                    : (baseMaxPts ?? parseMaxPointsFromValidationTime(base.validation_time));
             const aiEvalRaw = evalRow.ai_eval;
             let earnedAi = null;
             if (aiEvalRaw !== null && aiEvalRaw !== undefined && aiEvalRaw !== '') {

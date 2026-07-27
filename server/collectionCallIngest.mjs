@@ -2,10 +2,17 @@
  * 외부 API 연동용 ingest 모듈 — 컬렉션관리부 1콜 (9 항목 + Pentagon 5축).
  *
  * 입력 JSON 한 묶음을 받아 다음 테이블에 트랜잭션으로 적재:
- *   qa_calls / qa_conversations / qa_checklist_rows / qa_evaluation_rows / qa_analysis_report
+ *   qa_calls / qa_call_transcript / qa_call_item_score(점수+근거 병합) / qa_call_pentagon_result
  *
  * SSOT: docs/EVALUATION_ITEMS.md (Pentagon 5축 설계), docs/DB_SCHEMA.md (테이블 컬럼).
  */
+
+import {
+    captureSticky,
+    insertItemScoreRows,
+    insertTranscriptRows,
+    restoreSticky,
+} from './itemScoreIngest.mjs';
 
 const COLLECTION_DEPARTMENT = '컬렉션관리부';
 
@@ -259,10 +266,11 @@ export async function ingestCollectionCallToDb(pool, body) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await client.query(`DELETE FROM qa_analysis_report WHERE "ID" = $1`, [rows.call.ID]);
-        await client.query(`DELETE FROM qa_evaluation_rows WHERE "ID" = $1`, [rows.call.ID]);
-        await client.query(`DELETE FROM qa_checklist_rows WHERE "ID" = $1`, [rows.call.ID]);
-        await client.query(`DELETE FROM qa_conversations WHERE "ID" = $1`, [rows.call.ID]);
+        await client.query(`DELETE FROM qa_call_pentagon_result WHERE "ID" = $1`, [rows.call.ID]);
+        // 재적재는 채점 결과를 덮어쓰지만 '스킬 학습 제외' 지정(사람의 결정)은 보존한다.
+        const _sticky = await captureSticky(client, rows.call.ID);
+        await client.query(`DELETE FROM qa_call_item_score WHERE "ID" = $1`, [rows.call.ID]);
+        await client.query(`DELETE FROM qa_call_transcript WHERE "ID" = $1`, [rows.call.ID]);
         // 외부 ingest 는 운영 데이터 — sandbox 정리 대상에서 영구 제외.
         await client.query(
             `INSERT INTO qa_calls
@@ -294,29 +302,13 @@ export async function ingestCollectionCallToDb(pool, body) {
                 rows.call.role,
             ]
         );
-        for (const t of rows.conversation) {
-            await client.query(
-                `INSERT INTO qa_conversations ("ID", turn_no, speaker, "text") VALUES ($1,$2,$3,$4)`,
-                [rows.call.ID, t.turn_no, t.speaker, t.text]
-            );
-        }
-        for (const c of rows.checklist) {
-            await client.query(
-                `INSERT INTO qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time)
-                 VALUES ($1,$2,$3,$4,$5,$6)`,
-                [rows.call.ID, c.order_no, c.category, c.item, c.agent_utterance, c.validation_time]
-            );
-        }
-        for (const e of rows.evaluations) {
-            await client.query(
-                `INSERT INTO qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-                [rows.call.ID, e.order_no, e.category, e.item, e.reason_text, e.ai_eval, e.manual_eval]
-            );
-        }
+        // 전사 + 항목별 평가 — 각각 다중행 INSERT 1회. 점수와 근거는 병합 테이블 하나에 적재(마이그레이션 67).
+        await insertTranscriptRows(client, rows.call.ID, rows.conversation);
+        await insertItemScoreRows(client, rows.call.ID, rows.evaluations, rows.checklist);
+        await restoreSticky(client, rows.call.ID, _sticky);
         for (const r of rows.report) {
             await client.query(
-                `INSERT INTO qa_analysis_report ("ID", item_type_no, item_type, rating, comment, summary)
+                `INSERT INTO qa_call_pentagon_result ("ID", item_type_no, item_type, rating, comment, summary)
                  VALUES ($1,$2,$3,$4,$5,$6)`,
                 [rows.call.ID, r.item_type_no, r.item_type, r.rating, r.comment, r.summary]
             );

@@ -84,7 +84,7 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
           ($14 AND tr.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND tr.hire_date::date >= (CURRENT_DATE - make_interval(months => $15))) AS te_j,
           ($16 AND tr.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND tr.hire_date::date <= (CURRENT_DATE - make_interval(years  => $17))) AS te_s
         FROM qa_calls c
-        LEFT JOIN qa_confidence_judgments cj ON cj.qa_id = c."ID"
+        LEFT JOIN qa_call_annotation cj ON cj.qa_id = c."ID"
         LEFT JOIN trainee_registrations tr ON tr.user_id = c.agent_user_id
         CROSS JOIN agg a
         WHERE c.is_sandbox = false ${orgClause}

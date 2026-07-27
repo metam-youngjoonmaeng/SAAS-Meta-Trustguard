@@ -1,6 +1,12 @@
 /* SAMPLE_UPLOAD_FEATURE — 임시 기능. 제거 시 이 파일 삭제 + index.js 의 SAMPLE_UPLOAD_FEATURE 마커 라인 제거 */
 
 import { CHECKLIST_TEMPLATE, CHECKLIST_KEYS, RADAR_KEYS, RADAR_REPORT_LABELS } from './sampleIngestConstants.mjs';
+import {
+    captureSticky,
+    insertItemScoreRows,
+    insertTranscriptRows,
+    restoreSticky,
+} from './itemScoreIngest.mjs';
 
 const SAMPLE_ID_PREFIX = 'sample-';
 
@@ -248,10 +254,11 @@ export async function ingestSampleToDb(pool, input, output) {
     try {
         await client.query('BEGIN');
         // 같은 ID가 있으면 자식 row를 먼저 비우고 다시 채움 (단순·안전).
-        await client.query(`DELETE FROM qa_analysis_report WHERE "ID" = $1`, [rows.call.ID]);
-        await client.query(`DELETE FROM qa_evaluation_rows WHERE "ID" = $1`, [rows.call.ID]);
-        await client.query(`DELETE FROM qa_checklist_rows WHERE "ID" = $1`, [rows.call.ID]);
-        await client.query(`DELETE FROM qa_conversations WHERE "ID" = $1`, [rows.call.ID]);
+        await client.query(`DELETE FROM qa_call_pentagon_result WHERE "ID" = $1`, [rows.call.ID]);
+        // 재적재는 채점 결과를 덮어쓰지만 '스킬 학습 제외' 지정(사람의 결정)은 보존한다.
+        const _sticky = await captureSticky(client, rows.call.ID);
+        await client.query(`DELETE FROM qa_call_item_score WHERE "ID" = $1`, [rows.call.ID]);
+        await client.query(`DELETE FROM qa_call_transcript WHERE "ID" = $1`, [rows.call.ID]);
         // 샘플 업로드는 sandbox 데이터로 분류 — sandbox 세션 종료 시 is_sandbox=true 만 정리된다.
         await client.query(
             `INSERT INTO qa_calls ("ID","CALL_SEQ","CDATE","UID","AI_SCORE","TOTAL_SCORE", is_sandbox)
@@ -265,29 +272,13 @@ export async function ingestSampleToDb(pool, input, output) {
                is_sandbox = true`,
             [rows.call.ID, rows.call.CALL_SEQ, rows.call.CDATE, rows.call.UID, rows.call.AI_SCORE, rows.call.TOTAL_SCORE]
         );
-        for (const t of rows.conversation) {
-            await client.query(
-                `INSERT INTO qa_conversations ("ID", turn_no, speaker, "text") VALUES ($1,$2,$3,$4)`,
-                [rows.call.ID, t.turn_no, t.speaker, t.text]
-            );
-        }
-        for (const c of rows.checklist) {
-            await client.query(
-                `INSERT INTO qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time)
-                 VALUES ($1,$2,$3,$4,$5,$6)`,
-                [rows.call.ID, c.order_no, c.category, c.item, c.agent_utterance, c.validation_time]
-            );
-        }
-        for (const e of rows.evaluations) {
-            await client.query(
-                `INSERT INTO qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-                [rows.call.ID, e.order_no, e.category, e.item, e.reason_text, e.ai_eval, e.manual_eval]
-            );
-        }
+        // 전사 + 항목별 평가 — 각각 다중행 INSERT 1회. 점수와 근거는 병합 테이블 하나에 적재(마이그레이션 67).
+        await insertTranscriptRows(client, rows.call.ID, rows.conversation);
+        await insertItemScoreRows(client, rows.call.ID, rows.evaluations, rows.checklist);
+        await restoreSticky(client, rows.call.ID, _sticky);
         for (const r of rows.report) {
             await client.query(
-                `INSERT INTO qa_analysis_report ("ID", item_type_no, item_type, rating, comment, summary)
+                `INSERT INTO qa_call_pentagon_result ("ID", item_type_no, item_type, rating, comment, summary)
                  VALUES ($1,$2,$3,$4,$5,$6)`,
                 [rows.call.ID, r.item_type_no, r.item_type, r.rating, r.comment, r.summary]
             );

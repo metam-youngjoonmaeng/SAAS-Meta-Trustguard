@@ -183,6 +183,7 @@ function BrandModal({ initial, domains, onSave, onClose, saving }) {
                             ))}
                         </div>
                     </div>
+
                 </div>
 
                 <div className="px-6 pb-5 flex gap-2 justify-end">

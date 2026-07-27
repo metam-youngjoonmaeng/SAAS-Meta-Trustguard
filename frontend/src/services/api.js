@@ -196,16 +196,33 @@ export async function fetchCoachingHistory() {
 }
 
 // 내 TA 지표(부정발화·회복률·금칙어) — 03(Meta_Summary) tb_ta_rslt 를 본인 콜(uid) 기준 집계.
+// 기간({start,end} Date) → from/to=YYYY-MM-DD 쿼리 조각. '전체'(start/end null) = 빈 문자열(무필터).
+function taPeriodQuery(period) {
+    const fmt = (d) => {
+        if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+        const p = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+    const from = fmt(period?.start);
+    const to = fmt(period?.end);
+    const parts = [];
+    if (from) parts.push(`from=${from}`);
+    if (to) parts.push(`to=${to}`);
+    return parts.join('&');
+}
+
 // 응답: { enabled, total, negative_count/rate, banned_count/rate, recovery_denom/count/rate }.
-// enabled=false 면 TA DB 미연동(프론트는 mock 폴백).
-export async function fetchMyTaMetrics() {
-    return request('/api/me/ta-metrics');
+// enabled=false 면 TA DB 미연동(프론트는 mock 폴백). period 지정 시 기간 필터(A-71).
+export async function fetchMyTaMetrics(period = null) {
+    const q = taPeriodQuery(period);
+    return request(`/api/me/ta-metrics${q ? `?${q}` : ''}`);
 }
 
 // 감정·대화 품질 카드 드릴다운 — kind=negative|recovery|forbidden 의 '내 콜' 목록.
-// 응답: { enabled, kind, calls:[...] } (kind별 필드 상이 — CounselorResults 참조).
-export async function fetchMyTaMetricCalls(kind) {
-    return request(`/api/me/ta-metrics/calls?kind=${encodeURIComponent(kind)}`);
+// 응답: { enabled, kind, calls:[...] } (kind별 필드 상이 — CounselorResults 참조). period=지표 카드와 동일 기간.
+export async function fetchMyTaMetricCalls(kind, period = null) {
+    const q = taPeriodQuery(period);
+    return request(`/api/me/ta-metrics/calls?kind=${encodeURIComponent(kind)}${q ? `&${q}` : ''}`);
 }
 
 // AI 평가 배치관리 — 조건 설정 조회/저장 + 예상 대상 미리보기(실데이터).
@@ -372,7 +389,12 @@ export async function removeSkillset(qaId, orderNo) {
     );
 }
 
-/** 소비자보호부 20항목 Y/N 저장 → qa_consumer_eval_rows 갱신 */
+/**
+ * 소비자보호부 20항목 Y/N 저장 — 폐지됨.
+ * 신한 PoC 전용 트랙이 브랜드별 동적 루브릭(eval_item_defs)으로 세대교체되어
+ * 저장 대상 테이블(qa_consumer_*)이 제거(마이그레이션 66)됐다. 서버는 410 을 반환한다.
+ * 수기 점수 저장은 saveManualPatches(manual_patches) 를 사용할 것.
+ */
 export async function saveConsumerYnPatches(qaId, consumerYnPatches) {
     if (!qaId) throw new Error('qaId is required');
     return request(`/api/evaluations/${encodeURIComponent(qaId)}`, {
@@ -482,6 +504,21 @@ export async function fetchEvalItemHistory({ department, changeType, limit } = {
     if (limit !== undefined && limit !== null) params.set('limit', String(limit));
     const qs = params.toString();
     return request(`/api/admin/eval-item-history${qs ? `?${qs}` : ''}`);
+}
+
+/* ── KSQI STT 카탈로그 ──────────────────────────────────────────
+ * KSQI STT 평가표 정의 조회. orgId 지정 시 서버가 브랜드별 DB(ksqi_item_defs)를 우선 조회하고
+ * 판정 기준 본문(criterion)만 파이프라인 카탈로그에서 병합. 미지정/미시딩 시 파이프라인 프록시.
+ * 각 항목: { number, name, area("A"|"B"), kind("llm"|"auto"), max_score, category, is_active,
+ *           criterion(llm=판정 프롬프트 본문 / auto=대체채널 안내), alt_channel(auto만) }.
+ * 읽기 전용(KsqiMgmt 뷰). 서버 래핑 여부와 무관하게 배열로 정규화해 반환. */
+export async function fetchKsqiCatalog(orgId = null) {
+    const qs = orgId ? `?org_id=${encodeURIComponent(orgId)}` : '';
+    const data = await request(`/api/ksqi-stt/catalog${qs}`);
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.catalog)) return data.catalog;
+    if (Array.isArray(data?.items)) return data.items;
+    return [];
 }
 
 /* ── 브랜드 / 도메인 ────────────────────────────────────────── */
@@ -784,7 +821,7 @@ export async function fetchSkillLogRecent({ limit = 100 } = {}) {
 }
 
 /**
- * 에이전트 메모리(qa_skill_memory) 항목별 요약 — 실시간 로그 '메모리' 행 토글 상세.
+ * 에이전트 메모리(qa_skill_store) 항목별 요약 — 실시간 로그 '메모리' 행 토글 상세.
  * { ok, rubric_id, updated_at, items: [{ item_number, item_name, case_count, dir_high, dir_low,
  *   contested, cases[], patterns[], journal[], last_learned, effect }] }
  */

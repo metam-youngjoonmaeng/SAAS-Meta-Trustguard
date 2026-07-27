@@ -22,6 +22,7 @@ function formatRemainingTime(ms) {
 // 탭 → 라벨 (사이드바와 동일). 상단바 브레드크럼 표시용.
 const TAB_LABELS = {
     dashboard: '평가 리스트',
+    'ksqi-eval': 'KSQI 평가',
     'eval-items': '평가항목 관리',
     skills: 'AI 스킬 관리',
     'admin-batch': 'AI 평가 배치관리',

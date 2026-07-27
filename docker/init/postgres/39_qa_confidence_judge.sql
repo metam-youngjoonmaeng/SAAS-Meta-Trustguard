@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS public.qa_batch_prompts (
 -- 콜별 신뢰도 판정 결과(precompute). 항목별 플래그는 judgments(jsonb)에,
 -- 콜 단위 빠른 필터용 롤업은 has_* 컬럼에.
 --   judgments = [{order_no, uncertain, weak, contradiction, note}]
-CREATE TABLE IF NOT EXISTS public.qa_confidence_judgments (
+CREATE TABLE IF NOT EXISTS public.qa_call_confidence (
     qa_id             text PRIMARY KEY,
     judgments         jsonb       NOT NULL DEFAULT '[]'::jsonb,
     has_uncertain     boolean     NOT NULL DEFAULT false,
@@ -34,5 +34,5 @@ CREATE TABLE IF NOT EXISTS public.qa_confidence_judgments (
 
 COMMENT ON TABLE public.qa_batch_prompts IS
     'AI 신뢰도 검증 LLM 판정 프롬프트(관리자 관리, 브랜드별). 없으면 코드 DEFAULT_PROMPT.';
-COMMENT ON TABLE public.qa_confidence_judgments IS
+COMMENT ON TABLE public.qa_call_confidence IS
     '콜별 신뢰도 LLM 판정 결과(precompute). judgments=항목별 플래그, has_*=콜 롤업.';

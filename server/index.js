@@ -10,6 +10,7 @@ import {
     MANUAL_JUDGMENT_LABELS,
     mergeManualPatches,
     parseMaxPointsFromValidationTime,
+    maxPointsOf,
     parseStoredEarned,
     validateMergedManualEvals,
 } from './rubricManual.mjs';
@@ -95,7 +96,7 @@ function pushRagLog(entry) {
  *   { ts, org_id, source, stage, message,
  *     rubric_id?, version_id?, case_count?, items_changed?, error? }
  *   stage ∈ collect|generate|memory|activate|done|error · org_id 필수(로그 탭 브랜드 필터용).
- *   memory = 에이전트 메모리(qa_skill_memory) 로드/저장/미반환(legacy_mode 카나리) 이벤트.
+ *   memory = 에이전트 메모리(qa_skill_store) 로드/저장/미반환(legacy_mode 카나리) 이벤트.
  * 상한 500(초과분 shift). GET /api/skill-log/recent 가 최신순 반환. */
 const SKILL_LOG = [];
 const SKILL_LOG_MAX = 500;
@@ -119,7 +120,8 @@ function orderNoPct(orderNos, rows) {
     let totalMax = 0;
     let totalEarned = 0;
     for (const row of filtered) {
-        const maxPts = parseMaxPointsFromValidationTime(row.validation_time);
+        const maxPts = maxPointsOf(row);
+        if (maxPts === null) continue;   // 만점 없음 = 분모 제외 (구 모델의 체크리스트 행 부재)
         totalMax += maxPts;
         totalEarned += parseStoredEarned(row.result, maxPts, row.item) ?? 0;
     }
@@ -163,7 +165,8 @@ function hanwhaCategoryPct(cat, rows) {
     let totalMax = 0;
     let totalEarned = 0;
     for (const row of filtered) {
-        const maxPts = parseMaxPointsFromValidationTime(row.validation_time);
+        const maxPts = maxPointsOf(row);
+        if (maxPts === null) continue;   // 만점 없음 = 분모 제외 (구 모델의 체크리스트 행 부재)
         totalMax += maxPts;
         totalEarned += parseStoredEarned(row.result, maxPts, row.item) ?? 0;
     }
@@ -209,7 +212,8 @@ function defaultCategoryPct(cat, rows) {
     let totalMax = 0;
     let totalEarned = 0;
     for (const row of filtered) {
-        const maxPts = parseMaxPointsFromValidationTime(row.validation_time);
+        const maxPts = maxPointsOf(row);
+        if (maxPts === null) continue;   // 만점 없음 = 분모 제외 (구 모델의 체크리스트 행 부재)
         totalMax += maxPts;
         totalEarned += parseStoredEarned(row.result, maxPts, row.item) ?? 0;
     }
@@ -544,6 +548,7 @@ function toCallRow(row) {
         id: row.qa_id,
         uid: row.uid ?? null,          // 상담번호(ICS UID) — 평가목록 표시용
         agent_code: row.agent_code ?? null,
+        agent_user_id: row.agent_user_id ?? null,  // 계정 연결 정본 — 코칭 근거(코칭 배정) 상담사 매칭용
         call_no: row.call_no,
         call_datetime: row.call_datetime,
         duration_sec: row.duration_sec,
@@ -580,6 +585,16 @@ function toCallRow(row) {
         // 옛 콜=카탈로그 배점 합(80), 루브릭 평가 콜=ev.max_score 합(예: 78). 마이그레이션 불필요.
         // 미적재(체크리스트 없음) 시 null → FE 가 DEFAULT_TOTAL_MAX(80) 폴백.
         total_max: (row.total_max !== undefined && row.total_max !== null) ? Number(row.total_max) || null : null,
+        // KSQI 평가 — 시행 여부 + 영역 점수(별개 축). qa_call_ksqi_summary(정규화 테이블) 조인 결과이며
+        // 테이블 부재 시 has_ksqi=false·점수 null. KSQI 평가 워크스페이스 탭의 목록 필터(시행 콜만)·
+        // 점수 컬럼(A/B/전체)에서 사용.
+        has_ksqi: row.has_ksqi === true || row.has_ksqi === 't',
+        ksqi_a: row.ksqi_a === null || row.ksqi_a === undefined ? null : Number(row.ksqi_a),
+        ksqi_b: row.ksqi_b === null || row.ksqi_b === undefined ? null : Number(row.ksqi_b),
+        ksqi_overall_raw:
+            row.ksqi_overall_raw === null || row.ksqi_overall_raw === undefined ? null : Number(row.ksqi_overall_raw),
+        ksqi_overall_max:
+            row.ksqi_overall_max === null || row.ksqi_overall_max === undefined ? null : Number(row.ksqi_overall_max),
     };
 }
 
@@ -874,10 +889,8 @@ app.get('/api/svc/brand-qa-scores', async (req, res) => {
                FROM qa_calls c
                JOIN organizations o ON c.org_id = o.id
                LEFT JOIN LATERAL (
-                   SELECT COALESCE(SUM(CASE WHEN ch.validation_time LIKE '배점%'
-                       THEN COALESCE(NULLIF(regexp_replace(ch.validation_time, '[^0-9.]', '', 'g'), '')::numeric, 5)
-                       ELSE 5 END), 0) AS total_max
-                     FROM qa_checklist_rows ch WHERE ch."ID" = c."ID"
+                   SELECT COALESCE(SUM(ch.max_score), 0) AS total_max
+                     FROM qa_call_item_score ch WHERE ch."ID" = c."ID"
                ) tm ON true
               WHERE ${where.join(' AND ')}
               GROUP BY o.id, o.name, o.proj_cd`,
@@ -1307,9 +1320,88 @@ app.post('/api/auth/switch-org', async (req, res) => {
     }
 });
 
+// KSQI 테이블(qa_call_ksqi_score/summary — 65_qa_ksqi_rows.sql) 존재 여부 — 미적용 DB 에서
+// 참조하면 SQL 에러로 리스트 전체가 깨지므로, 존재 여부에 따라 SELECT/JOIN 조각을 분기
+// (부재 시 has_ksqi=false·점수 null)해 무회귀 보장. 1회 캐시.
+let _ksqiTablesCache = null;
+async function hasKsqiTables(pool) {
+    if (_ksqiTablesCache !== null) return _ksqiTablesCache;
+    try {
+        const { rows } = await pool.query(
+            `SELECT (to_regclass('public.qa_call_ksqi_summary') IS NOT NULL
+                 AND to_regclass('public.qa_call_ksqi_score') IS NOT NULL) AS ok`
+        );
+        _ksqiTablesCache = rows[0]?.ok === true;
+    } catch {
+        _ksqiTablesCache = false;
+    }
+    return _ksqiTablesCache;
+}
+
+// KSQI 보고서 재조립 — 2테이블(score+summary)을 기존 응답 계약({items[], area_a, area_b, overall, summary})
+// 형태로 복원. FE(KsqiEval/KsqiEvalSection) 계약 무변경. 미시행·테이블 부재 시 null 폴백(상세 로드 무영향).
+// 근거 발화는 score.evidence(jsonb)에 인라인 — 구 qa_call_ksqi_evidence 조회·Map 재조립이 사라졌다.
+async function loadKsqiReport(pool, qaId) {
+    try {
+        if (!(await hasKsqiTables(pool))) return null;
+        const { rows: sumRows } = await pool.query(`SELECT * FROM public.qa_call_ksqi_summary WHERE "ID" = $1 LIMIT 1`, [
+            qaId,
+        ]);
+        if (!sumRows[0]) return null;
+        const s = sumRows[0];
+        const { rows: itemRows } = await pool.query(
+            `SELECT item_number, item_name, area, kind, score, max_score, na, defect, rationale, evidence
+             FROM public.qa_call_ksqi_score WHERE "ID" = $1 ORDER BY item_number`,
+            [qaId]
+        );
+        const areaObj = (p) => ({
+            raw: s[`${p}_raw`],
+            max: s[`${p}_max`],
+            scaled: s[`${p}_scaled`],
+            grade: s[`${p}_grade`],
+            excellent: s[`${p}_excellent`],
+        });
+        return {
+            items: itemRows.map((r) => ({
+                item_number: r.item_number,
+                item_name: r.item_name,
+                area: r.area,
+                kind: r.kind,
+                score: r.score,
+                max_score: r.max_score,
+                na: r.na,
+                defect: r.defect,
+                rationale: r.rationale,
+                evidence: Array.isArray(r.evidence) ? r.evidence : [],
+            })),
+            area_a: areaObj('area_a'),
+            area_b: areaObj('area_b'),
+            overall: { raw: s.overall_raw, max: s.overall_max },
+            summary: s.summary,
+        };
+    } catch {
+        return null;
+    }
+}
+
 app.get('/api/calls', async (req, res) => {
     try {
         const activeOrgId = resolveActiveOrgId(req);
+        // KSQI 점수/유무(area_a·area_b scaled + overall) — qa_call_ksqi_summary(정규화) 조인으로 추출,
+        // 테이블 부재 시 안전 폴백.
+        const hasKsqi = await hasKsqiTables(pool);
+        const ksqiCols = hasKsqi
+            ? `(ks."ID" IS NOT NULL) AS has_ksqi,
+               ks.area_a_scaled::float AS ksqi_a,
+               ks.area_b_scaled::float AS ksqi_b,
+               ks.overall_raw::float AS ksqi_overall_raw,
+               ks.overall_max::float AS ksqi_overall_max`
+            : `false AS has_ksqi,
+               NULL::float AS ksqi_a,
+               NULL::float AS ksqi_b,
+               NULL::float AS ksqi_overall_raw,
+               NULL::float AS ksqi_overall_max`;
+        const ksqiJoin = hasKsqi ? `LEFT JOIN public.qa_call_ksqi_summary ks ON ks."ID" = c."ID"` : '';
         const params = [];
         const conds = [];
         if (activeOrgId != null) {
@@ -1326,14 +1418,12 @@ app.get('/api/calls', async (req, res) => {
             conds.push(`c.manual_review = true`);
         }
         // 실제 응대(=QA평가된) 콜만 노출. 포기호/미응대(상담사 미연결)는 파이프라인이
-        // 평가 산출물을 만들지 못해 평가행/체크리스트/소비자평가가 전무하므로 리스트에서 제외한다.
+        // 평가 산출물을 만들지 못해 평가행/체크리스트가 전무하므로 리스트에서 제외한다.
         conds.push(`(
-            EXISTS (SELECT 1 FROM qa_evaluation_rows er    WHERE er."ID" = c."ID")
-         OR EXISTS (SELECT 1 FROM qa_consumer_eval_rows cr WHERE cr."ID" = c."ID")
-         OR EXISTS (SELECT 1 FROM qa_checklist_rows kr     WHERE kr."ID" = c."ID")
+            EXISTS (SELECT 1 FROM qa_call_item_score er    WHERE er."ID" = c."ID")
         )`);
         // 상담사 발화가 전혀 없이 끊긴 콜(상담사 미응답/즉시 종료)은 평가 대상이 아니므로 리스트에서 제외.
-        conds.push(`EXISTS (SELECT 1 FROM qa_conversations q WHERE q."ID" = c."ID" AND q.speaker = '상담사')`);
+        conds.push(`EXISTS (SELECT 1 FROM qa_call_transcript q WHERE q."ID" = c."ID" AND q.speaker = '상담사')`);
         const orgFilter = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
         const { rows: callRows } = await pool.query(
             `SELECT
@@ -1345,6 +1435,7 @@ app.get('/api/calls', async (req, res) => {
                 c.duration_sec AS duration_sec,
                 ''::text AS team_name,
                 c.agent_code AS agent_code,
+                c.agent_user_id AS agent_user_id,
                 ''::text AS agent_id,
                 COALESCE(au.display_name, '')::text AS agent_name,
                 ''::text AS consultation_type,
@@ -1369,28 +1460,22 @@ app.get('/api/calls', async (req, res) => {
                 c.io_divi AS io_divi,
                 c.manual_review AS manual_review,
                 c.manual_review_reasons AS manual_review_reasons,
-                cv.consumer_violations,
-                cv.consumer_total,
+                NULL::bigint AS consumer_violations,
+                NULL::bigint AS consumer_total,
                 EXISTS(
                     SELECT 1
-                    FROM qa_evaluation_rows er
+                    FROM qa_call_item_score er
                     WHERE er."ID" = c."ID"
                     AND ABS(er.manual_eval - er.ai_eval) > 1e-9
                 ) AS has_manual_override,
                 COALESCE(gs.golden_count, 0) AS golden_count,
                 COALESCE(ev.ev_total, 0) AS ev_total,
-                COALESCE(ev.opted_count, 0) AS opted_count
+                COALESCE(ev.opted_count, 0) AS opted_count,
+                ${ksqiCols}
              FROM qa_calls c
              LEFT JOIN public.organizations o ON o.id = c.org_id
              LEFT JOIN public.admin_users au ON au.user_id = c.agent_user_id
              LEFT JOIN public.admin_users ru ON ru.user_id = c.user_id
-             LEFT JOIN (
-                 SELECT "ID",
-                        COUNT(*) FILTER (WHERE yn = 'N') AS consumer_violations,
-                        COUNT(*) AS consumer_total
-                 FROM qa_consumer_eval_rows
-                 GROUP BY "ID"
-             ) cv ON cv."ID" = c."ID"
              LEFT JOIN (
                  SELECT qa_id, COUNT(*) AS golden_count
                  FROM qa_golden_set
@@ -1399,9 +1484,10 @@ app.get('/api/calls', async (req, res) => {
              LEFT JOIN (
                  SELECT "ID", COUNT(*) AS ev_total,
                         COUNT(*) FILTER (WHERE manual_eval_option IS NOT NULL) AS opted_count
-                 FROM qa_evaluation_rows
+                 FROM qa_call_item_score
                  GROUP BY "ID"
              ) ev ON ev."ID" = c."ID"
+             ${ksqiJoin}
              ${orgFilter}
              ORDER BY c."CDATE" DESC`,
             params
@@ -1412,14 +1498,14 @@ app.get('/api/calls', async (req, res) => {
             return;
         }
         const { rows: chRows } = await pool.query(
-            `SELECT "ID" AS qa_id, order_no, category, item, agent_utterance, validation_time
-             FROM qa_checklist_rows
-             WHERE "ID" = ANY($1::text[])`,
+            `SELECT "ID" AS qa_id, order_no, category, item, agent_utterance, max_score
+             FROM qa_call_item_score
+             WHERE "ID" = ANY($1::text[]) AND max_score IS NOT NULL`,
             [qaIds]
         );
         const { rows: evRows } = await pool.query(
             `SELECT "ID" AS qa_id, order_no, ai_eval
-             FROM qa_evaluation_rows
+             FROM qa_call_item_score
              WHERE "ID" = ANY($1::text[])`,
             [qaIds]
         );
@@ -1444,7 +1530,7 @@ app.get('/api/calls', async (req, res) => {
             let sumTotalMax = 0;
             for (const r of chRows) {
                 if (keySet.has(String(r.category || '').trim())) {
-                    sumTotalMax += parseMaxPointsFromValidationTime(r.validation_time);
+                    sumTotalMax += maxPointsOf(r) ?? 0;   // null(분모 제외) -> 0
                 }
             }
             const total_max = sumTotalMax > 0 ? sumTotalMax : null;
@@ -1567,10 +1653,8 @@ app.get('/api/stats', async (req, res) => {
             : `c."TOTAL_SCORE" < 80`;
         const coachingJoin = useRelativeCoaching
             ? `LEFT JOIN LATERAL (
-                   SELECT COALESCE(SUM(CASE WHEN ch.validation_time LIKE '배점%'
-                       THEN COALESCE(NULLIF(regexp_replace(ch.validation_time, '[^0-9.]', '', 'g'), '')::numeric, 5)
-                       ELSE 5 END), 0) AS total_max
-                     FROM qa_checklist_rows ch WHERE ch."ID" = c."ID"
+                   SELECT COALESCE(SUM(ch.max_score), 0) AS total_max
+                     FROM qa_call_item_score ch WHERE ch."ID" = c."ID"
                ) tm ON true`
             : '';
 
@@ -1617,7 +1701,7 @@ app.get('/api/stats', async (req, res) => {
         const items = (await pool.query(
             `WITH item_max AS (
                  SELECT c.department, er.order_no, MAX(er.ai_eval) AS max_pts
-                   FROM qa_evaluation_rows er JOIN qa_calls c ON c."ID" = er."ID"
+                   FROM qa_call_item_score er JOIN qa_calls c ON c."ID" = er."ID"
                    ${sc4.where}
                   GROUP BY c.department, er.order_no
              )
@@ -1627,7 +1711,7 @@ app.get('/api/stats', async (req, res) => {
                     CASE WHEN MAX(im.max_pts) > 0
                          THEN ROUND((AVG(er.manual_eval)/MAX(im.max_pts)*100)::numeric, 1) END AS avg,
                     COUNT(*) AS count
-               FROM qa_evaluation_rows er
+               FROM qa_call_item_score er
                JOIN qa_calls c ON c."ID" = er."ID"
                LEFT JOIN item_max im ON im.department = c.department AND im.order_no = er.order_no
                ${sc4.where} AND ${winCur4}
@@ -1643,15 +1727,29 @@ app.get('/api/stats', async (req, res) => {
         }));
         const weak = [...items].filter((i) => i.avg != null).sort((a, b) => a.avg - b.avg).slice(0, 5);
 
-        // 5) 일별 추이(현재창)
+        // 5) 일별 추이(현재창) — generate_series 날짜 스파인에 LEFT JOIN.
+        //    GROUP BY 만 하면 콜 없는 날이 행에서 통째로 빠져 7일 창에 막대가 6개만 나온다(빈 날 누락 fix).
+        //    빈 날은 avg=null / count=0 으로 내려 프론트가 '평가 없음'으로 구분 표시.
         const sc5 = buildScope({ withDept: true });
         const daily = (await pool.query(
-            `SELECT ${CDATE_DT} AS date,
-                    ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS avg, COUNT(*) AS count
-               FROM qa_calls c ${sc5.where} AND ${bind(winCur, sc5.params)}
-              GROUP BY ${CDATE_DT} ORDER BY 1`,
+            bind(
+                `SELECT s.date::date AS date, d.avg, COALESCE(d.count, 0) AS count
+                   FROM generate_series($A::date - ($D - 1), $A::date, interval '1 day') AS s(date)
+                   LEFT JOIN (
+                        SELECT ${CDATE_DT} AS date,
+                               ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS avg, COUNT(*) AS count
+                          FROM qa_calls c ${sc5.where} AND ${winCur}
+                         GROUP BY ${CDATE_DT}
+                   ) d ON d.date = s.date::date
+                  ORDER BY 1`,
+                sc5.params
+            ),
             sc5.params
-        )).rows.map((r) => ({ date: r.date, avg: Number(r.avg), count: Number(r.count) }));
+        )).rows.map((r) => ({
+            date: r.date,
+            avg: r.avg != null ? Number(r.avg) : null,
+            count: Number(r.count),
+        }));
 
         // 6) 상담사 랭킹(현재창) — 이름 조인, 미연결은 '미지정' 한 줄
         const sc6 = buildScope({ withDept: true });
@@ -1721,11 +1819,9 @@ app.get('/api/analysis/:qaId', async (req, res) => {
         const isHanwha = dept === '고객센터';
         const isDefault = dept === '고객지원실';
         const { rows: checklistRows } = await pool.query(
-            `SELECT c.order_no, c.category, c.item, c.validation_time, e.ai_eval
-             FROM qa_checklist_rows c
-             LEFT JOIN qa_evaluation_rows e
-               ON e."ID" = c."ID" AND e.order_no = c.order_no
-             WHERE c."ID" = $1
+            `SELECT c.order_no, c.category, c.item, c.max_score, c.ai_eval
+             FROM qa_call_item_score c
+             WHERE c."ID" = $1 AND c.max_score IS NOT NULL
              ORDER BY c.order_no ASC`,
             [qaId]
         );
@@ -1802,7 +1898,7 @@ app.get('/api/analysis/:qaId', async (req, res) => {
                     : buildPentagonFromChecklistRows(checklistAugmented);
         const { rows: reportRowsRaw } = await pool.query(
             `SELECT item_type_no, item_type, rating, comment, summary
-             FROM qa_analysis_report
+             FROM qa_call_pentagon_result
              WHERE "ID" = $1
              ORDER BY item_type_no ASC`,
             [qaId]
@@ -1866,45 +1962,29 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
         // 수기평가 대상 사유(상세 배지용) — ['저품질 검증 · 평균점수 미달', ...]
         const manualReviewReasons = Array.isArray(callMeta.manual_review_reasons) ? callMeta.manual_review_reasons : [];
 
-        // 관리자 코멘트 — qa_admin_comments(qa_id 단일행에 전체 배열 보관). 없으면 [].
+        // KSQI STT 보고서 — 정규화 3테이블(qa_call_ksqi_score/evidence/summary)에서 기존 계약 형태로 재조립.
+        // 브랜드 루브릭과 별개 축이라 별도 방어 조회 — 테이블 부재/미시행 시 null 폴백(상세 로드 무영향).
+        const ksqiReport = await loadKsqiReport(pool, qaId);
+
+        // 관리자 코멘트 — qa_call_annotation.comments(qa_id 단일행에 전체 배열 보관). 없으면 [].
         const { rows: acRows } = await pool.query(
-            'SELECT comments FROM public.qa_admin_comments WHERE qa_id = $1',
+            'SELECT comments FROM public.qa_call_annotation WHERE qa_id = $1',
             [qaId]
         );
         const adminComments = Array.isArray(acRows[0]?.comments) ? acRows[0].comments : [];
 
         const { rows: convRaw } = await pool.query(
             `SELECT "ID" AS qa_id, turn_no, ''::text AS ts, speaker, "text" AS text
-             FROM qa_conversations
+             FROM qa_call_transcript
              WHERE "ID" = $1
              ORDER BY turn_no ASC`,
             [qaId]
         );
 
-        // 소비자보호부 분기 — 평가 트랙(20 Y/N) + AI 분석 트랙(금칙어/카테고리/분석대상) 반환.
+        // 소비자보호부 분기 — 신한 PoC 전용 트랙(20 Y/N + 금칙어 + 12카테고리)이었으나
+        // 브랜드별 동적 루브릭(eval_item_defs)으로 세대교체되어 qa_consumer_* 3테이블 제거(66).
+        // 해당 부서 콜이 남아 있어도 500 대신 빈 트랙으로 응답해 상세 화면이 깨지지 않게 한다.
         if (callMeta.department === '소비자보호부') {
-            const { rows: consumerEvalRows } = await pool.query(
-                `SELECT "ID" AS qa_id, item_no, major_category, sub_no, criterion, item_text, yn, detail_text,
-                        evidence_line_no, evidence_text
-                 FROM qa_consumer_eval_rows
-                 WHERE "ID" = $1
-                 ORDER BY item_no ASC`,
-                [qaId]
-            );
-            const { rows: keywordRows } = await pool.query(
-                `SELECT keyword_id, "ID" AS qa_id, level, major_category, sub_category, keyword, line_no, line_text
-                 FROM qa_consumer_keywords
-                 WHERE "ID" = $1
-                 ORDER BY keyword_id ASC`,
-                [qaId]
-            );
-            const { rows: aiCatRows } = await pool.query(
-                `SELECT "ID" AS qa_id, category_no, major_category, sub_category, score
-                 FROM qa_consumer_ai_categories
-                 WHERE "ID" = $1
-                 ORDER BY category_no ASC`,
-                [qaId]
-            );
             res.json({
                 qa_id: qaId,
                 department: '소비자보호부',
@@ -1913,16 +1993,14 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
                 ai_analysis_reason: callMeta.ai_analysis_reason,
                 voc_code: callMeta.voc_code,
                 promotion_code: callMeta.promotion_code,
-                consumer_eval_rows: consumerEvalRows,
-                consumer_keywords: keywordRows,
-                consumer_ai_categories: aiCatRows.map((r) => ({
-                    ...r,
-                    score: r.score === null || r.score === undefined ? 0 : Number(r.score),
-                })),
+                consumer_eval_rows: [],
+                consumer_keywords: [],
+                consumer_ai_categories: [],
                 conversation: convRaw,
                 admin_comments: adminComments,
                 manual_review: !!callMeta.manual_review,
                 manual_review_reasons: manualReviewReasons,
+                ksqi_report: ksqiReport,
             });
             return;
         }
@@ -1930,15 +2008,15 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
         // 컬렉션관리부 분기 (기존 로직)
         const { rows: evaluation_rows } = await pool.query(
             `SELECT "ID" AS qa_id, order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval
-             FROM qa_evaluation_rows
+             FROM qa_call_item_score
              WHERE "ID" = $1
              ORDER BY order_no ASC`,
             [qaId]
         );
         const { rows: checklist_rows } = await pool.query(
-            `SELECT "ID" AS qa_id, order_no, category, item, agent_utterance, validation_time
-             FROM qa_checklist_rows
-             WHERE "ID" = $1
+            `SELECT "ID" AS qa_id, order_no, category, item, agent_utterance, max_score
+             FROM qa_call_item_score
+             WHERE "ID" = $1 AND max_score IS NOT NULL
              ORDER BY order_no ASC`,
             [qaId]
         );
@@ -1951,7 +2029,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
         // 집계는 sample-* 행을 제외해 "운영 baseline" 만 반영.
         const maxByOrderNo = new Map();
         for (const r of checklist_rows) {
-            maxByOrderNo.set(Number(r.order_no), parseMaxPointsFromValidationTime(r.validation_time));
+            maxByOrderNo.set(Number(r.order_no), maxPointsOf(r) ?? 0);
         }
         // 항목별 채점방식 — 프론트가 Y/N(컴플라이언스 체크) 항목을 점수표에서 분리하는 데 사용.
         // 활성 eval_item_defs.scoring_type by order_no (펜타곤 axisByOrderNo 조회와 동일 패턴).
@@ -1983,7 +2061,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
                 e.item AS item,
                 AVG(CASE WHEN substr(c."CDATE", 1, 7) = $1 THEN e.ai_eval END) AS monthly_avg_raw,
                 AVG(e.ai_eval) AS team_avg_raw
-             FROM qa_evaluation_rows e
+             FROM qa_call_item_score e
              JOIN qa_calls c ON c."ID" = e."ID"
              WHERE e."ID" NOT LIKE 'sample-%'
                AND c.role = $2
@@ -2041,6 +2119,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
             admin_comments: adminComments,
             manual_review: !!callMeta.manual_review,
             manual_review_reasons: manualReviewReasons,
+            ksqi_report: ksqiReport,
         });
     } catch (error) {
         console.error('GET /api/evaluations/:qaId error:', error);
@@ -2111,67 +2190,13 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
         }
     }
 
-    // 소비자보호부 Y/N 업데이트 분기
+    // 소비자보호부 Y/N 업데이트 분기 — qa_consumer_eval_rows 제거(66)로 저장 대상이 없다.
+    // 신한 PoC 전용 트랙이 동적 루브릭으로 세대교체된 결과이므로, 호출되면 410 으로 명시 거절한다.
     if (Array.isArray(consumerPatches) && consumerPatches.length > 0) {
-        try {
-            const { rows: existCall } = await pool.query(
-                'SELECT "ID" AS qa_id, department FROM qa_calls WHERE "ID" = $1 LIMIT 1',
-                [qaId]
-            );
-            if (!existCall[0]) {
-                res.status(404).json({ message: 'Not found' });
-                return;
-            }
-            if (existCall[0].department !== '소비자보호부') {
-                res.status(400).json({ message: 'consumer_yn_patches는 소비자보호부 콜에서만 사용 가능합니다.' });
-                return;
-            }
-            const client = await pool.connect();
-            try {
-                await client.query('BEGIN');
-                let applied = 0;
-                for (const p of consumerPatches) {
-                    const yn = String(p?.yn || '').trim();
-                    const itemNo = Number(p?.item_no);
-                    if (!Number.isFinite(itemNo) || (yn !== 'Y' && yn !== 'N')) continue;
-                    const detail = p?.detail_text === undefined ? null : String(p.detail_text);
-                    if (detail === null) {
-                        await client.query(
-                            `UPDATE qa_consumer_eval_rows SET yn = $1 WHERE "ID" = $2 AND item_no = $3`,
-                            [yn, qaId, itemNo]
-                        );
-                    } else {
-                        await client.query(
-                            `UPDATE qa_consumer_eval_rows SET yn = $1, detail_text = $2 WHERE "ID" = $3 AND item_no = $4`,
-                            [yn, detail, qaId, itemNo]
-                        );
-                    }
-                    applied += 1;
-                }
-                await client.query('COMMIT');
-                await insertQaAuditLog(pool, {
-                    req,
-                    action: AUDIT_ACTION.QA_MANUAL_EVAL_SAVE,
-                    resource_type: 'qa_call',
-                    resource_id: qaId,
-                    http_method: 'PUT',
-                    http_path: `/api/evaluations/${encodeURIComponent(qaId)}`,
-                    detail_json: JSON.stringify({ track: 'consumer_yn', patch_count: applied }),
-                    success: true,
-                });
-                res.json({ ok: true, track: 'consumer_yn', applied });
-                return;
-            } catch (e) {
-                await client.query('ROLLBACK');
-                throw e;
-            } finally {
-                client.release();
-            }
-        } catch (error) {
-            console.error('PUT /api/evaluations/:qaId (consumer) error:', error);
-            res.status(500).json({ message: 'Failed to save consumer evaluations.' });
-            return;
-        }
+        res.status(410).json({
+            message: '소비자보호부 Y/N 트랙은 폐지되었습니다. 브랜드별 평가항목(manual_patches)을 사용하세요.',
+        });
+        return;
     }
 
     if (!Array.isArray(patches) || patches.length === 0) {
@@ -2186,15 +2211,15 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
         }
         const { rows: existingEval } = await pool.query(
             `SELECT "ID" AS qa_id, order_no, category, item, reason_text, ai_eval, manual_eval
-             FROM qa_evaluation_rows
+             FROM qa_call_item_score
              WHERE "ID" = $1
              ORDER BY order_no ASC`,
             [qaId]
         );
         const { rows: checklistBase } = await pool.query(
-            `SELECT "ID" AS qa_id, order_no, category, item, agent_utterance, validation_time
-             FROM qa_checklist_rows
-             WHERE "ID" = $1
+            `SELECT "ID" AS qa_id, order_no, category, item, agent_utterance, max_score
+             FROM qa_call_item_score
+             WHERE "ID" = $1 AND max_score IS NOT NULL
              ORDER BY order_no ASC`,
             [qaId]
         );
@@ -2266,7 +2291,7 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
             await client.query('BEGIN');
             for (const r of encoded) {
                 await client.query(
-                    `UPDATE qa_evaluation_rows
+                    `UPDATE qa_call_item_score
                      SET manual_eval = $1, manual_eval_option = $2
                      WHERE "ID" = $3 AND order_no = $4`,
                     [r.value, r.option, qaId, r.order_no]
@@ -2343,9 +2368,11 @@ app.put('/api/evaluations/:qaId/admin-comments', async (req, res) => {
     const list = Array.isArray(req.body?.admin_comments) ? req.body.admin_comments : [];
     try {
         await pool.query(
-            `INSERT INTO public.qa_admin_comments (qa_id, comments, updated_at)
+            // 병합 테이블(마이그레이션 71) — 사용자는 comments 만 SET.
+            // 배치가 쓰는 judgments/has_* 는 EXCLUDED 에 없으므로 보존된다.
+            `INSERT INTO public.qa_call_annotation (qa_id, comments, comments_at)
                  VALUES ($1, $2::jsonb, now())
-             ON CONFLICT (qa_id) DO UPDATE SET comments = EXCLUDED.comments, updated_at = now()`,
+             ON CONFLICT (qa_id) DO UPDATE SET comments = EXCLUDED.comments, comments_at = now()`,
             [qaId, JSON.stringify(list)]
         );
         res.json({ ok: true, admin_comments: list });
@@ -2356,9 +2383,9 @@ app.put('/api/evaluations/:qaId/admin-comments', async (req, res) => {
 });
 
 // 평가 콜 삭제 (관리자 전용, 벌크). body { ids:[qaId, ...] } 또는 { id:qaId } 단건 수용.
-//   qa_calls 행 삭제 시 자식 9개 테이블(qa_evaluation_rows·qa_checklist_rows·qa_analysis_report·
-//   qa_conversations·qa_golden_set·qa_review_events·qa_consumer_*)이 FK ON DELETE CASCADE 로
-//   함께 제거된다 — 별도 자식 DELETE 불필요.
+//   qa_calls 행 삭제 시 자식 테이블(qa_call_item_score·qa_call_pentagon_result·qa_call_transcript·
+//   qa_golden_set·qa_call_review_event·qa_call_ksqi_score·qa_call_ksqi_summary·
+//   qa_call_emotion_recovery)이 FK ON DELETE CASCADE 로 함께 제거된다 — 별도 자식 DELETE 불필요.
 //   sandbox 계정은 운영 행(is_sandbox=false) 삭제 불가 — 배치에 운영행 포함 시 전체 거부(평가/검수 PUT 가드 일관).
 //   SELECT(가드)→DELETE 를 한 트랜잭션으로 묶어 TOCTOU 방지.
 app.delete('/api/calls', requireAdmin, async (req, res) => {
@@ -2491,6 +2518,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
 
     // 검토요청 제출은 수기평가 100% 완료해야 가능(프론트 버튼 게이트의 백엔드 백스톱 — API 직접 호출 우회 방지).
     //   "판단됨" 정의 = manual_eval_option 설정됨 OR manual_eval≠ai_eval (GET /api/evaluations 의 judged 와 동일).
+    //   yes_no(컴플라이언스) 항목은 수기평가 대상이 아니므로 분모에서 제외 — 프론트 scoredRows 와 동일 기준.
     if (isAgent && next === 'review_done' && (from === 'pending' || from === 'in_review')) {
         const { rows: prog } = await pool.query(
             `SELECT count(*)::int AS total,
@@ -2498,8 +2526,15 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                         WHERE (manual_eval_option IS NOT NULL AND btrim(manual_eval_option) <> '')
                            OR (ai_eval IS NOT NULL AND manual_eval IS NOT NULL AND manual_eval IS DISTINCT FROM ai_eval)
                     )::int AS judged
-               FROM qa_evaluation_rows WHERE "ID" = $1`,
-            [qaId]
+               FROM qa_call_item_score er
+              WHERE er."ID" = $1
+                AND NOT EXISTS (
+                      SELECT 1 FROM public.eval_item_defs d
+                       WHERE d.org_id = $2 AND d.order_no = er.order_no
+                         AND d.is_active = true AND d.deactivated_at IS NULL
+                         AND lower(d.scoring_type) = 'yes_no'
+                    )`,
+            [qaId, cur.org_id]
         );
         const total = prog[0]?.total ?? 0;
         const judged = prog[0]?.judged ?? 0;
@@ -2513,7 +2548,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
     async function computeDiff() {
         const { rows } = await pool.query(
             `SELECT order_no, item, counselor_eval, manual_eval
-               FROM qa_evaluation_rows
+               FROM qa_call_item_score
               WHERE "ID" = $1 AND counselor_eval IS NOT NULL AND manual_eval IS DISTINCT FROM counselor_eval
               ORDER BY order_no`,
             [qaId]
@@ -2529,7 +2564,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
         if (isAgent) {
             action = 'agree'; // 상담사 점수 동의 → 확정. 승인자=마지막 반려 관리자.
             const { rows: rev } = await pool.query(
-                `SELECT actor_user_id FROM qa_review_events WHERE qa_id=$1 AND action IN ('reject','reject_again') ORDER BY id DESC LIMIT 1`, [qaId]
+                `SELECT actor_user_id FROM qa_call_review_event WHERE qa_id=$1 AND action IN ('reject','reject_again') ORDER BY id DESC LIMIT 1`, [qaId]
             );
             approvedBy = rev[0]?.actor_user_id ?? uid;
         } else {
@@ -2581,7 +2616,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
 
         // 검토요청 제출(→검토요청) 시 상담사 점수 스냅샷(이후 관리자 변경분 diff 기준).
         if (action === 'submit') {
-            await pool.query(`UPDATE qa_evaluation_rows SET counselor_eval = manual_eval WHERE "ID" = $1`, [qaId])
+            await pool.query(`UPDATE qa_call_item_score SET counselor_eval = manual_eval WHERE "ID" = $1`, [qaId])
                 .catch((e) => console.error('counselor_eval snapshot error:', e));
         }
 
@@ -2591,7 +2626,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                 ? JSON.stringify(diffRows.map((r) => ({ order_no: r.order_no, item: r.item, from: r.counselor_eval, to: r.manual_eval })))
                 : null;
             await pool.query(
-                `INSERT INTO qa_review_events (qa_id, round, actor_user_id, action, changed_items, reason) VALUES ($1,$2,$3,$4,$5::jsonb,$6)`,
+                `INSERT INTO qa_call_review_event (qa_id, round, actor_user_id, action, changed_items, reason) VALUES ($1,$2,$3,$4,$5::jsonb,$6)`,
                 [qaId, round, uid, action, changed, reason]
             ).catch((e) => console.error('review event insert error:', e));
         }
@@ -2626,7 +2661,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                 });
             } else if (action === 'object') {
                 const { rows: rev } = await pool.query(
-                    `SELECT actor_user_id FROM qa_review_events WHERE qa_id=$1 AND action IN ('reject','reject_again') ORDER BY id DESC LIMIT 1`, [qaId]
+                    `SELECT actor_user_id FROM qa_call_review_event WHERE qa_id=$1 AND action IN ('reject','reject_again') ORDER BY id DESC LIMIT 1`, [qaId]
                 );
                 const target = rev[0]?.actor_user_id;
                 if (target != null) {
@@ -2686,7 +2721,7 @@ app.get('/api/calls/:qaId/review-events', async (req, res) => {
         const { rows } = await pool.query(
             `SELECT e.id, e.round, e.action, e.changed_items, e.reason, e.created_at,
                     e.actor_user_id, u.name AS actor_name
-               FROM qa_review_events e
+               FROM qa_call_review_event e
                LEFT JOIN users u ON u.id = e.actor_user_id
               WHERE e.qa_id = $1
               ORDER BY e.id ASC`,
@@ -2715,13 +2750,13 @@ app.get('/api/calls/:qaId/review-events', async (req, res) => {
  * - DELETE /api/golden-set/:qaId/:orderNo      → 해제
  *
  * "동일" 판정 자체는 프론트의 새 수기평가 모델(낮음/동일/높음)에서 결정되며,
- * DB qa_evaluation_rows.manual_eval 컬럼은 아직 그 모델과 비호환이므로
+ * DB qa_call_item_score.manual_eval 컬럼은 아직 그 모델과 비호환이므로
  * 본 라우트는 manual_eval == ai_eval 검증을 강제하지 않는다 (프론트가 gatekeeper).
  * score 는 ai_eval (== 동일 판정 시 사용자가 인정한 점수) 을 그대로 스냅샷.
  */
 // 평가 항목 단위 골든셋 사례 조회 — AI 평가항목 관리 탭의 "골든셋 사례" 탭에서 사용.
 // 활성 브랜드(org_id) 로 필터. super_admin 이 X-Active-Brand-Id=all 이면 전체.
-// 매칭 키: order_no 가 오면 그것만 사용 (qa_evaluation_rows.item 의 긴 문구와
+// 매칭 키: order_no 가 오면 그것만 사용 (qa_call_item_score.item 의 긴 문구와
 // CHECKLIST_TEMPLATE.item 의 UI 단축어가 다른 신한 케이스 대응). 없으면 (category, item) 폴백.
 app.get('/api/golden-set', async (req, res) => {
     const orderNoRaw = req.query.order_no;
@@ -2832,9 +2867,8 @@ app.post('/api/golden-set/:qaId/:orderNo', requireAdmin, async (req, res) => {
         // 등록자는 qa_calls.user_id (검수자) 로 추적되므로 별도 컬럼 적재 불필요.
         const { rows: evalRow } = await pool.query(
             `SELECT er."ID" AS qa_id, er.order_no, er.category, er.item, er.reason_text, er.ai_eval,
-                    cr.agent_utterance, c.org_id
-             FROM qa_evaluation_rows er
-             LEFT JOIN qa_checklist_rows cr ON cr."ID" = er."ID" AND cr.order_no = er.order_no
+                    er.agent_utterance, c.org_id
+             FROM qa_call_item_score er
              LEFT JOIN qa_calls c ON c."ID" = er."ID"
              WHERE er."ID" = $1 AND er.order_no = $2
              LIMIT 1`,
@@ -2928,7 +2962,7 @@ app.delete('/api/golden-set/:qaId/:orderNo', requireAdmin, async (req, res) => {
 
 // ── 스킬셋 (수기 '높음'/'낮음' 정정 누적) — AI 스킬 관리 화면 ────────
 // 검수자가 AI 점수를 정정('낮음'=과대평가/'높음'=과소평가)한 승인·비샌드박스 항목행.
-// 스킬 학습(skillLearn.collectSkillCases)과 동일 소스이며, qa_skill_excluded 로 제외된 건 뺀다.
+// 스킬 학습(skillLearn.collectSkillCases)과 동일 소스이며, skill_excluded_at 이 찍힌 건 뺀다.
 app.get('/api/skillset', async (req, res) => {
     const orderNoRaw = req.query.order_no;
     const orderNo = orderNoRaw !== undefined && orderNoRaw !== '' && Number.isFinite(Number(orderNoRaw))
@@ -2953,18 +2987,14 @@ app.get('/api/skillset', async (req, res) => {
         const { rows } = await pool.query(
             `SELECT er."ID" AS qa_id, er.order_no, er.category, er.item,
                     er.ai_eval, er.manual_eval_option AS direction, er.reason_text,
-                    cr.agent_utterance,
+                    er.agent_utterance,
                     c."CDATE" AS call_datetime, c.org_id,
                     u.login_id, u.display_name
-               FROM qa_evaluation_rows er
+               FROM qa_call_item_score er
                JOIN qa_calls c ON c."ID" = er."ID"
-               LEFT JOIN qa_checklist_rows cr ON cr."ID" = er."ID" AND cr.order_no = er.order_no
                LEFT JOIN admin_users u ON u.user_id = c.user_id
                ${where}
-                 AND NOT EXISTS (
-                     SELECT 1 FROM qa_skill_excluded x
-                      WHERE x.qa_id = er."ID" AND x.order_no = er.order_no AND x.org_id = c.org_id
-                 )
+                 AND er.skill_excluded_at IS NULL
                ORDER BY c."CDATE" DESC
                LIMIT 200`,
             params
@@ -2985,14 +3015,13 @@ app.delete('/api/skillset/:qaId/:orderNo', requireAdmin, async (req, res) => {
         return;
     }
     try {
-        // org_id 는 콜에서 확정(super_admin=all 컨텍스트 대비).
-        const { rows: cRows } = await pool.query(`SELECT org_id FROM qa_calls WHERE "ID" = $1 LIMIT 1`, [qaId]);
-        const rowOrg = cRows[0]?.org_id ?? resolveActiveOrgId(req) ?? 0;
+        // 제외는 평가행의 플래그 컬럼으로 표기(마이그레이션 70 — 구 qa_skill_excluded 흡수).
+        // 원본 점수·사유는 그대로 두고 학습 신호에서만 빠진다(soft-exclude).
         await pool.query(
-            `INSERT INTO qa_skill_excluded (org_id, qa_id, order_no)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (org_id, qa_id, order_no) DO NOTHING`,
-            [rowOrg, qaId, orderNo]
+            `UPDATE qa_call_item_score
+                SET skill_excluded_at = now()
+              WHERE "ID" = $1 AND order_no = $2 AND skill_excluded_at IS NULL`,
+            [qaId, orderNo]
         );
         res.json({ ok: true, excluded: true });
     } catch (error) {
@@ -3133,6 +3162,90 @@ app.post('/api/admin/eval-items/compose-prompt', requireAdmin, async (req, res) 
     } catch (err) {
         console.error('POST /api/admin/eval-items/compose-prompt error:', err);
         res.json({ ok: false, error: String(err?.message || err) });
+    }
+});
+
+// ksqi_item_defs(브랜드별 KSQI 항목 정의) 테이블 존재 여부 — prod 미적용 시 부재. 1회 캐시.
+// 부재 시 카탈로그가 기존 파이프라인 프록시 동작으로 폴백해 무회귀 보장.
+let _ksqiItemDefsTableCache = null;
+async function hasKsqiItemDefsTable(pool) {
+    if (_ksqiItemDefsTableCache !== null) return _ksqiItemDefsTableCache;
+    try {
+        const { rows } = await pool.query(
+            `SELECT 1 FROM information_schema.tables
+             WHERE table_schema = 'public' AND table_name = 'ksqi_item_defs' LIMIT 1`
+        );
+        _ksqiItemDefsTableCache = rows.length > 0;
+    } catch {
+        _ksqiItemDefsTableCache = false;
+    }
+    return _ksqiItemDefsTableCache;
+}
+
+// 파이프라인 GET /ksqi-stt/catalog 중계 — 항목 판정 기준 본문(criterion)의 SSOT 는 파이프라인 코드.
+async function fetchPipelineKsqiCatalog(timeoutMs = 30_000) {
+    const base = resolvePipelineBaseUrl({ pipeline_target: 'ec2' }, {}).replace(/\/+$/, '');
+    const resp = await fetch(`${base}/ksqi-stt/catalog`, { signal: AbortSignal.timeout(timeoutMs) });
+    let j = null;
+    try {
+        j = await resp.json();
+    } catch {
+        /* 비-JSON 응답 */
+    }
+    if (!resp.ok || j === null) throw new Error(`ksqi-stt catalog 조회 실패 (http_${resp.status})`);
+    return Array.isArray(j) ? j : Array.isArray(j?.catalog) ? j.catalog : Array.isArray(j?.items) ? j.items : [];
+}
+
+// GET /api/ksqi-stt/catalog?org_id=N — KSQI 평가항목 카탈로그.
+//   org_id 지정 + ksqi_item_defs 존재 시: 브랜드별 DB 정의(번호·명칭·영역·대분류·배점·활성)를
+//   우선 반환하고, 판정 기준 본문(criterion)은 파이프라인 카탈로그에서 번호로 병합(베스트에포트 —
+//   파이프라인 불통이어도 DB 항목 목록은 정상 반환). 'KSQI 관리' 탭이 사용.
+//   org_id 미지정 / 테이블·행 부재(prod 미적용): 기존 파이프라인 프록시 그대로(무회귀).
+app.get('/api/ksqi-stt/catalog', async (req, res) => {
+    const orgId = Number(req.query.org_id) || null;
+    try {
+        if (orgId && (await hasKsqiItemDefsTable(pool))) {
+            const { rows } = await pool.query(
+                `SELECT number, name, area, category, kind, max_score, is_active
+                   FROM public.ksqi_item_defs
+                  WHERE org_id = $1
+                  ORDER BY number`,
+                [orgId]
+            );
+            if (rows.length > 0) {
+                let criterionByNumber = new Map();
+                try {
+                    const pipelineItems = await fetchPipelineKsqiCatalog(10_000);
+                    criterionByNumber = new Map(pipelineItems.map((it) => [Number(it.number), it]));
+                } catch (err) {
+                    console.warn('ksqi-stt catalog: 파이프라인 criterion 병합 생략 —', String(err?.message || err));
+                }
+                res.json({
+                    source: 'db',
+                    org_id: orgId,
+                    items: rows.map((r) => {
+                        const p = criterionByNumber.get(Number(r.number)) || {};
+                        return {
+                            number: Number(r.number),
+                            name: r.name,
+                            area: r.area,
+                            category: r.category,
+                            kind: r.kind,
+                            max_score: Number(r.max_score),
+                            is_active: r.is_active !== false,
+                            criterion: p.criterion ?? '',
+                            alt_channel: p.alt_channel ?? null,
+                        };
+                    }),
+                });
+                return;
+            }
+        }
+        // 폴백 — 파이프라인 프록시 (org 미지정·테이블/행 부재).
+        res.json({ source: 'pipeline', items: await fetchPipelineKsqiCatalog() });
+    } catch (err) {
+        console.error('GET /api/ksqi-stt/catalog error:', err);
+        res.status(502).json({ message: String(err?.message || err) });
     }
 });
 
@@ -3392,11 +3505,11 @@ app.put('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
         // item_name / category_name 은 변경 시점의 스냅샷 — 항목 삭제 후에도 통합 이력에서 표시 가능.
         if (logChangeType) {
             await client.query(
-                `INSERT INTO public.eval_item_change_log
-                   (org_id, department, order_no, item_name, category_name,
+                `INSERT INTO public.rubric_change_log
+                   (org_id, target_kind, department, target_no, target_name, category_name,
                     version, change_type, before_json, after_json,
                     user_id, login_id, display_name)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, $12)`,
+                 VALUES ($1, 'item', $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, $12)`,
                 [
                     orgId, department, orderNo,
                     item, category,
@@ -3478,11 +3591,11 @@ app.delete('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
                 max_score: row.max_score, is_active: row.is_active, version: row.version,
             };
             await client.query(
-                `INSERT INTO public.eval_item_change_log
-                   (org_id, department, order_no, item_name, category_name,
+                `INSERT INTO public.rubric_change_log
+                   (org_id, target_kind, department, target_no, target_name, category_name,
                     version, change_type, before_json, after_json,
                     user_id, login_id, display_name)
-                 VALUES ($1, $2, $3, $4, $5, $6, 'delete', $7::jsonb, NULL, $8, $9, $10)`,
+                 VALUES ($1, 'item', $2, $3, $4, $5, $6, 'delete', $7::jsonb, NULL, $8, $9, $10)`,
                 [
                     orgId, row.department, orderNo,
                     row.item, row.category, row.version,
@@ -3609,11 +3722,11 @@ app.post('/api/admin/eval-items', requireAdmin, async (req, res) => {
                 version: nextVersion,
             };
             await client.query(
-                `INSERT INTO public.eval_item_change_log
-                   (org_id, department, order_no, item_name, category_name,
+                `INSERT INTO public.rubric_change_log
+                   (org_id, target_kind, department, target_no, target_name, category_name,
                     version, change_type, before_json, after_json,
                     user_id, login_id, display_name)
-                 VALUES ($1, $2, $3, $4, $5, $6, 'create', NULL, $7::jsonb, $8, $9, $10)`,
+                 VALUES ($1, 'item', $2, $3, $4, $5, $6, 'create', NULL, $7::jsonb, $8, $9, $10)`,
                 [
                     orgId, dept, nextOrderNo,
                     item.trim(), category.trim(),
@@ -3718,11 +3831,11 @@ app.post('/api/admin/pentagon-axes', requireAdmin, async (req, res) => {
             version: 1,
         };
         await client.query(
-            `INSERT INTO public.pentagon_axis_change_log
-               (org_id, department, axis_no, label_snapshot, version, change_type,
+            `INSERT INTO public.rubric_change_log
+               (org_id, target_kind, department, target_no, target_name, version, change_type,
                 before_json, after_json,
                 user_id, login_id, display_name)
-             VALUES ($1, $2, $3, $4, 1, 'create', NULL, $5::jsonb, $6, $7, $8)`,
+             VALUES ($1, 'axis', $2, $3, $4, 1, 'create', NULL, $5::jsonb, $6, $7, $8)`,
             [
                 orgId, department, nextAxisNo, label.trim(),
                 JSON.stringify(afterJson),
@@ -3868,11 +3981,11 @@ app.put('/api/admin/pentagon-axes/:axisNo', requireAdmin, async (req, res) => {
 
         if (logChangeType) {
             await client.query(
-                `INSERT INTO public.pentagon_axis_change_log
-                   (org_id, department, axis_no, label_snapshot, version, change_type,
+                `INSERT INTO public.rubric_change_log
+                   (org_id, target_kind, department, target_no, target_name, version, change_type,
                     before_json, after_json,
                     user_id, login_id, display_name)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11)`,
+                 VALUES ($1, 'axis', $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11)`,
                 [
                     orgId, department, axisNo, nextLabel,
                     logVersion, logChangeType,
@@ -3924,22 +4037,19 @@ app.get('/api/admin/eval-item-history', async (req, res) => {
         const whereSql = where.join(' AND ');
         params.push(effectiveLimit);
         const limitParam = `$${params.length}`;
-        // 평가항목(eval_item_change_log) + 펜타곤 축(pentagon_axis_change_log) 통합 이력.
-        // 펜타곤 행은 axis_no→order_no, label_snapshot→item_name, category_name='펜타곤 축' 로 매핑하고
-        // source 로 출처 구분(프론트가 행 key·diff 그룹핑에 사용 — 두 테이블 id 충돌 방지).
-        // 두 WHERE 는 동일 placeholder($1..) 재사용. change_type 필터는 각 테이블 값에만 매칭(전체면 둘 다 표시).
+        // 루브릭 변경 이력 — 평가항목/펜타곤축이 rubric_change_log 한 테이블로 병합(마이그레이션 69).
+        // 프론트 응답 계약은 그대로 유지: target_no→order_no, target_name→item_name,
+        // target_kind→source('eval_item'|'pentagon_axis'), 축은 category_name='펜타곤 축' 로 표시.
+        // 구 UNION ALL 2회 조회가 단일 스캔이 되고, id 가 한 시퀀스라 두 테이블 id 충돌 문제도 사라진다.
         const { rows } = await pool.query(
-            `SELECT id, department, order_no, item_name, category_name,
+            `SELECT id, department,
+                    target_no   AS order_no,
+                    target_name AS item_name,
+                    CASE WHEN target_kind = 'axis' THEN '펜타곤 축' ELSE category_name END AS category_name,
                     change_type, version, before_json, after_json,
-                    user_id, login_id, display_name, changed_at, 'eval_item' AS source
-               FROM public.eval_item_change_log
-              WHERE ${whereSql}
-            UNION ALL
-             SELECT id, department, axis_no AS order_no, label_snapshot AS item_name,
-                    '펜타곤 축' AS category_name,
-                    change_type, version, before_json, after_json,
-                    user_id, login_id, display_name, changed_at, 'pentagon_axis' AS source
-               FROM public.pentagon_axis_change_log
+                    user_id, login_id, display_name, changed_at,
+                    CASE WHEN target_kind = 'axis' THEN 'pentagon_axis' ELSE 'eval_item' END AS source
+               FROM public.rubric_change_log
               WHERE ${whereSql}
               ORDER BY changed_at DESC
               LIMIT ${limitParam}`,
@@ -4501,7 +4611,7 @@ async function bootstrap() {
 }
 
 /* ── [MERGE from old2-05, additive] 코칭 배정 / 알림 / TA 지표 ─────────────────
- *   coaching_assignments(mig 26) · notifications(mig 28) · qa_call_recovery(mig 31) + taSource.
+ *   coaching_assignments(mig 26) · notifications(mig 28) · qa_call_emotion_recovery(mig 31) + taSource.
  *   우리 기존 라우트/로직 불변. admin_users(테이블) 만 참조 — users/trainee(mig 29/30) 미의존. */
 
 /* ── Tutor 시나리오 카탈로그(코칭 배정용) ───────────────────────
@@ -4593,11 +4703,9 @@ app.get('/api/agents/:agentId/calls', requireAdmin, async (req, res) => {
         if (/^\d{4}-\d{2}-\d{2}$/.test(to)) { params.push(to); conds.push(`left(c."CDATE",10) <= $${params.length}`); }
         // 평가된 콜만(= /api/calls 유니버스). 포기호/미응대 제외.
         conds.push(`(
-            EXISTS (SELECT 1 FROM qa_evaluation_rows er    WHERE er."ID" = c."ID")
-         OR EXISTS (SELECT 1 FROM qa_consumer_eval_rows cr WHERE cr."ID" = c."ID")
-         OR EXISTS (SELECT 1 FROM qa_checklist_rows kr     WHERE kr."ID" = c."ID")
+            EXISTS (SELECT 1 FROM qa_call_item_score er    WHERE er."ID" = c."ID")
         )`);
-        conds.push(`EXISTS (SELECT 1 FROM qa_conversations q WHERE q."ID" = c."ID" AND q.speaker = '상담사')`);
+        conds.push(`EXISTS (SELECT 1 FROM qa_call_transcript q WHERE q."ID" = c."ID" AND q.speaker = '상담사')`);
         const where = `WHERE ${conds.join(' AND ')}`;
         const order = req.query.sort === 'date'
             ? `c."CDATE" DESC`
@@ -5231,6 +5339,15 @@ app.put('/api/notifications/prefs', async (req, res) => {
     }
 });
 
+// A-71: 내 평가 결과 기간 선택 → TA 지표/드릴다운 기간 필터. from/to = YYYY-MM-DD(둘 다 선택,
+// to 당일 포함). 형식이 어긋나면 무시(전체 기간 = 기존 동작)라 구버전 프론트와도 호환.
+function taRangeFromQuery(req) {
+    const pick = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim()) ? String(v).trim() : null);
+    const from = pick(req.query.from);
+    const to = pick(req.query.to);
+    return from || to ? { from, to } : null;
+}
+
 app.get('/api/me/ta-metrics', async (req, res) => {
     if (!req.session?.user_id) {
         res.status(401).json({ message: 'unauthenticated' });
@@ -5243,6 +5360,7 @@ app.get('/api/me/ta-metrics', async (req, res) => {
     }
     try {
         const me = req.session.user_id;
+        const range = taRangeFromQuery(req); // A-71: 기간(from/to) — 미지정 시 전체(기존 동작)
         const { rows: grp } = await pool.query(
             `SELECT proj_cd, array_agg("UID") AS uids
                FROM qa_calls
@@ -5251,21 +5369,31 @@ app.get('/api/me/ta-metrics', async (req, res) => {
             [me]
         );
         let total = 0, negative = 0, banned = 0;
+        let rDenom = 0, rRec = 0;
         for (const g of grp) {
-            const m = await fetchTaMetricsByUids(g.proj_cd, g.uids || []);
+            const m = await fetchTaMetricsByUids(g.proj_cd, g.uids || [], range);
             total += m.total; negative += m.negative; banned += m.banned;
 
-            const segRows = await fetchSegmentSentimentsByUids(g.proj_cd, g.uids || []);
+            const segRows = await fetchSegmentSentimentsByUids(g.proj_cd, g.uids || [], range);
             for (const sr of segRows) {
                 const sents = sr.sentiments || [];
                 const segCount = sents.length;
                 const negCount = sents.filter((s) => s === '부정').length;
                 const firstNeg = sents.findIndex((s) => s === '부정');
                 const finalS = segCount ? sents[segCount - 1] : null;
-                const hadNeg = negCount > 0;
-                const recovered = hadNeg && (finalS === '긍정' || finalS === '중립');
+                const hadNegSeg = negCount > 0;
+                const recovered = hadNegSeg && (finalS === '긍정' || finalS === '중립');
+                // A-72: '부정 발생' 분모 = 구간에 부정 존재 AND (대표감정이 부정 OR 회복 서사).
+                //   수기검토로 대표감정이 부정→비부정으로 정정됐고 회복 서사도 아닌 콜은 분모 제외
+                //   — 부정 발화 비율(sentiment_cls 기준)과 판정 일치. 회복된 콜은 대표감정이
+                //   자연히 비부정이어도 분모 유지(회복률 의미 보존).
+                const hadNeg = hadNegSeg && (sr.sentiment_cls === '부정' || recovered);
+                if (hadNeg) {
+                    rDenom += 1;
+                    if (recovered) rRec += 1;
+                }
                 await pool.query(
-                    `INSERT INTO public.qa_call_recovery
+                    `INSERT INTO public.qa_call_emotion_recovery
                         (proj_cd, uid, agent_user_id, segment_count, neg_seg_count, first_neg_idx,
                          final_sentiment, had_negative, recovered, analyzed_at)
                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
@@ -5282,14 +5410,8 @@ app.get('/api/me/ta-metrics', async (req, res) => {
                 );
             }
         }
-        const { rows: rec } = await pool.query(
-            `SELECT count(*) FILTER (WHERE had_negative)::int AS denom,
-                    count(*) FILTER (WHERE recovered)::int    AS recovered
-               FROM public.qa_call_recovery WHERE agent_user_id = $1`,
-            [me]
-        );
-        const rDenom = rec[0]?.denom || 0;
-        const rRec = rec[0]?.recovered || 0;
+        // 회복률 집계는 위 루프의 인메모리 카운트 사용 — 기간 필터(A-71)·대표감정 규칙(A-72)이
+        // 항상 현재 조회분과 일치. qa_call_emotion_recovery 는 콜단위 분석 캐시로 계속 적재(타 소비처 대비).
 
         const pct = (n) => (total > 0 ? Math.round((n / total) * 1000) / 10 : null);
         res.json({
@@ -5311,7 +5433,7 @@ app.get('/api/me/ta-metrics', async (req, res) => {
 
 // GET /api/me/ta-metrics/calls?kind=negative|recovery|forbidden
 //   감정·대화 품질 카드 드릴다운 — 각 지표에 집계된 '내 콜' 목록을 반환(팝업용).
-//   negative/forbidden = 03 tb_ta_rslt(본인 콜 uid 기준), recovery = 05 qa_call_recovery + 03 구간감정 궤적.
+//   negative/forbidden = 03 tb_ta_rslt(본인 콜 uid 기준), recovery = 05 qa_call_emotion_recovery + 03 구간감정 궤적.
 app.get('/api/me/ta-metrics/calls', async (req, res) => {
     if (!req.session?.user_id) {
         res.status(401).json({ message: 'unauthenticated' });
@@ -5328,6 +5450,7 @@ app.get('/api/me/ta-metrics/calls', async (req, res) => {
     }
     try {
         const me = req.session.user_id;
+        const range = taRangeFromQuery(req); // A-71: 기간 필터 — 지표 카드와 동일 범위
         const { rows: grp } = await pool.query(
             `SELECT proj_cd, array_agg("UID") AS uids
                FROM qa_calls
@@ -5348,45 +5471,46 @@ app.get('/api/me/ta-metrics/calls', async (req, res) => {
         let calls = [];
         if (kind === 'negative') {
             for (const g of grp) {
-                const rows = await fetchNegativeCallsByUids(g.proj_cd, g.uids || []);
+                const rows = await fetchNegativeCallsByUids(g.proj_cd, g.uids || [], range);
                 calls.push(...rows.map((r) => withQaId(g.proj_cd, r)));
             }
             calls.sort((a, b) => new Date(b.cdate || 0) - new Date(a.cdate || 0));
         } else if (kind === 'forbidden') {
             for (const g of grp) {
-                const rows = await fetchForbiddenCallsByUids(g.proj_cd, g.uids || []);
+                const rows = await fetchForbiddenCallsByUids(g.proj_cd, g.uids || [], range);
                 calls.push(...rows.map((r) => withQaId(g.proj_cd, r)));
             }
             calls.sort((a, b) => new Date(b.cdate || 0) - new Date(a.cdate || 0));
         } else {
-            // recovery — 부정 발생 콜(had_negative)만. 구간감정 궤적·일시·채널을 03 에서 동봉.
-            const { rows: recRows } = await pool.query(
-                `SELECT proj_cd, uid, recovered, first_neg_idx, final_sentiment, neg_seg_count, segment_count
-                   FROM public.qa_call_recovery
-                  WHERE agent_user_id = $1 AND had_negative = true`,
-                [me]
-            );
-            const meta = new Map();
+            // recovery — 03 구간감정에서 직접 계산(지표 카드와 동일 규칙·동일 기간 — 캐시 미경유).
+            //   분모(A-72): 구간 부정 존재 AND (대표감정 부정 OR 회복 서사) — /api/me/ta-metrics 와 일치.
             for (const g of grp) {
-                const segRows = await fetchSegmentSentimentsByUids(g.proj_cd, g.uids || []);
-                for (const s of segRows) meta.set(`${g.proj_cd}::${s.uid}`, s);
+                const segRows = await fetchSegmentSentimentsByUids(g.proj_cd, g.uids || [], range);
+                for (const s of segRows) {
+                    const sents = s.sentiments || [];
+                    const segCount = sents.length;
+                    const negCount = sents.filter((x) => x === '부정').length;
+                    const firstNeg = sents.findIndex((x) => x === '부정');
+                    const finalS = segCount ? sents[segCount - 1] : null;
+                    const hadNegSeg = negCount > 0;
+                    const recovered = hadNegSeg && (finalS === '긍정' || finalS === '중립');
+                    const hadNeg = hadNegSeg && (s.sentiment_cls === '부정' || recovered);
+                    if (!hadNeg) continue;
+                    calls.push({
+                        proj_cd: g.proj_cd,
+                        uid: s.uid,
+                        qa_id: qaIdOf.get(`${g.proj_cd}::${s.uid}`) || s.uid,
+                        recovered,
+                        first_neg_idx: firstNeg >= 0 ? firstNeg + 1 : null,
+                        final_sentiment: finalS,
+                        neg_seg_count: negCount,
+                        segment_count: segCount,
+                        trajectory: sents,
+                        cdate: s.cdate || null,
+                        channel: s.channel || null,
+                    });
+                }
             }
-            calls = recRows.map((r) => {
-                const s = meta.get(`${r.proj_cd}::${r.uid}`) || {};
-                return {
-                    proj_cd: r.proj_cd,
-                    uid: r.uid,
-                    qa_id: qaIdOf.get(`${r.proj_cd}::${r.uid}`) || r.uid,
-                    recovered: r.recovered,
-                    first_neg_idx: r.first_neg_idx,
-                    final_sentiment: r.final_sentiment,
-                    neg_seg_count: r.neg_seg_count,
-                    segment_count: r.segment_count,
-                    trajectory: s.sentiments || [],
-                    cdate: s.cdate || null,
-                    channel: s.channel || null,
-                };
-            });
             // 미회복(코칭 후보) 먼저, 그 안에서 최신순.
             calls.sort((a, b) =>
                 a.recovered === b.recovered ? new Date(b.cdate || 0) - new Date(a.cdate || 0) : a.recovered ? 1 : -1
@@ -5471,7 +5595,7 @@ app.put('/api/batch/config', requireAdmin, async (req, res) => {
 
 // 골든셋 배치 '적용 평가 항목' → 평가 시 RAG 항목(organizations.rag_fewshot_item_names) 동기화.
 //   체크(=config.golden.excluded 에 없는) 항목의 이름을 RAG 사용 목록으로 저장. 항목명 소스는
-//   '적용 평가 항목' 칩과 동일(qa_evaluation_rows) — order_no 정합. rubric_id 는 기존값 보존,
+//   '적용 평가 항목' 칩과 동일(qa_call_item_score) — order_no 정합. rubric_id 는 기존값 보존,
 //   없으면 rbrc_org{N}(색인측 getOrgFewshot 규칙과 정합). golden 미설정/org 0 이면 무동작.
 //   전 항목 제외(체크 0) → item_names 빈 배열 → getOrgFewshot null → 평가 시 RAG 전면 OFF.
 async function syncRagFewshotFromGolden(orgId, config) {
@@ -5482,7 +5606,7 @@ async function syncRagFewshotFromGolden(orgId, config) {
     // '적용 평가 항목' 칩과 동일 소스로 order_no → 항목명(정합 보장).
     const { rows } = await pool.query(
         `SELECT er.order_no, max(er.item) AS item
-           FROM qa_evaluation_rows er
+           FROM qa_call_item_score er
            JOIN qa_calls c ON c."ID" = er."ID"
           WHERE c.is_sandbox = false AND c.org_id = $1
           GROUP BY er.order_no ORDER BY er.order_no`,
@@ -5789,7 +5913,7 @@ function skillLearnProgressLogger(orgId, source) {
             }
             pushSkillLog({ org_id: orgId, source, stage: 'generate', message: `overlay 생성 요청 — 정정 케이스 ${p.case_count ?? '?'}건${items.length ? ` · ${items.length}개 항목` : ''}`, case_count: p.case_count ?? null });
         } else if (p.stage === 'memory' && p.message) {
-            // 에이전트 메모리(qa_skill_memory) 로드/저장/미반환 — skillLearn 이 완성문 동봉, 그대로 적재.
+            // 에이전트 메모리(qa_skill_store) 로드/저장/미반환 — skillLearn 이 완성문 동봉, 그대로 적재.
             pushSkillLog({ org_id: orgId, source, stage: 'memory', message: p.message, rubric_id: p.rubric_id ?? null });
         }
     };
@@ -5930,7 +6054,7 @@ app.get('/api/skill-log/recent', requireAdmin, (req, res) => {
     res.json({ entries });
 });
 
-// GET /api/skill-memory — 에이전트 메모리(qa_skill_memory) 항목별 요약(실시간 로그 '메모리' 행 토글).
+// GET /api/skill-memory — 에이전트 메모리(qa_skill_store) 항목별 요약(실시간 로그 '메모리' 행 토글).
 //   org_id 쿼리 기준 rubric_id 해석 → blob 요약(읽기 전용). 브랜드 격리: skill-log/recent 와 동일 규칙.
 app.get('/api/skill-memory', requireAdmin, async (req, res) => {
     let orgId = Number(req.query.org_id);
@@ -5956,7 +6080,7 @@ app.get('/api/batch/eval-items', requireAdmin, async (req, res) => {
         if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
         const { rows } = await pool.query(
             `SELECT er.order_no, max(er.item) AS item, count(DISTINCT er."ID")::int AS calls
-               FROM qa_evaluation_rows er
+               FROM qa_call_item_score er
                JOIN qa_calls c ON c."ID" = er."ID"
               WHERE c.is_sandbox = false ${orgClause}
               GROUP BY er.order_no
@@ -5997,7 +6121,7 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
         const bHigh = num(bias.highThreshold, 101);
         const bHighRel = bias.highMode === 'rel';        // 평균점수 이상: 상대값(평균 대비 +N) | 절대값
         const bHighRelPts = num(bias.highRel, 0);
-        // ② 신뢰도 — 저장된 LLM 판정(qa_confidence_judgments)을 선택 항목으로 스코프해서 필터.
+        // ② 신뢰도 — 저장된 LLM 판정(qa_call_annotation)을 선택 항목으로 스코프해서 필터.
         const uncOn = !!conf.uncertain;
         const conOn = !!conf.contradiction;
         const confOn = !!(on.confidence && (uncOn || conOn));
@@ -6027,7 +6151,7 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
                 SELECT c."ID" AS id, c."TOTAL_SCORE"::numeric AS score, c.duration_sec, cj.judgments,
                        tr.hire_date AS hire_date
                   FROM qa_calls c
-                  LEFT JOIN qa_confidence_judgments cj ON cj.qa_id = c."ID"
+                  LEFT JOIN qa_call_annotation cj ON cj.qa_id = c."ID"
                   LEFT JOIN trainee_registrations tr ON tr.user_id = c.agent_user_id
                  WHERE c.is_sandbox = false ${orgClause}
             ), in_scope AS (
@@ -6154,34 +6278,24 @@ app.put('/api/batch/prompt', requireAdmin, async (req, res) => {
         const storeC = newC === DEFAULT_CONTRADICTION_DEF ? null : newC;
         const systemPrompt = buildSystemPrompt({ uncertainDef: newU, contradictionDef: newC });
         const updatedBy = req.session?.user_id ?? null;
+        // 현재본과 이력이 한 테이블로 통합(마이그레이션 70) — 새 버전 행을 append 하면
+        // 그 자체가 현재본(=org 별 최대 version)이자 이력이 된다. 별도 history INSERT 불필요.
         const { rows } = await pool.query(
-            `INSERT INTO public.qa_batch_prompts
-                 (org_id, version, system_prompt, uncertain_def, contradiction_def, updated_at, updated_by)
-             VALUES ($1, 1, $2, $3, $4, now(), $5)
-             ON CONFLICT (org_id) DO UPDATE SET
-                 version = qa_batch_prompts.version + 1,
-                 system_prompt = EXCLUDED.system_prompt,
-                 uncertain_def = EXCLUDED.uncertain_def,
-                 contradiction_def = EXCLUDED.contradiction_def,
-                 updated_at = now(), updated_by = EXCLUDED.updated_by
+            `INSERT INTO public.qa_confidence_prompt
+                 (org_id, version, system_prompt, uncertain_def, contradiction_def,
+                  updated_at, updated_by, updated_by_name)
+             SELECT $1,
+                    COALESCE((SELECT MAX(version) FROM public.qa_confidence_prompt WHERE org_id = $1), 0) + 1,
+                    $2, $3, $4, now(), $5, $6
              RETURNING version`,
-            [PROMPT_ORG, systemPrompt, storeU, storeC, updatedBy]
+            [PROMPT_ORG, systemPrompt, storeU, storeC, updatedBy, req.session?.display_name ?? null]
         );
         const version = rows[0]?.version ?? 1;
-        // 변경 이력 append(읽기전용 스냅샷). 실패해도 저장은 성공으로 처리.
-        try {
-            await pool.query(
-                `INSERT INTO public.qa_batch_prompt_history
-                     (org_id, version, uncertain_def, contradiction_def, updated_at, updated_by, updated_by_name)
-                 VALUES ($1, $2, $3, $4, now(), $5, $6)`,
-                [PROMPT_ORG, version, newU, newC, updatedBy, req.session?.display_name ?? null]
-            );
-        } catch (he) { console.error('prompt history insert error:', he?.message || he); }
         const { rows: sc } = await pool.query(
             `SELECT count(*)::int AS n FROM qa_calls c
               WHERE c.is_sandbox = false
-                AND EXISTS (SELECT 1 FROM qa_evaluation_rows er WHERE er."ID" = c."ID")
-                AND NOT EXISTS (SELECT 1 FROM qa_confidence_judgments j
+                AND EXISTS (SELECT 1 FROM qa_call_item_score er WHERE er."ID" = c."ID")
+                AND NOT EXISTS (SELECT 1 FROM qa_call_annotation j
                                  WHERE j.qa_id = c."ID" AND j.prompt_version = $1)`,
             [version]
         );
@@ -6210,7 +6324,7 @@ app.get('/api/batch/prompt/history', requireAdmin, async (req, res) => {
     try {
         const { rows } = await pool.query(
             `SELECT version, uncertain_def, contradiction_def, updated_at, updated_by, updated_by_name
-               FROM public.qa_batch_prompt_history
+               FROM public.qa_confidence_prompt
               WHERE org_id = $1
               ORDER BY version DESC, id DESC
               LIMIT 100`,

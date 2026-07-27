@@ -4,7 +4,7 @@
  * 엔진 confidence(블랙박스)와 독립된, 우리가 제어하는 2차 AI 레이어:
  *   AI가 매긴 점수+근거 텍스트를 Gemini(REST)가 읽고 항목별로
  *   { uncertain(불확실 표현) / weak(근거 빈약) / contradiction(근거-점수 모순) } 를 맥락 판정.
- *   키워드 사전이 아니라 '맥락 판단 지시문(프롬프트)' — 프롬프트는 관리자가 관리(qa_batch_prompts).
+ *   키워드 사전이 아니라 '맥락 판단 지시문(프롬프트)' — 프롬프트는 관리자가 관리(qa_confidence_prompt).
  *
  * 호출은 precompute 경로(judgeConfidence 백필/적재훅)에서만 — 실시간 미리보기에 두지 않는다(지연 ~1.5s/콜).
  * 키: GEMINI_API_KEY. 비면 judgeEnabled()=false → 판정 no-op(상위에서 가드).
@@ -42,7 +42,7 @@ AI가 상담 콜의 각 평가항목에 매긴 '점수'와 그 '근거 문장'�
 }
 
 // 관리자가 프롬프트를 저장하지 않았을 때 쓰는 기본 판정 지시문(두 기본 정의문으로 조립).
-// (qa_batch_prompts 에 행이 있으면 그것을 우선 사용 — resolvePrompt 참고.)
+// (qa_confidence_prompt 에 행이 있으면 최신 version 을 우선 사용 — resolvePrompt 참고.)
 export const DEFAULT_PROMPT = buildSystemPrompt();
 
 export function judgeEnabled() {
@@ -54,13 +54,14 @@ export function judgeModel() {
 }
 
 /**
- * 활성 판정 프롬프트 해석: qa_batch_prompts 행 우선, 없으면 DEFAULT_PROMPT(version 0).
+ * 활성 판정 프롬프트 해석: qa_confidence_prompt 최신 version 우선, 없으면 DEFAULT_PROMPT(version 0).
  * @returns {Promise<{systemPrompt:string, version:number}>}
  */
 export async function resolvePrompt(pool, orgId = 0) {
     try {
         const { rows } = await pool.query(
-            `SELECT system_prompt, version FROM public.qa_batch_prompts WHERE org_id = $1`,
+            `SELECT system_prompt, version FROM public.qa_confidence_prompt
+              WHERE org_id = $1 ORDER BY version DESC LIMIT 1`,
             [orgId]
         );
         if (rows[0]?.system_prompt) {
@@ -80,7 +81,8 @@ export async function resolvePromptParts(pool, orgId = 0) {
     try {
         const { rows } = await pool.query(
             `SELECT uncertain_def, contradiction_def, version, updated_at
-               FROM public.qa_batch_prompts WHERE org_id = $1`,
+               FROM public.qa_confidence_prompt
+              WHERE org_id = $1 ORDER BY version DESC LIMIT 1`,
             [orgId]
         );
         const r = rows[0];

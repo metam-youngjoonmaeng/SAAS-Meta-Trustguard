@@ -10,4 +10,4 @@ ALTER TABLE qa_calls ADD CONSTRAINT qa_calls_review_status_chk
     ]::text[]));
 
 -- 검수이벤트에 사유(반려/이의제기 시 입력) 컬럼.
-ALTER TABLE qa_review_events ADD COLUMN IF NOT EXISTS reason text;
+ALTER TABLE qa_call_review_event ADD COLUMN IF NOT EXISTS reason text;

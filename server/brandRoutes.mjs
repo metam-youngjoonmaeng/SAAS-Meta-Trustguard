@@ -16,11 +16,30 @@ import { logger, todayLogPath } from './logger.mjs';
 import {
     seedMinimalEvalItems,
     seedEvalItemsFromDomain,
+    seedKsqiItemDefs,
     seedPentagonAxesFromDomain,
 } from './defaultEvalItems.mjs';
 
 function sha256Hex(s) {
     return crypto.createHash('sha256').update(String(s)).digest('hex');
+}
+
+// organizations.ksqi_stt_enabled 컬럼 존재 여부(로컬만 존재 가능, prod 미적용 시 부재) — 1회 캐시.
+// 부재 시 SELECT/RETURNING/UPDATE 가 컬럼을 참조하면 SQL 에러로 브랜드 API 전체가 500 → 앱 마비.
+// 따라서 컬럼 유무에 따라 쿼리 조각을 분기(부재 시 ksqi_stt_enabled=false 상수)해 무회귀 보장.
+let _orgKsqiColCache = null;
+async function orgHasKsqiColumn(pool) {
+    if (_orgKsqiColCache !== null) return _orgKsqiColCache;
+    try {
+        const { rows } = await pool.query(
+            `SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'organizations' AND column_name = 'ksqi_stt_enabled' LIMIT 1`
+        );
+        _orgKsqiColCache = rows.length > 0;
+    } catch {
+        _orgKsqiColCache = false;
+    }
+    return _orgKsqiColCache;
 }
 
 // 신규 사용자에게 자동 부여되는 초기 비밀번호. 반드시 INITIAL_USER_PASSWORD env 로 설정한다.
@@ -565,9 +584,10 @@ export function createBrandRouter(pool) {
         try {
             const isSuper = req.session?.role === 'super_admin';
             const ownOrgId = Number(req.session?.org_id) || null;
+            const ksqiSel = (await orgHasKsqiColumn(pool)) ? 'o.ksqi_stt_enabled' : 'false AS ksqi_stt_enabled';
             const { rows: orgRows } = isSuper
                 ? await pool.query(
-                      `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id,
+                      `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id, ${ksqiSel},
                               d.name AS domain_name
                        FROM public.organizations o
                        LEFT JOIN public.domains d ON d.id = o.domain_id
@@ -575,7 +595,7 @@ export function createBrandRouter(pool) {
                        ORDER BY o.id ASC`
                   )
                 : await pool.query(
-                      `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id,
+                      `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id, ${ksqiSel},
                               d.name AS domain_name
                        FROM public.organizations o
                        LEFT JOIN public.domains d ON d.id = o.domain_id
@@ -595,6 +615,7 @@ export function createBrandRouter(pool) {
                     color: r.color,
                     domain_id: r.domain_id,
                     domain_name: r.domain_name,
+                    ksqi_stt_enabled: r.ksqi_stt_enabled === true,
                     members: counts.members.get(r.id) || 0,
                     sessions: counts.sessions.get(r.id) || 0,
                     is_own: r.id === ownOrgId,
@@ -610,8 +631,9 @@ export function createBrandRouter(pool) {
     // super_admin 관리 탭 — 전체(비활성 포함)
     router.get('/admin/brands', requireSuperAdmin, async (req, res) => {
         try {
+            const ksqiSel = (await orgHasKsqiColumn(pool)) ? 'o.ksqi_stt_enabled' : 'false AS ksqi_stt_enabled';
             const { rows: orgRows } = await pool.query(
-                `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id, o.created_at,
+                `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id, o.created_at, ${ksqiSel},
                         d.name AS domain_name
                  FROM public.organizations o
                  LEFT JOIN public.domains d ON d.id = o.domain_id
@@ -630,6 +652,7 @@ export function createBrandRouter(pool) {
                     domain_id: r.domain_id,
                     domain_name: r.domain_name,
                     created_at: r.created_at,
+                    ksqi_stt_enabled: r.ksqi_stt_enabled === true,
                     members: counts.members.get(r.id) || 0,
                     sessions: counts.sessions.get(r.id) || 0,
                 }))
@@ -672,6 +695,9 @@ export function createBrandRouter(pool) {
                 seededItemCount = await seedMinimalEvalItems(client, out.id);
             }
             seededAxisCount = await seedPentagonAxesFromDomain(client, out.id, domainId);
+            // 신규 브랜드 = KSQI 표준 항목 세트 복제(63_ksqi_item_defs.sql 시딩분과 동일).
+            //   테이블 부재(prod 미적용) 시 조용히 스킵 — 다음 기동의 seeder 재적용이 보충.
+            await seedKsqiItemDefs(client, out.id);
             await client.query('COMMIT');
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});
@@ -717,6 +743,11 @@ export function createBrandRouter(pool) {
             fields.push(`active = $${idx++}`);
             values.push(Boolean(req.body.active));
         }
+        const hasKsqiCol = await orgHasKsqiColumn(pool);
+        if (hasKsqiCol && typeof req.body?.ksqi_stt_enabled === 'boolean') {
+            fields.push(`ksqi_stt_enabled = $${idx++}`);
+            values.push(Boolean(req.body.ksqi_stt_enabled));
+        }
         const hasDomainInBody = 'domain_id' in (req.body || {});
         let newDomainId = null;
         if (hasDomainInBody) {
@@ -745,7 +776,7 @@ export function createBrandRouter(pool) {
             }
             const { rows } = await client.query(
                 `UPDATE public.organizations SET ${fields.join(', ')} WHERE id = $${idx}
-                 RETURNING id, name, short, color, active, domain_id`,
+                 RETURNING id, name, short, color, active, domain_id${hasKsqiCol ? ', ksqi_stt_enabled' : ''}`,
                 values
             );
             out = rows[0];
@@ -793,7 +824,7 @@ export function createBrandRouter(pool) {
         const client = await pool.connect();
         try {
             // 브랜드 삭제 = 평가 데이터까지 한 번에 제거. qa_calls.org_id 가 ON DELETE RESTRICT 이므로
-            // 콜을 먼저 명시 삭제(자식 qa_evaluation_rows/checklist/conversations/analysis_report/
+            // 콜을 먼저 명시 삭제(자식 qa_call_item_score/checklist/conversations/analysis_report/
             // golden_set/review_events 등은 qa_calls FK 가 ON DELETE CASCADE → 자동 연쇄). 이어서
             // organizations 삭제 시 eval_item_defs/pentagon_axes/change_log 가 CASCADE 로 함께 제거.
             // 트랜잭션으로 묶어 부분 삭제(고아 데이터) 방지.
@@ -807,10 +838,10 @@ export function createBrandRouter(pool) {
                 await client.query('DELETE FROM public.qa_calls WHERE org_id = $1', [id]);
             }
             // FK 없는 브랜드별 부속 행 명시 정리 — qa_batch_configs(배치·골든/스킬 학습주기 설정),
-            // qa_skill_memory(스킬 학습 메모리). 잔존 시 고아 설정이 스케줄러 자동 발화를 계속
+            // qa_skill_store(스킬 학습 메모리). 잔존 시 고아 설정이 스케줄러 자동 발화를 계속
             // 트리거(예: 삭제 브랜드 goldenFreq=hourly → 매시 no_rubric_items 실패 알림).
             await client.query('DELETE FROM public.qa_batch_configs WHERE org_id = $1', [id]);
-            await client.query('DELETE FROM public.qa_skill_memory WHERE org_id = $1', [id]);
+            await client.query('DELETE FROM public.qa_skill_store WHERE org_id = $1', [id]);
             await client.query('DELETE FROM public.organizations WHERE id = $1', [id]);
             await client.query('COMMIT');
             await insertQaAuditLog(pool, {

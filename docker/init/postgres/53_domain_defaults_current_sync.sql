@@ -6,6 +6,15 @@
 -- pentagon_axes)은 런타임 데이터라 미포함.
 -- 자동 생성 (docker exec psql format(%L)). 수동 편집보다 재덤프 권장.
 -- ============================================================
+-- ★ 2026-07-27 — ON CONFLICT 를 DO UPDATE → DO NOTHING 으로 전환.
+--   원래 의도는 위 주석대로 '한 번 정렬'이었으나, seed-if-empty.sh 가 매 기동 이 파일을 재적용하므로
+--   DO UPDATE 는 그 의도를 넘어 '매 기동 강제 되돌림'으로 동작했다. super_admin 이 업종 기본
+--   평가항목·펜타곤 축을 수정·비활성화해도 컨테이너 재기동 한 번에 2026-07-06 스냅샷 값으로
+--   되돌아갔고(81건), 되돌림이 조용해서 편집이 사라진 줄도 몰랐다.
+--   DO NOTHING 이면 빈 볼륨 첫 부팅의 시딩 목적(행 부재 → INSERT)은 그대로이고, 이미 존재하는
+--   행은 운영 데이터로 존중된다. 스냅샷을 다시 강제로 맞춰야 할 때는 이 파일을 수동 실행하지 말고
+--   의도를 명시한 별도 마이그레이션(64+)을 추가한다.
+-- ============================================================
 
 -- ----- domain_default_pentagon_axes -----
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (1, 1, '응대·표현', '상담 매너·언어 품질 — 첫인사(도입), 끝인사·추가문의 확인, 화답인사, 공감·호응·쿠션어, 정중한 언어표현', '[평가 축] 응대·표현 — 상담 매너와 언어 품질
@@ -25,7 +34,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 다수 항목이 미흡하거나 부자연스러운 응대
 - 실패: 기본 매너·정중함이 결여됨
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (1, 2, '니즈파악·경청', '무엇을 묻는지 정확히 파악 — 문의 의도·니즈 파악, 상품/업무 특정, 재복창(확인 복창)', '[평가 축] 니즈파악·경청 — 고객이 무엇을 원하는지 정확히 파악했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 니즈 파악·경청 역량을 종합 평가하세요.
@@ -42,7 +51,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 핵심 니즈를 놓치거나 반복 질문 유발
 - 실패: 문의 의도를 오인하여 잘못된 방향으로 진행
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (1, 3, '설명·전달력', '얼마나 명확히 전달했나 — 설명력·전달력, 두괄식 전달, 내부용어·전문용어 지양', '[평가 축] 설명·전달력 — 안내를 얼마나 명확하게 전달했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 설명·전달력을 종합 평가하세요.
@@ -58,7 +67,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 설명이 모호해 고객이 재질문하거나 혼동
 - 실패: 핵심이 전달되지 않거나 잘못 이해하게 함
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (1, 4, '정확성·해결력', '맞게 안내했고 실제로 해결했나 — 정확한 안내·오안내 방지, 금지멘트 준수, 복합문의 답변, 적극성·해결의지, 대안 제시·셀프서비스 안내, 절차 필수안내(반품·환불 소요일 등)', '[평가 축] 정확성·해결력 — 정확히 안내하고 실제로 문제를 해결했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 정확성·해결력을 종합 평가하세요.
@@ -77,7 +86,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 부정확한 안내 또는 소극적 처리로 미해결
 - 실패: 오안내/금지멘트 위반 또는 문제 방치
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (1, 5, '컴플라이언스', '규정준수·정보보호(규정·고객보호) — 본인확인 절차·순서·항목, 개인정보·정보보호·선언급 금지, 안내 범위 준수, 업무별 필수고지·상품 적합성, 보안사고 대응(분실·피싱·부정거래)', '[평가 축] 컴플라이언스 — 규정 준수와 고객정보 보호
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 규정준수·정보보호 수준을 종합 평가하세요.
@@ -95,7 +104,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 본인확인 부실 또는 고지 누락 등 위험 소지
 - 실패: 정보보호 위반·필수확인 미이행 등 중대한 규정 위반
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (2, 1, '응대·표현', '상담 매너·언어 품질 — 첫인사(도입), 끝인사·추가문의 확인, 화답인사, 공감·호응·쿠션어, 정중한 언어표현', '[평가 축] 응대·표현 — 상담 매너와 언어 품질
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 응대 매너·언어 품질을 종합 평가하세요.
@@ -113,7 +122,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 다수 항목이 미흡하거나 부자연스러운 응대
 - 실패: 기본 매너·정중함이 결여됨
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (2, 2, '니즈파악·경청', '무엇을 묻는지 정확히 파악 — 문의 의도·니즈 파악, 상품/업무 특정, 재복창(확인 복창)', '[평가 축] 니즈파악·경청 — 고객이 무엇을 원하는지 정확히 파악했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 니즈 파악·경청 역량을 종합 평가하세요.
@@ -130,7 +139,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 핵심 니즈를 놓치거나 반복 질문 유발
 - 실패: 문의 의도를 오인하여 잘못된 방향으로 진행
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (2, 3, '설명·전달력', '얼마나 명확히 전달했나 — 설명력·전달력, 두괄식 전달, 내부용어·전문용어 지양', '[평가 축] 설명·전달력 — 안내를 얼마나 명확하게 전달했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 설명·전달력을 종합 평가하세요.
@@ -146,7 +155,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 설명이 모호해 고객이 재질문하거나 혼동
 - 실패: 핵심이 전달되지 않거나 잘못 이해하게 함
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (2, 4, '정확성·해결력', '맞게 안내했고 실제로 해결했나 — 정확한 안내·오안내 방지, 금지멘트 준수, 복합문의 답변, 적극성·해결의지, 대안 제시·셀프서비스 안내, 절차 필수안내(반품·환불 소요일 등)', '[평가 축] 정확성·해결력 — 정확히 안내하고 실제로 문제를 해결했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 정확성·해결력을 종합 평가하세요.
@@ -165,7 +174,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 부정확한 안내 또는 소극적 처리로 미해결
 - 실패: 오안내/금지멘트 위반 또는 문제 방치
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (2, 5, '컴플라이언스', '규정준수·정보보호(규정·고객보호) — 본인확인 절차·순서·항목, 개인정보·정보보호·선언급 금지, 안내 범위 준수, 업무별 필수고지·상품 적합성, 보안사고 대응(분실·피싱·부정거래)', '[평가 축] 컴플라이언스 — 규정 준수와 고객정보 보호
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 규정준수·정보보호 수준을 종합 평가하세요.
@@ -183,7 +192,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 본인확인 부실 또는 고지 누락 등 위험 소지
 - 실패: 정보보호 위반·필수확인 미이행 등 중대한 규정 위반
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (3, 1, '응대·표현', '상담 매너·언어 품질 — 첫인사(도입), 끝인사·추가문의 확인, 화답인사, 공감·호응·쿠션어, 정중한 언어표현', '[평가 축] 응대·표현 — 상담 매너와 언어 품질
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 응대 매너·언어 품질을 종합 평가하세요.
@@ -201,7 +210,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 다수 항목이 미흡하거나 부자연스러운 응대
 - 실패: 기본 매너·정중함이 결여됨
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (3, 2, '니즈파악·경청', '무엇을 묻는지 정확히 파악 — 문의 의도·니즈 파악, 상품/업무 특정, 재복창(확인 복창)', '[평가 축] 니즈파악·경청 — 고객이 무엇을 원하는지 정확히 파악했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 니즈 파악·경청 역량을 종합 평가하세요.
@@ -218,7 +227,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 핵심 니즈를 놓치거나 반복 질문 유발
 - 실패: 문의 의도를 오인하여 잘못된 방향으로 진행
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (3, 3, '설명·전달력', '얼마나 명확히 전달했나 — 설명력·전달력, 두괄식 전달, 내부용어·전문용어 지양', '[평가 축] 설명·전달력 — 안내를 얼마나 명확하게 전달했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 설명·전달력을 종합 평가하세요.
@@ -234,7 +243,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 설명이 모호해 고객이 재질문하거나 혼동
 - 실패: 핵심이 전달되지 않거나 잘못 이해하게 함
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (3, 4, '정확성·해결력', '맞게 안내했고 실제로 해결했나 — 정확한 안내·오안내 방지, 금지멘트 준수, 복합문의 답변, 적극성·해결의지, 대안 제시·셀프서비스 안내, 절차 필수안내(반품·환불 소요일 등)', '[평가 축] 정확성·해결력 — 정확히 안내하고 실제로 문제를 해결했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 정확성·해결력을 종합 평가하세요.
@@ -253,7 +262,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 부정확한 안내 또는 소극적 처리로 미해결
 - 실패: 오안내/금지멘트 위반 또는 문제 방치
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (3, 5, '컴플라이언스', '규정준수·정보보호(규정·고객보호) — 본인확인 절차·순서·항목, 개인정보·정보보호·선언급 금지, 안내 범위 준수, 업무별 필수고지·상품 적합성, 보안사고 대응(분실·피싱·부정거래)', '[평가 축] 컴플라이언스 — 규정 준수와 고객정보 보호
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 규정준수·정보보호 수준을 종합 평가하세요.
@@ -271,7 +280,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 본인확인 부실 또는 고지 누락 등 위험 소지
 - 실패: 정보보호 위반·필수확인 미이행 등 중대한 규정 위반
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (4, 1, '응대·표현', '상담 매너·언어 품질 — 첫인사(도입), 끝인사·추가문의 확인, 화답인사, 공감·호응·쿠션어, 정중한 언어표현', '[평가 축] 응대·표현 — 상담 매너와 언어 품질
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 응대 매너·언어 품질을 종합 평가하세요.
@@ -289,7 +298,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 다수 항목이 미흡하거나 부자연스러운 응대
 - 실패: 기본 매너·정중함이 결여됨
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (4, 2, '니즈파악·경청', '무엇을 묻는지 정확히 파악 — 문의 의도·니즈 파악, 상품/업무 특정, 재복창(확인 복창)', '[평가 축] 니즈파악·경청 — 고객이 무엇을 원하는지 정확히 파악했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 니즈 파악·경청 역량을 종합 평가하세요.
@@ -306,7 +315,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 핵심 니즈를 놓치거나 반복 질문 유발
 - 실패: 문의 의도를 오인하여 잘못된 방향으로 진행
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (4, 3, '설명·전달력', '얼마나 명확히 전달했나 — 설명력·전달력, 두괄식 전달, 내부용어·전문용어 지양', '[평가 축] 설명·전달력 — 안내를 얼마나 명확하게 전달했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 설명·전달력을 종합 평가하세요.
@@ -322,7 +331,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 설명이 모호해 고객이 재질문하거나 혼동
 - 실패: 핵심이 전달되지 않거나 잘못 이해하게 함
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (4, 4, '정확성·해결력', '맞게 안내했고 실제로 해결했나 — 정확한 안내·오안내 방지, 금지멘트 준수, 복합문의 답변, 적극성·해결의지, 대안 제시·셀프서비스 안내, 절차 필수안내(반품·환불 소요일 등)', '[평가 축] 정확성·해결력 — 정확히 안내하고 실제로 문제를 해결했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 정확성·해결력을 종합 평가하세요.
@@ -341,7 +350,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 부정확한 안내 또는 소극적 처리로 미해결
 - 실패: 오안내/금지멘트 위반 또는 문제 방치
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (4, 5, '컴플라이언스', '규정준수·정보보호(규정·고객보호) — 본인확인 절차·순서·항목, 개인정보·정보보호·선언급 금지, 안내 범위 준수, 업무별 필수고지·상품 적합성, 보안사고 대응(분실·피싱·부정거래)', '[평가 축] 컴플라이언스 — 규정 준수와 고객정보 보호
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 규정준수·정보보호 수준을 종합 평가하세요.
@@ -359,7 +368,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 본인확인 부실 또는 고지 누락 등 위험 소지
 - 실패: 정보보호 위반·필수확인 미이행 등 중대한 규정 위반
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (5, 1, '응대·표현', '상담 매너·언어 품질 — 첫인사(도입), 끝인사·추가문의 확인, 화답인사, 공감·호응·쿠션어, 정중한 언어표현', '[평가 축] 응대·표현 — 상담 매너와 언어 품질
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 응대 매너·언어 품질을 종합 평가하세요.
@@ -377,7 +386,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 다수 항목이 미흡하거나 부자연스러운 응대
 - 실패: 기본 매너·정중함이 결여됨
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (5, 2, '니즈파악·경청', '무엇을 묻는지 정확히 파악 — 문의 의도·니즈 파악, 상품/업무 특정, 재복창(확인 복창)', '[평가 축] 니즈파악·경청 — 고객이 무엇을 원하는지 정확히 파악했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 니즈 파악·경청 역량을 종합 평가하세요.
@@ -394,7 +403,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 핵심 니즈를 놓치거나 반복 질문 유발
 - 실패: 문의 의도를 오인하여 잘못된 방향으로 진행
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (5, 3, '설명·전달력', '얼마나 명확히 전달했나 — 설명력·전달력, 두괄식 전달, 내부용어·전문용어 지양', '[평가 축] 설명·전달력 — 안내를 얼마나 명확하게 전달했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 설명·전달력을 종합 평가하세요.
@@ -410,7 +419,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 설명이 모호해 고객이 재질문하거나 혼동
 - 실패: 핵심이 전달되지 않거나 잘못 이해하게 함
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (5, 4, '정확성·해결력', '맞게 안내했고 실제로 해결했나 — 정확한 안내·오안내 방지, 금지멘트 준수, 복합문의 답변, 적극성·해결의지, 대안 제시·셀프서비스 안내, 절차 필수안내(반품·환불 소요일 등)', '[평가 축] 정확성·해결력 — 정확히 안내하고 실제로 문제를 해결했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 정확성·해결력을 종합 평가하세요.
@@ -429,7 +438,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 부정확한 안내 또는 소극적 처리로 미해결
 - 실패: 오안내/금지멘트 위반 또는 문제 방치
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (5, 5, '컴플라이언스', '규정준수·정보보호(규정·고객보호) — 본인확인 절차·순서·항목, 개인정보·정보보호·선언급 금지, 안내 범위 준수, 업무별 필수고지·상품 적합성, 보안사고 대응(분실·피싱·부정거래)', '[평가 축] 컴플라이언스 — 규정 준수와 고객정보 보호
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 규정준수·정보보호 수준을 종합 평가하세요.
@@ -447,7 +456,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 본인확인 부실 또는 고지 누락 등 위험 소지
 - 실패: 정보보호 위반·필수확인 미이행 등 중대한 규정 위반
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (6, 1, '응대·표현', '상담 매너·언어 품질 — 첫인사(도입), 끝인사·추가문의 확인, 화답인사, 공감·호응·쿠션어, 정중한 언어표현', '[평가 축] 응대·표현 — 상담 매너와 언어 품질
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 응대 매너·언어 품질을 종합 평가하세요.
@@ -465,7 +474,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 다수 항목이 미흡하거나 부자연스러운 응대
 - 실패: 기본 매너·정중함이 결여됨
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (6, 2, '니즈파악·경청', '무엇을 묻는지 정확히 파악 — 문의 의도·니즈 파악, 상품/업무 특정, 재복창(확인 복창)', '[평가 축] 니즈파악·경청 — 고객이 무엇을 원하는지 정확히 파악했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 니즈 파악·경청 역량을 종합 평가하세요.
@@ -482,7 +491,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 핵심 니즈를 놓치거나 반복 질문 유발
 - 실패: 문의 의도를 오인하여 잘못된 방향으로 진행
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (6, 3, '설명·전달력', '얼마나 명확히 전달했나 — 설명력·전달력, 두괄식 전달, 내부용어·전문용어 지양', '[평가 축] 설명·전달력 — 안내를 얼마나 명확하게 전달했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 설명·전달력을 종합 평가하세요.
@@ -498,7 +507,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 설명이 모호해 고객이 재질문하거나 혼동
 - 실패: 핵심이 전달되지 않거나 잘못 이해하게 함
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (6, 4, '정확성·해결력', '맞게 안내했고 실제로 해결했나 — 정확한 안내·오안내 방지, 금지멘트 준수, 복합문의 답변, 적극성·해결의지, 대안 제시·셀프서비스 안내, 절차 필수안내(반품·환불 소요일 등)', '[평가 축] 정확성·해결력 — 정확히 안내하고 실제로 문제를 해결했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 정확성·해결력을 종합 평가하세요.
@@ -517,7 +526,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 부정확한 안내 또는 소극적 처리로 미해결
 - 실패: 오안내/금지멘트 위반 또는 문제 방치
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (6, 5, '컴플라이언스', '규정준수·정보보호(규정·고객보호) — 본인확인 절차·순서·항목, 개인정보·정보보호·선언급 금지, 안내 범위 준수, 업무별 필수고지·상품 적합성, 보안사고 대응(분실·피싱·부정거래)', '[평가 축] 컴플라이언스 — 규정 준수와 고객정보 보호
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 규정준수·정보보호 수준을 종합 평가하세요.
@@ -535,7 +544,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 본인확인 부실 또는 고지 누락 등 위험 소지
 - 실패: 정보보호 위반·필수확인 미이행 등 중대한 규정 위반
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (7, 1, '응대·표현', '상담 매너·언어 품질 — 첫인사(도입), 끝인사·추가문의 확인, 화답인사, 공감·호응·쿠션어, 정중한 언어표현', '[평가 축] 응대·표현 — 상담 매너와 언어 품질
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 응대 매너·언어 품질을 종합 평가하세요.
@@ -553,7 +562,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 다수 항목이 미흡하거나 부자연스러운 응대
 - 실패: 기본 매너·정중함이 결여됨
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (7, 2, '니즈파악·경청', '무엇을 묻는지 정확히 파악 — 문의 의도·니즈 파악, 상품/업무 특정, 재복창(확인 복창)', '[평가 축] 니즈파악·경청 — 고객이 무엇을 원하는지 정확히 파악했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 니즈 파악·경청 역량을 종합 평가하세요.
@@ -570,7 +579,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 핵심 니즈를 놓치거나 반복 질문 유발
 - 실패: 문의 의도를 오인하여 잘못된 방향으로 진행
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (7, 3, '설명·전달력', '얼마나 명확히 전달했나 — 설명력·전달력, 두괄식 전달, 내부용어·전문용어 지양', '[평가 축] 설명·전달력 — 안내를 얼마나 명확하게 전달했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 설명·전달력을 종합 평가하세요.
@@ -586,7 +595,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 설명이 모호해 고객이 재질문하거나 혼동
 - 실패: 핵심이 전달되지 않거나 잘못 이해하게 함
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (7, 4, '정확성·해결력', '맞게 안내했고 실제로 해결했나 — 정확한 안내·오안내 방지, 금지멘트 준수, 복합문의 답변, 적극성·해결의지, 대안 제시·셀프서비스 안내, 절차 필수안내(반품·환불 소요일 등)', '[평가 축] 정확성·해결력 — 정확히 안내하고 실제로 문제를 해결했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 정확성·해결력을 종합 평가하세요.
@@ -605,7 +614,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 부정확한 안내 또는 소극적 처리로 미해결
 - 실패: 오안내/금지멘트 위반 또는 문제 방치
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (7, 5, '컴플라이언스', '규정준수·정보보호(규정·고객보호) — 본인확인 절차·순서·항목, 개인정보·정보보호·선언급 금지, 안내 범위 준수, 업무별 필수고지·상품 적합성, 보안사고 대응(분실·피싱·부정거래)', '[평가 축] 컴플라이언스 — 규정 준수와 고객정보 보호
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 규정준수·정보보호 수준을 종합 평가하세요.
@@ -623,7 +632,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 본인확인 부실 또는 고지 누락 등 위험 소지
 - 실패: 정보보호 위반·필수확인 미이행 등 중대한 규정 위반
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (8, 1, '응대·표현', '상담 매너·언어 품질 — 첫인사(도입), 끝인사·추가문의 확인, 화답인사, 공감·호응·쿠션어, 정중한 언어표현', '[평가 축] 응대·표현 — 상담 매너와 언어 품질
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 응대 매너·언어 품질을 종합 평가하세요.
@@ -641,7 +650,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 다수 항목이 미흡하거나 부자연스러운 응대
 - 실패: 기본 매너·정중함이 결여됨
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (8, 2, '니즈파악·경청', '무엇을 묻는지 정확히 파악 — 문의 의도·니즈 파악, 상품/업무 특정, 재복창(확인 복창)', '[평가 축] 니즈파악·경청 — 고객이 무엇을 원하는지 정확히 파악했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 니즈 파악·경청 역량을 종합 평가하세요.
@@ -658,7 +667,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 핵심 니즈를 놓치거나 반복 질문 유발
 - 실패: 문의 의도를 오인하여 잘못된 방향으로 진행
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (8, 3, '설명·전달력', '얼마나 명확히 전달했나 — 설명력·전달력, 두괄식 전달, 내부용어·전문용어 지양', '[평가 축] 설명·전달력 — 안내를 얼마나 명확하게 전달했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 설명·전달력을 종합 평가하세요.
@@ -674,7 +683,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 설명이 모호해 고객이 재질문하거나 혼동
 - 실패: 핵심이 전달되지 않거나 잘못 이해하게 함
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (8, 4, '정확성·해결력', '맞게 안내했고 실제로 해결했나 — 정확한 안내·오안내 방지, 금지멘트 준수, 복합문의 답변, 적극성·해결의지, 대안 제시·셀프서비스 안내, 절차 필수안내(반품·환불 소요일 등)', '[평가 축] 정확성·해결력 — 정확히 안내하고 실제로 문제를 해결했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 정확성·해결력을 종합 평가하세요.
@@ -693,7 +702,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 부정확한 안내 또는 소극적 처리로 미해결
 - 실패: 오안내/금지멘트 위반 또는 문제 방치
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (8, 5, '컴플라이언스', '규정준수·정보보호(규정·고객보호) — 본인확인 절차·순서·항목, 개인정보·정보보호·선언급 금지, 안내 범위 준수, 업무별 필수고지·상품 적합성, 보안사고 대응(분실·피싱·부정거래)', '[평가 축] 컴플라이언스 — 규정 준수와 고객정보 보호
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 규정준수·정보보호 수준을 종합 평가하세요.
@@ -711,7 +720,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 본인확인 부실 또는 고지 누락 등 위험 소지
 - 실패: 정보보호 위반·필수확인 미이행 등 중대한 규정 위반
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (9, 1, '응대·표현', '상담 매너·언어 품질 — 첫인사(도입), 끝인사·추가문의 확인, 화답인사, 공감·호응·쿠션어, 정중한 언어표현', '[평가 축] 응대·표현 — 상담 매너와 언어 품질
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 응대 매너·언어 품질을 종합 평가하세요.
@@ -729,7 +738,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 다수 항목이 미흡하거나 부자연스러운 응대
 - 실패: 기본 매너·정중함이 결여됨
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (9, 2, '니즈파악·경청', '무엇을 묻는지 정확히 파악 — 문의 의도·니즈 파악, 상품/업무 특정, 재복창(확인 복창)', '[평가 축] 니즈파악·경청 — 고객이 무엇을 원하는지 정확히 파악했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 니즈 파악·경청 역량을 종합 평가하세요.
@@ -746,7 +755,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 핵심 니즈를 놓치거나 반복 질문 유발
 - 실패: 문의 의도를 오인하여 잘못된 방향으로 진행
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (9, 3, '설명·전달력', '얼마나 명확히 전달했나 — 설명력·전달력, 두괄식 전달, 내부용어·전문용어 지양', '[평가 축] 설명·전달력 — 안내를 얼마나 명확하게 전달했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 설명·전달력을 종합 평가하세요.
@@ -762,7 +771,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 설명이 모호해 고객이 재질문하거나 혼동
 - 실패: 핵심이 전달되지 않거나 잘못 이해하게 함
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (9, 4, '정확성·해결력', '맞게 안내했고 실제로 해결했나 — 정확한 안내·오안내 방지, 금지멘트 준수, 복합문의 답변, 적극성·해결의지, 대안 제시·셀프서비스 안내, 절차 필수안내(반품·환불 소요일 등)', '[평가 축] 정확성·해결력 — 정확히 안내하고 실제로 문제를 해결했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 정확성·해결력을 종합 평가하세요.
@@ -781,7 +790,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 부정확한 안내 또는 소극적 처리로 미해결
 - 실패: 오안내/금지멘트 위반 또는 문제 방치
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (9, 5, '컴플라이언스', '규정준수·정보보호(규정·고객보호) — 본인확인 절차·순서·항목, 개인정보·정보보호·선언급 금지, 안내 범위 준수, 업무별 필수고지·상품 적합성, 보안사고 대응(분실·피싱·부정거래)', '[평가 축] 컴플라이언스 — 규정 준수와 고객정보 보호
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 규정준수·정보보호 수준을 종합 평가하세요.
@@ -799,7 +808,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 본인확인 부실 또는 고지 누락 등 위험 소지
 - 실패: 정보보호 위반·필수확인 미이행 등 중대한 규정 위반
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (10, 1, '응대·표현', '상담 매너·언어 품질 — 첫인사(도입), 끝인사·추가문의 확인, 화답인사, 공감·호응·쿠션어, 정중한 언어표현', '[평가 축] 응대·표현 — 상담 매너와 언어 품질
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 응대 매너·언어 품질을 종합 평가하세요.
@@ -817,7 +826,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 다수 항목이 미흡하거나 부자연스러운 응대
 - 실패: 기본 매너·정중함이 결여됨
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (10, 2, '니즈파악·경청', '무엇을 묻는지 정확히 파악 — 문의 의도·니즈 파악, 상품/업무 특정, 재복창(확인 복창)', '[평가 축] 니즈파악·경청 — 고객이 무엇을 원하는지 정확히 파악했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 니즈 파악·경청 역량을 종합 평가하세요.
@@ -834,7 +843,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 핵심 니즈를 놓치거나 반복 질문 유발
 - 실패: 문의 의도를 오인하여 잘못된 방향으로 진행
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (10, 3, '설명·전달력', '얼마나 명확히 전달했나 — 설명력·전달력, 두괄식 전달, 내부용어·전문용어 지양', '[평가 축] 설명·전달력 — 안내를 얼마나 명확하게 전달했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 설명·전달력을 종합 평가하세요.
@@ -850,7 +859,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 설명이 모호해 고객이 재질문하거나 혼동
 - 실패: 핵심이 전달되지 않거나 잘못 이해하게 함
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (10, 4, '정확성·해결력', '맞게 안내했고 실제로 해결했나 — 정확한 안내·오안내 방지, 금지멘트 준수, 복합문의 답변, 적극성·해결의지, 대안 제시·셀프서비스 안내, 절차 필수안내(반품·환불 소요일 등)', '[평가 축] 정확성·해결력 — 정확히 안내하고 실제로 문제를 해결했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 정확성·해결력을 종합 평가하세요.
@@ -869,7 +878,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 부정확한 안내 또는 소극적 처리로 미해결
 - 실패: 오안내/금지멘트 위반 또는 문제 방치
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (10, 5, '컴플라이언스', '규정준수·정보보호(규정·고객보호) — 본인확인 절차·순서·항목, 개인정보·정보보호·선언급 금지, 안내 범위 준수, 업무별 필수고지·상품 적합성, 보안사고 대응(분실·피싱·부정거래)', '[평가 축] 컴플라이언스 — 규정 준수와 고객정보 보호
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 규정준수·정보보호 수준을 종합 평가하세요.
@@ -887,7 +896,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 본인확인 부실 또는 고지 누락 등 위험 소지
 - 실패: 정보보호 위반·필수확인 미이행 등 중대한 규정 위반
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (11, 1, '응대·표현', '상담 매너·언어 품질 — 첫인사(도입), 끝인사·추가문의 확인, 화답인사, 공감·호응·쿠션어, 정중한 언어표현', '[평가 축] 응대·표현 — 상담 매너와 언어 품질
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 응대 매너·언어 품질을 종합 평가하세요.
@@ -905,7 +914,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 다수 항목이 미흡하거나 부자연스러운 응대
 - 실패: 기본 매너·정중함이 결여됨
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (11, 2, '니즈파악·경청', '무엇을 묻는지 정확히 파악 — 문의 의도·니즈 파악, 상품/업무 특정, 재복창(확인 복창)', '[평가 축] 니즈파악·경청 — 고객이 무엇을 원하는지 정확히 파악했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 니즈 파악·경청 역량을 종합 평가하세요.
@@ -922,7 +931,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 핵심 니즈를 놓치거나 반복 질문 유발
 - 실패: 문의 의도를 오인하여 잘못된 방향으로 진행
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (11, 3, '설명·전달력', '얼마나 명확히 전달했나 — 설명력·전달력, 두괄식 전달, 내부용어·전문용어 지양', '[평가 축] 설명·전달력 — 안내를 얼마나 명확하게 전달했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 설명·전달력을 종합 평가하세요.
@@ -938,7 +947,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 설명이 모호해 고객이 재질문하거나 혼동
 - 실패: 핵심이 전달되지 않거나 잘못 이해하게 함
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (11, 4, '정확성·해결력', '맞게 안내했고 실제로 해결했나 — 정확한 안내·오안내 방지, 금지멘트 준수, 복합문의 답변, 적극성·해결의지, 대안 제시·셀프서비스 안내, 절차 필수안내(반품·환불 소요일 등)', '[평가 축] 정확성·해결력 — 정확히 안내하고 실제로 문제를 해결했는가
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 정확성·해결력을 종합 평가하세요.
@@ -957,7 +966,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 부정확한 안내 또는 소극적 처리로 미해결
 - 실패: 오안내/금지멘트 위반 또는 문제 방치
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, description, prompt_template, is_active) VALUES (11, 5, '컴플라이언스', '규정준수·정보보호(규정·고객보호) — 본인확인 절차·순서·항목, 개인정보·정보보호·선언급 금지, 안내 범위 준수, 업무별 필수고지·상품 적합성, 보안사고 대응(분실·피싱·부정거래)', '[평가 축] 컴플라이언스 — 규정 준수와 고객정보 보호
 
 이 축에 매핑된 평가항목 채점 결과와 상담 전사를 바탕으로 상담사의 규정준수·정보보호 수준을 종합 평가하세요.
@@ -975,7 +984,7 @@ INSERT INTO public.domain_default_pentagon_axes (domain_id, axis_no, label, desc
 - 주의: 본인확인 부실 또는 고지 누락 등 위험 소지
 - 실패: 정보보호 위반·필수확인 미이행 등 중대한 규정 위반
 
-[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description, prompt_template=EXCLUDED.prompt_template, is_active=EXCLUDED.is_active;
+[출력] {"rating":"우수|보통|주의|실패","analysis":"핵심만 간결하게 2-3문장"}', 't') ON CONFLICT (domain_id, axis_no) DO NOTHING;
 
 -- ----- domain_default_eval_items -----
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 1, '응대·표현', '첫인사 · 본인확인 도입', '[평가 항목] 첫인사 · 본인확인 도입
@@ -1003,7 +1012,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - 거절: 아니요 / 안 할래요 / 필요 없어요 / 됐습니다 / 그만 하세요 / 안듣고 싶어요 → 가입/진행 불가 — 중단 여부 확인', '점수 단계: 6 / 3 / 0
 - 6점: 인사 3요소 + 본인확인 질의 + 고객 답변 모두 충족함
 - 3점: 인사 1요소 누락 또는 본인확인 질의 후 고객 답변 누락
-- 0점: 소속/실명/본인확인 질의 중 2개 이상 누락, 또는 본인확인 없이 본론 진입', '응대·표현', 'numeric', 6, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 소속/실명/본인확인 질의 중 2개 이상 누락, 또는 본인확인 없이 본론 진입', '응대·표현', 'numeric', 6, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 2, '응대·표현', '끝인사', '[평가 항목] 끝인사
 
 [평가 대상] 1) 상담 종료 구간의 종료 인사 진행 여부 2) 소속(부서/회사) 안내 여부 3) 상담사 실명 전달 여부
@@ -1019,7 +1028,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 멘트 변형 허용(의미 매칭).', '점수 단계: 3 / 1 / 0
 - 3점: 종료 인사 진행 + 소속·상담사 실명 모두 전달함
 - 1점: 종료 인사는 진행했으나 실명/소속 누락
-- 0점: 종료 인사 미진행', '응대·표현', 'numeric', 3, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 종료 인사 미진행', '응대·표현', 'numeric', 3, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 3, '응대·표현', '공감/호응 · 쿠션어', '[평가 항목] 공감/호응 · 쿠션어
 
 [평가 대상] 1) 고객 불편·부정 상황에 대한 즉각적 사과 표현 유무. 2) 거절·양해 상황에서의 쿠션어 사용 유무. 3) 상황에 맞는 호응 1회 이상 유무. 단순 감정 위로가 아닌 상황 자체에 대한 공감 여부.
@@ -1035,7 +1044,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 표현 존재·적절성까지만 평가(음성 톤 제외). 대기/묵음은 텍스트 불가로 제외.', '점수 단계: 8 / 4 / 0
 - 8점: 사과·쿠션어·호응 모두 적절히 사용함
 - 4점: 기계적·형식적이거나 1요소 누락, 또는 상황과 다소 불일치함
-- 0점: 불편·거절 상황에 사과·쿠션어·호응 전무, ''네네'' 단순 반복함', '응대·표현', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 불편·거절 상황에 사과·쿠션어·호응 전무, ''네네'' 단순 반복함', '응대·표현', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 4, '응대·표현', '정중한 언어표현', '[평가 항목] 정중한 언어표현
 
 [평가 대상] 상담원의 화법이 정중하고 전문적인지 확인. 1) 반말·명령형·훈계·혼잣말·습관어/사족어 등 부적절 표현 사용 여부 2) 응대 전 구간에 걸친 정중한 어휘·화법 유지 여부.
@@ -1061,7 +1070,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - [욕설·비하] (욕설·비속어·인격 비하 표현) → 불친절 패널티(-20/콜 0점)', '점수 단계: 5 / 3 / 0
 - 5점: 전 구간 정중·전문 화법 유지, 부적절 표현 없음
 - 3점: 부적절 표현 1~2회 사용으로 부분 미흡
-- 0점: 반말·명령·짜증·다그침·비아냥 사용, 반말·욕설성 어휘 시 즉시 해당', '응대·표현', 'numeric', 5, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 반말·명령·짜증·다그침·비아냥 사용, 반말·욕설성 어휘 시 즉시 해당', '응대·표현', 'numeric', 5, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 5, '정확성·설명', '니즈파악 · 재복창', '[평가 항목] 니즈파악 · 재복창
 
 [평가 대상] 1) 고객 용건 확인 및 핵심 요지의 요약·재복창 여부 2) 거래·계좌·상품 등 식별 대상의 정확한 특정 여부 3) 이미 언급·조회 가능한 내용에 대한 불필요한 재질문 발생 여부
@@ -1077,7 +1086,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 계좌·상품·증권 식별자 STT 오인식 주의. 재질의 카운트는 화자 라벨 의존.', '점수 단계: 6 / 3 / 0
 - 6점: 용건 정확히 파악 + 핵심 요지 요약·재복창 수행함
 - 3점: 용건 파악했으나 재복창 누락, 또는 이미 언급·조회 가능 내용 재질문함
-- 0점: 동문서답·반복 재질문, 또는 고객 2회 이상 재설명 유발함', '니즈파악·경청', 'numeric', 6, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 동문서답·반복 재질문, 또는 고객 2회 이상 재설명 유발함', '니즈파악·경청', 'numeric', 6, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 6, '정확성·설명', '설명력 · 전달력', '[평가 항목] 설명력 · 전달력
 
 [평가 대상] 1) 고객 눈높이에 맞춘 쉬운 설명과 전문용어 지양 2) 핵심을 먼저 제시하는 두괄식 전달 3) 이해 여부를 확인하며 진행하는지
@@ -1101,7 +1110,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - "거치식" → 고객용 표현: "이자만 받다가 만기에 원금(풀어 설명)" (풀어 안내)', '점수 단계: 6 / 3 / 0
 - 6점: 전문용어 지양한 쉬운 설명·두괄식 핵심 전달로 이해 확인하며 진행함
 - 3점: 일부 장황하거나 전문용어 사용으로 고객 되물음 1회 발생함
-- 0점: 이해 불가 수준의 설명으로 상담 포기를 유발함', '설명·전달력', 'numeric', 6, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 이해 불가 수준의 설명으로 상담 포기를 유발함', '설명·전달력', 'numeric', 6, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '[평가 항목] 오안내 · 정확한 안내 · 금지멘트
 
 [평가 대상] 1) 계좌·이체·대출·카드·상품 전반에 대한 정확한 안내 여부 2) 추측성 단정 회피 여부 3) 금지멘트(펀드 원금보장·대출 최저금리·피싱 전액환급 단정 등) 미사용 여부
@@ -1135,7 +1144,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - [규정 통보] 금지: "원래 그래요" (변형 예: 규정이 그래요 / 원칙상 안돼요) / 사유: 근거 없는 통보·설득 실패 / 권장 대체: 규정 근거를 들어 설명', '점수 단계: 13 / 7 / 0
 - 13점: 오안내 없이 정확하게 안내함
 - 7점: 경미한 부정확 존재하나 정정 불필요한 수준
-- 0점: 오안내(정정 필요)·규정 위반 안내·금지멘트 사용 중 하나 이상 발생. ※ 금지멘트 또는 사실과 다른 요율/한도/조건 안내 시 즉시 0점', '정확성·해결력', 'numeric', 13, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 오안내(정정 필요)·규정 위반 안내·금지멘트 사용 중 하나 이상 발생. ※ 금지멘트 또는 사실과 다른 요율/한도/조건 안내 시 즉시 0점', '정확성·해결력', 'numeric', 13, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 8, '정확성·설명', '적극성 · 해결의지', '[평가 항목] 적극성 · 해결의지
 
 [평가 대상] 1) 책임 있는 자세로 문의를 끝까지 처리하려는 적극성. 2) 즉시 해결 불가 시 대안·후속조치 제시 여부. 3) 처리 종료 전 추가 불편·문의 확인 여부 및 성급한 종결 유도 회피.
@@ -1159,7 +1168,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 도움드리지 못해 죄송합니다. → 적극성 → 가점 신호', '점수 단계: 5 / 3 / 0
 - 5점: 적극적으로 책임 처리 + 추가 불편·문의 확인까지 수행함
 - 3점: 해결은 하였으나 대안·후속조치 제시가 미흡함
-- 0점: 회피·떠넘김 등 해결 의지 없음', '정확성·해결력', 'numeric', 5, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 회피·떠넘김 등 해결 의지 없음', '정확성·해결력', 'numeric', 5, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '[평가 항목] 본인확인 절차 · 순서 · 항목
 
 [평가 대상] 계좌/거래/정보 안내·처리 이전 본인확인 선행 여부. 1) 2가지 정보(성함+생년월일 등) 확인 또는 본인인증 완료. 2) 제3자 통화 시 통화자명·명의자·관계 확인. 3) 본인확인 → 안내/처리 순서 준수.
@@ -1193,7 +1202,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - 거절: 아니요 / 안 할래요 / 필요 없어요 / 됐습니다 / 그만 하세요 / 안듣고 싶어요 → 가입/진행 불가 — 중단 여부 확인', '점수 단계: 12 / 6 / 0
 - 12점: 2요소 이상 정보 확인 또는 본인인증 완료 + 본인확인 선행 순서 준수
 - 6점: 확인 항목 1개 누락 또는 본인확인·안내 순서 혼선
-- 0점: 본인확인 미이행 후 계좌/거래 정보 안내, 확인 항목 2개 이상 누락, 또는 생년월일 미확인·전산 불일치', '컴플라이언스', 'numeric', 12, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 본인확인 미이행 후 계좌/거래 정보 안내, 확인 항목 2개 이상 누락, 또는 생년월일 미확인·전산 불일치', '컴플라이언스', 'numeric', 12, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '[평가 항목] 개인정보 · 정보보호
 
 [평가 대상] 1) 고객 정보 선언급 여부(고객 확인 발화보다 정보 발화가 선행하는지) 2) 동의 없는 정보 활용 여부 3) 제3자 정보 미제공 준수 여부 4) 정보 취급 가이드 준수 여부
@@ -1209,7 +1218,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 선언급 판정은 발화 순서에 의존(텍스트로 가능). 정보 토큰 STT 오인식 주의.', '점수 단계: 8 / 4 / 0
 - 8점: 정보 취급 가이드 준수, 선언급·동의 없는 활용·제3자 제공 없음
 - 4점: 경미한 절차 미흡(확인 순서 혼선 등) 존재하나 위반 없음
-- 0점: 정보 선언급·동의 없는 활용·제3자 유출 중 하나 이상 발생', '컴플라이언스', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 정보 선언급·동의 없는 활용·제3자 유출 중 하나 이상 발생', '컴플라이언스', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '[평가 항목] 업무별 필수안내 (이체·대출·계좌·카드 등)
 
 [평가 대상] 문의 업무유형별 필수안내 이행 여부. 1) 이체(한도·수수료·반영시점) 2) 대출(금리유형·상환·중도상환수수료·연체 불이익) 3) 계좌(서류·해지 영향) 4) 카드(연회비·실적·분실 정지·재발급) 5) 외환(서류·한도·소요). TA 상담유형별 필수안내 체크리스트(RAG)와 발화 의미 매칭으로 판정.
@@ -1441,7 +1450,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
   · 미충족 예: "그건 저희가 안 해요. (적절 채널 안내 없이 회피)"', '점수 단계: 12 / 6 / 0
 - 12점: 해당 업무 필수안내 모두 이행
 - 6점: 부가 항목 누락(핵심 이행) 또는 부정확한 발음으로 필수안내 전달 미흡
-- 0점: 핵심 필수안내(금리·연체 불이익·수수료·지급정지 절차 등) 미이행, 잘못된 안내 시 오안내와 중복 0점', '컴플라이언스', 'numeric', 12, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 핵심 필수안내(금리·연체 불이익·수수료·지급정지 절차 등) 미이행, 잘못된 안내 시 오안내와 중복 0점', '컴플라이언스', 'numeric', 12, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '[평가 항목] 금융상품 가입 적합성 · 필수고지
 
 [평가 대상] 예적금·펀드 등 금융상품 가입 상담에서 1) 고객 투자성향(적합성) 확인 여부, 2) 예적금 만기·중도해지 손실 및 펀드 원금비보장·위험등급·수수료 등 필수 고지 이행 여부. 가입성 상담에 한함.
@@ -1497,7 +1506,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - 거절: 아니요 / 안 할래요 / 필요 없어요 / 됐습니다 / 그만 하세요 / 안듣고 싶어요 → 가입/진행 불가 — 중단 여부 확인', '점수 단계: 8 / 4 / 0
 - 8점: 적합성(투자성향) 확인 + 원금비보장·손실 등 필수 고지 이행함
 - 4점: 고지는 하였으나 일부 항목(수수료·위험등급 등) 누락함
-- 0점: 적합성 미확인 후 권유 또는 원금비보장·중도해지 손실 등 핵심 고지 누락함', '컴플라이언스', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 적합성 미확인 후 권유 또는 원금비보장·중도해지 손실 등 핵심 고지 누락함', '컴플라이언스', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (1, 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '[평가 항목] 보안사고 대응 (분실·피싱·부정거래)
 
 [평가 대상] 분실·도난·보이스피싱·부정거래 등 보안사고 인지 시 대응의 적절성. 1) 즉시 정지/지급정지 안내 여부 2) 신고·피해구제 절차 안내 여부 3) 재발급 등 후속 절차 안내 여부. 사고 키워드(분실/피싱/모르는 출금) 포착 후 정지·지급정지·신고 안내 발화 확인.
@@ -1521,7 +1530,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - [BK-S04 보이스피싱 지급정지 안내] 지급정지 신청·피해구제 절차 안내 / 필수 요소·순서: 지급정지 + 피해구제 / 허용 변형: 멘트 변형 허용', '점수 단계: 8 / 4 / 0
 - 8점: 사고 인지 후 즉시 정지/지급정지 안내 + 신고·피해구제 절차 안내 모두 수행함
 - 4점: 정지/지급정지는 안내했으나 피해구제·재발급 등 후속 절차 안내 미흡함
-- 0점: 사고 정황을 놓치거나 지급정지/정지 등 즉시 조치 미안내함', '컴플라이언스', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 사고 정황을 놓치거나 지급정지/정지 등 즉시 조치 미안내함', '컴플라이언스', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 1, '응대·표현', '첫인사', '[평가 항목] 첫인사
 
 [평가 대상] 첫 상담사 턴에서 1) 인사말, 2) 소속(센터/부서) 명사, 3) 상담사 실명(''○○○입니다'') 3요소의 발화 여부. 본 문의 진입 전 인사 완료 여부. 호전환 건은 ''연결받았습니다''+실명 인정(소속 생략 허용).
@@ -1537,7 +1546,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 실명 STT 오인식 잦음 → 끝맺음 패턴으로 추출, 단순 미일치로 0점 금지. 화자 라벨이 상담사 첫 턴을 맞게 가리키는지 확인.', '점수 단계: 5 / 3 / 0
 - 5점: 첫 상담사 턴에서 인사말+소속+실명 3요소를 본 문의 진입 전 모두 발화함(호전환 시 ''연결받았습니다''+실명 인정, 소속 생략 허용)
 - 3점: 인사말과 실명은 발화하였으나 소속 명사가 누락되는 등 일부 요소 미흡
-- 0점: 인사말·소속·실명 중 다수 요소 누락 또는 첫 인사 자체 부재', '응대·표현', 'numeric', 5, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 인사말·소속·실명 중 다수 요소 누락 또는 첫 인사 자체 부재', '응대·표현', 'numeric', 5, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 2, '응대·표현', '끝인사 · 추가문의 확인', '[평가 항목] 끝인사 · 추가문의 확인
 
 [평가 대상] 통화 종료 구간 상담사 발화에서 1) 추가 문의 확인 의문형(''더 도와드릴 점 없으십니까'' 등) 2) 종료 인사어 3) 상담사 실명 제시 여부. 고객의 추가 문의가 있으면 응대 후 끝인사 재이행 여부도 함께 봄.
@@ -1553,7 +1562,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 ‘선종료(상담사 먼저 끊음)’는 통화 로그 영역이라 평가 안 함 — 발화 순서로 판정 가능한 ‘추가문의 확인·끝인사 누락’만 본다.', '점수 단계: 5 / 3 / 0
 - 5점: 추가 문의 확인 의문형 + 종료 인사 + 상담사 실명 모두 이행함. 추가 문의 발생 시 응대 후 끝인사 재이행까지 충족함
 - 3점: 추가 문의 확인·종료 인사·실명 중 일부만 이행하거나, 추가 문의 후 끝인사 재이행이 미흡함
-- 0점: 추가 문의 확인·종료 인사·실명 모두 누락함', '응대·표현', 'numeric', 5, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 추가 문의 확인·종료 인사·실명 모두 누락함', '응대·표현', 'numeric', 5, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 3, '응대·표현', '화답인사', '[평가 항목] 화답인사
 
 [평가 대상] 1) 고객이 먼저 인사 또는 감사 표현을 한 턴이 선행하였는지 여부. 2) 그 직후 상담사 턴에서 ''네, 안녕하세요'', ''감사합니다'' 등으로 적절히 화답하였는지 매칭. 3) 고객의 선행 인사가 없는 경우 화답 의무 미발생.
@@ -1569,7 +1578,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 고객 ‘네/안녕하세요’ 단답이 STT에서 누락되지 않도록 보존. 화자 라벨 뒤바뀜 시 오판 주의.', '점수 단계: 3 / 1 / 0
 - 3점: 고객의 선행 인사·감사에 상담사가 적절히 화답함, 또는 고객 인사가 없어 화답 의무 미발생(자동 충족)
 - 1점: 고객의 선행 인사·감사에 화답하였으나 표현이 형식적이거나 일부 미흡함
-- 0점: 고객의 선행 인사·감사가 있었음에도 화답이 누락됨', '응대·표현', 'numeric', 3, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 고객의 선행 인사·감사가 있었음에도 화답이 누락됨', '응대·표현', 'numeric', 3, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 4, '응대·표현', '공감/호응 · 쿠션어', '[평가 항목] 공감/호응 · 쿠션어
 
 [평가 대상] 1) 불편·부정 상황 발생 시 즉각적·구체적 사과 여부, 2) 거절·양해 요청 시 쿠션어(''번거로우시겠지만~'' 등) 사용 여부, 3) 상황 맥락에 맞는 호응 1회 이상 여부. 단순 감정 반응이 아닌 상황 맥락 기반 공감 표현 확인.
@@ -1600,7 +1609,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - 고객 불만 상황: “불편을 드려 죄송합니다.” — 필수 요소: 사과 + 공감', '점수 단계: 8 / 4 / 0
 - 8점: 불편·부정 상황 즉각·구체적 사과, 거절·양해 시 쿠션어 사용, 상황 맥락에 맞는 호응 1회 이상 모두 충족
 - 4점: 사과·쿠션어·호응 중 일부만 충족하거나 상황 맥락 공감이 부분적으로 미흡함
-- 0점: 사과·쿠션어·호응 표현 전반 부재 또는 단순 감정 반복으로 상황 맥락 공감 미충족', '응대·표현', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 사과·쿠션어·호응 표현 전반 부재 또는 단순 감정 반복으로 상황 맥락 공감 미충족', '응대·표현', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 5, '응대·표현', '정중한 언어표현', '[평가 항목] 정중한 언어표현
 
 [평가 대상] 텍스트의 어휘·화법만 평가. 1) 정중·전문 화법 유지 여부 2) 반말 종결어미·명령형·지시형·훈계조·혼잣말·과도한 사족어 사용 여부 3) 확신 없는 표현으로 고객 불안 유발 여부.
@@ -1625,7 +1634,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - 욕설·비하: (욕설·비속어·인격 비하 표현) → 불친절 패널티(-20/콜 0점)', '점수 단계: 7 / 4 / 0
 - 7점: 전 구간 정중·전문 화법 유지. 반말 종결어미·명령형·지시형·훈계조·혼잣말·과도한 사족어 없음. 확신 없는 표현으로 불안 유발 안 함
 - 4점: 대체로 정중하나 사족어·불확신 표현 등 일부 부적절 화법이 산발 노출되어 정중성 부분 미흡
-- 0점: 반말·명령형·훈계조·혼잣말 등 부적절 화법 다수 사용 또는 확신 없는 표현으로 고객 불안 유발', '응대·표현', 'numeric', 7, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 반말·명령형·훈계조·혼잣말 등 부적절 화법 다수 사용 또는 확신 없는 표현으로 고객 불안 유발', '응대·표현', 'numeric', 7, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 6, '문제 해결', '니즈파악 · 상품 특정 · 재복창', '[평가 항목] 니즈파악 · 상품 특정 · 재복창
 
 [평가 대상] 1) 고객 용건 확인 여부, 2) 문의 상품을 ''주문일+상품명'' 또는 ''브랜드+상품명''으로 특정했는지, 3) 핵심 요지 재복창 여부. 이미 언급되었거나 조회 가능한 내용을 재질문하지 않았는지 함께 확인.
@@ -1641,7 +1650,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 상품명·주문일 STT 오인식 시 특정 오판 → 주문 데이터 대조 권장. 재질의 카운트는 화자 라벨 의존.', '점수 단계: 8 / 4 / 0
 - 8점: 용건 확인 · 상품 특정(주문일+상품명 또는 브랜드+상품명) · 핵심 요지 재복창 모두 충족하고 불필요한 재질문 없음
 - 4점: 용건 확인 · 상품 특정 · 재복창 중 일부만 수행하거나, 상품 식별자 일부 누락 또는 재복창 의미 일치도 미흡
-- 0점: 용건 미확인, 상품 특정 누락, 재복창 부재, 또는 이미 언급/조회 가능 내용 반복 재질문', '니즈파악·경청', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 용건 미확인, 상품 특정 누락, 재복창 부재, 또는 이미 언급/조회 가능 내용 반복 재질문', '니즈파악·경청', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 7, '문제 해결', '설명력 (내부용어 지양·두괄식)', '[평가 항목] 설명력 (내부용어 지양·두괄식)
 
 [평가 대상] 고객 눈높이의 쉬운 설명 여부를 본다. 1) 사내 용어·약어 미사용(예: ''구확취'' 대신 ''구매확정 후 취소'') 2) 결론·핵심을 먼저 제시하는 두괄식 구조 3) 장황하지 않은 간결한 전달과 고객 되물음(''무슨 말이에요/다시'') 발생 정도.
@@ -1667,7 +1676,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - 미출 → 아직 출고전 상태', '점수 단계: 8 / 4 / 0
 - 8점: 사내 용어·약어 미사용 + 두괄식 핵심 우선 + 간결 설명 모두 충족, 고객 되물음 없음
 - 4점: 두괄식·쉬운 설명 일부 이행하나 내부 용어·약어 잔존 또는 장황·되물음 발생 등 부분 미흡
-- 0점: 내부 용어·약어 다수 사용 또는 두괄식 미적용·과도한 장황으로 고객 이해 곤란, 반복 되물음 유발', '설명·전달력', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 내부 용어·약어 다수 사용 또는 두괄식 미적용·과도한 장황으로 고객 이해 곤란, 반복 되물음 유발', '설명·전달력', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 8, '문제 해결', '정확한 안내 · 오안내 · 복합문의 답변', '[평가 항목] 정확한 안내 · 오안내 · 복합문의 답변
 
 [평가 대상] 1) 정책·규정·약관에 부합하는 정확한 안내 여부, 2) 추측성·단정적 표현 회피 여부, 3) 복합 문의 시 모든 질문에 누락 없이 답변했는지, 4) 금지·오인 소지 멘트 미사용 여부.
@@ -1703,7 +1712,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - [규정 통보] 금지: 원래 그래요 (변형 예: 규정이 그래요) — 사유: 근거 없는 통보·설득 실패 → 권장 대체: 규정 근거를 들어 설명', '점수 단계: 18 / 9 / 0
 - 18점: 정책·규정에 부합하는 정확한 안내, 추측성·단정 표현 없음, 복합 문의 전 질문 누락 없이 답변, 금지·오인 멘트 미사용으로 전 조건 충족함
 - 9점: 핵심 안내는 정확하나 일부 질문 누락 또는 경미한 추측성·단정 표현이 섞여 부분 미흡함
-- 0점: 정책 불부합 오안내, 복합 문의 다수 질문 누락, 또는 금지·오인 멘트 사용 등 미충족·위반함', '정확성·해결력', 'numeric', 18, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 정책 불부합 오안내, 복합 문의 다수 질문 누락, 또는 금지·오인 멘트 사용 등 미충족·위반함', '정확성·해결력', 'numeric', 18, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 9, '문제 해결', '적극성 · 대안 · 셀프서비스 안내', '[평가 항목] 적극성 · 대안 · 셀프서비스 안내
 
 [평가 대상] 1) 처리 가능 건을 책임지고 끝까지 완료하는 능동적 태도. 2) 처리 불가 시 대안·후속조치 제시 여부. 3) 고객 자가 해결을 위한 어드민 경로·매뉴얼 안내 및 추가 불편 선제 확인. 떠넘김(''앱에서 가능합니다'')·회피(''원래 그래요'')와 능동 해결(''제가 처리해 드리겠습니다'')을 대조하여 판정.
@@ -1725,7 +1734,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - 능동·해결: 제가 처리해 드리겠습니다 / 바로 도와드리겠습니다 / 확인해서 연락드리겠습니다 → 적극성 → 가점 신호', '점수 단계: 10 / 5 / 0
 - 10점: 처리 가능 건을 책임지고 완료하거나, 불가 시 대안·후속조치 제시 및 셀프서비스 경로 안내와 추가 불편 선제 확인까지 능동적으로 수행함
 - 5점: 일부는 처리·안내하였으나 대안 제시, 셀프서비스 경로 안내, 추가 불편 확인 중 일부가 미흡함
-- 0점: 책임 회피·떠넘김으로 일관하거나 대안·후속조치·셀프서비스 안내가 전혀 없음', '정확성·해결력', 'numeric', 10, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 책임 회피·떠넘김으로 일관하거나 대안·후속조치·셀프서비스 안내가 전혀 없음', '정확성·해결력', 'numeric', 10, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 10, '문제 해결', '필수안내 (반품·환불 절차/소요일)', '[평가 항목] 필수안내 (반품·환불 절차/소요일)
 
 [평가 대상] 문의 유형(TA 결과)별 필수안내 항목의 누락 없는 전달 여부. 1) 반품/교환 절차·조건, 2) 환불 금액·소요일, 3) 회수 방법·약속 시간 등 문의 유형별 체크리스트 항목의 안내 충실도.
@@ -1813,7 +1822,7 @@ STT 누락으로 안내 미탐 방지 위해 의미 매칭. TA 의도·상담유
 - [권장] 문의에 맞는 적절 채널을 안내. | ✓ 그 부분은 담당 팀으로 연결해 드릴게요. | ✗ 그건 저희 일 아니에요. (적절 채널 안내 없이 회피)', '점수 단계: 8 / 4 / 0
 - 8점: 문의 유형별 필수안내 항목(반품/교환 절차·조건, 환불 금액·소요일, 회수 방법·약속 시간 등)을 누락 없이 모두 전달함
 - 4점: 필수안내 항목 일부만 전달하고 일부 항목 누락 또는 안내 미흡함
-- 0점: 필수안내 항목을 전달하지 않거나 대부분 누락함', '설명·전달력', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 필수안내 항목을 전달하지 않거나 대부분 누락함', '설명·전달력', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 11, '컴플라이언스', '본인확인 절차 · 순서', '[평가 항목] 본인확인 절차 · 순서
 
 [평가 대상] 민감 정보 안내 이전 본인확인 선행 여부. 1) 안내에 필요한 식별 정보(주문번호/연락처/성함) 적정 확인. 2) 본인확인 발화 → 안내 발화의 턴 순서 준수.
@@ -1837,7 +1846,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 ※ 실제 고객정보(PII)는 미포함 — 전산 일치 검증에만 연계. 절차·순서·항목은 전사 텍스트로 평가 가능.', '점수 단계: 8 / 4 / 0
 - 8점: 민감 정보 안내 이전 본인확인 선행, 식별 정보(주문번호/연락처/성함) 적정 확인, 본인확인 → 안내 순서 준수함
 - 4점: 본인확인 수행하였으나 식별 정보 확인 일부 미흡 또는 순서 부분 미준수함
-- 0점: 본인확인 미수행 또는 민감 정보 안내가 본인확인보다 선행되어 순서 위반함', '컴플라이언스', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 본인확인 미수행 또는 민감 정보 안내가 본인확인보다 선행되어 순서 위반함', '컴플라이언스', 'numeric', 8, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 12, '컴플라이언스', '안내 범위 준수', '[평가 항목] 안내 범위 준수
 
 [평가 대상] 1) 요청자가 본인인지 제3자인지에 따른 안내 가능 범위 준수 여부. 2) 본인이라도 규정상 제공 불가한 정보는 미제공하고 사유를 안내했는지. 3) 안내 가능한 업무를 회피하지 않았는지.
@@ -1867,7 +1876,7 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 - 판매중지·품절상품/ 배송 — 정답 기준: 판매중지·품절상품 배송 가능여부 확인 후 안내 / 대표 오안내: 재입고 확정 오안내 / 근거: [배송정책]', '점수 단계: 6 / 3 / 0
 - 6점: 요청자 본인/제3자 구분에 따른 안내 범위 완전 준수. 규정상 불가 정보는 미제공+사유 안내, 안내 가능 업무 회피 없음
 - 3점: 안내 범위는 대체로 준수하나 거절 사유 안내 누락·불충분 또는 안내 가능 업무 일부 회피 등 부분 미흡
-- 0점: 규정상 불가 정보를 제공(정보 유출)하거나 제3자에게 안내 범위 위반, 또는 안내 가능 업무 회피', '컴플라이언스', 'numeric', 6, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 규정상 불가 정보를 제공(정보 유출)하거나 제3자에게 안내 범위 위반, 또는 안내 가능 업무 회피', '컴플라이언스', 'numeric', 6, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;
 INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, item, criterion, prompt_template, pentagon_axis, scoring_type, max_score, is_active) VALUES (3, 13, '컴플라이언스', '개인정보 취급 · 선언급 금지', '[평가 항목] 개인정보 취급 · 선언급 금지
 
 [평가 대상] 1) 전산 확인 정보(주소·번호 등)를 고객 본인 확인 발화보다 먼저 말하지 않는 선언급 금지 준수 여부, 2) 고객 동의 없는 개인정보 활용 여부, 3) 정보 취급 가이드 준수 여부.
@@ -1883,4 +1892,4 @@ INSERT INTO public.domain_default_eval_items (domain_id, order_no, category, ite
 선언급 판정은 발화 순서에 의존(텍스트로 가능). 정보 토큰 STT 오인식 주의.', '점수 단계: 6 / 3 / 0
 - 6점: 전산 확인 정보를 고객 본인 확인 후에만 발화(선언급 없음)하고, 동의 없는 정보 활용 없으며 정보 취급 가이드 준수함
 - 3점: 선언급 금지·동의·가이드 준수가 부분적으로 미흡함(일부 정보 발화 순서·동의 절차 불명확)
-- 0점: 전산 정보를 고객 확인 전 선언급하거나, 동의 없이 정보를 활용하거나 정보 취급 가이드를 위반함', '컴플라이언스', 'numeric', 6, 't') ON CONFLICT (domain_id, order_no) DO UPDATE SET category=EXCLUDED.category, item=EXCLUDED.item, criterion=EXCLUDED.criterion, prompt_template=EXCLUDED.prompt_template, pentagon_axis=EXCLUDED.pentagon_axis, scoring_type=EXCLUDED.scoring_type, max_score=EXCLUDED.max_score, is_active=EXCLUDED.is_active;
+- 0점: 전산 정보를 고객 확인 전 선언급하거나, 동의 없이 정보를 활용하거나 정보 취급 가이드를 위반함', '컴플라이언스', 'numeric', 6, 't') ON CONFLICT (domain_id, order_no) DO NOTHING;

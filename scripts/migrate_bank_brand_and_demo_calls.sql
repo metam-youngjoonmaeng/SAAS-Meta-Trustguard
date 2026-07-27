@@ -2,8 +2,8 @@
 -- 04-Meta-Trustguard : "은행" 브랜드 + BANK 데모 콜 이식 (온프렘 → AWS)
 --   생성 위치: 온프렘 09-meta-trustguard-postgres (org_id 48)
 --   내용: organizations(은행) + eval_item_defs(13) + pentagon_axes(5)
---         + qa_calls(BANK-* 20건) + qa_conversations(837)
---         + qa_evaluation_rows(260) + qa_checklist_rows(260)
+--         + qa_calls(BANK-* 20건) + qa_call_transcript(837)
+--         + qa_call_item_score(260, 근거·만점 포함 — 구 qa_call_item_evidence 흡수분)
 --   제외: 라이브 ICS 콜(ics:*), 온프렘 ICS 사용자(admin_users/trainee_registrations)
 --   특징: org_id 는 대상 DB의 "은행" id 로 자동 매핑(:bank_id). 나머지는 텍스트 "ID"
 --         기반이라 serial 충돌 없음. 1회 실행(run-once) · 단일 트랜잭션.
@@ -875,1198 +875,1211 @@ INSERT INTO public.qa_calls ("ID", "CALL_SEQ", "CDATE", "UID", "AI_SCORE", "TOTA
 -- PostgreSQL database dump complete
 --
 
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 34, '고객', '네네 고맙습니다 수고하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 26, '고객', '34번은 어 [code]요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 43, '고객', '네 감사합니다. 덕분에 잘 처리했네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 42, '고객', '네네 그럴게요. 정말 감사합니다 빨리 막아 주셔서.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 10, '고객', '아 네 그럼 금리는요? 요즘 많이 올랐다던데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 2, '고객', '아 저기요 제가 방금 이체를 했는데 이게 자꾸 실패가 떠가지고요 좀 답답해서 전화했어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 3, '상담사', '아 네 이체가 안 되셨군요. 불편을 드려서 죄송합니다. 확인 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 4, '고객', '네 [name] 요 [birth]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 5, '상담사', '네 [name] 고객님 확인됐습니다. 언제쯤 이체하시려고 했던 거예요? 시간 좀 기억나세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 6, '고객', '어 한 조금 전에요. 점심 먹고 바로 했으니까 1시 좀 넘어서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 7, '상담사', '네 알겠습니다. 그 이체할 때 어떤 메시지가 뜨던가요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 8, '고객', '어 그게 한도 초과인가 뭔가 그런 게 뜨다가 또 어떤 때는 그냥 처리 실패라고만 떠요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 9, '상담사', '아 네 잠시만요 거래 내역 좀 볼게요. 음 지금 보니까 1시 20분쯤에 1,500,000원 이체 시도하신 게 2번 정도 실패로 찍혀 있네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 10, '고객', '네 맞아요 그거요. 돈은 안 빠졌죠 혹시?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 11, '상담사', '네 걱정 마세요. 실패 처리돼가지고 출금은 안 되셨구요 잔액 그대로 있으세요. 이게 한도 때문에 막힌 거 같거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 12, '고객', '아 한도요? 제가 그렇게 많이 보낸 것도 아닌데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 13, '상담사', '네 그게 오늘 이미 다른 이체가 좀 있으셨던 거 같아가지고요. 그러면 지금 이체 한도 한번 같이 조회해 보시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 14, '고객', '네 그래요 그거 좀 봐주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 15, '상담사', '네 지금 고객님 1회 이체 한도가 1,000,000원으로 돼 있구요 하루 한도는 3,000,000원으로 설정돼 있으세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 16, '고객', '아 그래서 150만이 안 됐구나. 1회에 1,000,000원밖에 안 되니까.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 17, '상담사', '네 맞아요 정확하게 보셨어요. 그 1회 한도가 낮아가지고 막힌 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 18, '고객', '그러면 이거 좀 올려주세요. 1회에 한 3,000,000원 정도로요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 19, '상담사', '네 한도 변경 도와드릴게요. 다만 한도를 올리시려면 보안 매체 인증이 필요하거든요. 혹시 OTP나 보안카드 가지고 계세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 20, '고객', '어 보안카드는 있는데 OTP는 없어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 21, '상담사', '네 보안카드로도 가능하세요. 그러면 1회 한도를 3,000,000원 하루 한도는 5,000,000원 정도로 올려드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 22, '고객', '네 그렇게 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 23, '상담사', '네 보안카드 코드 좀 불러주실게요. 화면에 나오는 번호가 어떻게 되세요? 12번 자리요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 24, '고객', '어 12번이 그 [code]구요 그 다음에 또 뭐 불러요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 25, '상담사', '네 그거랑 34번 자리도 같이 불러주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 27, '상담사', '네 확인됐습니다. 1회 3,000,000원 하루 5,000,000원으로 한도 변경 처리됐구요 이제 아까 그 1,500,000원 이체 다시 하시면 정상적으로 되실 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 28, '고객', '아 네 다행이다. 그리고 하나만 더 물어봐도 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 29, '상담사', '네 그럼요 말씀하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 30, '고객', '그 OTP라는 거 그거 발급받으면 뭐가 좋아요? 보안카드랑 뭐가 달라요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 31, '상담사', '아 네 OTP는요 그 숫자가 1분마다 계속 바뀌거든요. 그래서 보안카드보다 훨씬 안전하시구요 한도도 더 높게 쓰실 수가 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 32, '고객', '아 그래요? 그러면 그게 낫겠네 그거 어떻게 발급받아요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 33, '상담사', '네 OTP는 실물 카드형이랑 휴대폰 앱으로 쓰는 거 2가지가 있는데요 앱으로 쓰시는 건 영업점 안 가셔도 바로 발급되세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 34, '고객', '오 그러면 앱으로 할래요. 그거 지금 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 35, '상담사', '네 지금 신청 도와드릴게요. 발급 후에 앱에서 OTP 등록만 한번 해주시면 바로 쓰실 수 있구요 등록 방법은 문자로 안내해 드릴게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 36, '고객', '네 좋아요 그렇게 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 37, '상담사', '네 앱 OTP 발급 신청 처리됐구요 안내 문자 곧 가실 거예요. 혹시 등록하시다 막히시면 다시 전화 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 38, '고객', '아 네 알겠습니다 도움 많이 됐어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 39, '상담사', '네 그럼 오늘 정리해 드리면요 이체 실패는 1회 한도 때문이셨구요 한도를 1회 3,000,000원 하루 5,000,000원으로 올려드렸고 앱 OTP 발급까지 신청 도와드렸습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 40, '고객', '네네 감사합니다 수고하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 41, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 2, '고객', '아 네 제가 통장 입출금 내역 좀 확인하고 싶은데요 뭐가 좀 이상해가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 3, '상담사', '네 입출금 내역 조회 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 4, '고객', '[name] 요 뒷자리 [code]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 어떤 내역을 보고 싶으세요? 기간이 어떻게 되세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 6, '고객', '어 한 이번 달 초부터요. 뭔가 빠져나간 게 있는 거 같은데 기억이 안 나서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 7, '상담사', '네 6월 1일부터 오늘까지 조회해 볼게요. 잠시만요 음 보니까 6월 3일에 45,000원 그리고 6월 5일에 20,000원 이렇게 출금이 있으셨네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 8, '고객', '45,000원 그게 뭐죠? 제가 쓴 기억이 없는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 9, '상담사', '네 이게 자동이체로 나간 거구요 통신요금으로 찍혀 있어요. 그 다음 20,000원은 어 정기예금 적립으로 나가신 거네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 10, '고객', '아 통신비 그게 그렇게 나왔구나. 카드로 내는 줄 알았는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 11, '상담사', '네 그게 자동이체로 등록이 돼 있으셔가지고 매달 3일에 빠지게 돼 있으세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 12, '고객', '아 그래요. 그러면 입금된 것도 좀 볼 수 있어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 13, '상담사', '네 입금 내역도 보면요 6월 1일에 급여로 2,800,000원 들어오셨구요 그 외에는 따로 입금은 없으세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 14, '고객', '네네 그건 맞아요 알겠어요. 내역은 대충 확인했네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 15, '상담사', '네 혹시 더 보고 싶으신 기간 있으실까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 16, '고객', '아니요 그건 됐구요. 아 그리고 그 자동이체 말인데요 좀 정리를 하고 싶어가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 17, '상담사', '네 자동이체 변경이나 해지 도와드릴까요? 어떤 걸 정리하고 싶으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 18, '고객', '그 통신비 자동이체 있잖아요. 그거 날짜를 좀 바꾸고 싶어요. 3일은 너무 일러가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 19, '상담사', '네 통신요금 자동이체 출금일 변경 도와드릴게요. 며칠로 바꿔드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 20, '고객', '어 급여가 1일에 들어오니까 한 27일 정도로 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 21, '상담사', '어 고객님 통신요금은 출금일이 약정이 돼 있어서 25일 아니면 말일 이렇게만 가능하거든요. 둘 중에 어떤 걸로 하시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 22, '고객', '아 그래요. 그럼 25일로 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 23, '상담사', '네 매달 25일로 변경해 드릴게요. 잠시만요 네 출금일 25일로 변경 처리됐습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 24, '고객', '네 그리고 그 정기예금 적립되는 거 있잖아요 그건 그냥 두고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 25, '상담사', '네 정기예금 자동이체는 그대로 유지하시는 거죠? 그건 손 안 댈게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 26, '고객', '네네 그렇게 해주세요. 아 그리고 혹시 새로 자동이체 하나 더 걸 수도 있어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 27, '상담사', '네 그럼요. 새로 등록도 가능하세요. 어디로 나가는 걸로 등록해 드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 28, '고객', '그 관리비요. 매달 230,000원 정도 나가는데 그걸 자동으로 좀 빠지게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 29, '상담사', '네 관리비 납부 계좌하고 출금일 알려주시면 등록해 드릴게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 30, '고객', '어 출금일은 매달 10일로 하구요 계좌는 그 관리사무소에서 받은 게 끝자리가 [code]요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 31, '상담사', '네 매달 10일에 230,000원 끝자리 [code] 계좌로 자동이체 신규 등록해 드렸습니다. 첫 출금은 다음 달 10일부터 나가세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 32, '고객', '아 네 좋아요 깔끔하게 정리됐네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 33, '상담사', '네 그럼 정리해 드리면요 입출금 내역 조회 도와드렸구요 통신요금 자동이체 출금일을 25일로 바꿔드렸고 관리비 자동이체 신규 등록까지 처리해 드렸습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 35, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 보내세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 2, '고객', '아 네 저기 제가 지금 신용대출 한도랑 금리 좀 알아보려고 하는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 3, '상담사', '네 대출 한도하고 금리 조회 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 4, '고객', '어 [name]구요 뒷자리 [code]요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 음 지금 보니까 고객님 신용 등급 기준으로 한도가 한 4,000만 원 정도 나오시는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 6, '고객', '아 4,000만이요? 음 제가 생각했던 거보단 좀 적네요. 한 5,000만 정도는 될 줄 알았는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 7, '상담사', '네 그게 지금 고객님 소득이랑 기존 대출 같이 보고 산정되는 거라서요. 혹시 소득 증빙 추가로 내시면 한도가 좀 더 올라갈 수도 있으세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 8, '고객', '아 그래요? 일단은 뭐 4,000만도 나쁘진 않고요. 금리는 어떻게 되는데요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 9, '상담사', '네 금리는 지금 변동금리로 하시면 연 5.2% 정도 나오시구요. 고정으로 하시면 좀 더 높아가지고 5.6% 정도 되세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 10, '고객', '음 생각보다 좀 높네요. 제가 급여 통장 여기 쓰고 있는데 그러면 좀 깎이거나 그런 거 없어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 11, '상담사', '아 맞아요. 급여 이체 실적 있으시면 우대금리 들어가가지고요 한 0.3% 정도 빠지세요. 그러면 변동으로 4.9 정도 보시면 되겠네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 12, '고객', '아 네네 그 정도면 그래도 괜찮은 거 같기도 하고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 13, '상담사', '네 그리고 입출금통장 같이 쓰시면서 카드 실적도 좀 있으시면 추가로 우대 더 받으실 수 있거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 14, '고객', '아 그래요 알겠습니다. 일단 한도랑 금리는 대충 감 잡았네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 15, '상담사', '네 더 궁금하신 거 있으실까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 16, '고객', '아 그리고 하나만 더요. 제가 예전에 받은 대출이 하나 있는데 그걸 좀 중도상환을 할까 해가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 17, '상담사', '네 기존 대출 중도상환 문의시죠? 잠시만요 조회 좀 해볼게요. 어 지금 잔액이 12,000,000원 정도 남아 계시네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 18, '고객', '네 맞아요. 그거 다 갚으면 수수료 뭐 그런 거 나와요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 19, '상담사', '네 그 부분 확인해서 안내드릴게요. 혹시 전액을 한 번에 다 갚으실 거예요? 아니면 일부만 갚으실 생각이세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 20, '고객', '어 그게 지금 여유가 좀 생겨가지고요 그냥 다 갚아버릴까 했거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 21, '상담사', '음 고객님 이 대출이 약정일이 아직 좀 남아 있어가지고요 중도상환 수수료가 발생하긴 하는데 잔액에 한 0.7% 그러니까 한 80,000원 조금 넘게 나오시네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 22, '고객', '아 80,000원이요? 음 그게 좀 아깝긴 한데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 23, '상담사', '네 그쵸. 근데 약정 만기가 이제 한 넉 달 정도 남으셨거든요. 만기까지 기다리셨다가 상환하시면 수수료가 아예 없으세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 24, '고객', '아 그러면 그냥 좀 기다렸다가 갚는 게 낫겠네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 25, '상담사', '네 보통은 그렇게 많이들 하세요. 아니면 혹시 만기 연장도 가능하신데 연장하시면 금리가 지금보다 조금 오를 수는 있거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 26, '고객', '음 연장은 됐구요 그냥 만기 때 정리할게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 27, '상담사', '네 알겠습니다. 그러면 따로 신청 안 하셔도 되구요 만기 가까워지면 안내 문자 한번 더 가실 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 28, '고객', '네네 그리고 아 맞다 제가 적금 하나 들려고도 했었거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 29, '상담사', '아 네 적금 신규 가입 도와드릴까요? 어떤 상품으로 생각하고 계셨어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 30, '고객', '그냥 매달 조금씩 넣는 거요. 한 300,000원씩 1년짜리로요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 31, '상담사', '네 그러면 1년 정기적금으로 월 300,000원 하시면 되는데요 지금 금리가 연 3.8% 들어가시구요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 32, '고객', '아 3.8이요? 음 일반 예금보다는 좀 높네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 33, '상담사', '네 그쵸. 적금이 아무래도 매달 넣으시는 거라서 금리가 좀 더 높게 들어가구요 만기에 이자 한 번에 받으시는 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 34, '고객', '아 네 그 이자에서 세금 같은 것도 떼고 그래요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 35, '상담사', '네 이자소득세가 일반 과세로 떼이긴 하는데요 혹시 비과세 조건 되시면 그건 또 따로 안내해 드릴 수 있어요. 일단 일반으로 가입하실게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 36, '고객', '네네 일반으로 할게요. 그거 입출금통장에서 자동으로 빠지게 할 수 있죠?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 37, '상담사', '네 그럼요. 고객님 입출금통장에서 매달 자동이체로 빠지게 설정해 드릴게요. 이체일은 며칠로 하시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 38, '고객', '어 그 월급 들어오고 나서니까 25일로 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 39, '상담사', '네 매달 25일에 300,000원씩 자동이체로 설정하구요 만기는 내년 6월 8일이 되시겠네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 40, '고객', '네 좋아요 그렇게 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 41, '상담사', '네 가입 진행할게요. 잠시만요 어 네 정기적금 월 300,000원 1년 만기로 신규 가입 처리됐구요 계좌번호는 가입 완료 문자로 보내드릴게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 42, '고객', '아 네 감사합니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 43, '상담사', '네 그럼 정리해 드리면요 신용대출 한도하고 금리 안내드렸구요 기존 대출은 만기 때 상환하시기로 하셨고 정기적금 월 300,000원으로 신규 가입까지 도와드렸습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 44, '고객', '네네 잘 들었어요 수고하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 45, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 보내세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 20, '고객', '어 그리고요 제가 막상 정지 거니까 좀 불편한 게 있는데 제 체크카드도 같이 잠긴 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 21, '상담사', '아 네 계좌 묶이면서 연결된 카드도 같이 정지됐을 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 22, '고객', '아 그러면 제가 평소에 쓰던 카드는 이제 못 쓰는 거네요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 23, '상담사', '지금은 그렇죠. 근데 안전 확인되면 잠김 해제는 다시 해드릴 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 24, '고객', '아 맞다 그리고 제가 카드를 어디다 뒀는지 모르겠어가지고요 분실 신고도 좀 해야 될 것 같은데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 25, '상담사', '아 카드가 안 보이세요? 그럼 분실 신고로 정식 처리하는 게 안전하겠네요. 카드 끝자리 혹시 기억나세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 26, '고객', '어 그 끝자리가 [code] 이거 맞나 가물가물하네.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 27, '상담사', '네 끝자리 [code] 카드 조회되고요 이 카드 분실 신고로 정지 처리하겠습니다. 분실 신고하면 기존 카드는 완전히 사용 정지되거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 28, '고객', '네 그렇게 해주세요. 새 카드는 어떻게 받아요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 29, '상담사', '재발급 신청해드리면 등록된 주소로 한 4~5일 정도면 받으실 수 있어요. 지금 같이 신청해드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 30, '고객', '어 네 신청해 주세요. 주소는 예전 거 그대로예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 31, '상담사', '네 등록된 주소로 발송할게요. 재발급 신청 접수됐고요 신청비는 무료입니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 32, '고객', '아 다행이네요. 근데 그 안전계좌 어쩌고 한 게 너무 찜찜해가지고.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 33, '상담사', '네 충분히 그러실 수 있어요. 추가로 의심되는 거 있으시면 언제든 연락 주시면 됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 34, '고객', '아 그리고 하나만 더요 제가 자동이체 걸어둔 게 있거든요. 그게 그 정지 때문에 빠져나갔는지 안 빠졌는지 좀 보고 싶은데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 35, '상담사', '아 네 입출금 내역 조회 도와드릴게요. 어느 기간으로 보시면 될까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 36, '고객', '어 최근 한 일주일 정도요. 자동이체가 매달 25일에 나가거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 37, '상담사', '네 잠시만요 조회해볼게요. 음 최근 일주일 내역 보면 25일에 통신비 자동이체 41,000원 정상 출금됐고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 39, '상담사', '네 그 외에는 어제 고객님이 송금하신 2,500,000원 출금 건이랑요 그 이후로는 정지 때문에 추가 출금은 없습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 40, '고객', '아 그러면 보험료 자동이체도 있는데 그건 며칠에 나가는지 모르겠네.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 41, '상담사', '음 보험료는 매달 10일에 출금되는 걸로 등록돼 있고요 이번 달 건은 이미 처리된 상태예요. 35,000원이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 42, '고객', '아 네네 그럼 다음 달 자동이체는 정지 풀려야 나가는 거죠?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 43, '상담사', '맞아요. 정지 상태에서는 자동이체도 막혀가지고요 사고 조사 끝나고 해제되면 정상적으로 다시 빠져나갑니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 44, '고객', '아 알겠어요. 그럼 일단 이 정도면 됐어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 45, '상담사', '네 고객님 그럼 오늘 처리한 내용 정리해드릴게요. 보이스피싱 피해 신고하시면서 계좌 일시 정지랑 상대 계좌 지급정지 요청 접수했고요 분실하신 카드 끝자리 [code] 정지하고 재발급 신청까지 진행했습니다. 마지막으로 자동이체 출금 내역 조회까지 확인해드렸어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 46, '고객', '네네 고생하셨어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 47, '상담사', '네 경찰 신고 접수번호 꼭 챙기시고요 더 궁금하신 점 있으시면 다시 연락 주세요. 감사합니다 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 2, '고객', '어 저기 제가 모바일뱅킹 앱을 쓰는데요 이게 자꾸 오류가 나가지고 좀 답답해서 전화드렸어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 3, '상담사', '아 네 불편하셨겠네요. 어떤 화면에서 오류가 나는지 좀 자세히 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 4, '고객', '그 로그인은 되는데요 메뉴 들어가면 자꾸 흰 화면만 뜨고 멈춰버려요. 빙글빙글 돌기만 하고.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 5, '상담사', '음 그러시군요. 본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일 말씀해 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 6, '고객', '네 [name] 요 [birth]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 7, '상담사', '네 [name] 고객님 확인됐습니다. 혹시 앱 버전이 최신인지 확인해보셨을까요? 업데이트 안 되면 그런 증상이 좀 있거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 8, '고객', '어 그건 잘 모르겠는데 저번 주에 업데이트 하라 그래서 한 것 같기도 하고.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 9, '상담사', '아 네 그럼 혹시 앱 한 번 완전히 종료했다가 다시 켜보셨어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 10, '고객', '어 그냥 껐다 켜기만 했지 완전 종료는 잘 모르겠네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 11, '상담사', '네 그럼 제가 안내드릴게요. 앱을 백그라운드에서 완전히 닫으시고요 잠시 후에 다시 실행해보시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 12, '고객', '어 잠깐만요 지금 해볼게요. 음 닫고 다시 켰는데 똑같이 흰 화면 떠요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 13, '상담사', '음 그러면 캐시 문제일 수도 있어가지고요 혹시 앱을 한 번 삭제하고 재설치 해보실 수 있으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 14, '고객', '아 삭제하면 제 공인인증서 같은 거 다 날아가는 거 아니에요? 그게 좀 걱정인데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 15, '상담사', '아 인증서는 따로 저장 위치가 있어가지고 재설치해도 보통은 유지되는데요 혹시 모르니까 클라우드나 PC에 백업 한 번 해두시면 안심이에요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 16, '고객', '아 그렇구나. 그럼 일단 알겠어요. 근데 그게 진짜 제 폰 문제예요 아니면 은행 쪽 문제예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 17, '상담사', '지금 시스템 점검 이력 보면 특별히 장애는 없는 상태인데요 간헐적으로 특정 기기에서 그런 증상 접수되는 경우가 있어요. 그래서 재설치로 대부분 해결되거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 18, '고객', '아 알겠어요. 그건 이따 집에서 해볼게요. 아 그리고요 사실 제가 전화한 진짜 이유가 따로 있는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 19, '상담사', '네 말씀하세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 20, '고객', '그 어제 친구한테 돈을 좀 보냈거든요. 근데 이게 이체가 됐다는 건지 안 됐다는 건지 모르겠어가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 21, '상담사', '아 이체 처리가 애매하게 됐군요. 어제 몇 시쯤 얼마를 어디로 보내셨어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 22, '고객', '어 저녁 한 8시쯤이요. 금액은 120,000원 아 150,000원이요. 친구 다른 은행 계좌로요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 23, '상담사', '네 잠시만요 어제 저녁 출금 내역 한번 볼게요. 음 어제 20시 4분에 150,000원 출금 시도가 있었는데요 이게 처리 중 상태로 멈춰 있네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 24, '고객', '어 그게 무슨 말이에요? 그럼 돈이 나간 거예요 안 나간 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 25, '상담사', '음 출금은 잡혀 있는데 상대 은행으로 입금 완료 처리가 안 돼가지고요 아마 그때 앱 오류랑 같이 거래가 중간에 끊긴 것 같아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 26, '고객', '아 진짜요? 그럼 제 돈은 지금 어디 있는 거예요? 빠져나가긴 했잖아요 그쵸?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 27, '상담사', '네 일단 고객님 계좌에서는 출금 표시가 떠 있는데요 이런 미결제 건은 보통 영업일 기준 하루 안에 자동으로 취소돼서 다시 입금되거나 정상 처리되거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 28, '고객', '아 그러면 저는 그냥 기다리면 되는 거예요? 친구는 못 받았다 그러던데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 29, '상담사', '네 친구분이 아직 못 받으셨으면 입금 실패 건이 맞고요 제가 지금 이 거래 강제 취소 요청 넣어드릴게요. 그럼 오늘 안으로 고객님 계좌로 150,000원 다시 돌아옵니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 31, '상담사', '네 미결제 거래 취소 요청 접수했고요 처리되면 문자로 알림 가게 해뒀습니다. 다시 보내실 때는 앱 재설치 후에 하시는 게 안전할 것 같아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 32, '고객', '네 알겠어요. 아 다행이다 안 그래도 친구가 자꾸 물어봐서.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 33, '상담사', '네 고객님 그럼 오늘 모바일뱅킹 흰 화면 오류는 재설치로 안내드렸고요 어제 멈춰 있던 150,000원 이체 건은 취소 요청 넣어서 환입 처리하기로 했습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 35, '상담사', '네 환입되면 문자 확인하시고요 더 궁금하신 점 있으시면 다시 연락 주세요. 감사합니다 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 2, '고객', '어 안녕하세요 제가 대출을 좀 알아보려고 하는데요 한도랑 금리가 어떻게 되는지 좀 여쭤보려고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 2, '고객', '아 저기 제가 금융인증서가 만료됐다고 자꾸 떠가지고요 이거 갱신을 좀 해야 되는데 어떻게 하는지 잘 몰라서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 3, '상담사', '네 금융인증서 갱신 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 4, '고객', '네 [name] 요 [birth]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 5, '상담사', '네 [name] 고객님 확인됐습니다. 지금 인증서가 만료되셨다고 뜨는 거죠? 음 보니까 작년 6월에 발급받으신 게 기간이 다 됐네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 6, '고객', '네 맞아요. 이거 갱신하면 따로 또 뭐 비밀번호 같은 거 새로 만들어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 7, '상담사', '아 갱신은요 기존 거를 그대로 연장하시는 거라서 새로 만드시는 거랑은 좀 다르구요 인증서 비밀번호는 그대로 쓰시면 되세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 8, '고객', '아 그래요 다행이네요. 비밀번호 또 외우는 거 진짜 싫어가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 9, '상담사', '네 맞아요 많이들 그러세요. 갱신은 그냥 기간만 늘려드리는 거라 새로 외우실 건 없으세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 10, '고객', '근데 이게 그 공동인증서랑 금융인증서랑 다른 거예요? 저는 좀 헷갈려가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 11, '상담사', '아 네 그게요 공동인증서는 예전에 그 공인인증서라고 부르던 거구요 금융인증서는 좀 더 최근에 나온 건데 클라우드에 저장돼서 따로 USB나 그런 거 없이 쓰실 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 12, '고객', '아 그러면 제 건 금융인증서인 거죠?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 13, '상담사', '네 맞아요. 고객님 거는 금융인증서로 발급돼 있으세요. 그래서 폰만 있으시면 어디서든 쓰실 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 38, '고객', '아 그건 나갔구나. 또 다른 건 없어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 14, '고객', '아 그렇구나. 그러면 어디서 갱신해요? 앱에서 하나요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 15, '상담사', '네 앱에서 하시면 되구요 인증센터 메뉴 들어가시면 인증서 관리 거기에 갱신 버튼 있거든요. 거기서 진행하시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 16, '고객', '음 잠깐만요 어 들어왔는데 갱신 누르니까 비밀번호 입력하라는데 이게 어 자꾸 틀렸다고 나와요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 17, '상담사', '아 네 비밀번호가 안 맞으시는군요. 혹시 몇 번 정도 틀리셨어요? 5번 넘게 틀리시면 잠기거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 18, '고객', '어 한 3번 4번 정도 친 거 같은데 기억이 가물가물해가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 19, '상담사', '네 그러면 더 시도하지 마시구요 잠기기 전에 비밀번호를 초기화하시는 게 나으세요. 초기화하면 새로 설정하실 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 20, '고객', '아 네 그럼 그거 좀 초기화해 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 21, '상담사', '네 인증서 비밀번호 초기화 도와드릴게요. 다만 보안 때문에 추가 인증이 필요한데 등록된 휴대폰으로 인증번호 하나 보내드릴게요. 받으시면 불러주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 22, '고객', '네 어 왔어요 [code]요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 23, '상담사', '네 [code] 확인됐습니다. 비밀번호 초기화 처리됐구요 이제 앱에서 인증서 새 비밀번호 설정하시고 바로 갱신 진행하시면 되세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 24, '고객', '어 잠깐만요 어 됐다 비밀번호 새로 만들었구요 갱신도 됐네요 오 감사합니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 25, '상담사', '네 잘 되셨다니 다행이에요. 인증서 유효기간은 다시 1년으로 연장되셨어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 26, '고객', '네네 그리고 아 맞다 하나만 더 물어볼게요. 제가 이체를 잘 안 해봐가지고요 이거 어떻게 하는지 좀 알려주실 수 있어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 27, '상담사', '아 네 그럼요. 이체 방법 안내해 드릴게요. 앱 메인 화면에서 이체 버튼 누르시면 받는 분 계좌번호 입력하는 화면이 나오거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 28, '고객', '아 네 그 다음에는요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 29, '상담사', '네 거기 은행 선택하시고 계좌번호 넣으시면 받는 분 이름이 한번 뜨거든요. 그거 맞는지 확인하시고 금액 넣으시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 30, '고객', '음 그러면 그 금액 넣고 나서 바로 보내져요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 31, '상담사', '네 금액 넣으신 다음에 확인 누르시면 인증서 비밀번호나 아까 그 인증서로 한번 인증하시구요 그러면 이체가 완료되세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 32, '고객', '아 그 인증서가 이럴 때 쓰이는 거구나. 그래서 갱신해야 했던 거네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 33, '상담사', '네 맞아요 정확하세요. 이체나 중요한 거래할 때 인증서로 본인 확인을 하는 거거든요. 그래서 만료되시면 이체가 안 되셨던 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 34, '고객', '아 그러면 받는 사람 이름 안 뜨면 보내면 안 되겠네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 35, '상담사', '네 맞아요. 이름 안 뜨거나 모르는 이름 뜨면 일단 멈추시구요 계좌번호 다시 한번 확인하시는 게 안전하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 36, '고객', '아 네 그건 명심할게요. 이제 이해됐어요. 그러면 지금은 이체 잘 되겠네요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 37, '상담사', '네 이제 인증서 갱신되셨으니까 정상적으로 이체 가능하세요. 처음 하실 때 한도가 좀 낮을 수 있으니까 그것도 참고하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 38, '고객', '아 네 한도요 그건 나중에 필요하면 또 여쭤볼게요. 오늘은 이거면 됐어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 39, '상담사', '네 그럼 정리해 드리면요 금융인증서 갱신 도와드렸구요 비밀번호가 안 맞으셔서 초기화해 새로 설정해 드렸고 이체 방법까지 안내해 드렸습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 40, '고객', '네네 친절하게 알려주셔서 고맙습니다 수고하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 41, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 2, '고객', '아 저기요 저 지금 급해서 그러는데 제가 사기를 당한 거 같아가지고요 보이스피싱 그거요 빨리 좀 막아주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 3, '상담사', '네 고객님 많이 놀라셨겠어요. 제가 바로 도와드릴게요. 우선 본인확인 빠르게 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 4, '고객', '네 [name]구요 뒷자리 [code]이요 [name] 요 돈 또 빠질까 봐 무서워요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 우선 계좌부터 바로 지급 정지 걸어드릴게요. 어떤 일이 있으셨는지 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 6, '고객', '어 검찰이라고 전화가 와가지고 제 계좌가 범죄에 쓰였다고 안전 계좌로 옮기라 그래서 어 3,000,000원을 보냈거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 7, '상담사', '네 그러셨군요. 혹시 그 사람한테 OTP 번호나 비밀번호 같은 거 알려주신 건 없으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 8, '고객', '어 비밀번호는 안 알려준 거 같은데 어 무슨 앱을 깔라고 해서 깔긴 했어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 9, '상담사', '아 네 그 앱은 원격으로 폰을 조종하는 악성 앱일 수 있거든요. 통화 끝나시면 그 앱 꼭 바로 삭제하시구요 일단 지금 계좌부터 막을게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 10, '고객', '네네 무서워라 빨리 좀 막아주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 11, '상담사', '아 네 그거 전형적인 보이스피싱 수법이세요. 절대 고객님 잘못 아니구요 일단 지금 고객님 모든 계좌 출금하고 이체 다 일시 정지 걸었습니다. 더 이상은 안 빠져나가세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 12, '고객', '아 다행이다. 그 보낸 3,000,000원은요 그건 어떻게 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 13, '상담사', '네 그 보내신 상대방 계좌에 대해서도 저희가 지급 정지 요청을 바로 넣을 거구요 혹시 그 돈이 아직 안 빠져나갔으면 돌려받으실 수도 있으세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 34, '고객', '네네 고마워요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 14, '고객', '어 정말요? 그러면 그거 빨리 좀 해주세요 제발요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 8, '고객', '네 직장인이고요 연봉은 한 5,000 정도 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 48, '고객', '네 고생하셨어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 3, '상담사', '네 대출 상담 도와드릴게요. 본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리 4자리요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 4, '고객', '네 [name]고요 뒷자리는 [code]예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 혹시 어떤 용도 대출 알아보세요? 신용대출 쪽이세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 6, '고객', '어 신용대출이요. 한 40,000,000~50,000,000원 정도 필요할 것 같은데 제가 받을 수 있을지 모르겠네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 7, '상담사', '네 한도는 고객님 소득이랑 신용도 거래 실적 이런 거 종합해서 산정되거든요. 혹시 직장인이세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 9, '상담사', '네 그러시면 우선 가조회 기준으로 보면요 한도는 한 40,000,000에서 50,000,000원 사이 정도 가능성 있어 보이고요 금리는 신용등급 따라 좀 달라지는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 10, '고객', '아 금리는 대략 몇 % 정도예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 11, '상담사', '음 현재 기준으로 보면 연 4.5%에서 6.2% 사이로 나올 가능성이 높고요 정확한 건 정식 심사 들어가봐야 알 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 12, '고객', '아 생각보다 금리가 좀 있네요. 그 우대 같은 건 없어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 13, '상담사', '아 우대금리 있어요. 급여이체 하시거나 자동이체 건수 있으시면 최대 한 0.5% 정도까지 깎이거든요. 그리고 OTP나 보안카드로 모바일 거래 실적 있으셔도 일부 우대돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 14, '고객', '아 그래요 저 여기로 월급 받고 있긴 한데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 15, '상담사', '아 그러면 급여이체 우대 적용되셔서 실제로는 좀 더 낮게 나오실 거예요. 한번 정식으로 신청해보시는 것도 좋아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 16, '고객', '아 근데 신청하면 그게 바로 나와요 아니면 며칠 걸려요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 17, '상담사', '네 비대면으로 신청하시면 서류 확인하고 한 영업일 2일 정도 걸리고요 한도랑 금리는 그때 정확하게 확정됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 18, '고객', '아 그렇구나. 그 한도 조회하면 신용점수 떨어진다 그러던데 그것도 그래요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 19, '상담사', '아 그게요 가조회 단계에서는 신용점수에 영향이 없어요. 정식 심사 들어갈 때만 조회 이력이 남거든요. 그래서 가조회는 부담 없이 보셔도 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 20, '고객', '음 일단 알겠어요. 좀 더 생각해볼게요. 아 그리고요 제가 지금 받고 있는 대출이 하나 있거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 21, '상담사', '아 네 기존 대출 관련해서 궁금하신 거 있으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 22, '고객', '어 그게 그 만기가 얼마 안 남았는데요 좀 일찍 갚으면 어떻게 되나 해서요. 중도상환 그런 거.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 23, '상담사', '아 중도상환이요. 네 잠시만요 고객님 대출 조회해볼게요. 음 현재 잔액이 12,000,000원 정도 남아 있으시네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 24, '고객', '네 맞아요. 그거 지금 다 갚으면 수수료 같은 게 붙어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 25, '상담사', '네 중도상환수수료가 있는데요 이 상품은 실행한 지 3년 이내라 잔액의 0.7% 정도 붙거든요. 12,000,000원 기준이면 한 84,000원 정도예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 26, '고객', '아 그 정도면 갚는 게 낫겠네요. 이자가 더 클 테니까.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 27, '상담사', '네 보통은 그렇죠. 남은 기간 이자가 수수료보다 크면 일찍 갚는 게 이득이거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 28, '고객', '아 그러면 혹시 갚지 말고 연장하는 것도 돼요? 만기 좀 늘리는 거.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 29, '상담사', '네 만기 연장도 가능한데요 연장하면 그 시점 금리로 다시 적용돼가지고요 지금보다 금리가 올라갈 수도 있어요. 그 부분은 좀 따져보셔야 해요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 30, '고객', '아 그렇구나. 근데 일부만 갚는 것도 돼요? 한 절반 정도만.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 31, '상담사', '네 일부 중도상환도 가능해요. 갚으시는 금액만큼만 수수료 계산되고요 나머지는 그대로 유지되면서 매달 이자가 줄어들거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 32, '고객', '아 그럼 일부만 갚고 매달 내는 이자 줄이는 것도 괜찮겠네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 33, '상담사', '네 여유 자금 있으실 때 그렇게 하시는 분들도 많아요. 부담 없이 원하시는 만큼 조절하실 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 34, '고객', '아 그렇구나. 그럼 일단 그건 좀 더 고민해볼게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 35, '상담사', '네 천천히 생각하시고요 결정되시면 중도상환이든 연장이든 다시 신청해주시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 36, '고객', '네 그리고 아 맞다 하나만 더 여쭤볼게요. 제가 적금을 하나 들고 싶은데요. 정기적금 같은 거.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 38, '고객', '어 한 달에 300,000원씩 한 2년 정도 해볼까 하는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 39, '상담사', '네 월 300,000원에 24개월 상품으로 보면요 기본금리가 연 3.6%고요 자동이체 등록하시면 우대 붙어서 3.9%까지 적용돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 40, '고객', '아 자동이체 하면 더 주는구나. 그럼 그걸로 할게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 41, '상담사', '네 그럼 매달 며칠에 출금되게 할까요? 출금 계좌는 지금 쓰시는 입출금 통장으로 하시면 되고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 42, '고객', '어 매달 15일로 해주세요. 통장은 그거 맞아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 43, '상담사', '네 그럼 정리해드릴게요. 월 300,000원 24개월 정기적금 매달 15일 자동이체로 가입 진행하고요 우대금리 포함 연 3.9% 적용됩니다. 이대로 신청해드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 44, '고객', '네네 그렇게 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 15, '상담사', '네 지금 바로 그 입금하신 계좌 정보로 지급 정지 신청 접수했구요 그리고 이게 정식 피해 구제 신청을 하셔야 되거든요. 경찰서 신고도 같이 하셔야 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 16, '고객', '아 경찰서도 가야 돼요? 어 어떻게 해야 되는지 잘 모르겠어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 17, '상담사', '네 어렵지 않으세요. 112는 경찰 1332는 금융감독원이거든요. 거기 전화하셔서 신고하시면 되구요 그 신고 접수번호를 받으시면 저희한테 알려주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 18, '고객', '네네 알겠어요 그건 전화 끊고 바로 할게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 19, '상담사', '네 그렇게 해주시구요 그리고 지금 정지 걸어둔 거는 고객님이 신분증 가지고 영업점 가셔서 본인 확인 하셔야 풀리세요. 그 전까지는 계속 막혀 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 20, '고객', '아 네 그건 안전하게 그렇게 둘게요. 근데 어 그 영업점은 아무 데나 가도 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 21, '상담사', '네 가까운 MetaM 은행 지점 아무 데나 가셔도 되구요 신분증만 꼭 챙겨 가세요. 그래야 본인 확인하고 정지 풀어드릴 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 22, '고객', '아 네 알겠어요. 근데 어 제가 카드도 같이 잃어버린 거 같아서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 23, '상담사', '아 카드도요? 어떤 카드를 못 찾으시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 24, '고객', '그 체크카드요. 어제까지 분명 지갑에 있었는데 오늘 보니까 없어가지고요 혹시 누가 쓸까 봐 무서워요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 25, '상담사', '네 그러면 그 체크카드도 바로 분실 신고하고 정지해 드릴게요. 카드 끝자리 혹시 기억나세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 26, '고객', '어 끝자리가 그 [code] 맞을 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 38, '고객', '어 10,000,000원 넣었구요 OTP 번호 어 앱에서 뜬 거 넣었어요. 어 변경 완료됐다고 뜨네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 27, '상담사', '네 끝자리 [code] 체크카드 분실 신고 접수했구요 바로 사용 정지 걸었습니다. 이제 이 카드로는 결제나 출금 아예 안 되세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 28, '고객', '아 네 그건 안심이네요. 그 카드 새로 받으려면 어떻게 해요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 29, '상담사', '네 재발급은 지금 바로 신청해 드릴 수도 있는데요 다만 지금 계좌가 정지 상태라서 영업점 가셔서 계좌 푸실 때 카드 재발급도 같이 하시는 게 한 번에 되셔서 편하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 30, '고객', '아 그러면 그때 같이 할게요. 지금은 정신이 없어가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 31, '상담사', '네 그게 좋으세요. 한 번에 처리하시면 되구요 분실 신고는 됐으니까 일단 안심하셔도 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 32, '고객', '네 고맙습니다. 아 그리고 제가 마지막으로 하나만요. 그 빠져나간 내역 좀 정확히 보고 싶은데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 33, '상담사', '네 입출금 내역 조회해 드릴게요. 어떤 기간으로 보실래요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 34, '고객', '어 오늘이요. 오늘 뭐가 어떻게 빠졌는지 좀 알려주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 35, '상담사', '네 오늘 내역 보면요 오후 2시 10분에 3,000,000원 이체가 1건 있구요 그 외에는 다른 출금은 없으세요. 다행히 그 1건이세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 36, '고객', '어 그 보낸 데가 어디로 돼 있어요? 이름 같은 거 나와요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 37, '상담사', '네 받는 분 계좌가 다른 은행으로 돼 있구요 예금주 이름은 [name]모 씨로 찍혀 있는데 이게 보통 대포통장인 경우가 많아가지고요. 그래서 지급 정지 신청 넣은 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 38, '고객', '아 진짜 어이가 없네요. 제가 왜 그걸 믿었는지.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 39, '상담사', '네 고객님 요즘 수법이 워낙 교묘해가지고 누구나 당하실 수 있어요. 너무 자책하지 마시구요 지금이라도 빨리 신고하신 게 잘하신 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 40, '고객', '아 3,000,000원 그거 하나만 나갔구나. 더 없는 거 확실하죠?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 41, '상담사', '네 그 1건 외에는 입금도 출금도 없으세요. 그리고 아까 정지 걸어드려서 지금부터는 어떤 거래도 안 일어나니까 안심하셔도 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 42, '고객', '아 네 진짜 다행이에요 빨리 막아주셔서 감사해요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 43, '상담사', '네 그럼 정리해 드리면요 보이스피싱 피해로 계좌 전체 지급 정지하고 상대 계좌 지급 정지 신청까지 해드렸구요 분실하신 체크카드 정지 처리했고 오늘 입출금 내역까지 확인해 드렸습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 44, '고객', '네네 신고는 끊고 바로 할게요 정말 고맙습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 45, '상담사', '네 경찰하고 금감원 신고 꼭 하시구요 접수번호 받으시면 다시 연락 주세요. 힘내시고 좋은 하루 되세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 2, '고객', '아 네 저기요 제가 지금 앱에서 뭘 좀 하려고 하는데 자꾸 오류가 떠가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 3, '상담사', '아 네 앱에서 오류가 발생하셨군요. 어떤 화면에서 그러시는지 좀 여쭤봐도 될까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 3, '상담사', '아 네 이체 실패 떴는데 출금은 된 것 같으시군요. 본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 4, '고객', '네 [name]고요 92년 7월 26 [name] 요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 5, '상담사', '네 [name] 고객님 확인됐습니다. 그 이체 언제쯤 하셨고 금액이 얼마였어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 6, '고객', '어 한 30분 전쯤이요. 입출금 통장에서 400,000원 보냈는데 실패 메시지 떴어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 7, '상담사', '네 잠시만요 최근 거래 내역 조회해볼게요. 음 30분 전에 400,000원 출금 시도 있었고요 이게 한도 초과로 거절된 걸로 나오네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 8, '고객', '어 한도 초과요? 근데 돈은 빠진 것 같던데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 9, '상담사', '아 화면에는 출금처럼 보였을 수 있는데요 실제로는 승인 거절돼가지고 출금이 안 됐어요. 잔액 그대로 있으실 거예요. 한번 확인해보시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 4, '고객', '그 전세자금대출 신청 그게 좀 알아보려고 메뉴를 들어갔는데요 들어가자마자 그 알 수 없는 오류라고 뜨면서 그냥 튕겨버려요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 5, '상담사', '아 네네 그러셨군요 불편하셨겠어요. 제가 한번 확인을 도와드릴게요. 먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 6, '고객', '네 [name] 요 뒷자리는 그 [code]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 7, '상담사', '네 [name] 고객님 [code] 확인됐습니다 감사합니다. 어 그러면 혹시 앱 버전이 최신인지 한번 보셨을까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 8, '고객', '어 그게 업데이트는 어제 한 거 같은데 잘 모르겠어요. 아무튼 어제까지는 됐었거든요. 근데 오늘 아침부터 갑자기 이러네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 9, '상담사', '아 어제까지는 정상이셨는데 오늘부터요? 음 혹시 그 오류 화면에 코드 같은 게 같이 뜨던가요? 숫자나 영어로요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 10, '고객', '어 잠깐만요 다시 한번 들어가 볼게요. 어 떴다 이거 E 뭐 E[code] 이렇게 떠요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 11, '상담사', '아 E[code]요 네 그거는 저희 시스템에서 세션이 좀 꼬였을 때 나는 코드거든요. 혹시 앱을 완전히 종료하셨다가 다시 켜보시겠어요? 백그라운드까지 싹 닫고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 12, '고객', '어 네 그러면 한번 해볼게요. 잠깐만요 다 닫고 다시 켜서 로그인하고 음 또 그 메뉴 들어가면 되죠?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 13, '상담사', '네 맞습니다. 다시 로그인하시고 전세자금대출 메뉴 한번 눌러봐 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 14, '고객', '어 똑같애요 또 [address] 뜨고 튕겨요. 아 진짜 이거 왜 이러지.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 15, '상담사', '아 그래도 똑같이 나오는군요. 죄송합니다 고객님. 그러면 제가 일단 오류 건으로 기록을 남기고 기술팀에 확인 요청을 넣어드리겠습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 16, '고객', '네 그래주세요. 아 그리고 하나만 더요. 사실 이거 알아보다 막힌 게 아니라 어제 제가 이체를 하나 했었거든요. 근데 그게 좀 이상해요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 17, '상담사', '아 네 이체요? 어떤 부분이 이상하셨을까요? 편하게 말씀해 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 18, '고객', '어제 저녁에 그 전세 보증금 일부를 집주인한테 보냈는데요 3,000,000원을요. 근데 제 계좌에서는 돈이 빠져나갔는데 상대방은 안 들어왔다고 그러더라고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 19, '상담사', '아 그러면 출금은 됐는데 입금이 안 됐다는 말씀이시군요. 음 그거 많이 당황스러우셨겠어요. 제가 바로 이체 내역 확인해 드리겠습니다. 어제 저녁 몇 시쯤 보내셨는지 기억나세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 20, '고객', '어 한 7시 좀 넘어서요 7시 반 그쯤이었던 거 같애요. 금액은 3,000,000원 정확하게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 21, '상담사', '네 어제 저녁 7시 반경 3,000,000원 이체 건 확인해 보겠습니다. 잠시만요 어 네 보이네요 어제 19시 32분에 출금 처리는 정상적으로 됐는데요 어 수취 은행 쪽에서 입금 보류 상태로 걸려 있네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 22, '고객', '보류요? 그게 무슨 말이에요? 그럼 돈은 어디 가 있는 거예요 지금?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 23, '상담사', '아 너무 걱정 안 하셔도 됩니다. 돈이 사라진 건 아니구요 수취 계좌 쪽에서 어떤 사유로 입금이 일단 멈춰 있는 상태라서요. 보통 받는 분 계좌가 한도 초과거나 거래 정지 같은 경우에 이렇게 보류가 걸리거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 24, '고객', '아 집주인 계좌가 문제라는 거예요? 그럼 나는 어떻게 해요? 돈도 안 빠졌으면 또 보내면 되는데 빠지긴 빠졌잖아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 25, '상담사', '네 맞아요. 출금은 됐기 때문에 다시 보내시면 안 되구요 이 보류 건은 보통 영업일 기준으로 하루나 이틀 안에 자동으로 다시 받는 분 계좌로 입금되거나 아니면 고객님 계좌로 반환 처리가 됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 26, '고객', '어 그럼 가만히 있으면 알아서 된다는 거죠? 근데 전세 잔금이라 날짜가 좀 중요한데 좀 빨리 안 될까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 27, '상담사', '아 잔금 날짜가 걸려 계셔서 급하시겠어요. 제가 이 건을 긴급 처리 건으로 해서 입금 정정 요청을 바로 넣어드릴게요. 그러면 오늘 중으로 처리가 될 수 있게 담당 부서에 전달됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 28, '고객', '아 네 그렇게 해주시면 감사하죠. 혹시 처리되면 저한테 연락이 오나요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 29, '상담사', '네 처리 완료되면 고객님 등록된 번호로 알림 문자 발송됩니다. 그리고 혹시 모르니 받는 분께도 계좌 상태 한번 확인해 보시라고 말씀해 두시면 더 빠를 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 30, '고객', '네 알겠습니다 그럼 그렇게 부탁드릴게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 31, '상담사', '네 고객님 그러면 오늘 2가지 도와드린 거 정리해 드리면요 앱에서 전세자금대출 메뉴 오류 건은 기술팀에 확인 접수해 드렸구요 어제 3,000,000원 이체 보류 건은 긴급 입금 정정으로 요청 넣어드렸습니다. 더 궁금하신 점 없으실까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 32, '고객', '네 없어요 빨리 처리만 부탁드릴게요 수고하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 33, '상담사', '네 [name] 고객님 신경 써서 처리하겠습니다. 좋은 하루 보내세요 감사합니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 18, '고객', '어 OTP는 없고요 보안카드는 어디 있을 텐데 음 지금 당장은 못 찾겠어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 19, '상담사', '아 네 그럼 일단 어디까지 올리실지 정하구요 보안매체로 인증만 되면 바로 적용됩니다. 얼마까지 올리실 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 20, '고객', '어 일일 한도를 한 10,000,000원 정도로 올리고 싶은데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 21, '상담사', '네 일일 10,000,000원으로 올리시려면요 보안카드보다는 OTP가 있어야 그 금액까지 가능하세요. 보안카드만으로는 일일 5,000,000원까지 올라가구요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 22, '고객', '어 그래요? 그럼 일단 5,000,000원이라도 올려야겠네요. 근데 OTP는 어떻게 받는 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 23, '상담사', '아 네 마침 OTP 문의 주셨는데요 OTP는 영업점 방문하시면 그 자리에서 발급받으실 수 있구요 요즘은 그 모바일 OTP라고 앱 안에서 발급받는 것도 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 24, '고객', '어 모바일 OTP요? 그건 그냥 앱에서 되는 거예요? 따로 기계 안 사도 되구요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 25, '상담사', '네 맞아요. 별도 단말기 없이 앱 안에서 발급받아서 쓰시는 거라 편하세요. 발급도 무료구요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 26, '고객', '아 무료예요? 그 실물 OTP는 돈 받는다던데 그거랑 보안 같은 건 똑같아요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 27, '상담사', '네 보안 수준은 거의 동일하다고 보시면 돼요. 실물 기계는 한 5,000원 정도 비용이 있는데 모바일은 무료라 요즘은 모바일 많이들 쓰세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 29, '상담사', '네 기기 변경하시면 보안상 새로 발급받으셔야 되는데요 그것도 앱에서 똑같이 무료로 다시 받으시면 되니까 어렵진 않아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 30, '고객', '아 그럼 그게 낫겠네요. 그거 어떻게 받아요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 31, '상담사', '네 앱에서 인증센터 들어가시면요 OTP 발급이라는 메뉴가 있어요. 거기서 모바일 OTP 선택하시고 본인인증 한 번 거치시면 바로 발급됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 32, '고객', '어 잠깐만요 인증센터 어 OTP 발급 있네요. 모바일 OTP 눌렀어요 어 본인인증 하고 어 비밀번호 정하라는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 33, '상담사', '네 그 OTP 쓰실 때 입력하실 비밀번호 정하시는 거구요 정하시면 발급 완료될 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 34, '고객', '어 됐어요 모바일 OTP 발급 완료라고 뜨네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 35, '상담사', '아 네 잘 발급되셨어요. 그럼 이제 이 OTP로 한도도 10,000,000원까지 올리실 수 있어요. 지금 바로 한도 변경 같이 진행해 드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 36, '고객', '네 그럼 10,000,000원으로 해 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 37, '상담사', '네 한도 변경 화면 들어가셔서 일일 10,000,000원으로 입력하시구요 방금 발급받으신 OTP 번호 입력하시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 39, '상담사', '네 일일 이체한도 10,000,000원으로 변경 완료됐습니다. 이제 아까 실패했던 그 2,000,000원 이체 다시 해 보시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 40, '고객', '어 네 다시 해 볼게요. 어 이번엔 되네요 이체 완료 떴어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 41, '상담사', '아 네 잘 되셨네요. 이제 한도 넉넉하니까 앞으로는 실패 안 나실 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 42, '고객', '네 진짜 다행이네요 OTP까지 받아서 깔끔하게 됐네요 감사합니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 2, '고객', '아 네 안녕하세요 저기 제가 대출 관련해서 좀 여쭤볼 게 있어서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 3, '상담사', '네 대출 문의 도와드리겠습니다. 본인 확인 먼저 좀 부탁드릴게요. 성함하고 생년월일 앞에 6자리 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 4, '고객', '네 [name] 요 [birth]요 [birth]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 5, '상담사', '네 [name] 고객님 [birth] 확인됐습니다. 어떤 대출 관련해서 궁금하신 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 6, '고객', '어 제가 지금 마이너스 통장 쓰고 있는데요 한도가 좀 부족한 거 같아서 한도를 좀 늘릴 수 있나 그게 궁금하고 금리는 지금 얼마인지도 좀 알고 싶어가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 7, '상담사', '아 네 현재 쓰고 계신 마이너스 통장 한도하고 적용 금리 확인 도와드릴게요. 잠시만요 어 보니까 현재 한도가 30,000,000원으로 잡혀 있으시고요 금리는 연 4.8% 적용되고 계시네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 8, '고객', '아 4.8이요? 음 생각보다 좀 높네요. 한도는 그럼 더 늘릴 수 있는 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 9, '상담사', '네 한도 증액은 가능은 한데요 그게 고객님 소득이나 신용 상태 그런 거를 다시 심사를 해봐야 돼서요. 지금 바로 얼마까지 된다 이렇게 말씀드리기는 좀 어렵거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 10, '고객', '아 심사를 또 받아야 되는구나. 어 그럼 대충이라도 한 5,000까지는 될까요? 제가 작년에 연봉이 좀 올라서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 11, '상담사', '아 연봉이 오르셨으면 긍정적으로 보실 수 있어요. 다만 증액 심사는 앱에서 신청하시거나 영업점 방문하셔서 진행하셔야 되구요 소득 증빙 서류 그런 게 좀 필요할 수 있습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 12, '고객', '음 그렇구나 일단 알겠어요. 금리는 그럼 좀 낮출 방법은 없어요? 4.8이 좀 부담스러운데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 13, '상담사', '네 금리 인하 요구권이라는 게 있어서요 소득이 늘었거나 신용점수가 좋아지셨으면 그걸로 한번 신청해 보실 수 있어요. 그것도 같이 심사가 들어가는 부분이에요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 14, '고객', '아 그런 게 있구나. 네 그건 좀 알아볼게요. 어 그리고 하나 더 여쭤볼 게 있는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 15, '상담사', '네 편하게 말씀하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 16, '고객', '제가 작년에 신용대출을 하나 받아놓은 게 있거든요. 그걸 좀 미리 갚으려고 하는데 중도상환수수료 그게 얼마나 나오는지 궁금해서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 17, '상담사', '아 네 기존 신용대출 중도상환 문의시군요. 잠깐만요 확인해 보겠습니다. 어 보니까 작년 5월에 실행된 건이 있으시네요. 20,000,000원 받으신 거 맞으실까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 18, '고객', '네네 맞아요 20,000,000원이요. 그거 지금 한 10,000,000원 정도 갚으려고 하는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 19, '상담사', '네 부분 상환으로 10,000,000원 하시는 거죠? 어 이 상품이 중도상환수수료율이 1.2% 로 돼 있고요 대출 실행일부터 3년 동안 적용되는데 남은 기간에 따라서 수수료가 좀 줄어들어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 20, '고객', '아 그럼 지금 10,000,000원 갚으면 수수료가 얼마예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 21, '상담사', '네 지금 시점에 10,000,000원 상환하시면요 잔여 기간 계산해서 대략 한 70,000원 조금 안 되게 나옵니다. 정확히는 68,000원 정도 예상되네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 22, '고객', '아 68,000원 음 생각보단 많지 않네요. 그럼 그냥 지금 갚는 게 나아요 아니면 좀 기다렸다가 갚는 게 나아요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 23, '상담사', '아 그거는요 고객님이 지금 그 10,000,000원으로 이자를 내고 계신 거랑 수수료 68,000원을 비교해 보시면 되는데요. 보통은 미리 갚으시는 게 이자가 더 절약돼서 이득인 경우가 많아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 24, '고객', '아 그렇구나. 그럼 갚는 걸로 생각할게요. 어 근데 이거 만기 연장 같은 것도 돼요? 나중에 혹시 못 갚게 되면.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 25, '상담사', '네 만기 연장도 가능합니다. 만기 한 달 전쯤에 연장 신청하시면 되구요 그때도 금리는 그 시점 기준으로 다시 적용되는 거라 좀 달라질 수는 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 26, '고객', '아 네 알겠어요. 그건 그때 가서 또 여쭤볼게요. 그리고 어 마지막으로 하나만 더요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 27, '상담사', '네 말씀하세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 28, '고객', '제가 적금을 하나 새로 들고 싶은데요 요즘 체크카드 쓰면 우대금리 준다는 그런 적금 있다고 들었거든요. 그거 가입하려면 어떻게 해요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 29, '상담사', '아 네 마침 저희 그 체크카드 실적 연계 적금 상품이 있어요. 한 달에 그 연결된 체크카드로 300,000원 이상 쓰시면 우대금리 들어가는 상품인데요 기본금리에 우대 다 합치면 연 4.5%까지 됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 30, '고객', '오 4.5요? 괜찮네요. 그거 그냥 전화로 가입돼요 아니면 앱으로 해야 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 31, '상담사', '네 비대면으로 앱에서 바로 가입 가능하시구요 지금 전화로도 신청 도와드릴 수 있어요. 한번 진행해 드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 32, '고객', '아 네 그럼 지금 해주세요. 월 납입은 한 200,000원 정도로 하고 싶어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 44, '고객', '네네 깔끔하게 됐네요. 고마워요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 33, '상담사', '네 알겠습니다. 월 200,000원 납입에 기간은 어떻게 해드릴까요? 보통 12개월 24개월 이렇게 선택하시는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 34, '고객', '어 12개월로 할게요 1년이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 35, '상담사', '네 12개월 월 200,000원 정기적금으로 진행하겠습니다. 출금 계좌는 지금 쓰고 계신 그 입출금 계좌 끝자리 [code] 계좌로 연결해 드리면 될까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 36, '고객', '네 그 계좌로 해주세요 맞아요 [code].');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 37, '상담사', '네 그리고 우대금리 받으시려면 그 체크카드 실적이 매달 300,000원 이상이어야 되는데 혹시 지금 쓰시는 체크카드가 이 계좌에 연결돼 있으실까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 38, '고객', '어 네 그 통장에 체크카드 하나 연결돼 있어요. 그거 평소에 마트 같은 데서 자주 써가지고 300,000원은 넘게 쓸 거 같애요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 39, '상담사', '네 그러면 우대금리 조건 충족되실 거예요. 자 그럼 지금 가입 동의 절차 진행할게요. 제가 안내해 드리는 약관 동의하시면 바로 개설됩니다. 잠시만요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 40, '고객', '네네.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 41, '상담사', '자 동의 처리됐구요 적금 계좌 정상적으로 개설됐습니다. 계좌번호는 문자로 보내드릴게요. 첫 납입은 오늘 바로 200,000원 빠져나가구요 다음 달부터는 매월 오늘 날짜에 자동으로 납입됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 42, '고객', '아 네 감사합니다 깔끔하네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 43, '상담사', '네 그러면 오늘 도와드린 거 정리해 드릴게요. 마이너스 통장 한도하고 금리는 현재 30,000,000원에 4.8%로 안내드렸고 증액이나 금리 인하는 별도 심사 신청 안내드렸구요 신용대출 10,000,000원 중도상환 수수료는 68,000원 정도로 확인해 드렸고 마지막으로 체크카드 연계 정기적금 12개월 월 200,000원으로 새로 가입해 드렸습니다. 더 필요하신 거 있으실까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 44, '고객', '아니요 다 됐어요 친절하게 설명해 주셔서 감사해요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 45, '상담사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 2, '고객', '아 네 제가 통장 입출금 내역을 좀 확인하고 싶은데요 뭐가 좀 빠져나간 게 있는 거 같아서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 3, '상담사', '네 입출금 내역 확인 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 생년월일 6자리 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 4, '고객', '네 [name] 요 [birth]요 [birth]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 5, '상담사', '네 [name] 고객님 [birth] 확인됐습니다. 어떤 내역을 확인하고 싶으신 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 6, '고객', '어 제가 이번 달 들어서 통장에서 자꾸 뭐가 빠져나가는 거 같은데요 제가 모르는 게 있어가지고 한 며칠 전 거부터 좀 봐주실 수 있어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 7, '상담사', '네 최근 거래 내역 확인해 드릴게요. 혹시 입출금 계좌 끝자리 한번 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 8, '고객', '어 끝자리가 [code]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 9, '상담사', '네 [code] 계좌 확인했습니다. 잠시만요 어 보니까 최근 일주일 내역 보이는데요 그저께 그 펀드 자동납입으로 300,000원 나간 거 있구요 어제 통신비 72,000원 그리고 오늘 아침에 카드대금 450,000원 빠진 거 있네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 10, '고객', '어 잠깐만요 펀드 자동납입이요? 그게 뭐예요? 저 펀드 자동으로 빠지는 거 한 적 없는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 11, '상담사', '아 펀드 자동납입 300,000원이요. 음 이게 작년 9월에 등록된 적립식 펀드 자동이체로 보이는데요 매달 그 날짜에 300,000원씩 신탁 계좌로 들어가고 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 12, '고객', '아 맞다 그거 작년에 제가 가입했던 거다. 아 깜빡했네 매달 빠지는 거였구나. 어 근데 이거 너무 부담스러운데 좀 줄이거나 멈출 수 있어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 13, '상담사', '네 그 자동이체 금액을 조정하시거나 아니면 아예 해지하실 수도 있어요. 어떻게 하고 싶으세요? 금액을 줄이실까요 아니면 멈추실까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 14, '고객', '음 일단 멈추는 거보다는 좀 줄여서 한 100,000원 정도로 하고 싶어요 다음 달부터요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 15, '상담사', '네 알겠습니다. 그러면 매달 300,000원 나가던 펀드 자동이체를 100,000원으로 변경해 드릴게요. 다음 납입일부터 적용되구요 이번 달 거는 이미 나갔으니까 다음 달부터 100,000원으로 들어갑니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 16, '고객', '네 그렇게 해주세요. 어 그리고 내역 보다 보니까 다른 것도 좀 정리하고 싶은 게 있는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 17, '상담사', '네 말씀하세요. 어떤 거 정리하고 싶으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 18, '고객', '그 통신비 자동이체 있잖아요. 그게 제가 번호를 바꿨거든요. 그래서 그 자동이체 나가는 계좌를 다른 통장으로 좀 바꾸고 싶어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 19, '상담사', '아 통신비 자동이체 출금 계좌를 변경하고 싶으신 거군요. 음 근데 통신비 같은 거는요 받는 쪽 통신사에서 출금 계좌를 관리하는 경우가 많아서요 저희 쪽에서 바로 계좌만 바꿔드리기는 좀 어려울 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 20, '고객', '아 그래요? 그럼 어떻게 해야 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 21, '상담사', '네 그 통신사 쪽에 연락하셔서 출금 계좌 변경 신청하시는 게 제일 확실하구요 다만 혹시 저희 은행 자동이체 등록 목록에 들어가 있는 거면 제가 여기서 변경 도와드릴 수 있어요. 한번 확인해 볼게요. 잠시만요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 22, '고객', '네 봐주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 23, '상담사', '어 보니까 이 통신비 건은 저희 은행 자동이체 등록 목록에 있는 거라서요 다행히 제가 출금 계좌 변경해 드릴 수 있겠네요. 어떤 계좌로 바꿔드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 24, '고객', '아 잘됐다. 그럼 제 다른 통장 그 끝자리 [code] 계좌로 바꿔주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 25, '상담사', '네 통신비 자동이체 출금 계좌를 끝자리 [code] 계좌로 변경하겠습니다. 이거는 다음 출금일부터 새 계좌에서 빠져나가구요 변경 처리 완료됐습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 26, '고객', '아 네 감사합니다. 어 그리고 혹시 자동이체 새로 하나 등록도 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 27, '상담사', '네 자동이체 신규 등록도 가능합니다. 어떤 걸 등록하고 싶으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 28, '고객', '어 제가 적금을 따로 하나 더 넣고 싶어서요. 매달 200,000원씩 그 신탁 적립 통장으로 자동으로 들어가게 하고 싶어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 18, '고객', '아 네 그럼 그렇게 해주세요 초기화요. 어 근데 혹시 이거 누가 제 비밀번호를 막 넣어본 건 아니겠죠? 좀 불안하네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 29, '상담사', '네 매달 200,000원씩 자동이체 등록해 드릴게요. 출금은 지금 보고 있는 [code] 계좌에서 나가게 하면 될까요? 그리고 매달 며칠에 나가게 해드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 30, '고객', '네 [code] 계좌에서 빠지게 해주시구요 날짜는 매달 25일로 해주세요. 월급 들어오고 나서 빠지게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 31, '상담사', '네 매달 25일에 [code] 계좌에서 200,000원씩 신탁 적립 통장으로 자동이체 등록하겠습니다. 잠시만요 어 등록 완료됐구요 첫 출금은 다음 달 25일부터 시작됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 32, '고객', '아 네 깔끔하네요 감사합니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 33, '상담사', '네 그럼 오늘 도와드린 거 정리해 드릴게요. 입출금 내역 확인해 드렸고 펀드 자동납입은 300,000원에서 100,000원으로 줄여드렸구요 통신비 자동이체 출금 계좌는 끝자리 [code]로 변경했고 매달 25일 200,000원 신탁 적립 자동이체를 새로 등록해 드렸습니다. 더 필요하신 점 있으실까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 34, '고객', '아니요 다 됐어요 너무 친절하시네요 감사합니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 35, '상담사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 2, '고객', '아 네 저기 제가 이체를 하나 했는데 그게 실패가 떴거든요. 근데 좀 이상해가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 3, '상담사', '아 네 이체 실패 건이시군요. 제가 바로 확인 도와드릴게요. 먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 4, '고객', '네 [name]구요 뒷자리 [code]요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 어떤 이체를 하셨는데 실패가 났을까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 6, '고객', '어 제가 그 신용카드 대금을 좀 미리 내려고 계좌이체를 했거든요. 한 50 아 600,000원이요. 근데 보내기 누르니까 실패했다고 뜨더라고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 7, '상담사', '아 신용카드 대금 600,000원을 이체하시려다가 실패가 나셨군요. 혹시 실패 메시지에 사유 같은 게 같이 떴을까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 8, '고객', '어 그게 뭐라고 했더라 일일 이체 한도 초과 그런 식으로 떴던 거 같애요. 근데 저 그렇게 많이 보낸 적 없거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 9, '상담사', '아 네 이체 한도 초과로 막히신 거 같네요. 제가 고객님 오늘 이체 내역하고 한도 한번 확인해 보겠습니다. 잠시만요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 10, '고객', '네 근데 진짜 이상한 게 저 오늘 다른 데 보낸 게 거의 없어요. 아침에 한 100,000원 정도 보낸 거밖에.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 11, '상담사', '어 네 보니까요 고객님 오늘 오전에 100,000원 이체하신 건 정상 처리됐구요 어 근데 고객님 일일 이체 한도가 지금 300,000원으로 굉장히 낮게 설정돼 있으시네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 12, '고객', '네 300,000원이요? 어 왜 그렇게 낮지 저 그렇게 설정한 적 없는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 13, '상담사', '아 음 혹시 예전에 비대면 계좌 개설하시면서 처음에 한도가 낮게 잡혔을 수 있어요. 신규 계좌는 보안상 한도를 낮게 시작하는 경우가 있거든요. 그래서 100,000원 쓰시고 나니까 600,000원이 안 됐던 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 14, '고객', '아 그래서 그랬구나. 어 그럼 이거 한도 좀 올릴 수 있어요? 카드값 내야 되는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 15, '상담사', '네 한도 변경 도와드릴 수 있어요. 마침 그 부분 여쭤보려고 했어요. 한도를 어느 정도로 올리고 싶으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 16, '고객', '어 한 1회에 한 5,000,000원 하루에는 10,000,000원 이 정도면 좋겠는데 그게 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 17, '상담사', '아 네 다만 한도를 일정 금액 이상으로 올리시려면요 추가 인증이 좀 필요하거든요. 1회 1,000,000원 하루 3,000,000원까지는 지금 바로 변경 가능한데 그 이상은 영업점 방문이나 추가 본인인증이 필요해요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 18, '고객', '아 그래요. 음 그럼 일단 지금 바로 되는 거로 올려주세요. 1회 1,000,000원 하루 3,000,000원으로요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 2, '고객', '어 네 저기 제가 금융인증서가 좀 만료가 됐는지 갱신을 해야 된다고 떠가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 19, '상담사', '네 1회 1,000,000원 일일 3,000,000원으로 변경해 드리겠습니다. 변경하시려면 지금 등록된 인증 수단으로 한번 인증이 필요한데요 혹시 OTP나 보안카드 쓰고 계세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 20, '고객', '어 저 OTP 있긴 한데 이게 한참 안 써서 잘 모르겠어요. 그리고 이거 OTP 화면에 무슨 배터리 표시 같은 게 깜빡거려요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 21, '상담사', '아 OTP 기기에 배터리 표시 깜빡이면요 그게 배터리가 거의 다 닳았다는 표시거든요. 곧 사용이 안 될 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 22, '고객', '아 진짜요? 그럼 이거 새로 받아야 돼요? 어떻게 해요 그럼.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 23, '상담사', '네 OTP는 배터리 교체가 안 되고 새로 발급받으셔야 되는데요 영업점 가셔서 재발급 받으시거나 아니면 요즘은 앱에 그 모바일 OTP 기능이 있어서 그걸 등록하시면 실물 없이도 쓰실 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 24, '고객', '어 그럼 영업점 가면 그 OTP 기계값 또 받아요? 예전에 살 때 돈 냈던 거 같은데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 25, '상담사', '아 실물 OTP는요 새로 발급받으시면 수수료가 한 5,000원 정도 있어요. 근데 모바일 OTP는 무료라서요 요즘은 거의 모바일로 많이 옮기시는 편이에요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 26, '고객', '아 실물은 또 돈 내는구나. 그럼 모바일로 하는 게 낫겠네요. 근데 그거 보안은 괜찮아요? 폰에 있는 거잖아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 27, '상담사', '네 보안은 걱정 안 하셔도 돼요. 모바일 OTP는 그 기기에 따로 잠금이 걸려 있구요 폰 바꾸시면 다시 등록해야 되는 거라서 오히려 더 안전한 편이에요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 28, '고객', '오 모바일 OTP요? 그게 더 편하겠네요. 그건 어떻게 등록해요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 45, '고객', '아니요 없어요 수고하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 29, '상담사', '네 앱에서 인증센터 메뉴 들어가시면 모바일 OTP 발급이 있어요. 거기서 본인인증하시고 비밀번호 6자리 정하시면 바로 발급됩니다. 지금 쓰시는 실물 OTP는 그때 해지하시면 되구요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 30, '고객', '어 그 비밀번호 6자리는 그럼 지금 계좌 비밀번호랑 같은 거 써도 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 31, '상담사', '아 그건 다르게 설정하시는 걸 권해드려요. 계좌 비밀번호랑 OTP 비밀번호가 같으면 혹시 모를 때 좀 위험할 수 있어서요. 가급적 다른 번호로 하시는 게 좋아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 32, '고객', '아 네 그럼 다른 걸로 할게요. 어 그리고 실물 OTP 해지는 제가 따로 해야 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 33, '상담사', '네 모바일 OTP 등록하시고 나면요 앱에서 기존 실물 OTP 해지 버튼이 떠요. 그거 누르시면 바로 해지되구요 안 누르셔도 2개 같이 쓰시다가 나중에 정리하셔도 됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 34, '고객', '아 네 근데 지금 당장 한도 변경은 그럼 어떻게 해요? OTP가 곧 죽는다면서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 35, '상담사', '아 그러시면요 지금 OTP가 아직 작동은 하니까 일단 지금 한도 변경은 이 OTP로 하나 진행하시구요 모바일 OTP는 통화 끝나고 등록하시는 걸로 하면 좋을 거 같아요. 한도 변경 지금 진행해 드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 36, '고객', '네 그렇게 해요. OTP 지금 눌러볼게요. 어 숫자 떴어요 [code]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 37, '상담사', '네 [code] 확인됐습니다. 어 정상 인증됐구요 이체 한도 1회 1,000,000원 일일 3,000,000원으로 변경 완료됐습니다. 이제 카드 대금 600,000원 이체 다시 해보시면 될 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 38, '고객', '아 네 그럼 지금 바로 다시 해볼게요. 어 보내기 누르고 음 됐다 이체 성공이라고 떠요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 39, '상담사', '아 네 잘됐네요 정상적으로 처리됐습니다. 그리고 아까 말씀드린 모바일 OTP는요 꼭 한번 등록해 두세요. 안 그러면 실물 OTP 배터리 다 닳으면 다음에 또 이런 일 생길 수 있거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 40, '고객', '네네 알겠어요 통화 끝나고 바로 등록할게요. 어 근데 혹시 모바일 OTP 등록하다가 또 막히거나 하면 어떻게 해요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 41, '상담사', '아 등록하시다가 막히시면요 다시 저희 고객센터로 전화 주시면 돼요. 그때는 OTP 발급 건으로 바로 연결해서 도와드릴 수 있구요 보통은 본인인증만 잘 되면 1~2분이면 끝나서 크게 어렵진 않으실 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 42, '고객', '아 네 알겠어요 그럼 한번 해보고 안 되면 또 전화할게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 43, '상담사', '네 그렇게 하세요. 그럼 오늘 도와드린 내용 정리해 드릴게요. 이체 실패는 일일 한도가 300,000원으로 낮게 설정돼 있어서 발생한 거였구요 한도를 1회 1,000,000원 일일 3,000,000원으로 변경해 드렸습니다. 그리고 OTP 배터리 부족 안내드리고 모바일 OTP 발급 방법 안내드렸어요. 더 궁금하신 점 있으실까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 44, '고객', '아니요 없어요 덕분에 다 해결됐네요 감사합니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 45, '상담사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 2, '고객', '아 네 제가 그 공동인증서인가 그거를 새로 발급받아야 되는 거 같은데 어떻게 하는지 잘 몰라가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 3, '상담사', '네 공동인증서 발급 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 4, '고객', '네 [name]구요 뒷자리 [code]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 혹시 지금 인증서가 아예 없으신 거예요? 아니면 기간이 만료된 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 6, '고객', '어 그게 외화예금을 좀 만들려고 앱을 들어갔는데요 인증서가 만료됐다고 뜨더라고요. 그래서 갱신을 해야 되나 새로 받아야 되나 헷갈려서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 7, '상담사', '아 네 인증서가 만료되셨으면요 갱신을 하시면 되는데 만료된 지 오래되면 갱신이 안 되고 새로 발급받으셔야 될 수도 있어요. 혹시 만료된 지 얼마나 되셨는지 아세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 8, '고객', '어 잘 모르겠어요. 한참 안 쓴 거 같긴 해요. 작년에도 안 썼던 거 같고.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 9, '상담사', '아 그러면 갱신 기간이 지났을 가능성이 높아서요 새로 발급받으시는 게 빠를 거 같아요. 앱에서 인증센터 메뉴 들어가시면 공동인증서 발급이 있거든요. 거기서 진행하시면 됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 10, '고객', '어 인증센터요? 잠깐만요 어 들어왔어요 공동인증서 발급 눌렀더니 어 본인 확인하라고 나오는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 11, '상담사', '네 거기서 휴대폰 본인인증 한번 하시구요 그다음에 계좌번호하고 그 계좌 비밀번호를 입력하시면 돼요. 발급받으시면 비밀번호를 새로 설정하시는데 숫자랑 영문 섞어서 10자리 이상으로 만드셔야 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 12, '고객', '어 네 휴대폰 인증은 했고 계좌번호 넣고 어 계좌 비밀번호 넣는데 어 이거 비밀번호가 틀렸다고 나와요. 어 분명 맞는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 13, '상담사', '아 계좌 비밀번호가 틀렸다고 나오는군요. 혹시 몇 번 정도 입력하셨어요? 너무 여러 번 틀리시면 계좌 비밀번호가 잠길 수 있거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 14, '고객', '어 한 두세 번 넣은 거 같은데 아 또 틀렸대요. 아 이거 진짜 맞는 건데 왜 이러지.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 15, '상담사', '아 일단 더 넣지 마시구요 한 번만 더 틀리면 잠길 수 있어서요. 제가 계좌 상태 한번 확인해 볼게요. 잠시만요 어 보니까 이미 비밀번호 오류가 누적돼서 계좌 비밀번호가 잠긴 상태로 나오네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 16, '고객', '아 잠겼어요? 아 그래서 자꾸 틀렸다고 나온 거구나. 그럼 이거 어떻게 풀어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 17, '상담사', '네 비밀번호 초기화를 해드려야 되는데요 제가 본인확인 한번 더 하고 초기화 도와드릴 수 있어요. 다만 새 비밀번호는 고객님이 직접 설정하셔야 돼서요 초기화하면 임시로 풀리고 앱에서 새 비밀번호 등록하시는 방식이에요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 19, '상담사', '아 그런 걱정 하실 수 있는데요 제가 한번 볼게요. 어 보니까 오류 시도가 다 오늘 그 인증서 발급하시던 시간대에 몰려 있어서요 고객님이 직접 넣으시다가 잠긴 걸로 보여요. 외부에서 접근한 흔적은 없으니까 안심하셔도 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 20, '고객', '아 다행이다. 그럼 제가 자꾸 틀려서 그런 거네요. 네 그럼 초기화 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 21, '상담사', '네 본인확인 위해서 한 가지만 더 여쭤볼게요. 고객님 생년월일 6자리하고 혹시 가입하실 때 등록하신 자택 주소 동까지만 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 22, '고객', '네 [birth]이구요 [birth]이요. 주소는 그 한빛구 새벽동이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 23, '상담사', '네 [birth] 한빛구 새벽동 확인됐습니다. 본인확인 완료됐구요 계좌 비밀번호 초기화 처리해 드리겠습니다. 잠시만요 어 초기화 완료됐습니다. 이제 앱에서 계좌 비밀번호 새로 설정하시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 24, '고객', '아 네 그럼 지금 앱에서 새로 설정하면 되는 거죠? 어 했어요 새 비밀번호 설정 완료됐다고 떠요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 25, '상담사', '네 잘하셨어요. 그리고 이번에 새로 정하신 계좌 비밀번호는요 너무 단순한 번호나 생년월일 같은 거는 피하시는 게 좋구요 다른 데서 안 쓰시는 걸로 하셔야 더 안전해요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 26, '고객', '아 네 그건 좀 다르게 했어요 생일이랑은 다르게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 27, '상담사', '네 잘하셨어요. 그러면 이제 그 새 비밀번호로 공동인증서 발급 다시 진행해 보시겠어요? 아까 그 인증센터 메뉴에서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 28, '고객', '네 다시 해볼게요. 어 계좌 비밀번호 새로 넣으니까 어 이번엔 넘어가네요 어 인증서 비밀번호 설정하라고 나와요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 29, '상담사', '네 그 인증서 비밀번호는 아까 말씀드린 대로 영문이랑 숫자 섞어서 10자리 이상으로 만드시구요 이건 계좌 비밀번호랑은 다른 거니까 헷갈리지 않게 잘 기억해 두세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 30, '고객', '아 네 만들었어요. 어 발급 완료됐다고 떠요 아 됐다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 31, '상담사', '네 공동인증서 정상적으로 발급되셨습니다. 고생하셨어요. 이제 외화예금 가입하실 때 이 인증서로 진행하시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 32, '고객', '네 감사합니다. 어 그리고 마지막으로 하나만 더 여쭤볼게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 33, '상담사', '네 말씀하세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 34, '고객', '그 외화예금 만들고 나서 거기에 달러를 좀 넣으려고 하는데요 제 원화 통장에서 그 외화예금으로 돈을 옮기는 건 어떻게 해요? 그냥 보통 이체랑 똑같아요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 44, '고객', '아니요 다 됐어요 수고하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 35, '상담사', '아 네 원화 계좌에서 외화예금으로 넣으시는 거는요 일반 이체랑은 좀 달라요. 환전이 같이 이루어지는 거라서 앱에서 외화 입금 또는 환전 입금 이런 메뉴로 들어가셔야 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 36, '고객', '아 환전이 같이 되는 거구나. 어 그럼 그냥 계좌이체 메뉴로 하면 안 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 37, '상담사', '네 일반 계좌이체로는 외화예금에 안 들어가구요 꼭 그 외화 입금 메뉴로 하셔야 환율 적용돼서 달러로 바뀌어서 들어가요. 그때 그 시점 환율로 계산되구요 환전 수수료도 좀 붙습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 38, '고객', '아 수수료도 붙는구나. 그거 많이 나와요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 39, '상담사', '네 환전 수수료는요 보통 그 매매기준율에서 일정 비율 붙는 건데 비대면 앱으로 하시면 그 수수료를 한 80에서 90%까지 우대해 주는 이벤트가 있어서요 영업점보다 앱으로 하시는 게 훨씬 유리해요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 40, '고객', '오 그래요? 그럼 앱으로 할게요. 어 그 외화 입금 메뉴에서 금액 넣으면 알아서 달러로 바뀌는 거죠?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 41, '상담사', '네 맞아요. 원화 금액 넣으시면 그 시점 환율로 얼마가 달러로 들어가는지 미리 보여드리구요 확인하시고 진행하시면 됩니다. 출금 계좌는 원화 통장 선택하시면 거기서 빠지구요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 42, '고객', '아 네 이해했어요. 그럼 인증서 발급됐으니까 이제 제가 직접 해볼게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 43, '상담사', '네 그럼 오늘 도와드린 거 정리해 드릴게요. 만료된 공동인증서는 새로 발급해 드렸구요 도중에 잠겼던 계좌 비밀번호는 초기화해서 새로 설정하시도록 도와드렸습니다. 그리고 외화예금에 원화 넣으실 때는 일반 이체가 아니라 외화 입금 메뉴로 환전해서 넣으시는 거 안내드렸어요. 더 궁금하신 점 있으실까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 44, '고객', '아니요 다 됐어요 차근차근 알려주셔서 감사합니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 45, '상담사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 12, '고객', '아 우대조건이 뭐예요? 그런 게 있어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 10, '고객', '어 아 맞다 오전에 제가 어디 한 군데 보낸 게 있긴 해요. 근데 그게 한도랑 무슨 상관이에요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 11, '상담사', '아 네 그게요 하루에 이체할 수 있는 총액이 정해져 있거든요. 고객님 일일 이체한도가 지금 3,000,000원으로 돼 있어서요 오전 거랑 합치면 한도를 넘어선 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 12, '고객', '어 3,000,000원밖에 안 돼요? 그게 왜 그렇게 낮아요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 13, '상담사', '음 보통 비대면으로 가입하시면 처음엔 한도가 좀 낮게 설정되거든요 보이스피싱 같은 거 예방하는 차원에서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 14, '고객', '아 그런 이유가 있었구나 몰랐네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 15, '상담사', '네 그래서 실패가 났던 거구요 필요하시면 한도 한 번 올려 드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 16, '고객', '아 그럼 그게 문제였구나 네 좀 올려 주세요 답답해서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 17, '상담사', '네 한도 변경 도와드릴게요. 다만 한도를 올리시려면요 추가 본인인증이랑 보안매체 인증이 좀 필요해요. 혹시 OTP나 보안카드 가지고 계세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 30, '고객', '아 그렇게 해주세요. 그게 제일 깔끔하겠네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 37, '상담사', '아 네 정기적금 가입 도와드릴게요. 월에 얼마 정도 넣으실 생각이세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 45, '상담사', '네 적금 가입 접수했고요 첫 출금은 다음 달 15일부터 시작됩니다. 가입 완료 안내는 문자로 보내드릴게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 46, '고객', '아 네 감사합니다. 생각보다 빨리 됐네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 47, '상담사', '네 고객님 오늘 신용대출 한도랑 금리 안내드렸고요 기존 대출 중도상환이랑 연장 조건 설명드렸습니다. 그리고 정기적금 월 300,000원짜리 자동이체로 가입까지 완료했어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 49, '상담사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 2, '고객', '어 제가 아까 이체를 하나 했는데요 이게 실패가 떴거든요. 근데 돈은 빠져나간 것 같아가지고 좀 확인하려고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 10, '고객', '어 잠깐만요. 음 아 진짜네 잔액 그대로네요. 다행이다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 11, '상담사', '네 그래서 실패로 뜬 거고요 돈은 안 나갔으니까 안심하셔도 됩니다. 근데 한도가 막혀가지고 이체가 안 된 거라서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 12, '고객', '아 제 이체 한도가 얼마인데요? 그게 왜 막혀요? 400,000원밖에 안 되는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 13, '상담사', '음 보니까 고객님 1일 이체 한도가 300,000원으로 좀 낮게 설정돼 있으시네요. 그래서 400,000원이 안 넘어간 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 14, '고객', '어 그래요? 저 그렇게 낮게 한 적 없는데 언제 이렇게 됐지.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 15, '상담사', '아 비대면으로 통장 만드실 때 기본 한도가 낮게 잡히는 경우가 있거든요 보안 때문에요. 그래서 따로 안 올리시면 그대로 유지돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 16, '고객', '아 그렇구나. 그럼 이거 좀 올려주세요. 400,000원은 보내야 되거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 17, '상담사', '네 한도 변경 도와드릴게요. 1일 한도를 얼마로 올려드릴까요? 너무 높게 하면 보안상 좋진 않아가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 18, '고객', '어 그럼 한 1회에 3,000,000원 하루에 5,000,000원 정도로 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 19, '상담사', '네 그 정도면 적당하시고요 근데 한도 상향은 보안 매체 인증이 필요해가지고요 혹시 OTP나 보안카드 가지고 계세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 20, '고객', '어 보안카드는 어디 있는데 OTP는 없어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 21, '상담사', '네 그럼 보안카드로 인증하시면 돼요. 카드에 나와 있는 번호 중에 제가 불러드리는 자리 숫자 입력하시면 됩니다. 준비되셨어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 22, '고객', '어 잠깐만요. 음 네 찾았어요. 불러주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 23, '상담사', '네 35번 앞 2자리랑요 41번 뒤 2자리 말씀해 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 24, '고객', '어 35번 앞은 72고요 41번 뒤는 09예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 25, '상담사', '네 인증 완료됐습니다. 1회 3,000,000원 1일 5,000,000원으로 한도 상향 처리됐고요 지금 바로 적용됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 26, '고객', '아 그럼 이제 400,000원 보낼 수 있는 거죠?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 27, '상담사', '네 지금은 한도 안에 들어와서 정상적으로 이체되실 거예요. 다시 한 번 해보시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 28, '고객', '어 잠깐 해볼게요. 음 아 됐다 이체 완료 떴어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 29, '상담사', '네 잘 처리되셨네요. 다행입니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 30, '고객', '아 그리고 하나만 더요 그 보안카드가 좀 낡았거든요. 이거 OTP로 바꾸는 게 낫나요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 28, '고객', '아 그럼 모바일이 낫네요. 근데 핸드폰 바꾸면 그거 다시 받아야 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 2, '고객', '어 저기요 제가 지금 좀 급한데요. 어제 이상한 전화를 받았거든요. 검찰이라면서.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 3, '상담사', '아 네 고객님 천천히 말씀해 주세요. 어떤 상황이셨는지.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 4, '고객', '그 어떤 사람이 전화해가지고 제 계좌가 범죄에 연루됐다고 그러면서 안전계좌로 옮겨야 된다고 막 그러더라고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 5, '상담사', '아 그게 전형적인 보이스피싱 수법이거든요. 혹시 그쪽에 돈을 보내셨거나 어 계좌번호나 비밀번호를 알려주신 게 있으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 6, '고객', '그게 제가 너무 놀라가지고 일단 3,000,000원 아 2,500,000원 보냈어요. 그러고 나서 좀 이상하다 싶어서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 7, '상담사', '네 알겠습니다. 일단 지금 추가 피해 막는 게 제일 급하니까 제가 바로 계좌 일시 정지부터 걸어드릴게요. 괜찮으실까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 8, '고객', '네네 그렇게 해주세요. 아 진짜 어떡해.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 9, '상담사', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 휴대폰 뒷자리 4자리 말씀해 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 10, '고객', '어 [name] 요 휴대폰 뒷자리는 [code]이에요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 11, '상담사', '네 [name] 고객님 [code] 확인됐고요. 생년월일도 한 번만 더 부탁드릴게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 12, '고객', '아 [birth]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 13, '상담사', '네 확인됐습니다. 그럼 지금 고객님 명의 계좌 전체에 [birth] 지급 정지 걸어드리고요 송금하신 그 건은 지급정지 신청 같이 진행할게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 14, '고객', '그 보낸 돈은 돌려받을 수 있는 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 15, '상담사', '어 그게 상대 계좌에 돈이 남아 있으면 지급정지로 묶어둘 수 있는데요 인출돼버리면 좀 어려울 수도 있어가지고 빨리 처리하는 게 중요하거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 16, '고객', '아 네 그럼 빨리 좀 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 17, '상담사', '네 지금 정지 걸었고요 상대 계좌 지급정지 요청 접수했습니다. 그리고 경찰서 사이버수사대에도 신고하셔야 환급 절차가 진행되거든요. 1325로 신고 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 18, '고객', '아 1325 네 그건 제가 직접 할게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 19, '상담사', '네 그럼 접수번호 문자로 보내드릴게요. 이거 들고 신고하시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 31, '상담사', '아 네 OTP가 보안카드보다 좀 더 안전하긴 해요. 매번 번호가 바뀌니까요. OTP 발급 원하시면 안내드릴 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 32, '고객', '아 그래요? 그거 발급 받으려면 어떻게 해야 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 33, '상담사', '네 OTP는 실물 기기라서요 가까운 영업점에 신분증 들고 가시면 바로 발급되고요 발급 비용이 한 5,000원 정도 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 34, '고객', '아 영업점을 가야 되는구나. 그럼 좀 번거롭네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 35, '상담사', '아 그러시면 모바일 OTP도 있어요. 그건 앱에서 바로 발급되고 무료라서요 따로 기기 안 들고 다녀도 돼서 편하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 36, '고객', '오 그게 낫겠네요. 그럼 그 모바일 OTP로 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 37, '상담사', '네 모바일 OTP는 앱에서 인증수단 메뉴 들어가셔서 발급 누르시면 되는데요 지금 같이 안내드리면서 진행해드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 38, '고객', '아 네 좀 도와주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 39, '상담사', '네 앱 열어서 보안센터 들어가시고요 OTP 관리 누르시면 모바일 OTP 발급 버튼 있어요. 거기서 본인인증 한 번 하시면 바로 발급됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 40, '고객', '어 음 아 발급됐다고 뜨네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 41, '상담사', '네 잘 되셨고요 이제부터는 그 모바일 OTP로 한도 변경이나 큰 이체 하실 때 인증하시면 돼요. 기존 보안카드는 해지하실 수도 있는데 일단 두셔도 됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 42, '고객', '아 네 알겠어요. 일단 둘게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 43, '상담사', '네 고객님 오늘 정리해드리면요 한도 초과로 실패했던 이체 건은 출금 안 됐던 걸로 확인됐고요 이체 한도를 1회 3,000,000원 1일 5,000,000원으로 올려드렸어요. 그리고 모바일 OTP 발급까지 도와드렸습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 45, '상담사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 2, '고객', '어 안녕하세요 제가 통장 내역을 좀 확인하고 싶은데요 뭐가 나갔는지 좀 헷갈려가지고.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 3, '상담사', '네 입출금 내역 조회 도와드릴게요. 본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 4, '고객', '네 [name]고요 뒷자리는 [code]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 어느 기간 내역으로 보시면 될까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 6, '고객', '어 이번 달 거 한 번 다 보고 싶어요. 좀 빠져나간 게 많은 것 같아가지고.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 7, '상담사', '네 이번 달 내역 조회해볼게요 잠시만요. 음 이번 달에 출금이 총 5건 있고요 입금은 급여 1건 있으시네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 8, '고객', '아 5건이나요? 그게 다 뭐예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 9, '상담사', '네 하나씩 말씀드릴게요. 5일에 카드대금 320,000원 11일에 통신비 55,000원 15일에 관리비 180,000원 이렇게 빠졌고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 10, '고객', '어 네네 그건 알겠어요. 나머지 2개는요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 11, '상담사', '네 21일에 보험료 70,000원이랑요 25일에 적금 300,000원 이렇게 나갔어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 12, '고객', '아 적금이 300,000원 나간 거구나. 어쩐지 잔액이 확 줄었더라고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 13, '상담사', '네 맞아요. 그게 제일 큰 건이고요 입금은 25일에 급여 2,800,000원 들어오셨어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 14, '고객', '아 그럼 지금 잔액은 얼마나 남았어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 15, '상담사', '네 현재 잔액은 1,973,000원입니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 16, '고객', '아 그렇구나 알겠어요. 음 근데 그 적금 말인데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 17, '상담사', '네 적금 관련해서 궁금하신 거 있으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 18, '고객', '어 그게 정기적금인데요 매달 25일에 나가잖아요. 근데 제가 날짜를 좀 바꾸고 싶어가지고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 19, '상담사', '아 자동이체 출금일 변경하시려는 거네요. 며칠로 바꾸시면 될까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 20, '고객', '어 급여가 25일에 들어오니까 좀 여유 두고 28일 정도로 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 21, '상담사', '네 25일에서 28일로 변경 도와드릴게요 잠시만요. 음 변경 처리됐고요 다음 달부터 28일에 출금됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 22, '고객', '아 그럼 이번 달은 이미 나간 거니까 다음 달부터인 거죠?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 23, '상담사', '네 맞아요. 이번 달 25일 건은 이미 정상 출금됐고요 변경된 날짜는 다음 달부터 적용돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 24, '고객', '아 네 그리고 하나만 더요 제가 통신비 자동이체도 있잖아요. 그거 출금 계좌를 다른 데로 좀 바꾸고 싶은데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 25, '상담사', '아 통신비 자동이체 출금 계좌 변경이요. 어느 계좌로 바꾸시려고요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 26, '고객', '어 제가 다른 은행에 통장이 하나 있거든요. 거기로 빼고 싶어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 27, '상담사', '아 그게요 통신비 자동이체는 통신사 쪽에 출금 계좌가 등록돼 있는 거라서요 저희 은행에서 바로 바꿔드리긴 어렵고 통신사에 신청하셔야 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 28, '고객', '아 그래요? 은행에서 안 되는구나.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 29, '상담사', '네 저희가 할 수 있는 건 이 계좌에서 출금되는 걸 해지하는 거고요 등록 자체는 통신사 고객센터에서 새 계좌로 다시 해주셔야 해요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 30, '고객', '음 그럼 일단 여기서 빠지는 거 해지부터 해주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 31, '상담사', '네 근데 통신사에 새 계좌 등록 안 하시고 여기서만 해지하면요 다음 달 통신비가 미납될 수 있어가지고요 통신사 등록 먼저 하시는 걸 추천드려요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 32, '고객', '아 그러네. 그럼 통신사 먼저 하고 그 다음에 여기 해지할게요. 헷갈릴 뻔했네.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 46, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 33, '상담사', '네 그렇게 하시는 게 안전해요. 통신사에서 새 계좌 등록 끝나면 그때 다시 연락 주시면 여기 해지 바로 도와드릴게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 34, '고객', '네네 알겠어요. 그렇게 할게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 35, '상담사', '네 고객님 그럼 오늘 이번 달 입출금 내역 조회해드렸고요 정기적금 자동이체 출금일을 25일에서 28일로 변경해드렸습니다. 통신비 자동이체 계좌 변경은 통신사 먼저 처리하시고 다시 연락 주시기로 했어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 36, '고객', '네 고생하셨어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 37, '상담사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 3, '상담사', '아 네 금융인증서 갱신 도와드릴게요. 본인확인 먼저 좀 진행할게요. 성함이랑 휴대폰 뒷자리 좀 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 4, '고객', '네 [name] 요 뒷자리 [code]요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 음 지금 보니까 금융인증서 유효기간이 지난 달에 끝났네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 6, '고객', '아 그쵸 그래서 어 어플에서 하려고 했는데 자꾸 뭐가 안 돼가지고 좀 답답하더라고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 7, '상담사', '아 네 그러셨구나. 갱신은 그 기존 인증서를 폐기하고 다시 발급받는 식으로 진행이 되거든요. 지금 앱 켜 두셨어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 8, '고객', '네네 켜 놨어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 9, '상담사', '그럼 하단에 메뉴 누르시면 인증센터 있구요 거기 금융인증서 관리 들어가시면 갱신 버튼이 있을 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 10, '고객', '어 잠깐만요 인증센터 음 아 여기 있네요. 금융인증서 관리 눌렀어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 11, '상담사', '네 거기서 갱신 누르시고 클라우드에 저장하는 걸로 선택하시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 12, '고객', '네 눌렀어요 어 비밀번호 입력하라는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 13, '상담사', '네 그게 인증서 비밀번호인데요 예전에 쓰시던 거 입력하시면 됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 14, '고객', '어 그게 그게요 제가 좀 기억이 가물가물한데 일단 한번 해 볼게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 15, '고객', '어 어 틀렸다는데요 비밀번호 오류라고.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 16, '상담사', '아 네 그럼 다시 한 번 천천히 넣어 보시겠어요? 대소문자나 숫자 섞이는 경우가 있어서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 17, '고객', '음 다시 해 볼게요. 어 또 틀렸대요 이거 몇 번 틀리면 막히는 거 아니에요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 18, '상담사', '아 네 [number]번 연속 틀리시면 그 인증서가 일시적으로 잠기긴 하는데요 지금 [number]번이시니까 너무 걱정 안 하셔도 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 19, '고객', '아 그래요? 근데 진짜 기억이 안 나는데 이거 그냥 초기화 같은 건 안 되나요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 20, '상담사', '네 됩니다. 비밀번호가 기억이 안 나시면 그 인증서를 아예 재발급 받으시면 새 비밀번호로 다시 설정이 되거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 21, '고객', '아 그러면 그게 낫겠네요. 그럼 그걸로 해 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 22, '상담사', '네 그럼 화면에서 갱신 말고 신규 발급 쪽으로 가셔야 되는데요 뒤로 한 번 나가시면 발급 버튼 보이실 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 23, '고객', '어 네 나왔어요. 발급 눌렀구요 어 본인인증 하라는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 24, '상담사', '네 휴대폰 본인인증 한 번 거치시구요 그 다음에 새로 쓰실 비밀번호 설정하는 화면이 나올 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 25, '고객', '아 네 했어요. 비밀번호 새로 정했구요 어 발급 완료됐다고 뜨네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 26, '상담사', '아 네 잘 되셨네요. 이번엔 그 비밀번호 까먹지 마시구요 어디 메모라도 해 두시면 좋아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 27, '고객', '네네 그럴게요. 아 그리고 하나만 더 여쭤봐도 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 28, '상담사', '네 그럼요 말씀하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 29, '고객', '어 제가 이번에 정기예금 만기된 돈을 딴 계좌로 좀 보내려고 하는데 이체를 어떻게 해야 되는지 잘 모르겠더라고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 30, '상담사', '아 네 정기예금 만기금 이체요. 우선 그 만기된 돈이 입출금 통장으로 들어와 있어야 이체가 되는데요 혹시 만기 해지는 하셨어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 31, '고객', '어 그게 자동으로 입출금 통장에 들어왔다고 문자가 오긴 왔어요. 한 7,000,000원쯤 되는 거 같은데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 32, '상담사', '네 그럼 만기 해지는 이미 된 거구요 그 돈이 지금 입출금 통장에 있으니까 따로 해지 절차 없이 바로 이체하시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 33, '고객', '아 네 그럼 바로 보내면 되는 거네요. 어떻게 하면 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 34, '상담사', '네 앱에서 이체 메뉴 들어가시면 됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 35, '고객', '어 이체 들어왔구요 어디다 보낼지 입력하는 거죠?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 36, '상담사', '네 받으실 은행이랑 계좌번호 입력하시구요 금액 넣으시고 그 다음에 이체 비밀번호랑 아까 새로 발급받으신 인증서로 인증하시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 37, '고객', '아 근데 7,000,000원이면 한도 같은 거 안 걸리나요 한 번에?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 38, '상담사', '음 고객님 일일 이체한도가 지금 보니까 1회 10,000,000원 1일 50,000,000원으로 돼 있어서요 7,000,000원은 한 번에 문제없이 보내실 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 39, '고객', '아 다행이네요. 그럼 그 OTP 같은 거는 따로 필요 없어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 40, '상담사', '네 일정 금액 이상은 보안매체가 필요할 수 있는데요 7,000,000원이면 그 인증서랑 이체 비밀번호만으로도 진행되실 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 41, '고객', '아 네 그럼 지금 한번 해 볼게요. 어 계좌번호 넣고 금액 넣고 어 인증까지 됐어요. 이체 완료라고 뜨네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 42, '상담사', '아 네 잘 되셨네요. 받으시는 분 통장에도 바로 들어갔을 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 44, '상담사', '네 고객님 그럼 오늘 금융인증서 재발급이랑 정기예금 만기금 이체 방법까지 안내 도와드렸구요 더 궁금하신 거 있으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 2, '고객', '저기요 저 지금 좀 급한데요 제가 사기를 당한 거 같아가지고요 빨리 좀 막아 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 3, '상담사', '아 네 고객님 우선 침착하게 도와드릴게요. 본인확인 먼저 빠르게 할게요. 성함이랑 생년월일 좀 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 4, '고객', '네 [name] 요 생년월일 [birth]이요. 빨리요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 5, '상담사', '네 [name] 고객님 확인됐습니다. 어떤 상황이신지 간단히 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 6, '고객', '아 제가 주택담보대출 관련해서 전화가 와가지고요 무슨 금리 낮춰 준다고 그러길래 어 계좌번호랑 뭐 인증번호 같은 걸 불러 줬거든요. 근데 생각해 보니까 이거 피싱인 거 같아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 7, '상담사', '아 네 알겠습니다. 그럼 지금 바로 계좌 일시 정지 거치고 추가 피해 막아 드릴게요. 혹시 그쪽에 돈이 빠져나간 건 확인하셨어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 8, '고객', '어 모르겠어요 방금 일이라 무서워서 앱도 못 보겠고 그냥 일단 다 막아 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 9, '상담사', '네 지금 즉시 고객님 명의 계좌 전체에 지급정지 걸어 드릴게요. 잠시만요 어 처리 들어갑니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 10, '고객', '네네 빨리 좀요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 11, '상담사', '네 방금 입출금 계좌 2개랑 연결된 카드까지 다 일시 정지 처리됐습니다. 이제 그쪽으로 돈 빠져나가는 건 막혔어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 12, '고객', '아 다행이다. 근데 제가 부른 그 인증번호로 뭐 막 이체되고 그런 거 아니에요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 13, '상담사', '음 지금 최근 거래 내역 보니까요 다행히 출금이나 이체 시도된 건 아직 없네요. 막히기 직전이었던 거 같습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 14, '고객', '아 진짜 큰일 날 뻔했네요 휴. 근데 제가 불러 준 그 인증번호 그거 때문에 뭐 다른 데서 또 막 쓰이고 그러는 거 아니에요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 15, '상담사', '음 그 부분도 걱정되실 텐데요 지금 계좌랑 카드 다 정지된 상태라 그 번호로는 추가로 뭘 할 수가 없어요. 그리고 혹시 모르니까 인터넷뱅킹 비밀번호도 한 번 바꾸시는 걸 추천드려요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 16, '고객', '아 네 그것도 바꿔야겠네요. 이따 꼭 바꿀게요. 근데 이거 신고 같은 것도 해야 되는 거죠?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 17, '상담사', '네 보이스피싱은 경찰서 112로 신고하셔야 되구요 저희 쪽에서도 사고 접수 등록 같이 해 드릴게요. 등록해 드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 18, '고객', '네 해 주세요. 그리고 그 정지는 언제까지 가는 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 19, '상담사', '네 사고 접수 등록했구요 지급정지는 고객님이 직접 해제 요청하시거나 경찰 확인서 나오기 전까지는 계속 유지됩니다. 안전하게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 20, '고객', '아 네 그게 낫겠네요. 일단 며칠은 그냥 막아 둘게요. 근데 그동안 제 월급 들어오는 건 괜찮아요? 정지하면 입금도 안 되는 거 아니에요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 21, '상담사', '아 네 좋은 질문이세요. 지급정지는 나가는 출금만 막는 거라서요 입금은 정상적으로 들어옵니다. 월급은 걱정 안 하셔도 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 22, '고객', '아 들어오는 건 되는구나. 다행이네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 23, '상담사', '네 그렇게 하시는 게 안전합니다. 나중에 푸실 때는 신분증 가지고 영업점 오시거나 다시 전화 주시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 24, '고객', '네 알겠어요. 아 맞다 그리고 제가 어제 지갑을 잃어버렸는데 거기 체크카드도 같이 있었거든요. 그것도 좀 막아 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 25, '상담사', '아 네 체크카드 분실 신고요. 잃어버리신 카드가 혹시 어떤 카드인지 기억나세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 26, '고객', '어 그 끝자리가 [code]인가 그랬던 거 같은데 정확하진 않아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 27, '상담사', '네 조회해 보니까 끝자리 [code] 체크카드 1장 있으시네요. 이거 바로 분실 신고로 정지 걸어 드릴게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 28, '고객', '네 그렇게 해 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 29, '상담사', '네 분실 신고 처리됐구요 혹시 카드 새로 재발급도 같이 신청해 드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 30, '고객', '어 음 그건 좀 이따 생각해 볼게요. 일단 막는 게 급해서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 31, '상담사', '네 그럼 분실 정지만 걸어 두구요 나중에 재발급 원하시면 언제든 신청 가능하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 32, '고객', '네 그리고 아 제가 마지막으로 하나만 더 볼 게 있는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 33, '상담사', '네 말씀하세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 34, '고객', '어 그 혹시 제 통장에서 최근에 빠져나간 거 있나 입출금 내역 좀 확인하고 싶어서요. 불안해가지고.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 35, '상담사', '아 네 그럼요 최근 입출금 내역 같이 봐 드릴게요. 어느 계좌 기준으로 보실까요? 주거래 통장이요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 36, '고객', '네 그 월급 들어오는 통장이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 37, '상담사', '네 보니까 최근 일주일 내역은요 어제 카드 결제 12,000원 그저께 급여 입금 그리고 공과금 자동이체 정도네요. 이상한 출금은 없습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 38, '고객', '아 다행이다. 그 자동이체는 얼마 나간 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 39, '상담사', '네 자동이체는 관리비로 183,000원 나갔구요 평소 나가시던 그 금액이라 정상 거래로 보입니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 40, '고객', '아 네 맞아요. 그거 원래 나가는 거 맞아요 휴 이제 좀 안심이 되네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 41, '상담사', '네 다행입니다. 그래도 혹시 모르니까 며칠 동안 문자 알림 같은 거 잘 확인해 주세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 43, '상담사', '네 고객님 그럼 오늘 보이스피싱 사고 접수랑 계좌 지급정지 체크카드 분실 신고 그리고 입출금 내역 확인까지 도와드렸구요 더 필요하신 거 있으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 45, '상담사', '네 놀라셨을 텐데 빨리 연락 주셔서 잘 처리됐습니다. 좋은 하루 되세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 2, '고객', '어 네 제가 앱에서 뭐 좀 하려는데 자꾸 오류가 나가지고요 좀 짜증 나서 전화했어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 3, '상담사', '아 네 불편하셨겠네요. 확인 도와드릴게요. 본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 좀 부탁드려요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 4, '고객', '네 [name]구요 뒷자리 [code]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 어떤 화면에서 오류가 나는지 좀 자세히 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 6, '고객', '어 그 신용대출 한도 조회를 하려고 들어갔거든요. 근데 거기서 다음 버튼 누르면 자꾸 무슨 오류 코드가 뜨면서 튕겨요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 7, '상담사', '아 네 신용대출 조회 화면에서 오류가 나는 거군요. 혹시 그 오류 코드 같은 거 화면에 떴어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 8, '고객', '어 잠깐만요 다시 해 볼게요. 어 떴다 [code] 뭐 이렇게 뜨는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 9, '상담사', '네 [code] 코드면요 보통 일시적인 통신 오류이거나 앱 버전이 좀 오래된 경우에 나는 건데요 혹시 앱 업데이트 최근에 하셨어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 10, '고객', '어 글쎄요 업데이트는 잘 안 하는데 자동으로 되는 거 아니에요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 11, '상담사', '음 자동 업데이트 꺼져 있으면 안 될 수도 있어서요 일단 앱 한 번 완전히 종료하셨다가 다시 켜 보시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 12, '고객', '어 네 껐다 켰어요 다시 들어가 볼게요. 어 또 똑같이 그 오류 나는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 13, '상담사', '아 그래요? 그럼 스토어 들어가셔서 저희 앱 업데이트 있는지 한 번 확인해 보시겠어요? 보류 중인 업데이트가 있을 수도 있어서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 14, '고객', '어 스토어 들어왔는데 어 진짜 업데이트 버튼 있네요. 이거 누르면 돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 15, '상담사', '네 그거 눌러서 업데이트 한 번 해 주시구요 끝나면 다시 앱 켜서 조회 시도해 보세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 16, '고객', '네 지금 업데이트 중이에요. 어 좀 걸리네요. 어 됐다 다시 들어가서 한도 조회 해 볼게요. 어 오 이번엔 되네요. 한도 떴어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 17, '상담사', '아 네 잘 되셨네요. 그 오류는 앱 버전 문제였던 거 같습니다. 이제 정상적으로 조회되실 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 18, '고객', '아 진짜 별거 아니었네. 근데 아 맞다 그리고요 제가 오류 나기 전에 이체를 하나 했었는데 그게 좀 이상해요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 19, '상담사', '아 네 이체 관련해서요. 어떤 점이 이상하셨어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 20, '고객', '어 제가 친구한테 삼십 아 아니 그 130,000원을 보냈는데요 분명 이체 완료라고 떴거든요. 근데 친구는 안 들어왔대요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 21, '상담사', '아 네 그럼 그 이체 건 바로 확인해 볼게요 잠시만요. 어 보니까 오늘 오전에 130,000원 이체 시도하신 게 한 건 있는데요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 22, '고객', '네네 그거요. 그게 어떻게 된 거예요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 23, '상담사', '음 이게 상태가 처리 실패로 돼 있네요. 그 받는 분 계좌번호가 한 자리가 안 맞아서 반려된 거 같습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 24, '고객', '어 진짜요? 근데 왜 완료됐다고 떴어요 그럼 헷갈리게.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 25, '상담사', '아 네 그게 아까 그 앱 오류 때문에 화면 표시가 잘못 떴던 거 같아요. 실제로는 출금이 안 됐구요 고객님 통장에서 빠진 돈도 없습니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 26, '고객', '아 그래요 돈은 안 나갔어요 다행이네. 그럼 다시 보내면 되는 거죠?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 27, '상담사', '네 계좌번호 다시 정확히 확인하셔서 보내시면 되구요 이번엔 앱 업데이트도 됐으니까 정상적으로 처리되실 거예요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 28, '고객', '네 친구한테 계좌번호 다시 받아서 해 볼게요. 어 지금 했는데 이번엔 완료 떴고 친구도 들어왔대요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 29, '상담사', '아 네 잘 처리되셨네요. 다행입니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 30, '고객', '네 덕분에 해결됐네요 감사해요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 31, '상담사', '네 고객님 그럼 오늘 앱 오류는 업데이트로 해결됐구요 실패됐던 이체 건도 정상 처리되신 거 확인했습니다. 더 도와드릴 거 있으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 32, '고객', '아니요 없어요 수고하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 33, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 2, '고객', '아 네 안녕하세요 제가 전세자금대출 관련해서 좀 여쭤볼 게 있어서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 3, '상담사', '네 전세자금대출 문의시군요. 본인확인 먼저 좀 할게요. 성함이랑 생년월일 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 4, '고객', '네 [name] 요 생년월일 [birth]이요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 5, '상담사', '네 [name] 고객님 확인됐습니다. 어떤 점이 궁금하세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 6, '고객', '어 제가 이번에 전세 계약을 하나 하려고 하는데요 한도가 얼마나 나오는지랑 금리가 어떻게 되는지 좀 알고 싶어서요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 7, '상담사', '아 네 전세대출 한도는요 보통 보증금의 한 80%까지 가능하구요 다만 고객님 소득이나 보증기관 조건에 따라 좀 달라지거든요. 보증금이 얼마 정도세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 8, '고객', '어 보증금이 한 250,000,000 정도 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 9, '상담사', '네 그럼 단순 계산으로는 200,000,000 정도까지 가능하실 수 있는데요 정확한 건 소득 서류 보고 심사를 해 봐야 알 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 11, '상담사', '음 현재 전세대출 금리는요 대략 연 4.2%에서 4.8% 사이로 보시면 되구요 신용도나 우대조건에 따라 좀 내려갈 수도 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 13, '상담사', '네 급여이체나 카드 실적 청약통장 같은 거 있으시면 항목별로 조금씩 금리 우대가 들어가거든요. 다 합치면 한 점 몇 % 까지도 깎이실 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 14, '고객', '아 제가 급여이체는 여기로 받고 있긴 한데 청약통장은 없어요. 그래도 좀 깎이나요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 15, '상담사', '네 급여이체 하나만으로도 보통 0.1 내지 0.2% 정도는 우대가 들어가구요 거기에 카드까지 쓰시면 더 받으실 수 있어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 16, '고객', '아 그럼 카드도 좀 써야겠네요. 어 그리고 대출 실행은 언제까지 받아야 돼요? 계약을 곧 해야 되거든요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 17, '상담사', '음 보통 잔금 치르시는 날 맞춰서 실행되구요 서류 접수부터 심사까지 한 일주일에서 열흘 정도는 잡으시는 게 좋아요. 그래서 미리 신청해 두시는 걸 추천드려요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 18, '고객', '아 그렇구나. 그럼 좀 더 알아봐야겠네요. 어 그리고 그 김에 하나 더 여쭤볼게요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 19, '상담사', '네 말씀하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 20, '고객', '제가 예전에 받아 놓은 대출이 하나 있는데요 그거를 중간에 갚으면 수수료 같은 게 나온다던데 그게 어떻게 되나요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 21, '상담사', '아 네 중도상환수수료요. 잠시만요 기존 대출 조회해 볼게요. 어 보니까 작년에 받으신 대출 1건 있으시네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 22, '고객', '네네 그거요. 그거 지금 갚으면 수수료가 얼마나 나와요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 23, '상담사', '음 이게 받으신 지 1년 좀 넘으셨구요 중도상환수수료율이 잔액 기준으로 한 1.2% 정도 남아 있어서요 잔액이 지금 40,000,000원이니까 한 480,000원 정도 나오실 거 같아요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 24, '고객', '어 생각보다 좀 되네요. 이거 그냥 두는 게 나으려나.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 25, '상담사', '네 그건 고객님 상황에 따라 다른데요 이 수수료는 시간 지날수록 줄어들거든요. 3년 지나면 아예 면제되기도 하구요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 26, '고객', '아 그럼 좀 기다렸다 갚는 게 낫겠네요. 어 아니면 연장 같은 것도 되나요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 27, '상담사', '네 만기 연장도 가능하세요. 만기 한 달 전쯤 신청하시면 되구요 그때 금리는 그 시점 기준으로 다시 적용됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 28, '고객', '아 네 알겠어요. 그건 좀 더 고민해 볼게요. 아 맞다 그리고 마지막으로 하나만요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 29, '상담사', '네 그럼요 편하게 말씀하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 30, '고객', '어 제가 여윳돈이 좀 생겨서 적금을 하나 들까 하는데요 지금 가입 가능한 거 있어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 31, '상담사', '아 네 적금 신규 가입이요. 지금 판매 중인 상품 중에 정기적금이 연 3.5%짜리가 있구요 자유적금도 하나 있어요. 매달 정해진 금액 넣으실 거예요 아니면 자유롭게요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 32, '고객', '어 매달 한 300,000원씩 꾸준히 넣으려고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 33, '상담사', '네 그럼 정기적금이 금리도 더 높아서 유리하실 거예요. 가입 기간은 1년이랑 2년 중에 선택하실 수 있구요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 34, '고객', '어 그 2년짜리는 금리가 더 높아요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 35, '상담사', '네 2년이 1년보다 한 0.2% 정도 더 높구요 그래서 길게 넣으실 거면 2년이 좀 더 유리하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 36, '고객', '아 그럼 2년으로 할게요. 지금 바로 가입돼요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 37, '상담사', '네 앱에서 바로 개설 가능하세요. 적금 메뉴 들어가셔서 정기적금 선택하시구요 월 납입액 300,000원 기간 2년으로 설정하시면 됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 38, '고객', '어 네 적금 메뉴 들어왔구요 정기적금 골랐어요. 어 금액이랑 기간 넣고 어 인증하라는데.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 39, '상담사', '네 인증서로 인증하시고 출금 계좌만 지정해 주시면 개설 완료됩니다.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 40, '고객', '어 됐어요 가입 완료라고 뜨네요. 첫 회차도 빠져나갔구요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 41, '상담사', '아 네 잘 가입되셨네요. 매달 같은 날짜에 자동으로 출금되니까 잔액만 좀 챙겨 두시면 돼요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 42, '고객', '네 알겠어요 오늘 이것저것 많이 물어봤네요 감사해요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 43, '상담사', '네 고객님 그럼 오늘 전세대출 한도랑 금리 안내 기존 대출 중도상환수수료 확인 그리고 정기적금 신규 가입까지 도와드렸습니다. 더 궁금하신 거 있으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 44, '고객', '아니요 다 됐어요 수고하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 45, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 2, '고객', '아 네 제가 이체를 하려는데 자꾸 실패가 떠가지고요 좀 답답해서 전화했어요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 3, '상담사', '아 네 불편을 드렸네요. 확인 도와드릴게요. 본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 부탁드려요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 4, '고객', '네 [name] 요 뒷자리 [code]요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 어디로 이체하시다가 실패가 났는지 말씀해 주시겠어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 6, '고객', '어 제가 체크카드 대금 결제할 돈을 다른 은행 계좌로 보내려고 했거든요. 한 2,000,000원 정도요. 근데 실패라고 뜨더라고요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 7, '상담사', '아 네 2,000,000원 이체요. 잠시만요 거래 내역 좀 볼게요. 어 보니까 오늘 이체 실패 건이 2건 찍혀 있네요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 8, '고객', '네네 제가 2번 시도했어요. 둘 다 안 돼가지고.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 9, '상담사', '음 이게요 실패 사유가 이체한도 초과로 나와 있어요. 혹시 오늘 다른 이체도 좀 하셨어요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 43, '상담사', '네 고객님 그럼 오늘 이체 실패 원인 확인하고 이체한도 10,000,000원으로 변경 그리고 모바일 OTP 발급까지 도와드렸습니다. 더 필요하신 거 있으세요?');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 44, '고객', '아니요 다 됐어요 수고하세요.');
-INSERT INTO public.qa_conversations ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 45, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 34, '고객', '네네 고맙습니다 수고하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 26, '고객', '34번은 어 [code]요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 43, '고객', '네 감사합니다. 덕분에 잘 처리했네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 42, '고객', '네네 그럴게요. 정말 감사합니다 빨리 막아 주셔서.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 10, '고객', '아 네 그럼 금리는요? 요즘 많이 올랐다던데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 2, '고객', '아 저기요 제가 방금 이체를 했는데 이게 자꾸 실패가 떠가지고요 좀 답답해서 전화했어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 3, '상담사', '아 네 이체가 안 되셨군요. 불편을 드려서 죄송합니다. 확인 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 4, '고객', '네 [name] 요 [birth]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 5, '상담사', '네 [name] 고객님 확인됐습니다. 언제쯤 이체하시려고 했던 거예요? 시간 좀 기억나세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 6, '고객', '어 한 조금 전에요. 점심 먹고 바로 했으니까 1시 좀 넘어서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 7, '상담사', '네 알겠습니다. 그 이체할 때 어떤 메시지가 뜨던가요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 8, '고객', '어 그게 한도 초과인가 뭔가 그런 게 뜨다가 또 어떤 때는 그냥 처리 실패라고만 떠요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 9, '상담사', '아 네 잠시만요 거래 내역 좀 볼게요. 음 지금 보니까 1시 20분쯤에 1,500,000원 이체 시도하신 게 2번 정도 실패로 찍혀 있네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 10, '고객', '네 맞아요 그거요. 돈은 안 빠졌죠 혹시?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 11, '상담사', '네 걱정 마세요. 실패 처리돼가지고 출금은 안 되셨구요 잔액 그대로 있으세요. 이게 한도 때문에 막힌 거 같거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 12, '고객', '아 한도요? 제가 그렇게 많이 보낸 것도 아닌데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 13, '상담사', '네 그게 오늘 이미 다른 이체가 좀 있으셨던 거 같아가지고요. 그러면 지금 이체 한도 한번 같이 조회해 보시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 14, '고객', '네 그래요 그거 좀 봐주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 15, '상담사', '네 지금 고객님 1회 이체 한도가 1,000,000원으로 돼 있구요 하루 한도는 3,000,000원으로 설정돼 있으세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 16, '고객', '아 그래서 150만이 안 됐구나. 1회에 1,000,000원밖에 안 되니까.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 17, '상담사', '네 맞아요 정확하게 보셨어요. 그 1회 한도가 낮아가지고 막힌 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 18, '고객', '그러면 이거 좀 올려주세요. 1회에 한 3,000,000원 정도로요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 19, '상담사', '네 한도 변경 도와드릴게요. 다만 한도를 올리시려면 보안 매체 인증이 필요하거든요. 혹시 OTP나 보안카드 가지고 계세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 20, '고객', '어 보안카드는 있는데 OTP는 없어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 21, '상담사', '네 보안카드로도 가능하세요. 그러면 1회 한도를 3,000,000원 하루 한도는 5,000,000원 정도로 올려드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 22, '고객', '네 그렇게 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 23, '상담사', '네 보안카드 코드 좀 불러주실게요. 화면에 나오는 번호가 어떻게 되세요? 12번 자리요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 24, '고객', '어 12번이 그 [code]구요 그 다음에 또 뭐 불러요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 25, '상담사', '네 그거랑 34번 자리도 같이 불러주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 27, '상담사', '네 확인됐습니다. 1회 3,000,000원 하루 5,000,000원으로 한도 변경 처리됐구요 이제 아까 그 1,500,000원 이체 다시 하시면 정상적으로 되실 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 28, '고객', '아 네 다행이다. 그리고 하나만 더 물어봐도 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 29, '상담사', '네 그럼요 말씀하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 30, '고객', '그 OTP라는 거 그거 발급받으면 뭐가 좋아요? 보안카드랑 뭐가 달라요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 31, '상담사', '아 네 OTP는요 그 숫자가 1분마다 계속 바뀌거든요. 그래서 보안카드보다 훨씬 안전하시구요 한도도 더 높게 쓰실 수가 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 32, '고객', '아 그래요? 그러면 그게 낫겠네 그거 어떻게 발급받아요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 33, '상담사', '네 OTP는 실물 카드형이랑 휴대폰 앱으로 쓰는 거 2가지가 있는데요 앱으로 쓰시는 건 영업점 안 가셔도 바로 발급되세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 34, '고객', '오 그러면 앱으로 할래요. 그거 지금 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 35, '상담사', '네 지금 신청 도와드릴게요. 발급 후에 앱에서 OTP 등록만 한번 해주시면 바로 쓰실 수 있구요 등록 방법은 문자로 안내해 드릴게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 36, '고객', '네 좋아요 그렇게 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 37, '상담사', '네 앱 OTP 발급 신청 처리됐구요 안내 문자 곧 가실 거예요. 혹시 등록하시다 막히시면 다시 전화 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 38, '고객', '아 네 알겠습니다 도움 많이 됐어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 39, '상담사', '네 그럼 오늘 정리해 드리면요 이체 실패는 1회 한도 때문이셨구요 한도를 1회 3,000,000원 하루 5,000,000원으로 올려드렸고 앱 OTP 발급까지 신청 도와드렸습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 40, '고객', '네네 감사합니다 수고하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1002-0720', 41, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 2, '고객', '아 네 제가 통장 입출금 내역 좀 확인하고 싶은데요 뭐가 좀 이상해가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 3, '상담사', '네 입출금 내역 조회 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 4, '고객', '[name] 요 뒷자리 [code]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 어떤 내역을 보고 싶으세요? 기간이 어떻게 되세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 6, '고객', '어 한 이번 달 초부터요. 뭔가 빠져나간 게 있는 거 같은데 기억이 안 나서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 7, '상담사', '네 6월 1일부터 오늘까지 조회해 볼게요. 잠시만요 음 보니까 6월 3일에 45,000원 그리고 6월 5일에 20,000원 이렇게 출금이 있으셨네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 8, '고객', '45,000원 그게 뭐죠? 제가 쓴 기억이 없는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 9, '상담사', '네 이게 자동이체로 나간 거구요 통신요금으로 찍혀 있어요. 그 다음 20,000원은 어 정기예금 적립으로 나가신 거네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 10, '고객', '아 통신비 그게 그렇게 나왔구나. 카드로 내는 줄 알았는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 11, '상담사', '네 그게 자동이체로 등록이 돼 있으셔가지고 매달 3일에 빠지게 돼 있으세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 12, '고객', '아 그래요. 그러면 입금된 것도 좀 볼 수 있어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 13, '상담사', '네 입금 내역도 보면요 6월 1일에 급여로 2,800,000원 들어오셨구요 그 외에는 따로 입금은 없으세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 14, '고객', '네네 그건 맞아요 알겠어요. 내역은 대충 확인했네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 15, '상담사', '네 혹시 더 보고 싶으신 기간 있으실까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 16, '고객', '아니요 그건 됐구요. 아 그리고 그 자동이체 말인데요 좀 정리를 하고 싶어가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 17, '상담사', '네 자동이체 변경이나 해지 도와드릴까요? 어떤 걸 정리하고 싶으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 18, '고객', '그 통신비 자동이체 있잖아요. 그거 날짜를 좀 바꾸고 싶어요. 3일은 너무 일러가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 19, '상담사', '네 통신요금 자동이체 출금일 변경 도와드릴게요. 며칠로 바꿔드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 20, '고객', '어 급여가 1일에 들어오니까 한 27일 정도로 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 21, '상담사', '어 고객님 통신요금은 출금일이 약정이 돼 있어서 25일 아니면 말일 이렇게만 가능하거든요. 둘 중에 어떤 걸로 하시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 22, '고객', '아 그래요. 그럼 25일로 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 23, '상담사', '네 매달 25일로 변경해 드릴게요. 잠시만요 네 출금일 25일로 변경 처리됐습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 24, '고객', '네 그리고 그 정기예금 적립되는 거 있잖아요 그건 그냥 두고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 25, '상담사', '네 정기예금 자동이체는 그대로 유지하시는 거죠? 그건 손 안 댈게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 26, '고객', '네네 그렇게 해주세요. 아 그리고 혹시 새로 자동이체 하나 더 걸 수도 있어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 27, '상담사', '네 그럼요. 새로 등록도 가능하세요. 어디로 나가는 걸로 등록해 드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 28, '고객', '그 관리비요. 매달 230,000원 정도 나가는데 그걸 자동으로 좀 빠지게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 29, '상담사', '네 관리비 납부 계좌하고 출금일 알려주시면 등록해 드릴게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 30, '고객', '어 출금일은 매달 10일로 하구요 계좌는 그 관리사무소에서 받은 게 끝자리가 [code]요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 31, '상담사', '네 매달 10일에 230,000원 끝자리 [code] 계좌로 자동이체 신규 등록해 드렸습니다. 첫 출금은 다음 달 10일부터 나가세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 32, '고객', '아 네 좋아요 깔끔하게 정리됐네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 33, '상담사', '네 그럼 정리해 드리면요 입출금 내역 조회 도와드렸구요 통신요금 자동이체 출금일을 25일로 바꿔드렸고 관리비 자동이체 신규 등록까지 처리해 드렸습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1003-0720', 35, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 보내세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 2, '고객', '아 네 저기 제가 지금 신용대출 한도랑 금리 좀 알아보려고 하는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 3, '상담사', '네 대출 한도하고 금리 조회 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 4, '고객', '어 [name]구요 뒷자리 [code]요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 음 지금 보니까 고객님 신용 등급 기준으로 한도가 한 4,000만 원 정도 나오시는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 6, '고객', '아 4,000만이요? 음 제가 생각했던 거보단 좀 적네요. 한 5,000만 정도는 될 줄 알았는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 7, '상담사', '네 그게 지금 고객님 소득이랑 기존 대출 같이 보고 산정되는 거라서요. 혹시 소득 증빙 추가로 내시면 한도가 좀 더 올라갈 수도 있으세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 8, '고객', '아 그래요? 일단은 뭐 4,000만도 나쁘진 않고요. 금리는 어떻게 되는데요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 9, '상담사', '네 금리는 지금 변동금리로 하시면 연 5.2% 정도 나오시구요. 고정으로 하시면 좀 더 높아가지고 5.6% 정도 되세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 10, '고객', '음 생각보다 좀 높네요. 제가 급여 통장 여기 쓰고 있는데 그러면 좀 깎이거나 그런 거 없어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 11, '상담사', '아 맞아요. 급여 이체 실적 있으시면 우대금리 들어가가지고요 한 0.3% 정도 빠지세요. 그러면 변동으로 4.9 정도 보시면 되겠네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 12, '고객', '아 네네 그 정도면 그래도 괜찮은 거 같기도 하고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 13, '상담사', '네 그리고 입출금통장 같이 쓰시면서 카드 실적도 좀 있으시면 추가로 우대 더 받으실 수 있거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 14, '고객', '아 그래요 알겠습니다. 일단 한도랑 금리는 대충 감 잡았네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 15, '상담사', '네 더 궁금하신 거 있으실까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 16, '고객', '아 그리고 하나만 더요. 제가 예전에 받은 대출이 하나 있는데 그걸 좀 중도상환을 할까 해가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 17, '상담사', '네 기존 대출 중도상환 문의시죠? 잠시만요 조회 좀 해볼게요. 어 지금 잔액이 12,000,000원 정도 남아 계시네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 18, '고객', '네 맞아요. 그거 다 갚으면 수수료 뭐 그런 거 나와요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 19, '상담사', '네 그 부분 확인해서 안내드릴게요. 혹시 전액을 한 번에 다 갚으실 거예요? 아니면 일부만 갚으실 생각이세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 20, '고객', '어 그게 지금 여유가 좀 생겨가지고요 그냥 다 갚아버릴까 했거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 21, '상담사', '음 고객님 이 대출이 약정일이 아직 좀 남아 있어가지고요 중도상환 수수료가 발생하긴 하는데 잔액에 한 0.7% 그러니까 한 80,000원 조금 넘게 나오시네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 22, '고객', '아 80,000원이요? 음 그게 좀 아깝긴 한데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 23, '상담사', '네 그쵸. 근데 약정 만기가 이제 한 넉 달 정도 남으셨거든요. 만기까지 기다리셨다가 상환하시면 수수료가 아예 없으세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 24, '고객', '아 그러면 그냥 좀 기다렸다가 갚는 게 낫겠네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 25, '상담사', '네 보통은 그렇게 많이들 하세요. 아니면 혹시 만기 연장도 가능하신데 연장하시면 금리가 지금보다 조금 오를 수는 있거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 26, '고객', '음 연장은 됐구요 그냥 만기 때 정리할게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 27, '상담사', '네 알겠습니다. 그러면 따로 신청 안 하셔도 되구요 만기 가까워지면 안내 문자 한번 더 가실 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 28, '고객', '네네 그리고 아 맞다 제가 적금 하나 들려고도 했었거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 29, '상담사', '아 네 적금 신규 가입 도와드릴까요? 어떤 상품으로 생각하고 계셨어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 30, '고객', '그냥 매달 조금씩 넣는 거요. 한 300,000원씩 1년짜리로요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 31, '상담사', '네 그러면 1년 정기적금으로 월 300,000원 하시면 되는데요 지금 금리가 연 3.8% 들어가시구요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 32, '고객', '아 3.8이요? 음 일반 예금보다는 좀 높네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 33, '상담사', '네 그쵸. 적금이 아무래도 매달 넣으시는 거라서 금리가 좀 더 높게 들어가구요 만기에 이자 한 번에 받으시는 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 34, '고객', '아 네 그 이자에서 세금 같은 것도 떼고 그래요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 35, '상담사', '네 이자소득세가 일반 과세로 떼이긴 하는데요 혹시 비과세 조건 되시면 그건 또 따로 안내해 드릴 수 있어요. 일단 일반으로 가입하실게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 36, '고객', '네네 일반으로 할게요. 그거 입출금통장에서 자동으로 빠지게 할 수 있죠?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 37, '상담사', '네 그럼요. 고객님 입출금통장에서 매달 자동이체로 빠지게 설정해 드릴게요. 이체일은 며칠로 하시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 38, '고객', '어 그 월급 들어오고 나서니까 25일로 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 39, '상담사', '네 매달 25일에 300,000원씩 자동이체로 설정하구요 만기는 내년 6월 8일이 되시겠네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 40, '고객', '네 좋아요 그렇게 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 41, '상담사', '네 가입 진행할게요. 잠시만요 어 네 정기적금 월 300,000원 1년 만기로 신규 가입 처리됐구요 계좌번호는 가입 완료 문자로 보내드릴게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 42, '고객', '아 네 감사합니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 43, '상담사', '네 그럼 정리해 드리면요 신용대출 한도하고 금리 안내드렸구요 기존 대출은 만기 때 상환하시기로 하셨고 정기적금 월 300,000원으로 신규 가입까지 도와드렸습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 44, '고객', '네네 잘 들었어요 수고하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1001-0720', 45, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 보내세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 20, '고객', '어 그리고요 제가 막상 정지 거니까 좀 불편한 게 있는데 제 체크카드도 같이 잠긴 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 21, '상담사', '아 네 계좌 묶이면서 연결된 카드도 같이 정지됐을 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 22, '고객', '아 그러면 제가 평소에 쓰던 카드는 이제 못 쓰는 거네요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 23, '상담사', '지금은 그렇죠. 근데 안전 확인되면 잠김 해제는 다시 해드릴 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 24, '고객', '아 맞다 그리고 제가 카드를 어디다 뒀는지 모르겠어가지고요 분실 신고도 좀 해야 될 것 같은데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 25, '상담사', '아 카드가 안 보이세요? 그럼 분실 신고로 정식 처리하는 게 안전하겠네요. 카드 끝자리 혹시 기억나세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 26, '고객', '어 그 끝자리가 [code] 이거 맞나 가물가물하네.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 27, '상담사', '네 끝자리 [code] 카드 조회되고요 이 카드 분실 신고로 정지 처리하겠습니다. 분실 신고하면 기존 카드는 완전히 사용 정지되거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 28, '고객', '네 그렇게 해주세요. 새 카드는 어떻게 받아요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 29, '상담사', '재발급 신청해드리면 등록된 주소로 한 4~5일 정도면 받으실 수 있어요. 지금 같이 신청해드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 30, '고객', '어 네 신청해 주세요. 주소는 예전 거 그대로예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 31, '상담사', '네 등록된 주소로 발송할게요. 재발급 신청 접수됐고요 신청비는 무료입니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 32, '고객', '아 다행이네요. 근데 그 안전계좌 어쩌고 한 게 너무 찜찜해가지고.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 33, '상담사', '네 충분히 그러실 수 있어요. 추가로 의심되는 거 있으시면 언제든 연락 주시면 됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 34, '고객', '아 그리고 하나만 더요 제가 자동이체 걸어둔 게 있거든요. 그게 그 정지 때문에 빠져나갔는지 안 빠졌는지 좀 보고 싶은데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 35, '상담사', '아 네 입출금 내역 조회 도와드릴게요. 어느 기간으로 보시면 될까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 36, '고객', '어 최근 한 일주일 정도요. 자동이체가 매달 25일에 나가거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 37, '상담사', '네 잠시만요 조회해볼게요. 음 최근 일주일 내역 보면 25일에 통신비 자동이체 41,000원 정상 출금됐고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 39, '상담사', '네 그 외에는 어제 고객님이 송금하신 2,500,000원 출금 건이랑요 그 이후로는 정지 때문에 추가 출금은 없습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 40, '고객', '아 그러면 보험료 자동이체도 있는데 그건 며칠에 나가는지 모르겠네.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 41, '상담사', '음 보험료는 매달 10일에 출금되는 걸로 등록돼 있고요 이번 달 건은 이미 처리된 상태예요. 35,000원이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 42, '고객', '아 네네 그럼 다음 달 자동이체는 정지 풀려야 나가는 거죠?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 43, '상담사', '맞아요. 정지 상태에서는 자동이체도 막혀가지고요 사고 조사 끝나고 해제되면 정상적으로 다시 빠져나갑니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 44, '고객', '아 알겠어요. 그럼 일단 이 정도면 됐어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 45, '상담사', '네 고객님 그럼 오늘 처리한 내용 정리해드릴게요. 보이스피싱 피해 신고하시면서 계좌 일시 정지랑 상대 계좌 지급정지 요청 접수했고요 분실하신 카드 끝자리 [code] 정지하고 재발급 신청까지 진행했습니다. 마지막으로 자동이체 출금 내역 조회까지 확인해드렸어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 46, '고객', '네네 고생하셨어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 47, '상담사', '네 경찰 신고 접수번호 꼭 챙기시고요 더 궁금하신 점 있으시면 다시 연락 주세요. 감사합니다 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 2, '고객', '어 저기 제가 모바일뱅킹 앱을 쓰는데요 이게 자꾸 오류가 나가지고 좀 답답해서 전화드렸어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 3, '상담사', '아 네 불편하셨겠네요. 어떤 화면에서 오류가 나는지 좀 자세히 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 4, '고객', '그 로그인은 되는데요 메뉴 들어가면 자꾸 흰 화면만 뜨고 멈춰버려요. 빙글빙글 돌기만 하고.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 5, '상담사', '음 그러시군요. 본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일 말씀해 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 6, '고객', '네 [name] 요 [birth]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 7, '상담사', '네 [name] 고객님 확인됐습니다. 혹시 앱 버전이 최신인지 확인해보셨을까요? 업데이트 안 되면 그런 증상이 좀 있거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 8, '고객', '어 그건 잘 모르겠는데 저번 주에 업데이트 하라 그래서 한 것 같기도 하고.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 9, '상담사', '아 네 그럼 혹시 앱 한 번 완전히 종료했다가 다시 켜보셨어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 10, '고객', '어 그냥 껐다 켜기만 했지 완전 종료는 잘 모르겠네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 11, '상담사', '네 그럼 제가 안내드릴게요. 앱을 백그라운드에서 완전히 닫으시고요 잠시 후에 다시 실행해보시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 12, '고객', '어 잠깐만요 지금 해볼게요. 음 닫고 다시 켰는데 똑같이 흰 화면 떠요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 13, '상담사', '음 그러면 캐시 문제일 수도 있어가지고요 혹시 앱을 한 번 삭제하고 재설치 해보실 수 있으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 14, '고객', '아 삭제하면 제 공인인증서 같은 거 다 날아가는 거 아니에요? 그게 좀 걱정인데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 15, '상담사', '아 인증서는 따로 저장 위치가 있어가지고 재설치해도 보통은 유지되는데요 혹시 모르니까 클라우드나 PC에 백업 한 번 해두시면 안심이에요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 16, '고객', '아 그렇구나. 그럼 일단 알겠어요. 근데 그게 진짜 제 폰 문제예요 아니면 은행 쪽 문제예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 17, '상담사', '지금 시스템 점검 이력 보면 특별히 장애는 없는 상태인데요 간헐적으로 특정 기기에서 그런 증상 접수되는 경우가 있어요. 그래서 재설치로 대부분 해결되거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 18, '고객', '아 알겠어요. 그건 이따 집에서 해볼게요. 아 그리고요 사실 제가 전화한 진짜 이유가 따로 있는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 19, '상담사', '네 말씀하세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 20, '고객', '그 어제 친구한테 돈을 좀 보냈거든요. 근데 이게 이체가 됐다는 건지 안 됐다는 건지 모르겠어가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 21, '상담사', '아 이체 처리가 애매하게 됐군요. 어제 몇 시쯤 얼마를 어디로 보내셨어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 22, '고객', '어 저녁 한 8시쯤이요. 금액은 120,000원 아 150,000원이요. 친구 다른 은행 계좌로요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 23, '상담사', '네 잠시만요 어제 저녁 출금 내역 한번 볼게요. 음 어제 20시 4분에 150,000원 출금 시도가 있었는데요 이게 처리 중 상태로 멈춰 있네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 24, '고객', '어 그게 무슨 말이에요? 그럼 돈이 나간 거예요 안 나간 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 25, '상담사', '음 출금은 잡혀 있는데 상대 은행으로 입금 완료 처리가 안 돼가지고요 아마 그때 앱 오류랑 같이 거래가 중간에 끊긴 것 같아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 26, '고객', '아 진짜요? 그럼 제 돈은 지금 어디 있는 거예요? 빠져나가긴 했잖아요 그쵸?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 27, '상담사', '네 일단 고객님 계좌에서는 출금 표시가 떠 있는데요 이런 미결제 건은 보통 영업일 기준 하루 안에 자동으로 취소돼서 다시 입금되거나 정상 처리되거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 28, '고객', '아 그러면 저는 그냥 기다리면 되는 거예요? 친구는 못 받았다 그러던데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 29, '상담사', '네 친구분이 아직 못 받으셨으면 입금 실패 건이 맞고요 제가 지금 이 거래 강제 취소 요청 넣어드릴게요. 그럼 오늘 안으로 고객님 계좌로 150,000원 다시 돌아옵니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 31, '상담사', '네 미결제 거래 취소 요청 접수했고요 처리되면 문자로 알림 가게 해뒀습니다. 다시 보내실 때는 앱 재설치 후에 하시는 게 안전할 것 같아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 32, '고객', '네 알겠어요. 아 다행이다 안 그래도 친구가 자꾸 물어봐서.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 33, '상담사', '네 고객님 그럼 오늘 모바일뱅킹 흰 화면 오류는 재설치로 안내드렸고요 어제 멈춰 있던 150,000원 이체 건은 취소 요청 넣어서 환입 처리하기로 했습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 35, '상담사', '네 환입되면 문자 확인하시고요 더 궁금하신 점 있으시면 다시 연락 주세요. 감사합니다 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 2, '고객', '어 안녕하세요 제가 대출을 좀 알아보려고 하는데요 한도랑 금리가 어떻게 되는지 좀 여쭤보려고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 2, '고객', '아 저기 제가 금융인증서가 만료됐다고 자꾸 떠가지고요 이거 갱신을 좀 해야 되는데 어떻게 하는지 잘 몰라서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 3, '상담사', '네 금융인증서 갱신 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 4, '고객', '네 [name] 요 [birth]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 5, '상담사', '네 [name] 고객님 확인됐습니다. 지금 인증서가 만료되셨다고 뜨는 거죠? 음 보니까 작년 6월에 발급받으신 게 기간이 다 됐네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 6, '고객', '네 맞아요. 이거 갱신하면 따로 또 뭐 비밀번호 같은 거 새로 만들어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 7, '상담사', '아 갱신은요 기존 거를 그대로 연장하시는 거라서 새로 만드시는 거랑은 좀 다르구요 인증서 비밀번호는 그대로 쓰시면 되세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 8, '고객', '아 그래요 다행이네요. 비밀번호 또 외우는 거 진짜 싫어가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 9, '상담사', '네 맞아요 많이들 그러세요. 갱신은 그냥 기간만 늘려드리는 거라 새로 외우실 건 없으세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 10, '고객', '근데 이게 그 공동인증서랑 금융인증서랑 다른 거예요? 저는 좀 헷갈려가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 11, '상담사', '아 네 그게요 공동인증서는 예전에 그 공인인증서라고 부르던 거구요 금융인증서는 좀 더 최근에 나온 건데 클라우드에 저장돼서 따로 USB나 그런 거 없이 쓰실 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 12, '고객', '아 그러면 제 건 금융인증서인 거죠?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 13, '상담사', '네 맞아요. 고객님 거는 금융인증서로 발급돼 있으세요. 그래서 폰만 있으시면 어디서든 쓰실 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 38, '고객', '아 그건 나갔구나. 또 다른 건 없어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 14, '고객', '아 그렇구나. 그러면 어디서 갱신해요? 앱에서 하나요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 15, '상담사', '네 앱에서 하시면 되구요 인증센터 메뉴 들어가시면 인증서 관리 거기에 갱신 버튼 있거든요. 거기서 진행하시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 16, '고객', '음 잠깐만요 어 들어왔는데 갱신 누르니까 비밀번호 입력하라는데 이게 어 자꾸 틀렸다고 나와요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 17, '상담사', '아 네 비밀번호가 안 맞으시는군요. 혹시 몇 번 정도 틀리셨어요? 5번 넘게 틀리시면 잠기거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 18, '고객', '어 한 3번 4번 정도 친 거 같은데 기억이 가물가물해가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 19, '상담사', '네 그러면 더 시도하지 마시구요 잠기기 전에 비밀번호를 초기화하시는 게 나으세요. 초기화하면 새로 설정하실 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 20, '고객', '아 네 그럼 그거 좀 초기화해 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 21, '상담사', '네 인증서 비밀번호 초기화 도와드릴게요. 다만 보안 때문에 추가 인증이 필요한데 등록된 휴대폰으로 인증번호 하나 보내드릴게요. 받으시면 불러주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 22, '고객', '네 어 왔어요 [code]요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 23, '상담사', '네 [code] 확인됐습니다. 비밀번호 초기화 처리됐구요 이제 앱에서 인증서 새 비밀번호 설정하시고 바로 갱신 진행하시면 되세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 24, '고객', '어 잠깐만요 어 됐다 비밀번호 새로 만들었구요 갱신도 됐네요 오 감사합니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 25, '상담사', '네 잘 되셨다니 다행이에요. 인증서 유효기간은 다시 1년으로 연장되셨어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 26, '고객', '네네 그리고 아 맞다 하나만 더 물어볼게요. 제가 이체를 잘 안 해봐가지고요 이거 어떻게 하는지 좀 알려주실 수 있어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 27, '상담사', '아 네 그럼요. 이체 방법 안내해 드릴게요. 앱 메인 화면에서 이체 버튼 누르시면 받는 분 계좌번호 입력하는 화면이 나오거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 28, '고객', '아 네 그 다음에는요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 29, '상담사', '네 거기 은행 선택하시고 계좌번호 넣으시면 받는 분 이름이 한번 뜨거든요. 그거 맞는지 확인하시고 금액 넣으시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 30, '고객', '음 그러면 그 금액 넣고 나서 바로 보내져요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 31, '상담사', '네 금액 넣으신 다음에 확인 누르시면 인증서 비밀번호나 아까 그 인증서로 한번 인증하시구요 그러면 이체가 완료되세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 32, '고객', '아 그 인증서가 이럴 때 쓰이는 거구나. 그래서 갱신해야 했던 거네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 33, '상담사', '네 맞아요 정확하세요. 이체나 중요한 거래할 때 인증서로 본인 확인을 하는 거거든요. 그래서 만료되시면 이체가 안 되셨던 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 34, '고객', '아 그러면 받는 사람 이름 안 뜨면 보내면 안 되겠네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 35, '상담사', '네 맞아요. 이름 안 뜨거나 모르는 이름 뜨면 일단 멈추시구요 계좌번호 다시 한번 확인하시는 게 안전하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 36, '고객', '아 네 그건 명심할게요. 이제 이해됐어요. 그러면 지금은 이체 잘 되겠네요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 37, '상담사', '네 이제 인증서 갱신되셨으니까 정상적으로 이체 가능하세요. 처음 하실 때 한도가 좀 낮을 수 있으니까 그것도 참고하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 38, '고객', '아 네 한도요 그건 나중에 필요하면 또 여쭤볼게요. 오늘은 이거면 됐어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 39, '상담사', '네 그럼 정리해 드리면요 금융인증서 갱신 도와드렸구요 비밀번호가 안 맞으셔서 초기화해 새로 설정해 드렸고 이체 방법까지 안내해 드렸습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 40, '고객', '네네 친절하게 알려주셔서 고맙습니다 수고하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1004-0720', 41, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 2, '고객', '아 저기요 저 지금 급해서 그러는데 제가 사기를 당한 거 같아가지고요 보이스피싱 그거요 빨리 좀 막아주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 3, '상담사', '네 고객님 많이 놀라셨겠어요. 제가 바로 도와드릴게요. 우선 본인확인 빠르게 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 4, '고객', '네 [name]구요 뒷자리 [code]이요 [name] 요 돈 또 빠질까 봐 무서워요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 우선 계좌부터 바로 지급 정지 걸어드릴게요. 어떤 일이 있으셨는지 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 6, '고객', '어 검찰이라고 전화가 와가지고 제 계좌가 범죄에 쓰였다고 안전 계좌로 옮기라 그래서 어 3,000,000원을 보냈거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 7, '상담사', '네 그러셨군요. 혹시 그 사람한테 OTP 번호나 비밀번호 같은 거 알려주신 건 없으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 8, '고객', '어 비밀번호는 안 알려준 거 같은데 어 무슨 앱을 깔라고 해서 깔긴 했어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 9, '상담사', '아 네 그 앱은 원격으로 폰을 조종하는 악성 앱일 수 있거든요. 통화 끝나시면 그 앱 꼭 바로 삭제하시구요 일단 지금 계좌부터 막을게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 10, '고객', '네네 무서워라 빨리 좀 막아주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 11, '상담사', '아 네 그거 전형적인 보이스피싱 수법이세요. 절대 고객님 잘못 아니구요 일단 지금 고객님 모든 계좌 출금하고 이체 다 일시 정지 걸었습니다. 더 이상은 안 빠져나가세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 12, '고객', '아 다행이다. 그 보낸 3,000,000원은요 그건 어떻게 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 13, '상담사', '네 그 보내신 상대방 계좌에 대해서도 저희가 지급 정지 요청을 바로 넣을 거구요 혹시 그 돈이 아직 안 빠져나갔으면 돌려받으실 수도 있으세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 34, '고객', '네네 고마워요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 14, '고객', '어 정말요? 그러면 그거 빨리 좀 해주세요 제발요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 8, '고객', '네 직장인이고요 연봉은 한 5,000 정도 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 48, '고객', '네 고생하셨어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 3, '상담사', '네 대출 상담 도와드릴게요. 본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리 4자리요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 4, '고객', '네 [name]고요 뒷자리는 [code]예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 혹시 어떤 용도 대출 알아보세요? 신용대출 쪽이세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 6, '고객', '어 신용대출이요. 한 40,000,000~50,000,000원 정도 필요할 것 같은데 제가 받을 수 있을지 모르겠네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 7, '상담사', '네 한도는 고객님 소득이랑 신용도 거래 실적 이런 거 종합해서 산정되거든요. 혹시 직장인이세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 9, '상담사', '네 그러시면 우선 가조회 기준으로 보면요 한도는 한 40,000,000에서 50,000,000원 사이 정도 가능성 있어 보이고요 금리는 신용등급 따라 좀 달라지는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 10, '고객', '아 금리는 대략 몇 % 정도예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 11, '상담사', '음 현재 기준으로 보면 연 4.5%에서 6.2% 사이로 나올 가능성이 높고요 정확한 건 정식 심사 들어가봐야 알 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 12, '고객', '아 생각보다 금리가 좀 있네요. 그 우대 같은 건 없어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 13, '상담사', '아 우대금리 있어요. 급여이체 하시거나 자동이체 건수 있으시면 최대 한 0.5% 정도까지 깎이거든요. 그리고 OTP나 보안카드로 모바일 거래 실적 있으셔도 일부 우대돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 14, '고객', '아 그래요 저 여기로 월급 받고 있긴 한데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 15, '상담사', '아 그러면 급여이체 우대 적용되셔서 실제로는 좀 더 낮게 나오실 거예요. 한번 정식으로 신청해보시는 것도 좋아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 16, '고객', '아 근데 신청하면 그게 바로 나와요 아니면 며칠 걸려요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 17, '상담사', '네 비대면으로 신청하시면 서류 확인하고 한 영업일 2일 정도 걸리고요 한도랑 금리는 그때 정확하게 확정됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 18, '고객', '아 그렇구나. 그 한도 조회하면 신용점수 떨어진다 그러던데 그것도 그래요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 19, '상담사', '아 그게요 가조회 단계에서는 신용점수에 영향이 없어요. 정식 심사 들어갈 때만 조회 이력이 남거든요. 그래서 가조회는 부담 없이 보셔도 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 20, '고객', '음 일단 알겠어요. 좀 더 생각해볼게요. 아 그리고요 제가 지금 받고 있는 대출이 하나 있거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 21, '상담사', '아 네 기존 대출 관련해서 궁금하신 거 있으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 22, '고객', '어 그게 그 만기가 얼마 안 남았는데요 좀 일찍 갚으면 어떻게 되나 해서요. 중도상환 그런 거.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 23, '상담사', '아 중도상환이요. 네 잠시만요 고객님 대출 조회해볼게요. 음 현재 잔액이 12,000,000원 정도 남아 있으시네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 24, '고객', '네 맞아요. 그거 지금 다 갚으면 수수료 같은 게 붙어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 25, '상담사', '네 중도상환수수료가 있는데요 이 상품은 실행한 지 3년 이내라 잔액의 0.7% 정도 붙거든요. 12,000,000원 기준이면 한 84,000원 정도예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 26, '고객', '아 그 정도면 갚는 게 낫겠네요. 이자가 더 클 테니까.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 27, '상담사', '네 보통은 그렇죠. 남은 기간 이자가 수수료보다 크면 일찍 갚는 게 이득이거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 28, '고객', '아 그러면 혹시 갚지 말고 연장하는 것도 돼요? 만기 좀 늘리는 거.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 29, '상담사', '네 만기 연장도 가능한데요 연장하면 그 시점 금리로 다시 적용돼가지고요 지금보다 금리가 올라갈 수도 있어요. 그 부분은 좀 따져보셔야 해요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 30, '고객', '아 그렇구나. 근데 일부만 갚는 것도 돼요? 한 절반 정도만.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 31, '상담사', '네 일부 중도상환도 가능해요. 갚으시는 금액만큼만 수수료 계산되고요 나머지는 그대로 유지되면서 매달 이자가 줄어들거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 32, '고객', '아 그럼 일부만 갚고 매달 내는 이자 줄이는 것도 괜찮겠네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 33, '상담사', '네 여유 자금 있으실 때 그렇게 하시는 분들도 많아요. 부담 없이 원하시는 만큼 조절하실 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 34, '고객', '아 그렇구나. 그럼 일단 그건 좀 더 고민해볼게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 35, '상담사', '네 천천히 생각하시고요 결정되시면 중도상환이든 연장이든 다시 신청해주시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 36, '고객', '네 그리고 아 맞다 하나만 더 여쭤볼게요. 제가 적금을 하나 들고 싶은데요. 정기적금 같은 거.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 38, '고객', '어 한 달에 300,000원씩 한 2년 정도 해볼까 하는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 39, '상담사', '네 월 300,000원에 24개월 상품으로 보면요 기본금리가 연 3.6%고요 자동이체 등록하시면 우대 붙어서 3.9%까지 적용돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 40, '고객', '아 자동이체 하면 더 주는구나. 그럼 그걸로 할게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 41, '상담사', '네 그럼 매달 며칠에 출금되게 할까요? 출금 계좌는 지금 쓰시는 입출금 통장으로 하시면 되고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 42, '고객', '어 매달 15일로 해주세요. 통장은 그거 맞아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 43, '상담사', '네 그럼 정리해드릴게요. 월 300,000원 24개월 정기적금 매달 15일 자동이체로 가입 진행하고요 우대금리 포함 연 3.9% 적용됩니다. 이대로 신청해드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 44, '고객', '네네 그렇게 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 15, '상담사', '네 지금 바로 그 입금하신 계좌 정보로 지급 정지 신청 접수했구요 그리고 이게 정식 피해 구제 신청을 하셔야 되거든요. 경찰서 신고도 같이 하셔야 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 16, '고객', '아 경찰서도 가야 돼요? 어 어떻게 해야 되는지 잘 모르겠어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 17, '상담사', '네 어렵지 않으세요. 112는 경찰 1332는 금융감독원이거든요. 거기 전화하셔서 신고하시면 되구요 그 신고 접수번호를 받으시면 저희한테 알려주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 18, '고객', '네네 알겠어요 그건 전화 끊고 바로 할게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 19, '상담사', '네 그렇게 해주시구요 그리고 지금 정지 걸어둔 거는 고객님이 신분증 가지고 영업점 가셔서 본인 확인 하셔야 풀리세요. 그 전까지는 계속 막혀 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 20, '고객', '아 네 그건 안전하게 그렇게 둘게요. 근데 어 그 영업점은 아무 데나 가도 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 21, '상담사', '네 가까운 MetaM 은행 지점 아무 데나 가셔도 되구요 신분증만 꼭 챙겨 가세요. 그래야 본인 확인하고 정지 풀어드릴 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 22, '고객', '아 네 알겠어요. 근데 어 제가 카드도 같이 잃어버린 거 같아서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 23, '상담사', '아 카드도요? 어떤 카드를 못 찾으시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 24, '고객', '그 체크카드요. 어제까지 분명 지갑에 있었는데 오늘 보니까 없어가지고요 혹시 누가 쓸까 봐 무서워요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 25, '상담사', '네 그러면 그 체크카드도 바로 분실 신고하고 정지해 드릴게요. 카드 끝자리 혹시 기억나세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 26, '고객', '어 끝자리가 그 [code] 맞을 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 38, '고객', '어 10,000,000원 넣었구요 OTP 번호 어 앱에서 뜬 거 넣었어요. 어 변경 완료됐다고 뜨네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 27, '상담사', '네 끝자리 [code] 체크카드 분실 신고 접수했구요 바로 사용 정지 걸었습니다. 이제 이 카드로는 결제나 출금 아예 안 되세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 28, '고객', '아 네 그건 안심이네요. 그 카드 새로 받으려면 어떻게 해요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 29, '상담사', '네 재발급은 지금 바로 신청해 드릴 수도 있는데요 다만 지금 계좌가 정지 상태라서 영업점 가셔서 계좌 푸실 때 카드 재발급도 같이 하시는 게 한 번에 되셔서 편하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 30, '고객', '아 그러면 그때 같이 할게요. 지금은 정신이 없어가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 31, '상담사', '네 그게 좋으세요. 한 번에 처리하시면 되구요 분실 신고는 됐으니까 일단 안심하셔도 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 32, '고객', '네 고맙습니다. 아 그리고 제가 마지막으로 하나만요. 그 빠져나간 내역 좀 정확히 보고 싶은데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 33, '상담사', '네 입출금 내역 조회해 드릴게요. 어떤 기간으로 보실래요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 34, '고객', '어 오늘이요. 오늘 뭐가 어떻게 빠졌는지 좀 알려주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 35, '상담사', '네 오늘 내역 보면요 오후 2시 10분에 3,000,000원 이체가 1건 있구요 그 외에는 다른 출금은 없으세요. 다행히 그 1건이세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 36, '고객', '어 그 보낸 데가 어디로 돼 있어요? 이름 같은 거 나와요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 37, '상담사', '네 받는 분 계좌가 다른 은행으로 돼 있구요 예금주 이름은 [name]모 씨로 찍혀 있는데 이게 보통 대포통장인 경우가 많아가지고요. 그래서 지급 정지 신청 넣은 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 38, '고객', '아 진짜 어이가 없네요. 제가 왜 그걸 믿었는지.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 39, '상담사', '네 고객님 요즘 수법이 워낙 교묘해가지고 누구나 당하실 수 있어요. 너무 자책하지 마시구요 지금이라도 빨리 신고하신 게 잘하신 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 40, '고객', '아 3,000,000원 그거 하나만 나갔구나. 더 없는 거 확실하죠?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 41, '상담사', '네 그 1건 외에는 입금도 출금도 없으세요. 그리고 아까 정지 걸어드려서 지금부터는 어떤 거래도 안 일어나니까 안심하셔도 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 42, '고객', '아 네 진짜 다행이에요 빨리 막아주셔서 감사해요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 43, '상담사', '네 그럼 정리해 드리면요 보이스피싱 피해로 계좌 전체 지급 정지하고 상대 계좌 지급 정지 신청까지 해드렸구요 분실하신 체크카드 정지 처리했고 오늘 입출금 내역까지 확인해 드렸습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 44, '고객', '네네 신고는 끊고 바로 할게요 정말 고맙습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1005-0720', 45, '상담사', '네 경찰하고 금감원 신고 꼭 하시구요 접수번호 받으시면 다시 연락 주세요. 힘내시고 좋은 하루 되세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 2, '고객', '아 네 저기요 제가 지금 앱에서 뭘 좀 하려고 하는데 자꾸 오류가 떠가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 3, '상담사', '아 네 앱에서 오류가 발생하셨군요. 어떤 화면에서 그러시는지 좀 여쭤봐도 될까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 3, '상담사', '아 네 이체 실패 떴는데 출금은 된 것 같으시군요. 본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 4, '고객', '네 [name]고요 92년 7월 26 [name] 요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 5, '상담사', '네 [name] 고객님 확인됐습니다. 그 이체 언제쯤 하셨고 금액이 얼마였어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 6, '고객', '어 한 30분 전쯤이요. 입출금 통장에서 400,000원 보냈는데 실패 메시지 떴어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 7, '상담사', '네 잠시만요 최근 거래 내역 조회해볼게요. 음 30분 전에 400,000원 출금 시도 있었고요 이게 한도 초과로 거절된 걸로 나오네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 8, '고객', '어 한도 초과요? 근데 돈은 빠진 것 같던데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 9, '상담사', '아 화면에는 출금처럼 보였을 수 있는데요 실제로는 승인 거절돼가지고 출금이 안 됐어요. 잔액 그대로 있으실 거예요. 한번 확인해보시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 4, '고객', '그 전세자금대출 신청 그게 좀 알아보려고 메뉴를 들어갔는데요 들어가자마자 그 알 수 없는 오류라고 뜨면서 그냥 튕겨버려요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 5, '상담사', '아 네네 그러셨군요 불편하셨겠어요. 제가 한번 확인을 도와드릴게요. 먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 6, '고객', '네 [name] 요 뒷자리는 그 [code]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 7, '상담사', '네 [name] 고객님 [code] 확인됐습니다 감사합니다. 어 그러면 혹시 앱 버전이 최신인지 한번 보셨을까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 8, '고객', '어 그게 업데이트는 어제 한 거 같은데 잘 모르겠어요. 아무튼 어제까지는 됐었거든요. 근데 오늘 아침부터 갑자기 이러네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 9, '상담사', '아 어제까지는 정상이셨는데 오늘부터요? 음 혹시 그 오류 화면에 코드 같은 게 같이 뜨던가요? 숫자나 영어로요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 10, '고객', '어 잠깐만요 다시 한번 들어가 볼게요. 어 떴다 이거 E 뭐 E[code] 이렇게 떠요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 11, '상담사', '아 E[code]요 네 그거는 저희 시스템에서 세션이 좀 꼬였을 때 나는 코드거든요. 혹시 앱을 완전히 종료하셨다가 다시 켜보시겠어요? 백그라운드까지 싹 닫고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 12, '고객', '어 네 그러면 한번 해볼게요. 잠깐만요 다 닫고 다시 켜서 로그인하고 음 또 그 메뉴 들어가면 되죠?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 13, '상담사', '네 맞습니다. 다시 로그인하시고 전세자금대출 메뉴 한번 눌러봐 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 14, '고객', '어 똑같애요 또 [address] 뜨고 튕겨요. 아 진짜 이거 왜 이러지.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 15, '상담사', '아 그래도 똑같이 나오는군요. 죄송합니다 고객님. 그러면 제가 일단 오류 건으로 기록을 남기고 기술팀에 확인 요청을 넣어드리겠습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 16, '고객', '네 그래주세요. 아 그리고 하나만 더요. 사실 이거 알아보다 막힌 게 아니라 어제 제가 이체를 하나 했었거든요. 근데 그게 좀 이상해요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 17, '상담사', '아 네 이체요? 어떤 부분이 이상하셨을까요? 편하게 말씀해 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 18, '고객', '어제 저녁에 그 전세 보증금 일부를 집주인한테 보냈는데요 3,000,000원을요. 근데 제 계좌에서는 돈이 빠져나갔는데 상대방은 안 들어왔다고 그러더라고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 19, '상담사', '아 그러면 출금은 됐는데 입금이 안 됐다는 말씀이시군요. 음 그거 많이 당황스러우셨겠어요. 제가 바로 이체 내역 확인해 드리겠습니다. 어제 저녁 몇 시쯤 보내셨는지 기억나세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 20, '고객', '어 한 7시 좀 넘어서요 7시 반 그쯤이었던 거 같애요. 금액은 3,000,000원 정확하게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 21, '상담사', '네 어제 저녁 7시 반경 3,000,000원 이체 건 확인해 보겠습니다. 잠시만요 어 네 보이네요 어제 19시 32분에 출금 처리는 정상적으로 됐는데요 어 수취 은행 쪽에서 입금 보류 상태로 걸려 있네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 22, '고객', '보류요? 그게 무슨 말이에요? 그럼 돈은 어디 가 있는 거예요 지금?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 23, '상담사', '아 너무 걱정 안 하셔도 됩니다. 돈이 사라진 건 아니구요 수취 계좌 쪽에서 어떤 사유로 입금이 일단 멈춰 있는 상태라서요. 보통 받는 분 계좌가 한도 초과거나 거래 정지 같은 경우에 이렇게 보류가 걸리거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 24, '고객', '아 집주인 계좌가 문제라는 거예요? 그럼 나는 어떻게 해요? 돈도 안 빠졌으면 또 보내면 되는데 빠지긴 빠졌잖아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 25, '상담사', '네 맞아요. 출금은 됐기 때문에 다시 보내시면 안 되구요 이 보류 건은 보통 영업일 기준으로 하루나 이틀 안에 자동으로 다시 받는 분 계좌로 입금되거나 아니면 고객님 계좌로 반환 처리가 됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 26, '고객', '어 그럼 가만히 있으면 알아서 된다는 거죠? 근데 전세 잔금이라 날짜가 좀 중요한데 좀 빨리 안 될까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 27, '상담사', '아 잔금 날짜가 걸려 계셔서 급하시겠어요. 제가 이 건을 긴급 처리 건으로 해서 입금 정정 요청을 바로 넣어드릴게요. 그러면 오늘 중으로 처리가 될 수 있게 담당 부서에 전달됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 28, '고객', '아 네 그렇게 해주시면 감사하죠. 혹시 처리되면 저한테 연락이 오나요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 29, '상담사', '네 처리 완료되면 고객님 등록된 번호로 알림 문자 발송됩니다. 그리고 혹시 모르니 받는 분께도 계좌 상태 한번 확인해 보시라고 말씀해 두시면 더 빠를 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 30, '고객', '네 알겠습니다 그럼 그렇게 부탁드릴게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 31, '상담사', '네 고객님 그러면 오늘 2가지 도와드린 거 정리해 드리면요 앱에서 전세자금대출 메뉴 오류 건은 기술팀에 확인 접수해 드렸구요 어제 3,000,000원 이체 보류 건은 긴급 입금 정정으로 요청 넣어드렸습니다. 더 궁금하신 점 없으실까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 32, '고객', '네 없어요 빨리 처리만 부탁드릴게요 수고하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1006-0720', 33, '상담사', '네 [name] 고객님 신경 써서 처리하겠습니다. 좋은 하루 보내세요 감사합니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 18, '고객', '어 OTP는 없고요 보안카드는 어디 있을 텐데 음 지금 당장은 못 찾겠어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 19, '상담사', '아 네 그럼 일단 어디까지 올리실지 정하구요 보안매체로 인증만 되면 바로 적용됩니다. 얼마까지 올리실 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 20, '고객', '어 일일 한도를 한 10,000,000원 정도로 올리고 싶은데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 21, '상담사', '네 일일 10,000,000원으로 올리시려면요 보안카드보다는 OTP가 있어야 그 금액까지 가능하세요. 보안카드만으로는 일일 5,000,000원까지 올라가구요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 22, '고객', '어 그래요? 그럼 일단 5,000,000원이라도 올려야겠네요. 근데 OTP는 어떻게 받는 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 23, '상담사', '아 네 마침 OTP 문의 주셨는데요 OTP는 영업점 방문하시면 그 자리에서 발급받으실 수 있구요 요즘은 그 모바일 OTP라고 앱 안에서 발급받는 것도 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 24, '고객', '어 모바일 OTP요? 그건 그냥 앱에서 되는 거예요? 따로 기계 안 사도 되구요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 25, '상담사', '네 맞아요. 별도 단말기 없이 앱 안에서 발급받아서 쓰시는 거라 편하세요. 발급도 무료구요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 26, '고객', '아 무료예요? 그 실물 OTP는 돈 받는다던데 그거랑 보안 같은 건 똑같아요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 27, '상담사', '네 보안 수준은 거의 동일하다고 보시면 돼요. 실물 기계는 한 5,000원 정도 비용이 있는데 모바일은 무료라 요즘은 모바일 많이들 쓰세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 29, '상담사', '네 기기 변경하시면 보안상 새로 발급받으셔야 되는데요 그것도 앱에서 똑같이 무료로 다시 받으시면 되니까 어렵진 않아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 30, '고객', '아 그럼 그게 낫겠네요. 그거 어떻게 받아요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 31, '상담사', '네 앱에서 인증센터 들어가시면요 OTP 발급이라는 메뉴가 있어요. 거기서 모바일 OTP 선택하시고 본인인증 한 번 거치시면 바로 발급됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 32, '고객', '어 잠깐만요 인증센터 어 OTP 발급 있네요. 모바일 OTP 눌렀어요 어 본인인증 하고 어 비밀번호 정하라는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 33, '상담사', '네 그 OTP 쓰실 때 입력하실 비밀번호 정하시는 거구요 정하시면 발급 완료될 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 34, '고객', '어 됐어요 모바일 OTP 발급 완료라고 뜨네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 35, '상담사', '아 네 잘 발급되셨어요. 그럼 이제 이 OTP로 한도도 10,000,000원까지 올리실 수 있어요. 지금 바로 한도 변경 같이 진행해 드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 36, '고객', '네 그럼 10,000,000원으로 해 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 37, '상담사', '네 한도 변경 화면 들어가셔서 일일 10,000,000원으로 입력하시구요 방금 발급받으신 OTP 번호 입력하시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 39, '상담사', '네 일일 이체한도 10,000,000원으로 변경 완료됐습니다. 이제 아까 실패했던 그 2,000,000원 이체 다시 해 보시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 40, '고객', '어 네 다시 해 볼게요. 어 이번엔 되네요 이체 완료 떴어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 41, '상담사', '아 네 잘 되셨네요. 이제 한도 넉넉하니까 앞으로는 실패 안 나실 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 42, '고객', '네 진짜 다행이네요 OTP까지 받아서 깔끔하게 됐네요 감사합니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 2, '고객', '아 네 안녕하세요 저기 제가 대출 관련해서 좀 여쭤볼 게 있어서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 3, '상담사', '네 대출 문의 도와드리겠습니다. 본인 확인 먼저 좀 부탁드릴게요. 성함하고 생년월일 앞에 6자리 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 4, '고객', '네 [name] 요 [birth]요 [birth]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 5, '상담사', '네 [name] 고객님 [birth] 확인됐습니다. 어떤 대출 관련해서 궁금하신 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 6, '고객', '어 제가 지금 마이너스 통장 쓰고 있는데요 한도가 좀 부족한 거 같아서 한도를 좀 늘릴 수 있나 그게 궁금하고 금리는 지금 얼마인지도 좀 알고 싶어가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 7, '상담사', '아 네 현재 쓰고 계신 마이너스 통장 한도하고 적용 금리 확인 도와드릴게요. 잠시만요 어 보니까 현재 한도가 30,000,000원으로 잡혀 있으시고요 금리는 연 4.8% 적용되고 계시네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 8, '고객', '아 4.8이요? 음 생각보다 좀 높네요. 한도는 그럼 더 늘릴 수 있는 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 9, '상담사', '네 한도 증액은 가능은 한데요 그게 고객님 소득이나 신용 상태 그런 거를 다시 심사를 해봐야 돼서요. 지금 바로 얼마까지 된다 이렇게 말씀드리기는 좀 어렵거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 10, '고객', '아 심사를 또 받아야 되는구나. 어 그럼 대충이라도 한 5,000까지는 될까요? 제가 작년에 연봉이 좀 올라서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 11, '상담사', '아 연봉이 오르셨으면 긍정적으로 보실 수 있어요. 다만 증액 심사는 앱에서 신청하시거나 영업점 방문하셔서 진행하셔야 되구요 소득 증빙 서류 그런 게 좀 필요할 수 있습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 12, '고객', '음 그렇구나 일단 알겠어요. 금리는 그럼 좀 낮출 방법은 없어요? 4.8이 좀 부담스러운데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 13, '상담사', '네 금리 인하 요구권이라는 게 있어서요 소득이 늘었거나 신용점수가 좋아지셨으면 그걸로 한번 신청해 보실 수 있어요. 그것도 같이 심사가 들어가는 부분이에요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 14, '고객', '아 그런 게 있구나. 네 그건 좀 알아볼게요. 어 그리고 하나 더 여쭤볼 게 있는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 15, '상담사', '네 편하게 말씀하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 16, '고객', '제가 작년에 신용대출을 하나 받아놓은 게 있거든요. 그걸 좀 미리 갚으려고 하는데 중도상환수수료 그게 얼마나 나오는지 궁금해서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 17, '상담사', '아 네 기존 신용대출 중도상환 문의시군요. 잠깐만요 확인해 보겠습니다. 어 보니까 작년 5월에 실행된 건이 있으시네요. 20,000,000원 받으신 거 맞으실까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 18, '고객', '네네 맞아요 20,000,000원이요. 그거 지금 한 10,000,000원 정도 갚으려고 하는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 19, '상담사', '네 부분 상환으로 10,000,000원 하시는 거죠? 어 이 상품이 중도상환수수료율이 1.2% 로 돼 있고요 대출 실행일부터 3년 동안 적용되는데 남은 기간에 따라서 수수료가 좀 줄어들어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 20, '고객', '아 그럼 지금 10,000,000원 갚으면 수수료가 얼마예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 21, '상담사', '네 지금 시점에 10,000,000원 상환하시면요 잔여 기간 계산해서 대략 한 70,000원 조금 안 되게 나옵니다. 정확히는 68,000원 정도 예상되네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 22, '고객', '아 68,000원 음 생각보단 많지 않네요. 그럼 그냥 지금 갚는 게 나아요 아니면 좀 기다렸다가 갚는 게 나아요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 23, '상담사', '아 그거는요 고객님이 지금 그 10,000,000원으로 이자를 내고 계신 거랑 수수료 68,000원을 비교해 보시면 되는데요. 보통은 미리 갚으시는 게 이자가 더 절약돼서 이득인 경우가 많아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 24, '고객', '아 그렇구나. 그럼 갚는 걸로 생각할게요. 어 근데 이거 만기 연장 같은 것도 돼요? 나중에 혹시 못 갚게 되면.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 25, '상담사', '네 만기 연장도 가능합니다. 만기 한 달 전쯤에 연장 신청하시면 되구요 그때도 금리는 그 시점 기준으로 다시 적용되는 거라 좀 달라질 수는 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 26, '고객', '아 네 알겠어요. 그건 그때 가서 또 여쭤볼게요. 그리고 어 마지막으로 하나만 더요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 27, '상담사', '네 말씀하세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 28, '고객', '제가 적금을 하나 새로 들고 싶은데요 요즘 체크카드 쓰면 우대금리 준다는 그런 적금 있다고 들었거든요. 그거 가입하려면 어떻게 해요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 29, '상담사', '아 네 마침 저희 그 체크카드 실적 연계 적금 상품이 있어요. 한 달에 그 연결된 체크카드로 300,000원 이상 쓰시면 우대금리 들어가는 상품인데요 기본금리에 우대 다 합치면 연 4.5%까지 됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 30, '고객', '오 4.5요? 괜찮네요. 그거 그냥 전화로 가입돼요 아니면 앱으로 해야 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 31, '상담사', '네 비대면으로 앱에서 바로 가입 가능하시구요 지금 전화로도 신청 도와드릴 수 있어요. 한번 진행해 드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 32, '고객', '아 네 그럼 지금 해주세요. 월 납입은 한 200,000원 정도로 하고 싶어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 44, '고객', '네네 깔끔하게 됐네요. 고마워요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 33, '상담사', '네 알겠습니다. 월 200,000원 납입에 기간은 어떻게 해드릴까요? 보통 12개월 24개월 이렇게 선택하시는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 34, '고객', '어 12개월로 할게요 1년이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 35, '상담사', '네 12개월 월 200,000원 정기적금으로 진행하겠습니다. 출금 계좌는 지금 쓰고 계신 그 입출금 계좌 끝자리 [code] 계좌로 연결해 드리면 될까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 36, '고객', '네 그 계좌로 해주세요 맞아요 [code].');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 37, '상담사', '네 그리고 우대금리 받으시려면 그 체크카드 실적이 매달 300,000원 이상이어야 되는데 혹시 지금 쓰시는 체크카드가 이 계좌에 연결돼 있으실까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 38, '고객', '어 네 그 통장에 체크카드 하나 연결돼 있어요. 그거 평소에 마트 같은 데서 자주 써가지고 300,000원은 넘게 쓸 거 같애요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 39, '상담사', '네 그러면 우대금리 조건 충족되실 거예요. 자 그럼 지금 가입 동의 절차 진행할게요. 제가 안내해 드리는 약관 동의하시면 바로 개설됩니다. 잠시만요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 40, '고객', '네네.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 41, '상담사', '자 동의 처리됐구요 적금 계좌 정상적으로 개설됐습니다. 계좌번호는 문자로 보내드릴게요. 첫 납입은 오늘 바로 200,000원 빠져나가구요 다음 달부터는 매월 오늘 날짜에 자동으로 납입됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 42, '고객', '아 네 감사합니다 깔끔하네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 43, '상담사', '네 그러면 오늘 도와드린 거 정리해 드릴게요. 마이너스 통장 한도하고 금리는 현재 30,000,000원에 4.8%로 안내드렸고 증액이나 금리 인하는 별도 심사 신청 안내드렸구요 신용대출 10,000,000원 중도상환 수수료는 68,000원 정도로 확인해 드렸고 마지막으로 체크카드 연계 정기적금 12개월 월 200,000원으로 새로 가입해 드렸습니다. 더 필요하신 거 있으실까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 44, '고객', '아니요 다 됐어요 친절하게 설명해 주셔서 감사해요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1007-0720', 45, '상담사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 2, '고객', '아 네 제가 통장 입출금 내역을 좀 확인하고 싶은데요 뭐가 좀 빠져나간 게 있는 거 같아서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 3, '상담사', '네 입출금 내역 확인 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 생년월일 6자리 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 4, '고객', '네 [name] 요 [birth]요 [birth]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 5, '상담사', '네 [name] 고객님 [birth] 확인됐습니다. 어떤 내역을 확인하고 싶으신 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 6, '고객', '어 제가 이번 달 들어서 통장에서 자꾸 뭐가 빠져나가는 거 같은데요 제가 모르는 게 있어가지고 한 며칠 전 거부터 좀 봐주실 수 있어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 7, '상담사', '네 최근 거래 내역 확인해 드릴게요. 혹시 입출금 계좌 끝자리 한번 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 8, '고객', '어 끝자리가 [code]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 9, '상담사', '네 [code] 계좌 확인했습니다. 잠시만요 어 보니까 최근 일주일 내역 보이는데요 그저께 그 펀드 자동납입으로 300,000원 나간 거 있구요 어제 통신비 72,000원 그리고 오늘 아침에 카드대금 450,000원 빠진 거 있네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 10, '고객', '어 잠깐만요 펀드 자동납입이요? 그게 뭐예요? 저 펀드 자동으로 빠지는 거 한 적 없는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 11, '상담사', '아 펀드 자동납입 300,000원이요. 음 이게 작년 9월에 등록된 적립식 펀드 자동이체로 보이는데요 매달 그 날짜에 300,000원씩 신탁 계좌로 들어가고 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 12, '고객', '아 맞다 그거 작년에 제가 가입했던 거다. 아 깜빡했네 매달 빠지는 거였구나. 어 근데 이거 너무 부담스러운데 좀 줄이거나 멈출 수 있어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 13, '상담사', '네 그 자동이체 금액을 조정하시거나 아니면 아예 해지하실 수도 있어요. 어떻게 하고 싶으세요? 금액을 줄이실까요 아니면 멈추실까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 14, '고객', '음 일단 멈추는 거보다는 좀 줄여서 한 100,000원 정도로 하고 싶어요 다음 달부터요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 15, '상담사', '네 알겠습니다. 그러면 매달 300,000원 나가던 펀드 자동이체를 100,000원으로 변경해 드릴게요. 다음 납입일부터 적용되구요 이번 달 거는 이미 나갔으니까 다음 달부터 100,000원으로 들어갑니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 16, '고객', '네 그렇게 해주세요. 어 그리고 내역 보다 보니까 다른 것도 좀 정리하고 싶은 게 있는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 17, '상담사', '네 말씀하세요. 어떤 거 정리하고 싶으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 18, '고객', '그 통신비 자동이체 있잖아요. 그게 제가 번호를 바꿨거든요. 그래서 그 자동이체 나가는 계좌를 다른 통장으로 좀 바꾸고 싶어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 19, '상담사', '아 통신비 자동이체 출금 계좌를 변경하고 싶으신 거군요. 음 근데 통신비 같은 거는요 받는 쪽 통신사에서 출금 계좌를 관리하는 경우가 많아서요 저희 쪽에서 바로 계좌만 바꿔드리기는 좀 어려울 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 20, '고객', '아 그래요? 그럼 어떻게 해야 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 21, '상담사', '네 그 통신사 쪽에 연락하셔서 출금 계좌 변경 신청하시는 게 제일 확실하구요 다만 혹시 저희 은행 자동이체 등록 목록에 들어가 있는 거면 제가 여기서 변경 도와드릴 수 있어요. 한번 확인해 볼게요. 잠시만요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 22, '고객', '네 봐주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 23, '상담사', '어 보니까 이 통신비 건은 저희 은행 자동이체 등록 목록에 있는 거라서요 다행히 제가 출금 계좌 변경해 드릴 수 있겠네요. 어떤 계좌로 바꿔드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 24, '고객', '아 잘됐다. 그럼 제 다른 통장 그 끝자리 [code] 계좌로 바꿔주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 25, '상담사', '네 통신비 자동이체 출금 계좌를 끝자리 [code] 계좌로 변경하겠습니다. 이거는 다음 출금일부터 새 계좌에서 빠져나가구요 변경 처리 완료됐습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 26, '고객', '아 네 감사합니다. 어 그리고 혹시 자동이체 새로 하나 등록도 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 27, '상담사', '네 자동이체 신규 등록도 가능합니다. 어떤 걸 등록하고 싶으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 28, '고객', '어 제가 적금을 따로 하나 더 넣고 싶어서요. 매달 200,000원씩 그 신탁 적립 통장으로 자동으로 들어가게 하고 싶어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 18, '고객', '아 네 그럼 그렇게 해주세요 초기화요. 어 근데 혹시 이거 누가 제 비밀번호를 막 넣어본 건 아니겠죠? 좀 불안하네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 29, '상담사', '네 매달 200,000원씩 자동이체 등록해 드릴게요. 출금은 지금 보고 있는 [code] 계좌에서 나가게 하면 될까요? 그리고 매달 며칠에 나가게 해드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 30, '고객', '네 [code] 계좌에서 빠지게 해주시구요 날짜는 매달 25일로 해주세요. 월급 들어오고 나서 빠지게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 31, '상담사', '네 매달 25일에 [code] 계좌에서 200,000원씩 신탁 적립 통장으로 자동이체 등록하겠습니다. 잠시만요 어 등록 완료됐구요 첫 출금은 다음 달 25일부터 시작됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 32, '고객', '아 네 깔끔하네요 감사합니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 33, '상담사', '네 그럼 오늘 도와드린 거 정리해 드릴게요. 입출금 내역 확인해 드렸고 펀드 자동납입은 300,000원에서 100,000원으로 줄여드렸구요 통신비 자동이체 출금 계좌는 끝자리 [code]로 변경했고 매달 25일 200,000원 신탁 적립 자동이체를 새로 등록해 드렸습니다. 더 필요하신 점 있으실까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 34, '고객', '아니요 다 됐어요 너무 친절하시네요 감사합니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1009-0720', 35, '상담사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 2, '고객', '아 네 저기 제가 이체를 하나 했는데 그게 실패가 떴거든요. 근데 좀 이상해가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 3, '상담사', '아 네 이체 실패 건이시군요. 제가 바로 확인 도와드릴게요. 먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 4, '고객', '네 [name]구요 뒷자리 [code]요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 어떤 이체를 하셨는데 실패가 났을까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 6, '고객', '어 제가 그 신용카드 대금을 좀 미리 내려고 계좌이체를 했거든요. 한 50 아 600,000원이요. 근데 보내기 누르니까 실패했다고 뜨더라고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 7, '상담사', '아 신용카드 대금 600,000원을 이체하시려다가 실패가 나셨군요. 혹시 실패 메시지에 사유 같은 게 같이 떴을까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 8, '고객', '어 그게 뭐라고 했더라 일일 이체 한도 초과 그런 식으로 떴던 거 같애요. 근데 저 그렇게 많이 보낸 적 없거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 9, '상담사', '아 네 이체 한도 초과로 막히신 거 같네요. 제가 고객님 오늘 이체 내역하고 한도 한번 확인해 보겠습니다. 잠시만요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 10, '고객', '네 근데 진짜 이상한 게 저 오늘 다른 데 보낸 게 거의 없어요. 아침에 한 100,000원 정도 보낸 거밖에.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 11, '상담사', '어 네 보니까요 고객님 오늘 오전에 100,000원 이체하신 건 정상 처리됐구요 어 근데 고객님 일일 이체 한도가 지금 300,000원으로 굉장히 낮게 설정돼 있으시네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 12, '고객', '네 300,000원이요? 어 왜 그렇게 낮지 저 그렇게 설정한 적 없는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 13, '상담사', '아 음 혹시 예전에 비대면 계좌 개설하시면서 처음에 한도가 낮게 잡혔을 수 있어요. 신규 계좌는 보안상 한도를 낮게 시작하는 경우가 있거든요. 그래서 100,000원 쓰시고 나니까 600,000원이 안 됐던 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 14, '고객', '아 그래서 그랬구나. 어 그럼 이거 한도 좀 올릴 수 있어요? 카드값 내야 되는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 15, '상담사', '네 한도 변경 도와드릴 수 있어요. 마침 그 부분 여쭤보려고 했어요. 한도를 어느 정도로 올리고 싶으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 16, '고객', '어 한 1회에 한 5,000,000원 하루에는 10,000,000원 이 정도면 좋겠는데 그게 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 17, '상담사', '아 네 다만 한도를 일정 금액 이상으로 올리시려면요 추가 인증이 좀 필요하거든요. 1회 1,000,000원 하루 3,000,000원까지는 지금 바로 변경 가능한데 그 이상은 영업점 방문이나 추가 본인인증이 필요해요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 18, '고객', '아 그래요. 음 그럼 일단 지금 바로 되는 거로 올려주세요. 1회 1,000,000원 하루 3,000,000원으로요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 2, '고객', '어 네 저기 제가 금융인증서가 좀 만료가 됐는지 갱신을 해야 된다고 떠가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 19, '상담사', '네 1회 1,000,000원 일일 3,000,000원으로 변경해 드리겠습니다. 변경하시려면 지금 등록된 인증 수단으로 한번 인증이 필요한데요 혹시 OTP나 보안카드 쓰고 계세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 20, '고객', '어 저 OTP 있긴 한데 이게 한참 안 써서 잘 모르겠어요. 그리고 이거 OTP 화면에 무슨 배터리 표시 같은 게 깜빡거려요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 21, '상담사', '아 OTP 기기에 배터리 표시 깜빡이면요 그게 배터리가 거의 다 닳았다는 표시거든요. 곧 사용이 안 될 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 22, '고객', '아 진짜요? 그럼 이거 새로 받아야 돼요? 어떻게 해요 그럼.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 23, '상담사', '네 OTP는 배터리 교체가 안 되고 새로 발급받으셔야 되는데요 영업점 가셔서 재발급 받으시거나 아니면 요즘은 앱에 그 모바일 OTP 기능이 있어서 그걸 등록하시면 실물 없이도 쓰실 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 24, '고객', '어 그럼 영업점 가면 그 OTP 기계값 또 받아요? 예전에 살 때 돈 냈던 거 같은데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 25, '상담사', '아 실물 OTP는요 새로 발급받으시면 수수료가 한 5,000원 정도 있어요. 근데 모바일 OTP는 무료라서요 요즘은 거의 모바일로 많이 옮기시는 편이에요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 26, '고객', '아 실물은 또 돈 내는구나. 그럼 모바일로 하는 게 낫겠네요. 근데 그거 보안은 괜찮아요? 폰에 있는 거잖아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 27, '상담사', '네 보안은 걱정 안 하셔도 돼요. 모바일 OTP는 그 기기에 따로 잠금이 걸려 있구요 폰 바꾸시면 다시 등록해야 되는 거라서 오히려 더 안전한 편이에요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 28, '고객', '오 모바일 OTP요? 그게 더 편하겠네요. 그건 어떻게 등록해요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 45, '고객', '아니요 없어요 수고하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 29, '상담사', '네 앱에서 인증센터 메뉴 들어가시면 모바일 OTP 발급이 있어요. 거기서 본인인증하시고 비밀번호 6자리 정하시면 바로 발급됩니다. 지금 쓰시는 실물 OTP는 그때 해지하시면 되구요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 30, '고객', '어 그 비밀번호 6자리는 그럼 지금 계좌 비밀번호랑 같은 거 써도 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 31, '상담사', '아 그건 다르게 설정하시는 걸 권해드려요. 계좌 비밀번호랑 OTP 비밀번호가 같으면 혹시 모를 때 좀 위험할 수 있어서요. 가급적 다른 번호로 하시는 게 좋아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 32, '고객', '아 네 그럼 다른 걸로 할게요. 어 그리고 실물 OTP 해지는 제가 따로 해야 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 33, '상담사', '네 모바일 OTP 등록하시고 나면요 앱에서 기존 실물 OTP 해지 버튼이 떠요. 그거 누르시면 바로 해지되구요 안 누르셔도 2개 같이 쓰시다가 나중에 정리하셔도 됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 34, '고객', '아 네 근데 지금 당장 한도 변경은 그럼 어떻게 해요? OTP가 곧 죽는다면서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 35, '상담사', '아 그러시면요 지금 OTP가 아직 작동은 하니까 일단 지금 한도 변경은 이 OTP로 하나 진행하시구요 모바일 OTP는 통화 끝나고 등록하시는 걸로 하면 좋을 거 같아요. 한도 변경 지금 진행해 드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 36, '고객', '네 그렇게 해요. OTP 지금 눌러볼게요. 어 숫자 떴어요 [code]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 37, '상담사', '네 [code] 확인됐습니다. 어 정상 인증됐구요 이체 한도 1회 1,000,000원 일일 3,000,000원으로 변경 완료됐습니다. 이제 카드 대금 600,000원 이체 다시 해보시면 될 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 38, '고객', '아 네 그럼 지금 바로 다시 해볼게요. 어 보내기 누르고 음 됐다 이체 성공이라고 떠요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 39, '상담사', '아 네 잘됐네요 정상적으로 처리됐습니다. 그리고 아까 말씀드린 모바일 OTP는요 꼭 한번 등록해 두세요. 안 그러면 실물 OTP 배터리 다 닳으면 다음에 또 이런 일 생길 수 있거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 40, '고객', '네네 알겠어요 통화 끝나고 바로 등록할게요. 어 근데 혹시 모바일 OTP 등록하다가 또 막히거나 하면 어떻게 해요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 41, '상담사', '아 등록하시다가 막히시면요 다시 저희 고객센터로 전화 주시면 돼요. 그때는 OTP 발급 건으로 바로 연결해서 도와드릴 수 있구요 보통은 본인인증만 잘 되면 1~2분이면 끝나서 크게 어렵진 않으실 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 42, '고객', '아 네 알겠어요 그럼 한번 해보고 안 되면 또 전화할게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 43, '상담사', '네 그렇게 하세요. 그럼 오늘 도와드린 내용 정리해 드릴게요. 이체 실패는 일일 한도가 300,000원으로 낮게 설정돼 있어서 발생한 거였구요 한도를 1회 1,000,000원 일일 3,000,000원으로 변경해 드렸습니다. 그리고 OTP 배터리 부족 안내드리고 모바일 OTP 발급 방법 안내드렸어요. 더 궁금하신 점 있으실까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 44, '고객', '아니요 없어요 덕분에 다 해결됐네요 감사합니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1008-0720', 45, '상담사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 2, '고객', '아 네 제가 그 공동인증서인가 그거를 새로 발급받아야 되는 거 같은데 어떻게 하는지 잘 몰라가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 3, '상담사', '네 공동인증서 발급 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 4, '고객', '네 [name]구요 뒷자리 [code]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 혹시 지금 인증서가 아예 없으신 거예요? 아니면 기간이 만료된 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 6, '고객', '어 그게 외화예금을 좀 만들려고 앱을 들어갔는데요 인증서가 만료됐다고 뜨더라고요. 그래서 갱신을 해야 되나 새로 받아야 되나 헷갈려서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 7, '상담사', '아 네 인증서가 만료되셨으면요 갱신을 하시면 되는데 만료된 지 오래되면 갱신이 안 되고 새로 발급받으셔야 될 수도 있어요. 혹시 만료된 지 얼마나 되셨는지 아세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 8, '고객', '어 잘 모르겠어요. 한참 안 쓴 거 같긴 해요. 작년에도 안 썼던 거 같고.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 9, '상담사', '아 그러면 갱신 기간이 지났을 가능성이 높아서요 새로 발급받으시는 게 빠를 거 같아요. 앱에서 인증센터 메뉴 들어가시면 공동인증서 발급이 있거든요. 거기서 진행하시면 됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 10, '고객', '어 인증센터요? 잠깐만요 어 들어왔어요 공동인증서 발급 눌렀더니 어 본인 확인하라고 나오는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 11, '상담사', '네 거기서 휴대폰 본인인증 한번 하시구요 그다음에 계좌번호하고 그 계좌 비밀번호를 입력하시면 돼요. 발급받으시면 비밀번호를 새로 설정하시는데 숫자랑 영문 섞어서 10자리 이상으로 만드셔야 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 12, '고객', '어 네 휴대폰 인증은 했고 계좌번호 넣고 어 계좌 비밀번호 넣는데 어 이거 비밀번호가 틀렸다고 나와요. 어 분명 맞는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 13, '상담사', '아 계좌 비밀번호가 틀렸다고 나오는군요. 혹시 몇 번 정도 입력하셨어요? 너무 여러 번 틀리시면 계좌 비밀번호가 잠길 수 있거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 14, '고객', '어 한 두세 번 넣은 거 같은데 아 또 틀렸대요. 아 이거 진짜 맞는 건데 왜 이러지.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 15, '상담사', '아 일단 더 넣지 마시구요 한 번만 더 틀리면 잠길 수 있어서요. 제가 계좌 상태 한번 확인해 볼게요. 잠시만요 어 보니까 이미 비밀번호 오류가 누적돼서 계좌 비밀번호가 잠긴 상태로 나오네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 16, '고객', '아 잠겼어요? 아 그래서 자꾸 틀렸다고 나온 거구나. 그럼 이거 어떻게 풀어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 17, '상담사', '네 비밀번호 초기화를 해드려야 되는데요 제가 본인확인 한번 더 하고 초기화 도와드릴 수 있어요. 다만 새 비밀번호는 고객님이 직접 설정하셔야 돼서요 초기화하면 임시로 풀리고 앱에서 새 비밀번호 등록하시는 방식이에요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 19, '상담사', '아 그런 걱정 하실 수 있는데요 제가 한번 볼게요. 어 보니까 오류 시도가 다 오늘 그 인증서 발급하시던 시간대에 몰려 있어서요 고객님이 직접 넣으시다가 잠긴 걸로 보여요. 외부에서 접근한 흔적은 없으니까 안심하셔도 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 20, '고객', '아 다행이다. 그럼 제가 자꾸 틀려서 그런 거네요. 네 그럼 초기화 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 21, '상담사', '네 본인확인 위해서 한 가지만 더 여쭤볼게요. 고객님 생년월일 6자리하고 혹시 가입하실 때 등록하신 자택 주소 동까지만 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 22, '고객', '네 [birth]이구요 [birth]이요. 주소는 그 한빛구 새벽동이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 23, '상담사', '네 [birth] 한빛구 새벽동 확인됐습니다. 본인확인 완료됐구요 계좌 비밀번호 초기화 처리해 드리겠습니다. 잠시만요 어 초기화 완료됐습니다. 이제 앱에서 계좌 비밀번호 새로 설정하시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 24, '고객', '아 네 그럼 지금 앱에서 새로 설정하면 되는 거죠? 어 했어요 새 비밀번호 설정 완료됐다고 떠요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 25, '상담사', '네 잘하셨어요. 그리고 이번에 새로 정하신 계좌 비밀번호는요 너무 단순한 번호나 생년월일 같은 거는 피하시는 게 좋구요 다른 데서 안 쓰시는 걸로 하셔야 더 안전해요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 26, '고객', '아 네 그건 좀 다르게 했어요 생일이랑은 다르게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 27, '상담사', '네 잘하셨어요. 그러면 이제 그 새 비밀번호로 공동인증서 발급 다시 진행해 보시겠어요? 아까 그 인증센터 메뉴에서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 28, '고객', '네 다시 해볼게요. 어 계좌 비밀번호 새로 넣으니까 어 이번엔 넘어가네요 어 인증서 비밀번호 설정하라고 나와요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 29, '상담사', '네 그 인증서 비밀번호는 아까 말씀드린 대로 영문이랑 숫자 섞어서 10자리 이상으로 만드시구요 이건 계좌 비밀번호랑은 다른 거니까 헷갈리지 않게 잘 기억해 두세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 30, '고객', '아 네 만들었어요. 어 발급 완료됐다고 떠요 아 됐다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 31, '상담사', '네 공동인증서 정상적으로 발급되셨습니다. 고생하셨어요. 이제 외화예금 가입하실 때 이 인증서로 진행하시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 32, '고객', '네 감사합니다. 어 그리고 마지막으로 하나만 더 여쭤볼게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 33, '상담사', '네 말씀하세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 34, '고객', '그 외화예금 만들고 나서 거기에 달러를 좀 넣으려고 하는데요 제 원화 통장에서 그 외화예금으로 돈을 옮기는 건 어떻게 해요? 그냥 보통 이체랑 똑같아요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 44, '고객', '아니요 다 됐어요 수고하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 35, '상담사', '아 네 원화 계좌에서 외화예금으로 넣으시는 거는요 일반 이체랑은 좀 달라요. 환전이 같이 이루어지는 거라서 앱에서 외화 입금 또는 환전 입금 이런 메뉴로 들어가셔야 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 36, '고객', '아 환전이 같이 되는 거구나. 어 그럼 그냥 계좌이체 메뉴로 하면 안 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 37, '상담사', '네 일반 계좌이체로는 외화예금에 안 들어가구요 꼭 그 외화 입금 메뉴로 하셔야 환율 적용돼서 달러로 바뀌어서 들어가요. 그때 그 시점 환율로 계산되구요 환전 수수료도 좀 붙습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 38, '고객', '아 수수료도 붙는구나. 그거 많이 나와요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 39, '상담사', '네 환전 수수료는요 보통 그 매매기준율에서 일정 비율 붙는 건데 비대면 앱으로 하시면 그 수수료를 한 80에서 90%까지 우대해 주는 이벤트가 있어서요 영업점보다 앱으로 하시는 게 훨씬 유리해요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 40, '고객', '오 그래요? 그럼 앱으로 할게요. 어 그 외화 입금 메뉴에서 금액 넣으면 알아서 달러로 바뀌는 거죠?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 41, '상담사', '네 맞아요. 원화 금액 넣으시면 그 시점 환율로 얼마가 달러로 들어가는지 미리 보여드리구요 확인하시고 진행하시면 됩니다. 출금 계좌는 원화 통장 선택하시면 거기서 빠지구요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 42, '고객', '아 네 이해했어요. 그럼 인증서 발급됐으니까 이제 제가 직접 해볼게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 43, '상담사', '네 그럼 오늘 도와드린 거 정리해 드릴게요. 만료된 공동인증서는 새로 발급해 드렸구요 도중에 잠겼던 계좌 비밀번호는 초기화해서 새로 설정하시도록 도와드렸습니다. 그리고 외화예금에 원화 넣으실 때는 일반 이체가 아니라 외화 입금 메뉴로 환전해서 넣으시는 거 안내드렸어요. 더 궁금하신 점 있으실까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 44, '고객', '아니요 다 됐어요 차근차근 알려주셔서 감사합니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1010-0720', 45, '상담사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 12, '고객', '아 우대조건이 뭐예요? 그런 게 있어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 10, '고객', '어 아 맞다 오전에 제가 어디 한 군데 보낸 게 있긴 해요. 근데 그게 한도랑 무슨 상관이에요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 11, '상담사', '아 네 그게요 하루에 이체할 수 있는 총액이 정해져 있거든요. 고객님 일일 이체한도가 지금 3,000,000원으로 돼 있어서요 오전 거랑 합치면 한도를 넘어선 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 12, '고객', '어 3,000,000원밖에 안 돼요? 그게 왜 그렇게 낮아요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 13, '상담사', '음 보통 비대면으로 가입하시면 처음엔 한도가 좀 낮게 설정되거든요 보이스피싱 같은 거 예방하는 차원에서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 14, '고객', '아 그런 이유가 있었구나 몰랐네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 15, '상담사', '네 그래서 실패가 났던 거구요 필요하시면 한도 한 번 올려 드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 16, '고객', '아 그럼 그게 문제였구나 네 좀 올려 주세요 답답해서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 17, '상담사', '네 한도 변경 도와드릴게요. 다만 한도를 올리시려면요 추가 본인인증이랑 보안매체 인증이 좀 필요해요. 혹시 OTP나 보안카드 가지고 계세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1012-0720', 30, '고객', '아 그렇게 해주세요. 그게 제일 깔끔하겠네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 37, '상담사', '아 네 정기적금 가입 도와드릴게요. 월에 얼마 정도 넣으실 생각이세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 45, '상담사', '네 적금 가입 접수했고요 첫 출금은 다음 달 15일부터 시작됩니다. 가입 완료 안내는 문자로 보내드릴게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 46, '고객', '아 네 감사합니다. 생각보다 빨리 됐네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 47, '상담사', '네 고객님 오늘 신용대출 한도랑 금리 안내드렸고요 기존 대출 중도상환이랑 연장 조건 설명드렸습니다. 그리고 정기적금 월 300,000원짜리 자동이체로 가입까지 완료했어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1013-0720', 49, '상담사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 2, '고객', '어 제가 아까 이체를 하나 했는데요 이게 실패가 떴거든요. 근데 돈은 빠져나간 것 같아가지고 좀 확인하려고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 10, '고객', '어 잠깐만요. 음 아 진짜네 잔액 그대로네요. 다행이다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 11, '상담사', '네 그래서 실패로 뜬 거고요 돈은 안 나갔으니까 안심하셔도 됩니다. 근데 한도가 막혀가지고 이체가 안 된 거라서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 12, '고객', '아 제 이체 한도가 얼마인데요? 그게 왜 막혀요? 400,000원밖에 안 되는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 13, '상담사', '음 보니까 고객님 1일 이체 한도가 300,000원으로 좀 낮게 설정돼 있으시네요. 그래서 400,000원이 안 넘어간 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 14, '고객', '어 그래요? 저 그렇게 낮게 한 적 없는데 언제 이렇게 됐지.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 15, '상담사', '아 비대면으로 통장 만드실 때 기본 한도가 낮게 잡히는 경우가 있거든요 보안 때문에요. 그래서 따로 안 올리시면 그대로 유지돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 16, '고객', '아 그렇구나. 그럼 이거 좀 올려주세요. 400,000원은 보내야 되거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 17, '상담사', '네 한도 변경 도와드릴게요. 1일 한도를 얼마로 올려드릴까요? 너무 높게 하면 보안상 좋진 않아가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 18, '고객', '어 그럼 한 1회에 3,000,000원 하루에 5,000,000원 정도로 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 19, '상담사', '네 그 정도면 적당하시고요 근데 한도 상향은 보안 매체 인증이 필요해가지고요 혹시 OTP나 보안카드 가지고 계세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 20, '고객', '어 보안카드는 어디 있는데 OTP는 없어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 21, '상담사', '네 그럼 보안카드로 인증하시면 돼요. 카드에 나와 있는 번호 중에 제가 불러드리는 자리 숫자 입력하시면 됩니다. 준비되셨어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 22, '고객', '어 잠깐만요. 음 네 찾았어요. 불러주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 23, '상담사', '네 35번 앞 2자리랑요 41번 뒤 2자리 말씀해 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 24, '고객', '어 35번 앞은 72고요 41번 뒤는 09예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 25, '상담사', '네 인증 완료됐습니다. 1회 3,000,000원 1일 5,000,000원으로 한도 상향 처리됐고요 지금 바로 적용됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 26, '고객', '아 그럼 이제 400,000원 보낼 수 있는 거죠?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 27, '상담사', '네 지금은 한도 안에 들어와서 정상적으로 이체되실 거예요. 다시 한 번 해보시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 28, '고객', '어 잠깐 해볼게요. 음 아 됐다 이체 완료 떴어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 29, '상담사', '네 잘 처리되셨네요. 다행입니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 30, '고객', '아 그리고 하나만 더요 그 보안카드가 좀 낡았거든요. 이거 OTP로 바꾸는 게 낫나요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 28, '고객', '아 그럼 모바일이 낫네요. 근데 핸드폰 바꾸면 그거 다시 받아야 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 2, '고객', '어 저기요 제가 지금 좀 급한데요. 어제 이상한 전화를 받았거든요. 검찰이라면서.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 3, '상담사', '아 네 고객님 천천히 말씀해 주세요. 어떤 상황이셨는지.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 4, '고객', '그 어떤 사람이 전화해가지고 제 계좌가 범죄에 연루됐다고 그러면서 안전계좌로 옮겨야 된다고 막 그러더라고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 5, '상담사', '아 그게 전형적인 보이스피싱 수법이거든요. 혹시 그쪽에 돈을 보내셨거나 어 계좌번호나 비밀번호를 알려주신 게 있으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 6, '고객', '그게 제가 너무 놀라가지고 일단 3,000,000원 아 2,500,000원 보냈어요. 그러고 나서 좀 이상하다 싶어서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 7, '상담사', '네 알겠습니다. 일단 지금 추가 피해 막는 게 제일 급하니까 제가 바로 계좌 일시 정지부터 걸어드릴게요. 괜찮으실까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 8, '고객', '네네 그렇게 해주세요. 아 진짜 어떡해.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 9, '상담사', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 휴대폰 뒷자리 4자리 말씀해 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 10, '고객', '어 [name] 요 휴대폰 뒷자리는 [code]이에요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 11, '상담사', '네 [name] 고객님 [code] 확인됐고요. 생년월일도 한 번만 더 부탁드릴게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 12, '고객', '아 [birth]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 13, '상담사', '네 확인됐습니다. 그럼 지금 고객님 명의 계좌 전체에 [birth] 지급 정지 걸어드리고요 송금하신 그 건은 지급정지 신청 같이 진행할게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 14, '고객', '그 보낸 돈은 돌려받을 수 있는 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 15, '상담사', '어 그게 상대 계좌에 돈이 남아 있으면 지급정지로 묶어둘 수 있는데요 인출돼버리면 좀 어려울 수도 있어가지고 빨리 처리하는 게 중요하거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 16, '고객', '아 네 그럼 빨리 좀 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 17, '상담사', '네 지금 정지 걸었고요 상대 계좌 지급정지 요청 접수했습니다. 그리고 경찰서 사이버수사대에도 신고하셔야 환급 절차가 진행되거든요. 1325로 신고 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 18, '고객', '아 1325 네 그건 제가 직접 할게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1011-0720', 19, '상담사', '네 그럼 접수번호 문자로 보내드릴게요. 이거 들고 신고하시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 31, '상담사', '아 네 OTP가 보안카드보다 좀 더 안전하긴 해요. 매번 번호가 바뀌니까요. OTP 발급 원하시면 안내드릴 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 32, '고객', '아 그래요? 그거 발급 받으려면 어떻게 해야 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 33, '상담사', '네 OTP는 실물 기기라서요 가까운 영업점에 신분증 들고 가시면 바로 발급되고요 발급 비용이 한 5,000원 정도 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 34, '고객', '아 영업점을 가야 되는구나. 그럼 좀 번거롭네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 35, '상담사', '아 그러시면 모바일 OTP도 있어요. 그건 앱에서 바로 발급되고 무료라서요 따로 기기 안 들고 다녀도 돼서 편하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 36, '고객', '오 그게 낫겠네요. 그럼 그 모바일 OTP로 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 37, '상담사', '네 모바일 OTP는 앱에서 인증수단 메뉴 들어가셔서 발급 누르시면 되는데요 지금 같이 안내드리면서 진행해드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 38, '고객', '아 네 좀 도와주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 39, '상담사', '네 앱 열어서 보안센터 들어가시고요 OTP 관리 누르시면 모바일 OTP 발급 버튼 있어요. 거기서 본인인증 한 번 하시면 바로 발급됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 40, '고객', '어 음 아 발급됐다고 뜨네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 41, '상담사', '네 잘 되셨고요 이제부터는 그 모바일 OTP로 한도 변경이나 큰 이체 하실 때 인증하시면 돼요. 기존 보안카드는 해지하실 수도 있는데 일단 두셔도 됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 42, '고객', '아 네 알겠어요. 일단 둘게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 43, '상담사', '네 고객님 오늘 정리해드리면요 한도 초과로 실패했던 이체 건은 출금 안 됐던 걸로 확인됐고요 이체 한도를 1회 3,000,000원 1일 5,000,000원으로 올려드렸어요. 그리고 모바일 OTP 발급까지 도와드렸습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1014-0720', 45, '상담사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 2, '고객', '어 안녕하세요 제가 통장 내역을 좀 확인하고 싶은데요 뭐가 나갔는지 좀 헷갈려가지고.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 3, '상담사', '네 입출금 내역 조회 도와드릴게요. 본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 4, '고객', '네 [name]고요 뒷자리는 [code]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 어느 기간 내역으로 보시면 될까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 6, '고객', '어 이번 달 거 한 번 다 보고 싶어요. 좀 빠져나간 게 많은 것 같아가지고.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 7, '상담사', '네 이번 달 내역 조회해볼게요 잠시만요. 음 이번 달에 출금이 총 5건 있고요 입금은 급여 1건 있으시네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 8, '고객', '아 5건이나요? 그게 다 뭐예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 9, '상담사', '네 하나씩 말씀드릴게요. 5일에 카드대금 320,000원 11일에 통신비 55,000원 15일에 관리비 180,000원 이렇게 빠졌고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 10, '고객', '어 네네 그건 알겠어요. 나머지 2개는요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 11, '상담사', '네 21일에 보험료 70,000원이랑요 25일에 적금 300,000원 이렇게 나갔어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 12, '고객', '아 적금이 300,000원 나간 거구나. 어쩐지 잔액이 확 줄었더라고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 13, '상담사', '네 맞아요. 그게 제일 큰 건이고요 입금은 25일에 급여 2,800,000원 들어오셨어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 14, '고객', '아 그럼 지금 잔액은 얼마나 남았어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 15, '상담사', '네 현재 잔액은 1,973,000원입니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 16, '고객', '아 그렇구나 알겠어요. 음 근데 그 적금 말인데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 17, '상담사', '네 적금 관련해서 궁금하신 거 있으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 18, '고객', '어 그게 정기적금인데요 매달 25일에 나가잖아요. 근데 제가 날짜를 좀 바꾸고 싶어가지고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 19, '상담사', '아 자동이체 출금일 변경하시려는 거네요. 며칠로 바꾸시면 될까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 20, '고객', '어 급여가 25일에 들어오니까 좀 여유 두고 28일 정도로 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 21, '상담사', '네 25일에서 28일로 변경 도와드릴게요 잠시만요. 음 변경 처리됐고요 다음 달부터 28일에 출금됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 22, '고객', '아 그럼 이번 달은 이미 나간 거니까 다음 달부터인 거죠?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 23, '상담사', '네 맞아요. 이번 달 25일 건은 이미 정상 출금됐고요 변경된 날짜는 다음 달부터 적용돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 24, '고객', '아 네 그리고 하나만 더요 제가 통신비 자동이체도 있잖아요. 그거 출금 계좌를 다른 데로 좀 바꾸고 싶은데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 25, '상담사', '아 통신비 자동이체 출금 계좌 변경이요. 어느 계좌로 바꾸시려고요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 26, '고객', '어 제가 다른 은행에 통장이 하나 있거든요. 거기로 빼고 싶어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 27, '상담사', '아 그게요 통신비 자동이체는 통신사 쪽에 출금 계좌가 등록돼 있는 거라서요 저희 은행에서 바로 바꿔드리긴 어렵고 통신사에 신청하셔야 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 28, '고객', '아 그래요? 은행에서 안 되는구나.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 29, '상담사', '네 저희가 할 수 있는 건 이 계좌에서 출금되는 걸 해지하는 거고요 등록 자체는 통신사 고객센터에서 새 계좌로 다시 해주셔야 해요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 30, '고객', '음 그럼 일단 여기서 빠지는 거 해지부터 해주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 31, '상담사', '네 근데 통신사에 새 계좌 등록 안 하시고 여기서만 해지하면요 다음 달 통신비가 미납될 수 있어가지고요 통신사 등록 먼저 하시는 걸 추천드려요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 32, '고객', '아 그러네. 그럼 통신사 먼저 하고 그 다음에 여기 해지할게요. 헷갈릴 뻔했네.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 46, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 33, '상담사', '네 그렇게 하시는 게 안전해요. 통신사에서 새 계좌 등록 끝나면 그때 다시 연락 주시면 여기 해지 바로 도와드릴게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 34, '고객', '네네 알겠어요. 그렇게 할게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 35, '상담사', '네 고객님 그럼 오늘 이번 달 입출금 내역 조회해드렸고요 정기적금 자동이체 출금일을 25일에서 28일로 변경해드렸습니다. 통신비 자동이체 계좌 변경은 통신사 먼저 처리하시고 다시 연락 주시기로 했어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 36, '고객', '네 고생하셨어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1015-0720', 37, '상담사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 3, '상담사', '아 네 금융인증서 갱신 도와드릴게요. 본인확인 먼저 좀 진행할게요. 성함이랑 휴대폰 뒷자리 좀 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 4, '고객', '네 [name] 요 뒷자리 [code]요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 음 지금 보니까 금융인증서 유효기간이 지난 달에 끝났네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 6, '고객', '아 그쵸 그래서 어 어플에서 하려고 했는데 자꾸 뭐가 안 돼가지고 좀 답답하더라고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 7, '상담사', '아 네 그러셨구나. 갱신은 그 기존 인증서를 폐기하고 다시 발급받는 식으로 진행이 되거든요. 지금 앱 켜 두셨어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 8, '고객', '네네 켜 놨어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 9, '상담사', '그럼 하단에 메뉴 누르시면 인증센터 있구요 거기 금융인증서 관리 들어가시면 갱신 버튼이 있을 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 10, '고객', '어 잠깐만요 인증센터 음 아 여기 있네요. 금융인증서 관리 눌렀어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 11, '상담사', '네 거기서 갱신 누르시고 클라우드에 저장하는 걸로 선택하시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 12, '고객', '네 눌렀어요 어 비밀번호 입력하라는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 13, '상담사', '네 그게 인증서 비밀번호인데요 예전에 쓰시던 거 입력하시면 됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 14, '고객', '어 그게 그게요 제가 좀 기억이 가물가물한데 일단 한번 해 볼게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 15, '고객', '어 어 틀렸다는데요 비밀번호 오류라고.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 16, '상담사', '아 네 그럼 다시 한 번 천천히 넣어 보시겠어요? 대소문자나 숫자 섞이는 경우가 있어서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 17, '고객', '음 다시 해 볼게요. 어 또 틀렸대요 이거 몇 번 틀리면 막히는 거 아니에요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 18, '상담사', '아 네 [number]번 연속 틀리시면 그 인증서가 일시적으로 잠기긴 하는데요 지금 [number]번이시니까 너무 걱정 안 하셔도 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 19, '고객', '아 그래요? 근데 진짜 기억이 안 나는데 이거 그냥 초기화 같은 건 안 되나요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 20, '상담사', '네 됩니다. 비밀번호가 기억이 안 나시면 그 인증서를 아예 재발급 받으시면 새 비밀번호로 다시 설정이 되거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 21, '고객', '아 그러면 그게 낫겠네요. 그럼 그걸로 해 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 22, '상담사', '네 그럼 화면에서 갱신 말고 신규 발급 쪽으로 가셔야 되는데요 뒤로 한 번 나가시면 발급 버튼 보이실 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 23, '고객', '어 네 나왔어요. 발급 눌렀구요 어 본인인증 하라는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 24, '상담사', '네 휴대폰 본인인증 한 번 거치시구요 그 다음에 새로 쓰실 비밀번호 설정하는 화면이 나올 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 25, '고객', '아 네 했어요. 비밀번호 새로 정했구요 어 발급 완료됐다고 뜨네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 26, '상담사', '아 네 잘 되셨네요. 이번엔 그 비밀번호 까먹지 마시구요 어디 메모라도 해 두시면 좋아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 27, '고객', '네네 그럴게요. 아 그리고 하나만 더 여쭤봐도 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 28, '상담사', '네 그럼요 말씀하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 29, '고객', '어 제가 이번에 정기예금 만기된 돈을 딴 계좌로 좀 보내려고 하는데 이체를 어떻게 해야 되는지 잘 모르겠더라고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 30, '상담사', '아 네 정기예금 만기금 이체요. 우선 그 만기된 돈이 입출금 통장으로 들어와 있어야 이체가 되는데요 혹시 만기 해지는 하셨어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 31, '고객', '어 그게 자동으로 입출금 통장에 들어왔다고 문자가 오긴 왔어요. 한 7,000,000원쯤 되는 거 같은데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 32, '상담사', '네 그럼 만기 해지는 이미 된 거구요 그 돈이 지금 입출금 통장에 있으니까 따로 해지 절차 없이 바로 이체하시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 33, '고객', '아 네 그럼 바로 보내면 되는 거네요. 어떻게 하면 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 34, '상담사', '네 앱에서 이체 메뉴 들어가시면 됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 35, '고객', '어 이체 들어왔구요 어디다 보낼지 입력하는 거죠?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 36, '상담사', '네 받으실 은행이랑 계좌번호 입력하시구요 금액 넣으시고 그 다음에 이체 비밀번호랑 아까 새로 발급받으신 인증서로 인증하시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 37, '고객', '아 근데 7,000,000원이면 한도 같은 거 안 걸리나요 한 번에?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 38, '상담사', '음 고객님 일일 이체한도가 지금 보니까 1회 10,000,000원 1일 50,000,000원으로 돼 있어서요 7,000,000원은 한 번에 문제없이 보내실 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 39, '고객', '아 다행이네요. 그럼 그 OTP 같은 거는 따로 필요 없어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 40, '상담사', '네 일정 금액 이상은 보안매체가 필요할 수 있는데요 7,000,000원이면 그 인증서랑 이체 비밀번호만으로도 진행되실 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 41, '고객', '아 네 그럼 지금 한번 해 볼게요. 어 계좌번호 넣고 금액 넣고 어 인증까지 됐어요. 이체 완료라고 뜨네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 42, '상담사', '아 네 잘 되셨네요. 받으시는 분 통장에도 바로 들어갔을 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-STT-1016-0720', 44, '상담사', '네 고객님 그럼 오늘 금융인증서 재발급이랑 정기예금 만기금 이체 방법까지 안내 도와드렸구요 더 궁금하신 거 있으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 2, '고객', '저기요 저 지금 좀 급한데요 제가 사기를 당한 거 같아가지고요 빨리 좀 막아 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 3, '상담사', '아 네 고객님 우선 침착하게 도와드릴게요. 본인확인 먼저 빠르게 할게요. 성함이랑 생년월일 좀 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 4, '고객', '네 [name] 요 생년월일 [birth]이요. 빨리요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 5, '상담사', '네 [name] 고객님 확인됐습니다. 어떤 상황이신지 간단히 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 6, '고객', '아 제가 주택담보대출 관련해서 전화가 와가지고요 무슨 금리 낮춰 준다고 그러길래 어 계좌번호랑 뭐 인증번호 같은 걸 불러 줬거든요. 근데 생각해 보니까 이거 피싱인 거 같아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 7, '상담사', '아 네 알겠습니다. 그럼 지금 바로 계좌 일시 정지 거치고 추가 피해 막아 드릴게요. 혹시 그쪽에 돈이 빠져나간 건 확인하셨어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 8, '고객', '어 모르겠어요 방금 일이라 무서워서 앱도 못 보겠고 그냥 일단 다 막아 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 9, '상담사', '네 지금 즉시 고객님 명의 계좌 전체에 지급정지 걸어 드릴게요. 잠시만요 어 처리 들어갑니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 10, '고객', '네네 빨리 좀요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 11, '상담사', '네 방금 입출금 계좌 2개랑 연결된 카드까지 다 일시 정지 처리됐습니다. 이제 그쪽으로 돈 빠져나가는 건 막혔어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 12, '고객', '아 다행이다. 근데 제가 부른 그 인증번호로 뭐 막 이체되고 그런 거 아니에요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 13, '상담사', '음 지금 최근 거래 내역 보니까요 다행히 출금이나 이체 시도된 건 아직 없네요. 막히기 직전이었던 거 같습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 14, '고객', '아 진짜 큰일 날 뻔했네요 휴. 근데 제가 불러 준 그 인증번호 그거 때문에 뭐 다른 데서 또 막 쓰이고 그러는 거 아니에요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 15, '상담사', '음 그 부분도 걱정되실 텐데요 지금 계좌랑 카드 다 정지된 상태라 그 번호로는 추가로 뭘 할 수가 없어요. 그리고 혹시 모르니까 인터넷뱅킹 비밀번호도 한 번 바꾸시는 걸 추천드려요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 16, '고객', '아 네 그것도 바꿔야겠네요. 이따 꼭 바꿀게요. 근데 이거 신고 같은 것도 해야 되는 거죠?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 17, '상담사', '네 보이스피싱은 경찰서 112로 신고하셔야 되구요 저희 쪽에서도 사고 접수 등록 같이 해 드릴게요. 등록해 드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 18, '고객', '네 해 주세요. 그리고 그 정지는 언제까지 가는 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 19, '상담사', '네 사고 접수 등록했구요 지급정지는 고객님이 직접 해제 요청하시거나 경찰 확인서 나오기 전까지는 계속 유지됩니다. 안전하게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 20, '고객', '아 네 그게 낫겠네요. 일단 며칠은 그냥 막아 둘게요. 근데 그동안 제 월급 들어오는 건 괜찮아요? 정지하면 입금도 안 되는 거 아니에요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 21, '상담사', '아 네 좋은 질문이세요. 지급정지는 나가는 출금만 막는 거라서요 입금은 정상적으로 들어옵니다. 월급은 걱정 안 하셔도 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 22, '고객', '아 들어오는 건 되는구나. 다행이네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 23, '상담사', '네 그렇게 하시는 게 안전합니다. 나중에 푸실 때는 신분증 가지고 영업점 오시거나 다시 전화 주시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 24, '고객', '네 알겠어요. 아 맞다 그리고 제가 어제 지갑을 잃어버렸는데 거기 체크카드도 같이 있었거든요. 그것도 좀 막아 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 25, '상담사', '아 네 체크카드 분실 신고요. 잃어버리신 카드가 혹시 어떤 카드인지 기억나세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 26, '고객', '어 그 끝자리가 [code]인가 그랬던 거 같은데 정확하진 않아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 27, '상담사', '네 조회해 보니까 끝자리 [code] 체크카드 1장 있으시네요. 이거 바로 분실 신고로 정지 걸어 드릴게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 28, '고객', '네 그렇게 해 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 29, '상담사', '네 분실 신고 처리됐구요 혹시 카드 새로 재발급도 같이 신청해 드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 30, '고객', '어 음 그건 좀 이따 생각해 볼게요. 일단 막는 게 급해서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 31, '상담사', '네 그럼 분실 정지만 걸어 두구요 나중에 재발급 원하시면 언제든 신청 가능하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 32, '고객', '네 그리고 아 제가 마지막으로 하나만 더 볼 게 있는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 33, '상담사', '네 말씀하세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 34, '고객', '어 그 혹시 제 통장에서 최근에 빠져나간 거 있나 입출금 내역 좀 확인하고 싶어서요. 불안해가지고.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 35, '상담사', '아 네 그럼요 최근 입출금 내역 같이 봐 드릴게요. 어느 계좌 기준으로 보실까요? 주거래 통장이요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 36, '고객', '네 그 월급 들어오는 통장이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 37, '상담사', '네 보니까 최근 일주일 내역은요 어제 카드 결제 12,000원 그저께 급여 입금 그리고 공과금 자동이체 정도네요. 이상한 출금은 없습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 38, '고객', '아 다행이다. 그 자동이체는 얼마 나간 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 39, '상담사', '네 자동이체는 관리비로 183,000원 나갔구요 평소 나가시던 그 금액이라 정상 거래로 보입니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 40, '고객', '아 네 맞아요. 그거 원래 나가는 거 맞아요 휴 이제 좀 안심이 되네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 41, '상담사', '네 다행입니다. 그래도 혹시 모르니까 며칠 동안 문자 알림 같은 거 잘 확인해 주세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 43, '상담사', '네 고객님 그럼 오늘 보이스피싱 사고 접수랑 계좌 지급정지 체크카드 분실 신고 그리고 입출금 내역 확인까지 도와드렸구요 더 필요하신 거 있으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1017-0720', 45, '상담사', '네 놀라셨을 텐데 빨리 연락 주셔서 잘 처리됐습니다. 좋은 하루 되세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 2, '고객', '어 네 제가 앱에서 뭐 좀 하려는데 자꾸 오류가 나가지고요 좀 짜증 나서 전화했어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 3, '상담사', '아 네 불편하셨겠네요. 확인 도와드릴게요. 본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 좀 부탁드려요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 4, '고객', '네 [name]구요 뒷자리 [code]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 어떤 화면에서 오류가 나는지 좀 자세히 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 6, '고객', '어 그 신용대출 한도 조회를 하려고 들어갔거든요. 근데 거기서 다음 버튼 누르면 자꾸 무슨 오류 코드가 뜨면서 튕겨요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 7, '상담사', '아 네 신용대출 조회 화면에서 오류가 나는 거군요. 혹시 그 오류 코드 같은 거 화면에 떴어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 8, '고객', '어 잠깐만요 다시 해 볼게요. 어 떴다 [code] 뭐 이렇게 뜨는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 9, '상담사', '네 [code] 코드면요 보통 일시적인 통신 오류이거나 앱 버전이 좀 오래된 경우에 나는 건데요 혹시 앱 업데이트 최근에 하셨어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 10, '고객', '어 글쎄요 업데이트는 잘 안 하는데 자동으로 되는 거 아니에요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 11, '상담사', '음 자동 업데이트 꺼져 있으면 안 될 수도 있어서요 일단 앱 한 번 완전히 종료하셨다가 다시 켜 보시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 12, '고객', '어 네 껐다 켰어요 다시 들어가 볼게요. 어 또 똑같이 그 오류 나는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 13, '상담사', '아 그래요? 그럼 스토어 들어가셔서 저희 앱 업데이트 있는지 한 번 확인해 보시겠어요? 보류 중인 업데이트가 있을 수도 있어서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 14, '고객', '어 스토어 들어왔는데 어 진짜 업데이트 버튼 있네요. 이거 누르면 돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 15, '상담사', '네 그거 눌러서 업데이트 한 번 해 주시구요 끝나면 다시 앱 켜서 조회 시도해 보세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 16, '고객', '네 지금 업데이트 중이에요. 어 좀 걸리네요. 어 됐다 다시 들어가서 한도 조회 해 볼게요. 어 오 이번엔 되네요. 한도 떴어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 17, '상담사', '아 네 잘 되셨네요. 그 오류는 앱 버전 문제였던 거 같습니다. 이제 정상적으로 조회되실 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 18, '고객', '아 진짜 별거 아니었네. 근데 아 맞다 그리고요 제가 오류 나기 전에 이체를 하나 했었는데 그게 좀 이상해요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 19, '상담사', '아 네 이체 관련해서요. 어떤 점이 이상하셨어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 20, '고객', '어 제가 친구한테 삼십 아 아니 그 130,000원을 보냈는데요 분명 이체 완료라고 떴거든요. 근데 친구는 안 들어왔대요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 21, '상담사', '아 네 그럼 그 이체 건 바로 확인해 볼게요 잠시만요. 어 보니까 오늘 오전에 130,000원 이체 시도하신 게 한 건 있는데요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 22, '고객', '네네 그거요. 그게 어떻게 된 거예요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 23, '상담사', '음 이게 상태가 처리 실패로 돼 있네요. 그 받는 분 계좌번호가 한 자리가 안 맞아서 반려된 거 같습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 24, '고객', '어 진짜요? 근데 왜 완료됐다고 떴어요 그럼 헷갈리게.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 25, '상담사', '아 네 그게 아까 그 앱 오류 때문에 화면 표시가 잘못 떴던 거 같아요. 실제로는 출금이 안 됐구요 고객님 통장에서 빠진 돈도 없습니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 26, '고객', '아 그래요 돈은 안 나갔어요 다행이네. 그럼 다시 보내면 되는 거죠?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 27, '상담사', '네 계좌번호 다시 정확히 확인하셔서 보내시면 되구요 이번엔 앱 업데이트도 됐으니까 정상적으로 처리되실 거예요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 28, '고객', '네 친구한테 계좌번호 다시 받아서 해 볼게요. 어 지금 했는데 이번엔 완료 떴고 친구도 들어왔대요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 29, '상담사', '아 네 잘 처리되셨네요. 다행입니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 30, '고객', '네 덕분에 해결됐네요 감사해요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 31, '상담사', '네 고객님 그럼 오늘 앱 오류는 업데이트로 해결됐구요 실패됐던 이체 건도 정상 처리되신 거 확인했습니다. 더 도와드릴 거 있으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 32, '고객', '아니요 없어요 수고하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1018-0720', 33, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 2, '고객', '아 네 안녕하세요 제가 전세자금대출 관련해서 좀 여쭤볼 게 있어서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 3, '상담사', '네 전세자금대출 문의시군요. 본인확인 먼저 좀 할게요. 성함이랑 생년월일 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 4, '고객', '네 [name] 요 생년월일 [birth]이요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 5, '상담사', '네 [name] 고객님 확인됐습니다. 어떤 점이 궁금하세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 6, '고객', '어 제가 이번에 전세 계약을 하나 하려고 하는데요 한도가 얼마나 나오는지랑 금리가 어떻게 되는지 좀 알고 싶어서요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 7, '상담사', '아 네 전세대출 한도는요 보통 보증금의 한 80%까지 가능하구요 다만 고객님 소득이나 보증기관 조건에 따라 좀 달라지거든요. 보증금이 얼마 정도세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 8, '고객', '어 보증금이 한 250,000,000 정도 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 9, '상담사', '네 그럼 단순 계산으로는 200,000,000 정도까지 가능하실 수 있는데요 정확한 건 소득 서류 보고 심사를 해 봐야 알 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 11, '상담사', '음 현재 전세대출 금리는요 대략 연 4.2%에서 4.8% 사이로 보시면 되구요 신용도나 우대조건에 따라 좀 내려갈 수도 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 13, '상담사', '네 급여이체나 카드 실적 청약통장 같은 거 있으시면 항목별로 조금씩 금리 우대가 들어가거든요. 다 합치면 한 점 몇 % 까지도 깎이실 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 14, '고객', '아 제가 급여이체는 여기로 받고 있긴 한데 청약통장은 없어요. 그래도 좀 깎이나요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 15, '상담사', '네 급여이체 하나만으로도 보통 0.1 내지 0.2% 정도는 우대가 들어가구요 거기에 카드까지 쓰시면 더 받으실 수 있어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 16, '고객', '아 그럼 카드도 좀 써야겠네요. 어 그리고 대출 실행은 언제까지 받아야 돼요? 계약을 곧 해야 되거든요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 17, '상담사', '음 보통 잔금 치르시는 날 맞춰서 실행되구요 서류 접수부터 심사까지 한 일주일에서 열흘 정도는 잡으시는 게 좋아요. 그래서 미리 신청해 두시는 걸 추천드려요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 18, '고객', '아 그렇구나. 그럼 좀 더 알아봐야겠네요. 어 그리고 그 김에 하나 더 여쭤볼게요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 19, '상담사', '네 말씀하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 20, '고객', '제가 예전에 받아 놓은 대출이 하나 있는데요 그거를 중간에 갚으면 수수료 같은 게 나온다던데 그게 어떻게 되나요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 21, '상담사', '아 네 중도상환수수료요. 잠시만요 기존 대출 조회해 볼게요. 어 보니까 작년에 받으신 대출 1건 있으시네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 22, '고객', '네네 그거요. 그거 지금 갚으면 수수료가 얼마나 나와요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 23, '상담사', '음 이게 받으신 지 1년 좀 넘으셨구요 중도상환수수료율이 잔액 기준으로 한 1.2% 정도 남아 있어서요 잔액이 지금 40,000,000원이니까 한 480,000원 정도 나오실 거 같아요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 24, '고객', '어 생각보다 좀 되네요. 이거 그냥 두는 게 나으려나.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 25, '상담사', '네 그건 고객님 상황에 따라 다른데요 이 수수료는 시간 지날수록 줄어들거든요. 3년 지나면 아예 면제되기도 하구요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 26, '고객', '아 그럼 좀 기다렸다 갚는 게 낫겠네요. 어 아니면 연장 같은 것도 되나요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 27, '상담사', '네 만기 연장도 가능하세요. 만기 한 달 전쯤 신청하시면 되구요 그때 금리는 그 시점 기준으로 다시 적용됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 28, '고객', '아 네 알겠어요. 그건 좀 더 고민해 볼게요. 아 맞다 그리고 마지막으로 하나만요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 29, '상담사', '네 그럼요 편하게 말씀하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 30, '고객', '어 제가 여윳돈이 좀 생겨서 적금을 하나 들까 하는데요 지금 가입 가능한 거 있어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 31, '상담사', '아 네 적금 신규 가입이요. 지금 판매 중인 상품 중에 정기적금이 연 3.5%짜리가 있구요 자유적금도 하나 있어요. 매달 정해진 금액 넣으실 거예요 아니면 자유롭게요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 32, '고객', '어 매달 한 300,000원씩 꾸준히 넣으려고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 33, '상담사', '네 그럼 정기적금이 금리도 더 높아서 유리하실 거예요. 가입 기간은 1년이랑 2년 중에 선택하실 수 있구요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 34, '고객', '어 그 2년짜리는 금리가 더 높아요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 35, '상담사', '네 2년이 1년보다 한 0.2% 정도 더 높구요 그래서 길게 넣으실 거면 2년이 좀 더 유리하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 36, '고객', '아 그럼 2년으로 할게요. 지금 바로 가입돼요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 37, '상담사', '네 앱에서 바로 개설 가능하세요. 적금 메뉴 들어가셔서 정기적금 선택하시구요 월 납입액 300,000원 기간 2년으로 설정하시면 됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 38, '고객', '어 네 적금 메뉴 들어왔구요 정기적금 골랐어요. 어 금액이랑 기간 넣고 어 인증하라는데.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 39, '상담사', '네 인증서로 인증하시고 출금 계좌만 지정해 주시면 개설 완료됩니다.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 40, '고객', '어 됐어요 가입 완료라고 뜨네요. 첫 회차도 빠져나갔구요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 41, '상담사', '아 네 잘 가입되셨네요. 매달 같은 날짜에 자동으로 출금되니까 잔액만 좀 챙겨 두시면 돼요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 42, '고객', '네 알겠어요 오늘 이것저것 많이 물어봤네요 감사해요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 43, '상담사', '네 고객님 그럼 오늘 전세대출 한도랑 금리 안내 기존 대출 중도상환수수료 확인 그리고 정기적금 신규 가입까지 도와드렸습니다. 더 궁금하신 거 있으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 44, '고객', '아니요 다 됐어요 수고하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1019-0720', 45, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 1, '상담사', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 2, '고객', '아 네 제가 이체를 하려는데 자꾸 실패가 떠가지고요 좀 답답해서 전화했어요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 3, '상담사', '아 네 불편을 드렸네요. 확인 도와드릴게요. 본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 부탁드려요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 4, '고객', '네 [name] 요 뒷자리 [code]요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 5, '상담사', '네 [name] 고객님 [code] 확인됐습니다. 어디로 이체하시다가 실패가 났는지 말씀해 주시겠어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 6, '고객', '어 제가 체크카드 대금 결제할 돈을 다른 은행 계좌로 보내려고 했거든요. 한 2,000,000원 정도요. 근데 실패라고 뜨더라고요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 7, '상담사', '아 네 2,000,000원 이체요. 잠시만요 거래 내역 좀 볼게요. 어 보니까 오늘 이체 실패 건이 2건 찍혀 있네요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 8, '고객', '네네 제가 2번 시도했어요. 둘 다 안 돼가지고.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 9, '상담사', '음 이게요 실패 사유가 이체한도 초과로 나와 있어요. 혹시 오늘 다른 이체도 좀 하셨어요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 43, '상담사', '네 고객님 그럼 오늘 이체 실패 원인 확인하고 이체한도 10,000,000원으로 변경 그리고 모바일 OTP 발급까지 도와드렸습니다. 더 필요하신 거 있으세요?');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 44, '고객', '아니요 다 됐어요 수고하세요.');
+INSERT INTO public.qa_call_transcript ("ID", turn_no, speaker, text) VALUES ('BANK-CHT-1020-0720', 45, '상담사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.');
 
 
 --
 -- PostgreSQL database dump complete
 --
 
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어와 불확신 표현이 각각 1회 이상 나타났으나, 반말·명령/지시형·훈계·다그침은 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 2, '응대·표현', '끝인사', '종료 인사는 있으나 종료 구간에서 소속과 실명을 밝히지 않음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말과 불확신 표현이 각 1회씩 나타났으나 반말·명령/지시·훈계·다그침은 없음.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 입출금 내역 확인 용건을 파악하고 종료 시점에 핵심 조치 사항을 명확히 재복창했으며, 계좌 끝자리로 대상을 특정하고 이미 확인된 정보를 반복 질문하지 않음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 두괄식으로 핵심을 먼저 제시하며 고객의 선택을 확인하는 방식으로 진행하여 세 요소를 모두 충족.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·생년월일 답변을 수령함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황에 명시적 사과, 거절·양해 필요 상황에 쿠션어, 고객 상황에 대한 호응이 모두 적절히 제시됨.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 이체 실패 용건을 파악하고 핵심(한도 초과)을 정확히 재복창했으며, 거래 시간·금액으로 대상을 특정했고, 이미 조회·언급된 내용의 불필요한 재질문이 없음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고(OTP 숫자 변경 원리), 조치 전 필요 조건을 먼저 제시하며(두괄식), 고객 이해를 확인하는 모든 요소 충족.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 한도·변경 내용을 정확히 안내했고, 추측성 단정이나 금지멘트 없이 적절한 수준의 조건부 표현으로 마무리함.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 한도 변경을 직접 처리하고, OTP 발급 대안을 제시하며, 등록 과정 중 추가 문제 발생 시 재연락 안내로 후속조치를 확보함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함·생년월일 2요소 확인 완료 후 거래 내역 조회·한도 안내 진행으로 본인확인 선행 순서 준수.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '고객 확인 후 필요한 정보만 순차적으로 요청·활용하였으며 동의 없는 활용이나 제3자 유출 사례 없음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체한도 변경 업무에서 필수 요소인 변경 가능 한도·증액 조건·보안매체 필요성을 모두 안내했으나, 이체 처리 업무의 핵심 필수안내인 1회/1일 한도와 수수료를 미안내함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', 'OTP 앱 발급은 금융상품 가입이 아닌 기존 계좌 보안 기능 추가로, 가입성 상담 대상이 아님.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황이 없음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·휴대폰 뒷자리 답변을 수령함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '거절·양해 상황에서 쿠션어 표현이 있고, 고객 상황에 대한 호응이 있으나, 불편 상황(고객이 기억 없는 출금)에 대한 명시적 사과가 없음.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 입출금 내역 조회, 통신비 자동이체 출금일 변경, 관리비 자동이체 신규 등록이라는 세 가지 용건을 모두 파악하고 종료 시점에 핵심 내용을 재복창했으며, 각 거래 대상(통신요금, 관리비 계좌)을 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 두괄식으로 핵심을 먼저 제시하며 고객 이해를 확인하는 절차를 모두 수행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '자동이체 출금일 변경 및 신규 등록 안내에서 약정 제약·처리 결과를 정확히 전달했으며, 추측성 단정이나 금지멘트 없음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 고객의 모든 요청(입출금 조회, 자동이체 변경, 신규 등록)을 끝까지 책임지고 처리했으며, 출금일 변경 불가 시 가능한 대안을 제시하고, 처리 종료 전 추가 불편을 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 2, '응대·표현', '끝인사', '종료 인사는 있으나 소속과 실명이 모두 누락되어 1점 기준 충족.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2요소를 확인하고 본인확인 완료 후 입출금 내역 조회를 진행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 요청 후 고객 확인 발화를 받은 뒤 전산 정보를 안내했으며, 고객 동의 없는 정보 활용이나 제3자 유출 사례 없음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '자동이체 등록·변경 업무에서 출금일·절차는 안내했으나, 자동이체 신규 등록 시 필수인 수수료 안내가 누락됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '자동이체 변경·신규 등록 상담으로 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 보안사고 정황이 상담에 전혀 없음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '쿠션어와 호응은 있으나 불편·부정 상황(한도 기대치 미달, 수수료 발생)에서 명시적 사과가 없어 일부 요소만 충족.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 2회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 신용대출 한도·금리 조회, 기존 대출 중도상환 상담, 정기적금 신규 가입 등 3가지 용건을 모두 파악하고 통화 종료 시 핵심 내용을 정확히 재복창했으며, 이미 언급된 내용을 반복해 묻지 않음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 핵심을 먼저 제시하며 이해 확인을 진행했으나, 고객의 되물음 없이 진행되어 실제 이해 확인이 제한적임.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '신용대출·기존 대출·정기적금 관련 금액·금리·한도·수수료·만기 안내가 모두 정확하고, 심사 전 단정을 피하며 금지멘트 사용이 없음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 고객의 모든 문의(신용대출 한도·금리, 기존 대출 중도상환, 적금 가입)를 끝까지 책임지고 처리하며, 중도상환 수수료 회피 방안(만기 대기)과 만기 안내 문자 등 후속조치를 제시하고, 처리 종료 전 추가 불편을 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2요소를 확인하고 본인확인 완료 후 신용대출 한도·금리 정보를 안내하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '동의 없는 정보 활용 없음, 제3자 유출 없음으로 정보 취급 가이드 준수.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '신용대출·기존대출 중도상환·정기적금 3개 업무 모두에서 핵심 필수안내(금리·중도상환수수료·적금금리·중도해지이율·예금자보호) 누락 또는 미흡으로 필수 항목 미충족.', 0, 0, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '정기적금 가입 상담에서 투자성향 적합성 확인 및 중도해지 손실·만기 조건 등 핵심 필수 고지 누락.', 0, 0, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황이 통화 전체에서 발생하지 않음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2가지 정보를 확인하고 본인확인 완료 후 계좌 정지 등 거래 처리를 진행하여 본인확인 선행 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 후 필요한 정보만 조회·활용하였으며, 고객 동의 없는 정보 활용이나 제3자 유출 사례 없음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '보이스피싱 의심 상황에서 즉시 지급정지, 경찰 신고(112), 사고 접수 등록, 비밀번호 변경, 카드 분실 신고 등 법정필수 조치를 모두 이행했으나, 금감원(1332) 신고 안내가 누락됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·생년월일 답변을 수령함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황(비밀번호 오류)에서 명시적 사과 없음, 쿠션어와 호응은 부분적으로 존재하여 일부 요소만 충족.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어( 반복)가 산발적으로 나타나나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 금융인증서 갱신 용건을 파악하고 종료 시점에 핵심 내용(갱신·비밀번호 초기화·이체 방법 안내)을 명확히 재복창했으며, 본인확인으로 대상을 특정했고, 이미 언급된 내용을 반복 질문하지 않음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 결론을 먼저 제시하며 고객의 이해도를 확인하며 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '금융인증서 갱신·비밀번호 초기화·이체 방법 안내 모두 정확하고, 한도 관련 추측성 단정을 회피했으며, 금지멘트 사용 없음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 인증서 갱신·비밀번호 초기화·이체 방법 안내까지 책임지고 처리하고, 비밀번호 오류 시 초기화 대안을 제시했으며, 종료 전 처리 내용을 정리하며 추가 문의 확인을 수행함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2가지 요소를 확인하였고, 본인확인을 계좌/거래 안내 이전에 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '고객 확인 후 전산 정보 공개, 동의 없는 정보 활용, 제3자 유출 모두 없음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체 업무 필수안내(1회/1일 한도, 수수료, 반영 시점)를 전혀 이행하지 않아 핵심 필수 항목 누락.', 0, 0, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입 상담이 아니라 인증서 갱신·비밀번호 초기화·이체 방법 안내 등 순수 기술 지원 상담으로 적합성 확인·원금비보장 고지 대상 상황 미발생.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황 미발생.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명)·본인확인 질의·고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(보이스피싱 피해, 카드 분실)이 있으나 명시적 사과 표현이 없고, 쿠션어와 호응은 부분적으로 확인됨.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 5, '정확성·설명', '니즈파악 · 재복창', '용건 파악 후 핵심 내용(보이스피싱 피해, 계좌 정지, 카드 분실 처리, 입출금 내역 확인)을 명확히 재복창했고, 체크카드 끝자리로 대상을 특정했으며, 이미 언급된 내용의 불필요한 재질문이 없음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어 를 로 풀어 설명하고, 핵심을 먼저 제시한 후 고객의 이해를 확인하며 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '보이스피싱 피해 대응 안내에서 지급정지·피해구제 절차를 정확히 설명하고, 환급 가능성을 로 조건부 표현하며, 금지멘트 없이 진행함.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 보이스피싱 피해 상황에서 계좌 정지, 상대 계좌 지급 정지 신청, 카드 분실 신고 및 정지, 입출금 내역 조회 등 모든 즉시 처리 가능한 조치를 책임지고 수행했으며, 경찰·금감원 신고, 영업점 방문 등 필요한 후속조치와 대안을 구체적으로 제시했고, 통화 종료 전 처리 내용을 정리하며 추가 불편을 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2요소 확인을 완료하고 본인확인 이후 계좌 처리 및 안내를 진행하여 순서 준수.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '보이스피싱 피해 상담에서 즉시 지급정지, 경찰·금감원 신고 안내, 피해구제 신청 절차를 모두 이행했으나 카드 분실 재발급 시 수수료·배송 방식 미안내로 필수 항목 누락.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '보이스피싱 피해 대응·계좌 정지·카드 분실 신고 등 사고 처리 상담으로, 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '보이스피싱 사고 인지 후 즉시 계좌·카드 지급정지를 수행하고, 경찰·금감원 신고 및 피해구제 절차를 안내했으며, 악성앱 삭제·계좌 해제 절차·카드 재발급 등 후속 조치를 모두 안내함.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·휴대폰 뒷자리 답변을 수령함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사와 상담사 실명은 확인되었으나 소속 정보가 누락됨.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(앱 오류, 이체 보류)에서 명시적 사과, 쿠션어, 고객 상황에 맞는 호응이 모두 적절히 제시됨.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 4, '응대·표현', '정중한 언어표현', '명령형 어휘 와 습관어 이 산발적으로 나타남.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 두 가지 용건(앱 오류, 이체 보류)을 모두 파악하고 핵심을 재복창했으며, 이체 건의 시간·금액·상태를 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어 를 풀어 설명하지 않아 고객이 로 되물었으나 상담사가 재설명하지 않고 진행함.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 보류 상황에 대해 정확한 원인 설명과 처리 절차를 안내했으며, 추측성 단정 없이 조건부 표현으로 안내하고 금지멘트 미사용.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 두 건의 문제를 모두 책임지고 처리하며, 각각에 대해 구체적인 대안·후속조치를 제시하고, 통화 종료 전 추가 불편을 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 4자리로 2요소 확인을 완료했으며, 본인확인 이후 계좌·거래 정보를 안내하는 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '고객 확인 후 정보를 취급했으며, 동의 없는 활용이나 제3자 유출 없이 정보 취급 가이드를 준수함.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체 실패(보류) 상황에서 착오송금 법정필수 안내(즉시 반환 불가·수취인 동의·예보 제도·소요·수수료)와 신고·접수 절차를 전혀 제공하지 않았으며, 이체 처리 기본 필수안내(한도·수수료·반영 시점)도 누락됨.', 0, 0, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입성 상담이 아니라 앱 오류 기술 지원과 이체 보류 건 조회·처리 상담으로, 적합성 확인·필수고지 대상 상황 미발생.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '이체 보류는 기술적 결제 지연 상황으로 분실·피싱·부정거래 등 보안사고가 아님.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 2, '응대·표현', '끝인사', '종료 인사는 있으나 종료 구간에서 소속과 실명이 모두 미제시됨.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 긍정 답변이 모두 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 2, '응대·표현', '끝인사', '종료 인사와 상담사 실명은 있으나 종료 구간에서 소속(부서/회사)을 밝히지 않음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황 미발생으로 사과 요소는 해당 없음이나, 거절·양해 상황에서 쿠션어와 고객 상황에 대한 호응이 적절히 제시됨.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 3회 이상 반복되어 나타남.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 네 가지 용건(마이너스 통장 한도·금리 조회, 한도 증액 가능성, 신용대출 중도상환수수료, 체크카드 연계 적금 가입)을 모두 파악하고 종료 시점에 핵심 내용을 정확히 재복창했으며, 각 거래·상품을 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 결론을 먼저 제시하며 고객 이해를 확인하는 세 요소를 모두 충족하여 설명력·전달력이 우수함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '계좌·대출·적금 안내 전반에서 금액·요율·조건을 정확히 제시했고, 심사 필요 사항에 대해 단정을 피하며 금지멘트를 사용하지 않음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 세 가지 요소를 모두 충족함: 마이너스 통장·신용대출·적금 관련 문의를 직접 처리하고, 즉시 해결 불가능한 한도 증액·금리 인하에 대해 신청 방법과 필요 서류를 안내하며, 통화 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2가지 요소를 확인하였고, 본인확인 완료 후 계좌·거래 정보 안내를 진행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '고객 본인확인(성함·생년월일) 후 고객의 명시적 요청에 따라 전산 정보를 제공했으며, 동의 없는 활용이나 제3자 유출 사례 없음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '마이너스통장·신용대출·정기적금 3개 업무에서 금리·중도상환수수료·적금금리는 안내했으나, 적금 중도해지이율·예금자보호·대출철회권·연체불이익 등 법정필수 항목 다수 누락.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(모바일뱅킹 오류, 이체 미결제)이 있으나 명시적 사과 없음; 쿠션어와 호응은 부분적으로 확인되어 4점 범위.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어( 반복)와 불확신 표현이 각각 1회 이상 나타났으나, 반말·명령/지시형·훈계·다그침은 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 두 가지 용건(앱 오류, 미결제 이체)을 모두 파악하고 핵심을 재복창했으며, 이체 거래를 시간·금액으로 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '적금 가입 상담에서 투자성향 적합성 확인 및 중도해지 손실·만기 조건 등 핵심 필수 고지 누락.', 0, 0, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 보안사고 정황이 상담 전체에서 발생하지 않음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 2, '응대·표현', '끝인사', '종료 인사와 상담사 실명은 확인되었으나 종료 구간에서 소속(부서/회사)을 밝히지 않음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(고객이 모르는 자동이체 발견)에 명시적 사과 없음. 쿠션어와 호응은 적절히 제공되었으나 사과 부재로 공감 표현이 미흡.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '계좌·이체 관련 안내에서 금액·처리 시점·절차를 정확히 안내했으며, 통신사 계좌 변경 시 불확실성을 로 표현해 추측성 단정을 회피했고, 금지멘트 사용이 없음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 고객의 모든 요청(펀드 자동납입 감액, 통신비 계좌 변경, 신규 자동이체 등록)을 직접 처리하고, 통신사 연락 등 대안을 제시하며, 종료 전 추가 불편을 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2가지 정보를 확인하였고, 본인확인 완료 후 계좌 정보 안내 및 거래 처리를 진행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '자동이체 등록·변경 업무에서 출금일·절차 안내는 충족했으나, 잔액부족 시 처리(재출금·미납)에 대한 권장 안내가 누락됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '신규 자동이체 등록 상담은 적금 적립 설정이며 금융상품 가입성 상담이 아닌 거래 변경·신규 등록 업무로 판단됨.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황 부재.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황(이체 실패)이 있었으나 명시적 사과 없음, 쿠션어와 호응은 적절히 제시됨.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 다수 반복되었으나, 반말·명령/지시형·훈계·다그침·불확신 표현은 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 용건(신용카드 대금 600,000원 이체 실패)을 파악하고 핵심을 재복창했으며, 이체 대상과 금액을 정확히 특정했고, 이미 언급된 내용을 불필요하게 재질문하지 않음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 6, '정확성·설명', '설명력 · 전달력', '내부 용어를 풀어 설명하고(보안상 한도 낮게 시작), 두괄식으로 핵심을 먼저 제시(한도 초과)하며, 고객 상황에 맞춰 이해를 확인하는 설명 진행.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 한도 변경, OTP 발급 수수료, 모바일 OTP 보안성 등 계좌·이체 관련 안내가 정책 기준에 부합하며 추측성 단정이나 금지멘트 없음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 이체 실패 원인을 파악하고 한도 변경을 직접 처리했으며, OTP 배터리 부족 시 모바일 OTP 발급이라는 대안을 제시하고, 통화 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2요소 확인을 완료했고, 본인확인을 계좌·거래 정보 안내 이전에 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체한도 변경 필수요소(변경 가능 한도·증액 조건·보안매체)는 모두 충족했으나, 고액 증액 시 필요 서류(증빙) 안내가 누락되었고, OTP 재발급 수수료(5,000원) 안내는 있으나 한도 변경 자체의 필요 서류는 미제시.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '이 상담은 이체 실패 원인 조회, 이체 한도 변경, OTP 배터리 부족 안내 등 기존 계좌 관리 및 서비스 이용 지원이 주 내용이며, 예적금·펀드·보험 등 금융상품 신규 가입 상담이 아님.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황 부재.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 직후 고객의 성명·휴대폰 뒷자리 답변을 수령함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 2, '응대·표현', '끝인사', '종료 인사와 상담사 실명은 있으나 종료 구간에서 소속(부서/회사)을 밝히지 않음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '고객의 계좌 비밀번호 오류 상황에서 상담사가 명시적 사과는 제공하지 않았으나, 쿠션어와 호응 표현은 적절히 사용하여 부분적 공감 태도를 보임.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 다수 회 반복되었으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 공동인증서 발급, 계좌 비밀번호 초기화, 외화예금 입금 방식 등 세 가지 용건을 모두 파악하고 통화 종료 시 핵심 내용을 명확히 재복창했으며, 이미 언급된 내용을 불필요하게 재질문하지 않음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 결론을 먼저 제시하며 이해 여부를 확인하는 세 요소를 모두 충족하여 고객 되물음 없이 명확한 전달 달성.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '외화예금 입금 절차·환율·수수료 안내가 정확하고 추측성 단정 없으며 금지멘트 미사용.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 계좌 비밀번호 초기화를 직접 처리하고, 공동인증서 발급 절차와 외화예금 입금 방법을 단계별로 안내하며, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함·휴대폰 뒷자리·생년월일 등 2요소 이상을 확인했으며, 계좌 비밀번호 초기화 등 거래 처리 전에 본인확인을 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '외화예금 입금 시 환전 수수료 안내는 충족했으나, 적용 환율(고시/우대) 구체 수치 미제시로 [6. 1. 1] 필수요소 부분 누락; 환전 신청·수령 방법·한도·신분증 지참 안내 미흡으로 [6. 1. 2] 미충족; 계좌 비밀번호 초기화 시 본인확인 선행 이행, 인증서 발급 절차·유효기간 안내 충족하나 외환 필수안내 핵심 결함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '외화예금 가입이 아닌 공동인증서 발급 및 계좌 비밀번호 초기화 상담으로, 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '본 상담은 기존 정기적금의 출금일 변경 및 자동이체 계좌 변경 관련 상담으로, 금융상품 신규 가입성 상담이 아님.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·피싱·부정거래 등 보안사고 정황이 상담에 전혀 없음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황(비밀번호 오류, 인증서 잠금 우려)에서 명시적 사과 없음. 호응과 상황 설명은 있으나 공감 표현 부족.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1회 관찰되었으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 두 가지 용건(금융인증서 갱신, 정기예금 만기금 이체)을 정확히 파악하고 종료 시점에 핵심을 재복창했으며, 대상을 명확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 두괄식으로 핵심을 먼저 제시하며 고객 이해를 확인하는 과정이 전반적으로 유지됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 한도·수수료·인증 요건을 정확히 안내했고, 추측성 단정이나 금지멘트 없음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 금융인증서 갱신 문제를 책임지고 처리하고, 비밀번호 기억 불가 시 재발급 대안을 제시했으며, 종료 전 추가 문의를 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2가지 정보를 확인하였고, 본인확인 완료 후 금융인증서 갱신 안내 및 처리를 진행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '동의 없는 정보 활용 없음, 제3자 유출 없음으로 정보 취급 가이드 준수.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '인증서 갱신 업무에서 유효기간 미안내, 이체 업무에서 수수료·반영시점 미안내로 필수요소 누락.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '본 상담은 금융인증서 갱신 및 정기예금 만기금 이체 방법 안내로, 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 보안사고 정황이 상담 전체에서 발생하지 않음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '전세대출·기존대출 중도상환·정기적금 3개 업무 중 적금 가입 시 중도해지이율·예금자보호 필수안내 누락, 대출 상담 시 철회권 미안내로 핵심 필수항목 미충족.', 0, 0, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '정기적금 가입 상담에서 투자성향 적합성 확인, 원금비보장·중도해지 손실 등 핵심 필수 고지, 수수료·위험등급 등 부가 고지가 모두 누락됨.', 0, 0, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·피싱·부정거래 등 보안사고 정황이 통화에서 전혀 발생하지 않음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성함·휴대폰 뒷자리 답변을 수령하여 3요소 모두 충족.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '고객 불편 상황에 즉각 사과하고, 거절·양해 필요 상황에서 쿠션어를 사용했으며, 고객 상황에 맞는 호응을 여러 차례 제시함.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 2회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·휴대폰 뒷자리 답변을 수령하여 3요소 모두 충족.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(피싱 피해, 계좌 정지로 인한 카드 사용 불가, 카드 분실)이 있으나 명시적 사과 없음; 쿠션어와 호응은 부분적으로 존재하여 4점 범위.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 4, '응대·표현', '정중한 언어표현', '반말·명령/지시·훈계·다그침은 없으나, 혼잣말과 불확신 표현이 각 1회 이상 나타남.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 보이스피싱 피해 용건을 명확히 파악하고 상담사가 으로 재복창했으며, 송금액·계좌·카드 등 대상을 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어(보이스피싱·지급정지·정지)를 풀어 설명하고, 추가 피해 방지·분실 신고 등 핵심을 먼저 제시하며, 진행 단계마다 고객 동의·이해를 확인하는 방식으로 진행.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '보이스피싱 피해 지급정지 절차를 정확히 안내하고, 환급 가능성을 단정하지 않으며, 금지멘트 없이 조건부 설명으로 고객 기대를 적절히 관리함.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 계좌 정지·상대 계좌 지급정지·카드 분실 신고·재발급 신청을 직접 처리하고, 경찰 신고 안내와 자동이체 조회 등 후속조치를 제시하며, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함·휴대폰 뒷자리·생년월일 3가지 정보를 확인하여 2요소 이상 인증을 완료했고, 본인확인 후 계좌 정지 등 거래 처리를 진행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 4/8점 — 근거 발화 확인.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '보이스피싱 피해 상담에서 지급정지·신고 절차는 이행했으나, 카드 재발급 시 수수료 안내 누락 및 추가 피해 방지(비밀번호 변경·악성앱 점검) 안내 부재로 핵심 필수 항목 미충족.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입성 상담이 아니라 보이스피싱 피해 대응·계좌 정지·카드 분실 신고·자동이체 조회 등 사고 처리 상담으로 진행됨.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '보이스피싱 사고 인지 후 즉시 계좌 지급정지를 안내하고, 경찰 신고(1325) 및 환급 절차를 안내했으며, 카드 분실 정지 및 재발급 신청까지 후속 조치를 모두 수행함.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·생년월일 답변을 수령함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 6, '정확성·설명', '설명력 · 전달력', '상담사가 내부 용어를 풀어 설명하고, 미결제 거래 취소 시 결론을 먼저 제시한 후 고객의 이해를 확인하며 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '미결제 이체 건의 자동 취소·환입을 로 단정하여 착오송금 반환 절차(수취인 동의/반환지원 제도)를 누락한 오안내.', 0, 0, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 미결제 거래를 직접 취소 처리하고, 환입 문자 알림·앱 재설치 후 재송금 안내 등 후속조치를 제시하며, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2가지 요소를 확인하였고, 본인확인을 계좌·거래 정보 안내 이전에 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체 실패 상황에서 실패 사유·반환 절차는 안내했으나, 이체 처리 시 필수인 1회/1일 한도와 수수료 안내가 누락되고, 앱 오류 상담에서 해결 방법은 제시했으나 거래 오류 시 중복 확인 절차가 미흡함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입성 상담이 아니라 모바일뱅킹 앱 오류 기술지원 및 미결제 이체 거래 취소 처리로, 적합성 확인·필수고지 대상 상황 미발생.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '이체 처리 중단으로 인한 기술적 오류 상황이며, 분실·도난·보이스피싱·부정거래 등 보안사고 정황이 없음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황 미발생으로 사과 요소는 해당 없음이나, 쿠션어와 호응 표현이 상황에 맞게 나타남.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 신용대출·기존 대출 중도상환·정기적금 가입 용건을 모두 파악하고 종료 시점에 핵심 내용을 재복창했으며, 본인확인으로 대상을 특정했고, 이미 언급된 내용을 반복 질문하지 않음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고, 결론을 먼저 제시하며, 고객 이해를 확인하며 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '대출·적금 안내에서 금액·금리·수수료·조건을 정확히 제시하고, 심사 전 단정을 피하며 금지멘트를 사용하지 않음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 신용대출·중도상환·정기적금 세 가지 문의를 모두 책임지고 처리하며, 신청 절차·기간·우대조건 등 대안과 후속조치를 제시하고, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2요소를 확인하였고, 본인확인을 계좌·거래 정보 안내 이전에 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '신용대출 상담에서 금리 유형·산정 기준·심사 후 확정 안내는 충족했으나, 대출 자격·필요 서류, 신청 서류·심사 절차, 실행 조건·인지세, 대출 철회권, 상환 방법·상환일, 연체 불이익 등 핵심 필수 항목 다수 누락; 적금 가입에서 금리·만기·자동이체 출금일은 안내했으나 중도해지이율·예금자보호 미안내로 법정필수 누락.', 0, 0, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '적합성 확인 없이 상품을 권유·가입 진행했으며, 중도해지 손실 고지도 누락되어 핵심 필수 고지 미충족.', 0, 0, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 보안사고 정황이 통화 전체에서 발생하지 않음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·생년월일 답변을 수령함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황(이체 실패, 한도 초과)에서 명시적 사과 없음; 쿠션어와 호응은 부분적으로 존재하나 사과 부재로 공감 표현 미흡.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1~2회 정도 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 이체 실패 및 출금 의심 용건을 파악하고 핵심(한도 초과로 인한 거절, 실제 출금 미발생)을 명확히 재복창했으며, 거래 시각·금액·계좌로 대상을 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 결론을 먼저 제시하며 고객의 이해를 확인하는 과정이 전반적으로 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 한도·수수료·처리 시점·OTP 발급 절차를 정확히 안내했고, 심사 전 단정이나 금지멘트 없이 조건부 표현으로 일관함.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 한도 초과 문제를 직접 처리하고, 보안카드 대신 모바일 OTP 대안을 제시하며, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함·생년월일 2요소 확인 완료 후 계좌 거래 정보 안내·처리 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체한도 변경 필수안내 중 증액 조건과 고액 시 필요 서류를 명시하지 않아 핵심 필수요소 누락.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입 상담이 아니라 이체 실패 원인 조회, 한도 변경, OTP 발급 안내 등 기존 계좌 관리 및 인증수단 변경 상담으로 상품 가입성 평가 대상 구간 부재.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황 부재.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '거절·양해 상황에서 쿠션어와 호응이 있으나, 불편·부정 상황(통신비 계좌 변경 불가)에 명시적 사과 표현이 부재.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어 표현이 5회 이상 반복되어 3점 기준 범위를 초과함.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 세 가지 용건(입출금 내역 조회, 정기적금 출금일 변경, 통신비 자동이체 계좌 변경)을 모두 파악하고 종료 시점에 핵심을 재복창했으며, 정기적금과 통신비 자동이체 대상을 정확히 특정하고 처리했고, 이미 언급된 내용을 반복해 묻지 않음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 6, '정확성·설명', '설명력 · 전달력', '설명 구간에서 내부용어를 풀어 제시하고 결론을 먼저 전달하며 고객 이해를 확인하는 과정이 일관되게 유지됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '자동이체 출금일 변경·계좌 변경 관련 안내에서 정책 기준에 부합하는 정확한 설명과 함께 추측성 단정 없이 통신사 선처리 필요성을 명확히 안내함.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 정기적금 출금일 변경을 직접 처리하고, 통신비 계좌 변경 불가 상황에서 통신사 선처리 후 은행 해지 순서를 명확히 제시한 대안을 제공하며, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2가지 정보를 확인했으며, 본인확인을 입출금 내역 조회 안내 이전에 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '자동이체 출금일 변경 시 변경 절차만 안내했으나, 출금일·등록/변경/해지 절차의 필수요소 중 해지 절차와 잔액 부족 시 처리를 누락하고, 통신비 자동이체 계좌 변경 관련 통신사 선처리 권고는 제공했으나 은행 측 해지 절차의 구체적 안내 부재.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 보안사고 정황이 상담 전체에서 발생하지 않음.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객의 성명·생년월일 답변이 모두 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(피싱 사기)이 있으나 명시적 사과 없음, 쿠션어와 호응은 부분적으로 존재하여 일부 요소만 충족.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말과 불확신 표현이 1~2회 나타났으나 반말·명령/지시·훈계·다그침은 없음.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 보이스피싱 피해 용건을 파악하고 핵심(계좌·카드 정지, 사고 접수)을 재복창했으며, 입출금 계좌 2개와 연결 카드, 분실 체크카드 등 대상을 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어 를 로 풀어 설명하고, 계좌 정지·분실 신고·입출금 내역 확인 등 주요 조치를 결론 먼저 제시하며, 고객의 우려(입금 가능 여부)에 대해 명확히 재확인하여 세 요소를 모두 충족.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '보이스피싱 지급정지·카드 분실 정지·입출금 내역 확인 안내 모두 정책 기준에 부합하며, 추측성 단정이나 금지멘트 없음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 계좌 지급정지·분실 신고 등 문제를 직접 처리하고, 비밀번호 변경·경찰 신고 등 후속조치를 제시하며, 종료 전 추가 문의를 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '본 상담은 보이스피싱 피해 대응·계좌 지급정지·카드 분실 신고 등 사고 처리 상담으로, 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '보이스피싱 사고 인지 후 즉시 계좌·카드 지급정지를 수행하고, 경찰 신고(112) 및 사고 접수 등록을 안내하며, 비밀번호 변경 등 후속 조치를 모두 제시함.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 2, '응대·표현', '끝인사', '종료 인사는 있으나 종료 구간에서 소속과 실명이 모두 미제시됨.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황(앱 오류, 이체 실패)이 있었으나 명시적 사과 없음. 쿠션어와 호응은 각각 1회 이상 확인되어 ①②③ 중 일부만 충족.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어와 불확신 표현이 각 1회씩 나타나 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 두 가지 용건(앱 오류, 이체 실패)을 모두 파악하고 핵심을 재복창했으며, 금액·시간으로 대상을 특정했고, 이미 언급된 내용을 반복 질문하지 않음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어 없이 일상적 표현으로 설명하고, 오류 원인을 먼저 제시한 후 단계별 해결책을 제시하며, 최종 확인 질문으로 이해도를 점검함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 오류 원인(계좌번호 불일치로 인한 반려)을 정확히 설명하고, 재이체 시 정상 처리될 것이라는 합리적 예측을 제시했으며, 금지멘트나 부정확한 안내 없음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 앱 오류와 이체 실패를 끝까지 책임지고 처리하며, 재이체 방법을 명확히 안내하고, 종료 전 추가 문의를 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2가지 정보를 확인했으며, 계좌·거래 정보 안내 이전에 본인확인을 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '동의 없는 활용 없음, 제3자 유출 없음으로 정보 취급 가이드 준수.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체 실패 상황에서 실패 사유(계좌번호 오류)와 재처리 절차는 안내했으나, 이체 1회/1일 한도·수수료·반영 시점 등 이체 처리의 핵심 필수안내 항목들이 누락됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입 상담이 아니라 앱 오류 기술지원 및 이체 실패 조회·재처리 상담으로, 적합성 확인·필수고지 대상 상황 미발생.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '이체 실패는 기술적 오류(계좌번호 오입력으로 인한 반려)이며 분실·피싱·부정거래 등 보안사고가 아님.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객의 성명·생년월일 답변이 모두 충족됨.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 2, '응대·표현', '끝인사', '종료 인사는 있으나 종료 구간에서 소속과 실명이 모두 미제시됨.', 1, 1, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황 미발생으로 사과 요소는 해당 없음이나, 쿠션어와 호응이 부분적으로 나타나 4점 단계 충족.', 4, 4, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 다중 용건(전세대출 한도·금리, 기존 대출 중도상환수수료, 적금 가입)을 모두 파악하고 종료 시점에 핵심을 재복창했으며, 기존 대출 조회로 대상을 특정했고, 이미 언급된 내용을 반복 질문하지 않음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고(보증금 80%, 우대조건 항목별 설명), 핵심을 먼저 제시하며(금리 범위 선제 안내, 한도 단순 계산값 먼저 제시), 종료 시 이해 확인을 수행함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '전세대출·중도상환수수료·적금 안내에서 정확한 수치와 조건을 제시했으며, 심사 전 단정을 피하고 금지멘트를 사용하지 않음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 세 가지 문의(전세대출 한도·금리, 기존 대출 중도상환수수료, 적금 신규 가입)를 모두 책임지고 처리하면서 즉시 해결 불가 항목에 대해 심사 기간·수수료 감면 조건·만기 연장 등 구체적인 대안을 제시했고, 통화 종료 전 추가 불편을 확인함.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2요소를 확인하고 본인확인 완료 후 전세대출 안내를 진행하여 본인확인 선행 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 이체 실패 원인을 파악하고 한도 초과임을 명확히 재복창했으며, 금액과 대상을 특정했고, 이미 언급된 내용을 반복해 묻지 않음.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 6, '정확성·설명', '설명력 · 전달력', '내부 용어를 풀어 설명하고 결론을 먼저 제시하며 고객 이해를 확인하는 과정을 일관되게 유지함.', 6, 6, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체한도·보안매체별 한도 상한·OTP 발급 절차·비용 등을 정확히 안내했으며, 추측성 단정이나 금지멘트 없음.', 13, 13, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 한도 변경을 직접 처리하고, OTP 발급 방법을 구체적으로 안내한 후, 통화 종료 전 추가 불편 여부를 확인하여 세 요소를 모두 충족.', 5, 5, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2가지 정보를 확인하였고, 본인확인 완료 후 계좌·거래 정보 안내 순서를 준수함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체 한도 변경 상담에서 필수 요소인 변경 가능 한도·증액 조건·보안매체 필요성을 모두 명확히 안내했고, 이체 실패 사유 설명 및 OTP 발급 절차까지 구체적으로 제시하여 핵심 필수안내를 완전히 이행함.', 12, 12, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '이 상담은 이체 실패 원인 확인, 이체한도 변경, OTP 발급 안내로 진행되었으며 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
-INSERT INTO public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '이체 실패는 기술적 오류(한도 초과)로 인한 정상 거래 실패이며, 분실·도난·피싱·부정거래 등 보안사고 정황이 전혀 없음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어와 불확신 표현이 각각 1회 이상 나타났으나, 반말·명령/지시형·훈계·다그침은 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 2, '응대·표현', '끝인사', '종료 인사는 있으나 종료 구간에서 소속과 실명을 밝히지 않음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말과 불확신 표현이 각 1회씩 나타났으나 반말·명령/지시·훈계·다그침은 없음.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 입출금 내역 확인 용건을 파악하고 종료 시점에 핵심 조치 사항을 명확히 재복창했으며, 계좌 끝자리로 대상을 특정하고 이미 확인된 정보를 반복 질문하지 않음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 두괄식으로 핵심을 먼저 제시하며 고객의 선택을 확인하는 방식으로 진행하여 세 요소를 모두 충족.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·생년월일 답변을 수령함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황에 명시적 사과, 거절·양해 필요 상황에 쿠션어, 고객 상황에 대한 호응이 모두 적절히 제시됨.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 이체 실패 용건을 파악하고 핵심(한도 초과)을 정확히 재복창했으며, 거래 시간·금액으로 대상을 특정했고, 이미 조회·언급된 내용의 불필요한 재질문이 없음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고(OTP 숫자 변경 원리), 조치 전 필요 조건을 먼저 제시하며(두괄식), 고객 이해를 확인하는 모든 요소 충족.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 한도·변경 내용을 정확히 안내했고, 추측성 단정이나 금지멘트 없이 적절한 수준의 조건부 표현으로 마무리함.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 한도 변경을 직접 처리하고, OTP 발급 대안을 제시하며, 등록 과정 중 추가 문제 발생 시 재연락 안내로 후속조치를 확보함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함·생년월일 2요소 확인 완료 후 거래 내역 조회·한도 안내 진행으로 본인확인 선행 순서 준수.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '고객 확인 후 필요한 정보만 순차적으로 요청·활용하였으며 동의 없는 활용이나 제3자 유출 사례 없음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체한도 변경 업무에서 필수 요소인 변경 가능 한도·증액 조건·보안매체 필요성을 모두 안내했으나, 이체 처리 업무의 핵심 필수안내인 1회/1일 한도와 수수료를 미안내함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', 'OTP 앱 발급은 금융상품 가입이 아닌 기존 계좌 보안 기능 추가로, 가입성 상담 대상이 아님.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1002-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황이 없음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·휴대폰 뒷자리 답변을 수령함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '거절·양해 상황에서 쿠션어 표현이 있고, 고객 상황에 대한 호응이 있으나, 불편 상황(고객이 기억 없는 출금)에 대한 명시적 사과가 없음.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 입출금 내역 조회, 통신비 자동이체 출금일 변경, 관리비 자동이체 신규 등록이라는 세 가지 용건을 모두 파악하고 종료 시점에 핵심 내용을 재복창했으며, 각 거래 대상(통신요금, 관리비 계좌)을 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 두괄식으로 핵심을 먼저 제시하며 고객 이해를 확인하는 절차를 모두 수행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '자동이체 출금일 변경 및 신규 등록 안내에서 약정 제약·처리 결과를 정확히 전달했으며, 추측성 단정이나 금지멘트 없음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 고객의 모든 요청(입출금 조회, 자동이체 변경, 신규 등록)을 끝까지 책임지고 처리했으며, 출금일 변경 불가 시 가능한 대안을 제시하고, 처리 종료 전 추가 불편을 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 2, '응대·표현', '끝인사', '종료 인사는 있으나 소속과 실명이 모두 누락되어 1점 기준 충족.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2요소를 확인하고 본인확인 완료 후 입출금 내역 조회를 진행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 요청 후 고객 확인 발화를 받은 뒤 전산 정보를 안내했으며, 고객 동의 없는 정보 활용이나 제3자 유출 사례 없음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '자동이체 등록·변경 업무에서 출금일·절차는 안내했으나, 자동이체 신규 등록 시 필수인 수수료 안내가 누락됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '자동이체 변경·신규 등록 상담으로 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1003-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 보안사고 정황이 상담에 전혀 없음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '쿠션어와 호응은 있으나 불편·부정 상황(한도 기대치 미달, 수수료 발생)에서 명시적 사과가 없어 일부 요소만 충족.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 2회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 신용대출 한도·금리 조회, 기존 대출 중도상환 상담, 정기적금 신규 가입 등 3가지 용건을 모두 파악하고 통화 종료 시 핵심 내용을 정확히 재복창했으며, 이미 언급된 내용을 반복해 묻지 않음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 핵심을 먼저 제시하며 이해 확인을 진행했으나, 고객의 되물음 없이 진행되어 실제 이해 확인이 제한적임.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '신용대출·기존 대출·정기적금 관련 금액·금리·한도·수수료·만기 안내가 모두 정확하고, 심사 전 단정을 피하며 금지멘트 사용이 없음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 고객의 모든 문의(신용대출 한도·금리, 기존 대출 중도상환, 적금 가입)를 끝까지 책임지고 처리하며, 중도상환 수수료 회피 방안(만기 대기)과 만기 안내 문자 등 후속조치를 제시하고, 처리 종료 전 추가 불편을 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2요소를 확인하고 본인확인 완료 후 신용대출 한도·금리 정보를 안내하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '동의 없는 정보 활용 없음, 제3자 유출 없음으로 정보 취급 가이드 준수.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '신용대출·기존대출 중도상환·정기적금 3개 업무 모두에서 핵심 필수안내(금리·중도상환수수료·적금금리·중도해지이율·예금자보호) 누락 또는 미흡으로 필수 항목 미충족.', 0, 0, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '정기적금 가입 상담에서 투자성향 적합성 확인 및 중도해지 손실·만기 조건 등 핵심 필수 고지 누락.', 0, 0, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1001-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황이 통화 전체에서 발생하지 않음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2가지 정보를 확인하고 본인확인 완료 후 계좌 정지 등 거래 처리를 진행하여 본인확인 선행 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 후 필요한 정보만 조회·활용하였으며, 고객 동의 없는 정보 활용이나 제3자 유출 사례 없음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '보이스피싱 의심 상황에서 즉시 지급정지, 경찰 신고(112), 사고 접수 등록, 비밀번호 변경, 카드 분실 신고 등 법정필수 조치를 모두 이행했으나, 금감원(1332) 신고 안내가 누락됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·생년월일 답변을 수령함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황(비밀번호 오류)에서 명시적 사과 없음, 쿠션어와 호응은 부분적으로 존재하여 일부 요소만 충족.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어( 반복)가 산발적으로 나타나나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 금융인증서 갱신 용건을 파악하고 종료 시점에 핵심 내용(갱신·비밀번호 초기화·이체 방법 안내)을 명확히 재복창했으며, 본인확인으로 대상을 특정했고, 이미 언급된 내용을 반복 질문하지 않음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 결론을 먼저 제시하며 고객의 이해도를 확인하며 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '금융인증서 갱신·비밀번호 초기화·이체 방법 안내 모두 정확하고, 한도 관련 추측성 단정을 회피했으며, 금지멘트 사용 없음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 인증서 갱신·비밀번호 초기화·이체 방법 안내까지 책임지고 처리하고, 비밀번호 오류 시 초기화 대안을 제시했으며, 종료 전 처리 내용을 정리하며 추가 문의 확인을 수행함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2가지 요소를 확인하였고, 본인확인을 계좌/거래 안내 이전에 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '고객 확인 후 전산 정보 공개, 동의 없는 정보 활용, 제3자 유출 모두 없음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체 업무 필수안내(1회/1일 한도, 수수료, 반영 시점)를 전혀 이행하지 않아 핵심 필수 항목 누락.', 0, 0, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입 상담이 아니라 인증서 갱신·비밀번호 초기화·이체 방법 안내 등 순수 기술 지원 상담으로 적합성 확인·원금비보장 고지 대상 상황 미발생.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1004-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황 미발생.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명)·본인확인 질의·고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(보이스피싱 피해, 카드 분실)이 있으나 명시적 사과 표현이 없고, 쿠션어와 호응은 부분적으로 확인됨.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 5, '정확성·설명', '니즈파악 · 재복창', '용건 파악 후 핵심 내용(보이스피싱 피해, 계좌 정지, 카드 분실 처리, 입출금 내역 확인)을 명확히 재복창했고, 체크카드 끝자리로 대상을 특정했으며, 이미 언급된 내용의 불필요한 재질문이 없음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어 를 로 풀어 설명하고, 핵심을 먼저 제시한 후 고객의 이해를 확인하며 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '보이스피싱 피해 대응 안내에서 지급정지·피해구제 절차를 정확히 설명하고, 환급 가능성을 로 조건부 표현하며, 금지멘트 없이 진행함.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 보이스피싱 피해 상황에서 계좌 정지, 상대 계좌 지급 정지 신청, 카드 분실 신고 및 정지, 입출금 내역 조회 등 모든 즉시 처리 가능한 조치를 책임지고 수행했으며, 경찰·금감원 신고, 영업점 방문 등 필요한 후속조치와 대안을 구체적으로 제시했고, 통화 종료 전 처리 내용을 정리하며 추가 불편을 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2요소 확인을 완료하고 본인확인 이후 계좌 처리 및 안내를 진행하여 순서 준수.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '보이스피싱 피해 상담에서 즉시 지급정지, 경찰·금감원 신고 안내, 피해구제 신청 절차를 모두 이행했으나 카드 분실 재발급 시 수수료·배송 방식 미안내로 필수 항목 누락.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '보이스피싱 피해 대응·계좌 정지·카드 분실 신고 등 사고 처리 상담으로, 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1005-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '보이스피싱 사고 인지 후 즉시 계좌·카드 지급정지를 수행하고, 경찰·금감원 신고 및 피해구제 절차를 안내했으며, 악성앱 삭제·계좌 해제 절차·카드 재발급 등 후속 조치를 모두 안내함.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·휴대폰 뒷자리 답변을 수령함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사와 상담사 실명은 확인되었으나 소속 정보가 누락됨.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(앱 오류, 이체 보류)에서 명시적 사과, 쿠션어, 고객 상황에 맞는 호응이 모두 적절히 제시됨.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 4, '응대·표현', '정중한 언어표현', '명령형 어휘 와 습관어 이 산발적으로 나타남.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 두 가지 용건(앱 오류, 이체 보류)을 모두 파악하고 핵심을 재복창했으며, 이체 건의 시간·금액·상태를 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어 를 풀어 설명하지 않아 고객이 로 되물었으나 상담사가 재설명하지 않고 진행함.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 보류 상황에 대해 정확한 원인 설명과 처리 절차를 안내했으며, 추측성 단정 없이 조건부 표현으로 안내하고 금지멘트 미사용.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 두 건의 문제를 모두 책임지고 처리하며, 각각에 대해 구체적인 대안·후속조치를 제시하고, 통화 종료 전 추가 불편을 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 4자리로 2요소 확인을 완료했으며, 본인확인 이후 계좌·거래 정보를 안내하는 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '고객 확인 후 정보를 취급했으며, 동의 없는 활용이나 제3자 유출 없이 정보 취급 가이드를 준수함.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체 실패(보류) 상황에서 착오송금 법정필수 안내(즉시 반환 불가·수취인 동의·예보 제도·소요·수수료)와 신고·접수 절차를 전혀 제공하지 않았으며, 이체 처리 기본 필수안내(한도·수수료·반영 시점)도 누락됨.', 0, 0, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입성 상담이 아니라 앱 오류 기술 지원과 이체 보류 건 조회·처리 상담으로, 적합성 확인·필수고지 대상 상황 미발생.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1006-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '이체 보류는 기술적 결제 지연 상황으로 분실·피싱·부정거래 등 보안사고가 아님.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 2, '응대·표현', '끝인사', '종료 인사는 있으나 종료 구간에서 소속과 실명이 모두 미제시됨.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 긍정 답변이 모두 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 2, '응대·표현', '끝인사', '종료 인사와 상담사 실명은 있으나 종료 구간에서 소속(부서/회사)을 밝히지 않음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황 미발생으로 사과 요소는 해당 없음이나, 거절·양해 상황에서 쿠션어와 고객 상황에 대한 호응이 적절히 제시됨.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 3회 이상 반복되어 나타남.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 네 가지 용건(마이너스 통장 한도·금리 조회, 한도 증액 가능성, 신용대출 중도상환수수료, 체크카드 연계 적금 가입)을 모두 파악하고 종료 시점에 핵심 내용을 정확히 재복창했으며, 각 거래·상품을 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 결론을 먼저 제시하며 고객 이해를 확인하는 세 요소를 모두 충족하여 설명력·전달력이 우수함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '계좌·대출·적금 안내 전반에서 금액·요율·조건을 정확히 제시했고, 심사 필요 사항에 대해 단정을 피하며 금지멘트를 사용하지 않음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 세 가지 요소를 모두 충족함: 마이너스 통장·신용대출·적금 관련 문의를 직접 처리하고, 즉시 해결 불가능한 한도 증액·금리 인하에 대해 신청 방법과 필요 서류를 안내하며, 통화 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2가지 요소를 확인하였고, 본인확인 완료 후 계좌·거래 정보 안내를 진행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '고객 본인확인(성함·생년월일) 후 고객의 명시적 요청에 따라 전산 정보를 제공했으며, 동의 없는 활용이나 제3자 유출 사례 없음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '마이너스통장·신용대출·정기적금 3개 업무에서 금리·중도상환수수료·적금금리는 안내했으나, 적금 중도해지이율·예금자보호·대출철회권·연체불이익 등 법정필수 항목 다수 누락.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(모바일뱅킹 오류, 이체 미결제)이 있으나 명시적 사과 없음; 쿠션어와 호응은 부분적으로 확인되어 4점 범위.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어( 반복)와 불확신 표현이 각각 1회 이상 나타났으나, 반말·명령/지시형·훈계·다그침은 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 두 가지 용건(앱 오류, 미결제 이체)을 모두 파악하고 핵심을 재복창했으며, 이체 거래를 시간·금액으로 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '적금 가입 상담에서 투자성향 적합성 확인 및 중도해지 손실·만기 조건 등 핵심 필수 고지 누락.', 0, 0, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1007-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 보안사고 정황이 상담 전체에서 발생하지 않음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 2, '응대·표현', '끝인사', '종료 인사와 상담사 실명은 확인되었으나 종료 구간에서 소속(부서/회사)을 밝히지 않음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(고객이 모르는 자동이체 발견)에 명시적 사과 없음. 쿠션어와 호응은 적절히 제공되었으나 사과 부재로 공감 표현이 미흡.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '계좌·이체 관련 안내에서 금액·처리 시점·절차를 정확히 안내했으며, 통신사 계좌 변경 시 불확실성을 로 표현해 추측성 단정을 회피했고, 금지멘트 사용이 없음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 고객의 모든 요청(펀드 자동납입 감액, 통신비 계좌 변경, 신규 자동이체 등록)을 직접 처리하고, 통신사 연락 등 대안을 제시하며, 종료 전 추가 불편을 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2가지 정보를 확인하였고, 본인확인 완료 후 계좌 정보 안내 및 거래 처리를 진행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '자동이체 등록·변경 업무에서 출금일·절차 안내는 충족했으나, 잔액부족 시 처리(재출금·미납)에 대한 권장 안내가 누락됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '신규 자동이체 등록 상담은 적금 적립 설정이며 금융상품 가입성 상담이 아닌 거래 변경·신규 등록 업무로 판단됨.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1009-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황 부재.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황(이체 실패)이 있었으나 명시적 사과 없음, 쿠션어와 호응은 적절히 제시됨.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 다수 반복되었으나, 반말·명령/지시형·훈계·다그침·불확신 표현은 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 용건(신용카드 대금 600,000원 이체 실패)을 파악하고 핵심을 재복창했으며, 이체 대상과 금액을 정확히 특정했고, 이미 언급된 내용을 불필요하게 재질문하지 않음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 6, '정확성·설명', '설명력 · 전달력', '내부 용어를 풀어 설명하고(보안상 한도 낮게 시작), 두괄식으로 핵심을 먼저 제시(한도 초과)하며, 고객 상황에 맞춰 이해를 확인하는 설명 진행.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 한도 변경, OTP 발급 수수료, 모바일 OTP 보안성 등 계좌·이체 관련 안내가 정책 기준에 부합하며 추측성 단정이나 금지멘트 없음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 이체 실패 원인을 파악하고 한도 변경을 직접 처리했으며, OTP 배터리 부족 시 모바일 OTP 발급이라는 대안을 제시하고, 통화 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2요소 확인을 완료했고, 본인확인을 계좌·거래 정보 안내 이전에 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체한도 변경 필수요소(변경 가능 한도·증액 조건·보안매체)는 모두 충족했으나, 고액 증액 시 필요 서류(증빙) 안내가 누락되었고, OTP 재발급 수수료(5,000원) 안내는 있으나 한도 변경 자체의 필요 서류는 미제시.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '이 상담은 이체 실패 원인 조회, 이체 한도 변경, OTP 배터리 부족 안내 등 기존 계좌 관리 및 서비스 이용 지원이 주 내용이며, 예적금·펀드·보험 등 금융상품 신규 가입 상담이 아님.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1008-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황 부재.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 직후 고객의 성명·휴대폰 뒷자리 답변을 수령함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 2, '응대·표현', '끝인사', '종료 인사와 상담사 실명은 있으나 종료 구간에서 소속(부서/회사)을 밝히지 않음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '고객의 계좌 비밀번호 오류 상황에서 상담사가 명시적 사과는 제공하지 않았으나, 쿠션어와 호응 표현은 적절히 사용하여 부분적 공감 태도를 보임.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 다수 회 반복되었으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 공동인증서 발급, 계좌 비밀번호 초기화, 외화예금 입금 방식 등 세 가지 용건을 모두 파악하고 통화 종료 시 핵심 내용을 명확히 재복창했으며, 이미 언급된 내용을 불필요하게 재질문하지 않음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 결론을 먼저 제시하며 이해 여부를 확인하는 세 요소를 모두 충족하여 고객 되물음 없이 명확한 전달 달성.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '외화예금 입금 절차·환율·수수료 안내가 정확하고 추측성 단정 없으며 금지멘트 미사용.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 계좌 비밀번호 초기화를 직접 처리하고, 공동인증서 발급 절차와 외화예금 입금 방법을 단계별로 안내하며, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함·휴대폰 뒷자리·생년월일 등 2요소 이상을 확인했으며, 계좌 비밀번호 초기화 등 거래 처리 전에 본인확인을 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '외화예금 입금 시 환전 수수료 안내는 충족했으나, 적용 환율(고시/우대) 구체 수치 미제시로 [6. 1. 1] 필수요소 부분 누락; 환전 신청·수령 방법·한도·신분증 지참 안내 미흡으로 [6. 1. 2] 미충족; 계좌 비밀번호 초기화 시 본인확인 선행 이행, 인증서 발급 절차·유효기간 안내 충족하나 외환 필수안내 핵심 결함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '외화예금 가입이 아닌 공동인증서 발급 및 계좌 비밀번호 초기화 상담으로, 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '본 상담은 기존 정기적금의 출금일 변경 및 자동이체 계좌 변경 관련 상담으로, 금융상품 신규 가입성 상담이 아님.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·피싱·부정거래 등 보안사고 정황이 상담에 전혀 없음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황(비밀번호 오류, 인증서 잠금 우려)에서 명시적 사과 없음. 호응과 상황 설명은 있으나 공감 표현 부족.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1회 관찰되었으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 두 가지 용건(금융인증서 갱신, 정기예금 만기금 이체)을 정확히 파악하고 종료 시점에 핵심을 재복창했으며, 대상을 명확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 두괄식으로 핵심을 먼저 제시하며 고객 이해를 확인하는 과정이 전반적으로 유지됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 한도·수수료·인증 요건을 정확히 안내했고, 추측성 단정이나 금지멘트 없음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 금융인증서 갱신 문제를 책임지고 처리하고, 비밀번호 기억 불가 시 재발급 대안을 제시했으며, 종료 전 추가 문의를 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2가지 정보를 확인하였고, 본인확인 완료 후 금융인증서 갱신 안내 및 처리를 진행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '동의 없는 정보 활용 없음, 제3자 유출 없음으로 정보 취급 가이드 준수.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '인증서 갱신 업무에서 유효기간 미안내, 이체 업무에서 수수료·반영시점 미안내로 필수요소 누락.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '본 상담은 금융인증서 갱신 및 정기예금 만기금 이체 방법 안내로, 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1010-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 보안사고 정황이 상담 전체에서 발생하지 않음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '전세대출·기존대출 중도상환·정기적금 3개 업무 중 적금 가입 시 중도해지이율·예금자보호 필수안내 누락, 대출 상담 시 철회권 미안내로 핵심 필수항목 미충족.', 0, 0, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '정기적금 가입 상담에서 투자성향 적합성 확인, 원금비보장·중도해지 손실 등 핵심 필수 고지, 수수료·위험등급 등 부가 고지가 모두 누락됨.', 0, 0, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·피싱·부정거래 등 보안사고 정황이 통화에서 전혀 발생하지 않음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성함·휴대폰 뒷자리 답변을 수령하여 3요소 모두 충족.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '고객 불편 상황에 즉각 사과하고, 거절·양해 필요 상황에서 쿠션어를 사용했으며, 고객 상황에 맞는 호응을 여러 차례 제시함.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 2회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·휴대폰 뒷자리 답변을 수령하여 3요소 모두 충족.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(피싱 피해, 계좌 정지로 인한 카드 사용 불가, 카드 분실)이 있으나 명시적 사과 없음; 쿠션어와 호응은 부분적으로 존재하여 4점 범위.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 4, '응대·표현', '정중한 언어표현', '반말·명령/지시·훈계·다그침은 없으나, 혼잣말과 불확신 표현이 각 1회 이상 나타남.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 보이스피싱 피해 용건을 명확히 파악하고 상담사가 으로 재복창했으며, 송금액·계좌·카드 등 대상을 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어(보이스피싱·지급정지·정지)를 풀어 설명하고, 추가 피해 방지·분실 신고 등 핵심을 먼저 제시하며, 진행 단계마다 고객 동의·이해를 확인하는 방식으로 진행.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '보이스피싱 피해 지급정지 절차를 정확히 안내하고, 환급 가능성을 단정하지 않으며, 금지멘트 없이 조건부 설명으로 고객 기대를 적절히 관리함.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 계좌 정지·상대 계좌 지급정지·카드 분실 신고·재발급 신청을 직접 처리하고, 경찰 신고 안내와 자동이체 조회 등 후속조치를 제시하며, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함·휴대폰 뒷자리·생년월일 3가지 정보를 확인하여 2요소 이상 인증을 완료했고, 본인확인 후 계좌 정지 등 거래 처리를 진행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 4/8점 — 근거 발화 확인.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '보이스피싱 피해 상담에서 지급정지·신고 절차는 이행했으나, 카드 재발급 시 수수료 안내 누락 및 추가 피해 방지(비밀번호 변경·악성앱 점검) 안내 부재로 핵심 필수 항목 미충족.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입성 상담이 아니라 보이스피싱 피해 대응·계좌 정지·카드 분실 신고·자동이체 조회 등 사고 처리 상담으로 진행됨.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1011-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '보이스피싱 사고 인지 후 즉시 계좌 지급정지를 안내하고, 경찰 신고(1325) 및 환급 절차를 안내했으며, 카드 분실 정지 및 재발급 신청까지 후속 조치를 모두 수행함.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·생년월일 답변을 수령함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 6, '정확성·설명', '설명력 · 전달력', '상담사가 내부 용어를 풀어 설명하고, 미결제 거래 취소 시 결론을 먼저 제시한 후 고객의 이해를 확인하며 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '미결제 이체 건의 자동 취소·환입을 로 단정하여 착오송금 반환 절차(수취인 동의/반환지원 제도)를 누락한 오안내.', 0, 0, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 미결제 거래를 직접 취소 처리하고, 환입 문자 알림·앱 재설치 후 재송금 안내 등 후속조치를 제시하며, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2가지 요소를 확인하였고, 본인확인을 계좌·거래 정보 안내 이전에 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체 실패 상황에서 실패 사유·반환 절차는 안내했으나, 이체 처리 시 필수인 1회/1일 한도와 수수료 안내가 누락되고, 앱 오류 상담에서 해결 방법은 제시했으나 거래 오류 시 중복 확인 절차가 미흡함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입성 상담이 아니라 모바일뱅킹 앱 오류 기술지원 및 미결제 이체 거래 취소 처리로, 적합성 확인·필수고지 대상 상황 미발생.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1012-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '이체 처리 중단으로 인한 기술적 오류 상황이며, 분실·도난·보이스피싱·부정거래 등 보안사고 정황이 없음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황 미발생으로 사과 요소는 해당 없음이나, 쿠션어와 호응 표현이 상황에 맞게 나타남.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 신용대출·기존 대출 중도상환·정기적금 가입 용건을 모두 파악하고 종료 시점에 핵심 내용을 재복창했으며, 본인확인으로 대상을 특정했고, 이미 언급된 내용을 반복 질문하지 않음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고, 결론을 먼저 제시하며, 고객 이해를 확인하며 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '대출·적금 안내에서 금액·금리·수수료·조건을 정확히 제시하고, 심사 전 단정을 피하며 금지멘트를 사용하지 않음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 신용대출·중도상환·정기적금 세 가지 문의를 모두 책임지고 처리하며, 신청 절차·기간·우대조건 등 대안과 후속조치를 제시하고, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2요소를 확인하였고, 본인확인을 계좌·거래 정보 안내 이전에 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '신용대출 상담에서 금리 유형·산정 기준·심사 후 확정 안내는 충족했으나, 대출 자격·필요 서류, 신청 서류·심사 절차, 실행 조건·인지세, 대출 철회권, 상환 방법·상환일, 연체 불이익 등 핵심 필수 항목 다수 누락; 적금 가입에서 금리·만기·자동이체 출금일은 안내했으나 중도해지이율·예금자보호 미안내로 법정필수 누락.', 0, 0, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '적합성 확인 없이 상품을 권유·가입 진행했으며, 중도해지 손실 고지도 누락되어 핵심 필수 고지 미충족.', 0, 0, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1013-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 보안사고 정황이 통화 전체에서 발생하지 않음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '첫인사에서 인사말·소속·실명을 모두 밝혔고, 본인확인 질의 후 고객의 성명·생년월일 답변을 수령함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황(이체 실패, 한도 초과)에서 명시적 사과 없음; 쿠션어와 호응은 부분적으로 존재하나 사과 부재로 공감 표현 미흡.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1~2회 정도 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 이체 실패 및 출금 의심 용건을 파악하고 핵심(한도 초과로 인한 거절, 실제 출금 미발생)을 명확히 재복창했으며, 거래 시각·금액·계좌로 대상을 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고 결론을 먼저 제시하며 고객의 이해를 확인하는 과정이 전반적으로 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 한도·수수료·처리 시점·OTP 발급 절차를 정확히 안내했고, 심사 전 단정이나 금지멘트 없이 조건부 표현으로 일관함.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 한도 초과 문제를 직접 처리하고, 보안카드 대신 모바일 OTP 대안을 제시하며, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함·생년월일 2요소 확인 완료 후 계좌 거래 정보 안내·처리 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체한도 변경 필수안내 중 증액 조건과 고액 시 필요 서류를 명시하지 않아 핵심 필수요소 누락.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입 상담이 아니라 이체 실패 원인 조회, 한도 변경, OTP 발급 안내 등 기존 계좌 관리 및 인증수단 변경 상담으로 상품 가입성 평가 대상 구간 부재.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1014-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 사고성 상담 정황 부재.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객 답변이 모두 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '거절·양해 상황에서 쿠션어와 호응이 있으나, 불편·부정 상황(통신비 계좌 변경 불가)에 명시적 사과 표현이 부재.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어 표현이 5회 이상 반복되어 3점 기준 범위를 초과함.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 세 가지 용건(입출금 내역 조회, 정기적금 출금일 변경, 통신비 자동이체 계좌 변경)을 모두 파악하고 종료 시점에 핵심을 재복창했으며, 정기적금과 통신비 자동이체 대상을 정확히 특정하고 처리했고, 이미 언급된 내용을 반복해 묻지 않음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 6, '정확성·설명', '설명력 · 전달력', '설명 구간에서 내부용어를 풀어 제시하고 결론을 먼저 전달하며 고객 이해를 확인하는 과정이 일관되게 유지됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '자동이체 출금일 변경·계좌 변경 관련 안내에서 정책 기준에 부합하는 정확한 설명과 함께 추측성 단정 없이 통신사 선처리 필요성을 명확히 안내함.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 정기적금 출금일 변경을 직접 처리하고, 통신비 계좌 변경 불가 상황에서 통신사 선처리 후 은행 해지 순서를 명확히 제시한 대안을 제공하며, 종료 전 추가 문의 여부를 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2가지 정보를 확인했으며, 본인확인을 입출금 내역 조회 안내 이전에 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1015-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '자동이체 출금일 변경 시 변경 절차만 안내했으나, 출금일·등록/변경/해지 절차의 필수요소 중 해지 절차와 잔액 부족 시 처리를 누락하고, 통신비 자동이체 계좌 변경 관련 통신사 선처리 권고는 제공했으나 은행 측 해지 절차의 구체적 안내 부재.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-STT-1016-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '분실·도난·보이스피싱·부정거래 등 보안사고 정황이 상담 전체에서 발생하지 않음.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객의 성명·생년월일 답변이 모두 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 2, '응대·표현', '끝인사', '종료 구간에서 종료 인사는 있으나 소속과 실명이 모두 없음.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황(피싱 사기)이 있으나 명시적 사과 없음, 쿠션어와 호응은 부분적으로 존재하여 일부 요소만 충족.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말과 불확신 표현이 1~2회 나타났으나 반말·명령/지시·훈계·다그침은 없음.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 보이스피싱 피해 용건을 파악하고 핵심(계좌·카드 정지, 사고 접수)을 재복창했으며, 입출금 계좌 2개와 연결 카드, 분실 체크카드 등 대상을 정확히 특정하고 불필요한 재질문 없이 진행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어 를 로 풀어 설명하고, 계좌 정지·분실 신고·입출금 내역 확인 등 주요 조치를 결론 먼저 제시하며, 고객의 우려(입금 가능 여부)에 대해 명확히 재확인하여 세 요소를 모두 충족.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '보이스피싱 지급정지·카드 분실 정지·입출금 내역 확인 안내 모두 정책 기준에 부합하며, 추측성 단정이나 금지멘트 없음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 계좌 지급정지·분실 신고 등 문제를 직접 처리하고, 비밀번호 변경·경찰 신고 등 후속조치를 제시하며, 종료 전 추가 문의를 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '본 상담은 보이스피싱 피해 대응·계좌 지급정지·카드 분실 신고 등 사고 처리 상담으로, 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1017-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '보이스피싱 사고 인지 후 즉시 계좌·카드 지급정지를 수행하고, 경찰 신고(112) 및 사고 접수 등록을 안내하며, 비밀번호 변경 등 후속 조치를 모두 제시함.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 2, '응대·표현', '끝인사', '종료 인사는 있으나 종료 구간에서 소속과 실명이 모두 미제시됨.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편 상황(앱 오류, 이체 실패)이 있었으나 명시적 사과 없음. 쿠션어와 호응은 각각 1회 이상 확인되어 ①②③ 중 일부만 충족.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어와 불확신 표현이 각 1회씩 나타나 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 두 가지 용건(앱 오류, 이체 실패)을 모두 파악하고 핵심을 재복창했으며, 금액·시간으로 대상을 특정했고, 이미 언급된 내용을 반복 질문하지 않음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어 없이 일상적 표현으로 설명하고, 오류 원인을 먼저 제시한 후 단계별 해결책을 제시하며, 최종 확인 질문으로 이해도를 점검함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체 오류 원인(계좌번호 불일치로 인한 반려)을 정확히 설명하고, 재이체 시 정상 처리될 것이라는 합리적 예측을 제시했으며, 금지멘트나 부정확한 안내 없음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 앱 오류와 이체 실패를 끝까지 책임지고 처리하며, 재이체 방법을 명확히 안내하고, 종료 전 추가 문의를 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2가지 정보를 확인했으며, 계좌·거래 정보 안내 이전에 본인확인을 선행하여 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '동의 없는 활용 없음, 제3자 유출 없음으로 정보 취급 가이드 준수.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체 실패 상황에서 실패 사유(계좌번호 오류)와 재처리 절차는 안내했으나, 이체 1회/1일 한도·수수료·반영 시점 등 이체 처리의 핵심 필수안내 항목들이 누락됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '금융상품 가입 상담이 아니라 앱 오류 기술지원 및 이체 실패 조회·재처리 상담으로, 적합성 확인·필수고지 대상 상황 미발생.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1018-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '이체 실패는 기술적 오류(계좌번호 오입력으로 인한 반려)이며 분실·피싱·부정거래 등 보안사고가 아님.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '인사 3요소(인사말·소속·실명), 본인확인 질의, 고객의 성명·생년월일 답변이 모두 충족됨.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 2, '응대·표현', '끝인사', '종료 인사는 있으나 종료 구간에서 소속과 실명이 모두 미제시됨.', 1, 1, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '불편·부정 상황 미발생으로 사과 요소는 해당 없음이나, 쿠션어와 호응이 부분적으로 나타나 4점 단계 충족.', 4, 4, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 4, '응대·표현', '정중한 언어표현', '혼잣말·사족어가 1회 나타났으나 반말·명령/지시·훈계·다그침은 없고 불확신 표현도 없어 3점 기준 충족.', 3, 3, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 다중 용건(전세대출 한도·금리, 기존 대출 중도상환수수료, 적금 가입)을 모두 파악하고 종료 시점에 핵심을 재복창했으며, 기존 대출 조회로 대상을 특정했고, 이미 언급된 내용을 반복 질문하지 않음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 6, '정확성·설명', '설명력 · 전달력', '내부용어를 풀어 설명하고(보증금 80%, 우대조건 항목별 설명), 핵심을 먼저 제시하며(금리 범위 선제 안내, 한도 단순 계산값 먼저 제시), 종료 시 이해 확인을 수행함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '전세대출·중도상환수수료·적금 안내에서 정확한 수치와 조건을 제시했으며, 심사 전 단정을 피하고 금지멘트를 사용하지 않음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 세 가지 문의(전세대출 한도·금리, 기존 대출 중도상환수수료, 적금 신규 가입)를 모두 책임지고 처리하면서 즉시 해결 불가 항목에 대해 심사 기간·수수료 감면 조건·만기 연장 등 구체적인 대안을 제시했고, 통화 종료 전 추가 불편을 확인함.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 생년월일 2요소를 확인하고 본인확인 완료 후 전세대출 안내를 진행하여 본인확인 선행 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1019-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 5, '정확성·설명', '니즈파악 · 재복창', '고객의 이체 실패 원인을 파악하고 한도 초과임을 명확히 재복창했으며, 금액과 대상을 특정했고, 이미 언급된 내용을 반복해 묻지 않음.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 6, '정확성·설명', '설명력 · 전달력', '내부 용어를 풀어 설명하고 결론을 먼저 제시하며 고객 이해를 확인하는 과정을 일관되게 유지함.', 6, 6, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '이체한도·보안매체별 한도 상한·OTP 발급 절차·비용 등을 정확히 안내했으며, 추측성 단정이나 금지멘트 없음.', 13, 13, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 8, '정확성·설명', '적극성 · 해결의지', '상담사가 한도 변경을 직접 처리하고, OTP 발급 방법을 구체적으로 안내한 후, 통화 종료 전 추가 불편 여부를 확인하여 세 요소를 모두 충족.', 5, 5, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함과 휴대폰 뒷자리 2가지 정보를 확인하였고, 본인확인 완료 후 계좌·거래 정보 안내 순서를 준수함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '개인정보 · 정보보호: 획득 8/8점 — 근거 발화 확인.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '이체 한도 변경 상담에서 필수 요소인 변경 가능 한도·증액 조건·보안매체 필요성을 모두 명확히 안내했고, 이체 실패 사유 설명 및 OTP 발급 절차까지 구체적으로 제시하여 핵심 필수안내를 완전히 이행함.', 12, 12, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '이 상담은 이체 실패 원인 확인, 이체한도 변경, OTP 발급 안내로 진행되었으며 금융상품 가입성 상담이 아님.', 8, 8, NULL, NULL);
+INSERT INTO public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval) VALUES ('BANK-CHT-1020-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '이체 실패는 기술적 오류(한도 초과)로 인한 정상 거래 실패이며, 분실·도난·피싱·부정거래 등 보안사고 정황이 전혀 없음.', 8, 8, NULL, NULL);
 
 
 --
 -- PostgreSQL database dump complete
 --
 
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+-- ── 근거 발화·항목 만점 (구 qa_call_item_evidence) ────────────────────────
+-- 마이그레이션 67 이 qa_call_item_evidence 를 qa_call_item_score 로 흡수했다(점수+근거 한 행).
+-- 아래 260건은 원 덤프 형태를 보존하기 위해 임시 테이블로 받은 뒤, 한 번의 UPDATE 로 항목 행에 합친다.
+--   validation_time('배점 N' 문자열) → max_score(numeric) 로 변환. 04_hanwha_brand_seed.sql 과 동일 규약.
+CREATE TEMP TABLE _bank_checklist (
+    "ID"            text,
+    order_no        integer,
+    category        text,
+    item            text,
+    agent_utterance text,
+    validation_time text
+) ON COMMIT DROP;
+
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 우선 본인확인 빠르게 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 인증서 비밀번호 초기화 도와드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 인증서 비밀번호 초기화 도와드릴게요.
 네 그러면 더 시도하지 마시구요 잠기기 전에 비밀번호를 초기화하시는 게 나으세요. 초기화하면 새로 설정하실 수 있어요.
 네 그럼 정리해 드리면요 금융인증서 갱신 도와드렸구요 비밀번호가 안 맞으셔서 초기화해 새로 설정해 드렸고 이체 방법까지 안내해 드렸습니다.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?
 네 [name] 고객님 확인됐습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 금융인증서 갱신 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 금융인증서 갱신 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?
 네 [name] 고객님 확인됐습니다. 지금 인증서가 만료되셨다고 뜨는 거죠? 음 보니까 작년 6월에 발급받으신 게 기간이 다 됐네요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 2, '응대·표현', '끝인사', '네 경찰하고 금감원 신고 꼭 하시구요 접수번호 받으시면 다시 연락 주세요. 힘내시고 좋은 하루 되세요 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 2, '응대·표현', '끝인사', '네 경찰하고 금감원 신고 꼭 하시구요 접수번호 받으시면 다시 연락 주세요. 힘내시고 좋은 하루 되세요 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 이체가 안 되셨군요. 불편을 드려서 죄송합니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 이체가 안 되셨군요. 불편을 드려서 죄송합니다.
 네 한도 변경 도와드릴게요. 다만 한도를 올리시려면 보안 매체 인증이 필요하거든요.
 아 네 잠시만요 거래 내역 좀 볼게요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 4, '응대·표현', '정중한 언어표현', '음 지금 보니까 1시 20분쯤에 1,500,000원 이체 시도하신 게 2번 정도 실패로 찍혀 있네요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 6, '정확성·설명', '설명력 · 전달력', '아 네 OTP는요 그 숫자가 1분마다 계속 바뀌거든요. 그래서 보안카드보다 훨씬 안전하시구요 한도도 더 높게 쓰실 수가 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 4, '응대·표현', '정중한 언어표현', '음 지금 보니까 1시 20분쯤에 1,500,000원 이체 시도하신 게 2번 정도 실패로 찍혀 있네요.', '배점 5');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 6, '정확성·설명', '설명력 · 전달력', '아 네 OTP는요 그 숫자가 1분마다 계속 바뀌거든요. 그래서 보안카드보다 훨씬 안전하시구요 한도도 더 높게 쓰실 수가 있어요.
 네 한도 변경 도와드릴게요. 다만 한도를 올리시려면 보안 매체 인증이 필요하거든요.
 네 정확하게 보셨어요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '네 지금 고객님 1회 이체 한도가 1,000,000원으로 돼 있구요 하루 한도는 3,000,000원으로 설정돼 있으세요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '네 지금 고객님 1회 이체 한도가 1,000,000원으로 돼 있구요 하루 한도는 3,000,000원으로 설정돼 있으세요.
 네 확인됐습니다. 1회 3,000,000원 하루 5,000,000원으로 한도 변경 처리됐구요 이제 아까 그 1,500,000원 이체 다시 하시면 정상적으로 되실 거예요.
 아 네 OTP는요 그 숫자가 1분마다 계속 바뀌거든요. 그래서 보안카드보다 훨씬 안전하시구요 한도도 더 높게 쓰실 수가 있어요.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 한도 변경 도와드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 한도 변경 도와드릴게요.
 네 OTP는 실물 카드형이랑 휴대폰 앱으로 쓰는 거 2가지가 있는데요 앱으로 쓰시는 건 영업점 안 가셔도 바로 발급되세요.
 혹시 등록하시다 막히시면 다시 전화 주세요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?
 네 [name] 고객님 확인됐습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?
 네 [name] 고객님 확인됐습니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 지금 고객님 1회 이체 한도가 1,000,000원으로 돼 있구요 하루 한도는 3,000,000원으로 설정돼 있으세요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 지금 고객님 1회 이체 한도가 1,000,000원으로 돼 있구요 하루 한도는 3,000,000원으로 설정돼 있으세요.
 네 한도 변경 도와드릴게요. 다만 한도를 올리시려면 보안 매체 인증이 필요하거든요. 혹시 OTP나 보안카드 가지고 계세요?
 네 보안카드로도 가능하세요. 그러면 1회 한도를 3,000,000원 하루 한도는 5,000,000원 정도로 올려드릴까요?', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 4, '응대·표현', '정중한 언어표현', '음 이번 달에 출금이 총 5건 있고요 입금은 급여 1건 있으시네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1002-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 4, '응대·표현', '정중한 언어표현', '음 이번 달에 출금이 총 5건 있고요 입금은 급여 1건 있으시네요.
 음 변경 처리됐고요 다음 달부터 28일에 출금됩니다.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 2, '응대·표현', '끝인사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 2, '응대·표현', '끝인사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 보내세요 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 고객님 그럼 오늘 이번 달 입출금 내역 조회해드렸고요 정기적금 자동이체 출금일을 25일에서 28일로 변경해드렸습니다. 통신비 자동이체 계좌 변경은 통신사 먼저 처리하시고 다시 연락 주시기로 했어요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '네 이게 자동이체로 나간 거구요 통신요금으로 찍혀 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 보내세요 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 고객님 그럼 오늘 이번 달 입출금 내역 조회해드렸고요 정기적금 자동이체 출금일을 25일에서 28일로 변경해드렸습니다. 통신비 자동이체 계좌 변경은 통신사 먼저 처리하시고 다시 연락 주시기로 했어요.', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '네 이게 자동이체로 나간 거구요 통신요금으로 찍혀 있어요.
 어 고객님 통신요금은 출금일이 약정이 돼 있어서 25일 아니면 말일 이렇게만 가능하거든요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 4, '응대·표현', '정중한 언어표현', '네 6월 1일부터 오늘까지 조회해 볼게요. 잠시만요 음 보니까 6월 3일에 45,000원 그리고 6월 5일에 20,000원 이렇게 출금이 있으셨네요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 6, '정확성·설명', '설명력 · 전달력', '네 이게 자동이체로 나간 거구요 통신요금으로 찍혀 있어요. 그 다음 20,000원은 어 정기예금 적립으로 나가신 거네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 4, '응대·표현', '정중한 언어표현', '네 6월 1일부터 오늘까지 조회해 볼게요. 잠시만요 음 보니까 6월 3일에 45,000원 그리고 6월 5일에 20,000원 이렇게 출금이 있으셨네요.', '배점 5');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 6, '정확성·설명', '설명력 · 전달력', '네 이게 자동이체로 나간 거구요 통신요금으로 찍혀 있어요. 그 다음 20,000원은 어 정기예금 적립으로 나가신 거네요.
 네 통신요금 자동이체 출금일 변경 도와드릴게요. 며칠로 바꿔드릴까요?
 어 고객님 통신요금은 출금일이 약정이 돼 있어서 25일 아니면 말일 이렇게만 가능하거든요. 둘 중에 어떤 걸로 하시겠어요?
 네 정기예금 자동이체는 그대로 유지하시는 거죠? 그건 손 안 댈게요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '어 고객님 통신요금은 출금일이 약정이 돼 있어서 25일 아니면 말일 이렇게만 가능하거든요
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '어 고객님 통신요금은 출금일이 약정이 돼 있어서 25일 아니면 말일 이렇게만 가능하거든요
 네 매달 25일로 변경해 드릴게요. 잠시만요 네 출금일 25일로 변경 처리됐습니다
 네 매달 10일에 230,000원 끝자리 [code] 계좌로 자동이체 신규 등록해 드렸습니다. 첫 출금은 다음 달 10일부터 나가세요', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 자동이체 변경이나 해지 도와드릴까요? 어떤 걸 정리하고 싶으세요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 자동이체 변경이나 해지 도와드릴까요? 어떤 걸 정리하고 싶으세요?
 어 고객님 통신요금은 출금일이 약정이 돼 있어서 25일 아니면 말일 이렇게만 가능하거든요. 둘 중에 어떤 걸로 하시겠어요?
 네 혹시 더 보고 싶으신 기간 있으실까요?
 네 그럼 정리해 드리면요 입출금 내역 조회 도와드렸구요 통신요금 자동이체 출금일을 25일로 바꿔드렸고 관리비 자동이체 신규 등록까지 처리해 드렸습니다.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '네 입출금 내역 조회 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '네 입출금 내역 조회 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다. 어떤 내역을 보고 싶으세요? 기간이 어떻게 되세요?', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 입출금 내역 조회 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 입출금 내역 조회 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다. 어떤 내역을 보고 싶으세요? 기간이 어떻게 되세요?', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 매달 25일로 변경해 드릴게요. 잠시만요 네 출금일 25일로 변경 처리됐습니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 매달 25일로 변경해 드릴게요. 잠시만요 네 출금일 25일로 변경 처리됐습니다.
 네 매달 10일에 230,000원 끝자리 [code] 계좌로 자동이체 신규 등록해 드렸습니다. 첫 출금은 다음 달 10일부터 나가세요.
 네 그럼 정리해 드리면요 입출금 내역 조회 도와드렸구요 통신요금 자동이체 출금일을 25일로 바꿔드렸고 관리비 자동이체 신규 등록까지 처리해 드렸습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1003-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 보내세요 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '혹시 전액을 한 번에 다 갚으실 거예요? 아니면 일부만 갚으실 생각이세요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 보내세요 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '혹시 전액을 한 번에 다 갚으실 거예요? 아니면 일부만 갚으실 생각이세요?
 네 그쵸. 적금이 아무래도 매달 넣으시는 거라서 금리가 좀 더 높게 들어가구요', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 4, '응대·표현', '정중한 언어표현', '음 지금 보니까 고객님 신용 등급 기준으로 한도가 한 4,000만 원 정도 나오시는데요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 4, '응대·표현', '정중한 언어표현', '음 지금 보니까 고객님 신용 등급 기준으로 한도가 한 4,000만 원 정도 나오시는데요.
 음 고객님 이 대출이 약정일이 아직 좀 남아 있어가지고요 중도상환 수수료가 발생하긴 하는데 잔액에 한 0.7% 그러니까 한 80,000원 조금 넘게 나오시네요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 정리해 드리면요 신용대출 한도하고 금리 안내드렸구요 기존 대출은 만기 때 상환하시기로 하셨고 정기적금 월 300,000원으로 신규 가입까지 도와드렸습니다.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 6, '정확성·설명', '설명력 · 전달력', '아 맞아요. 급여 이체 실적 있으시면 우대금리 들어가가지고요 한 0.3% 정도 빠지세요. 그러면 변동으로 4.9 정도 보시면 되겠네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 정리해 드리면요 신용대출 한도하고 금리 안내드렸구요 기존 대출은 만기 때 상환하시기로 하셨고 정기적금 월 300,000원으로 신규 가입까지 도와드렸습니다.', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 6, '정확성·설명', '설명력 · 전달력', '아 맞아요. 급여 이체 실적 있으시면 우대금리 들어가가지고요 한 0.3% 정도 빠지세요. 그러면 변동으로 4.9 정도 보시면 되겠네요.
 네 금리는 지금 변동금리로 하시면 연 5.2% 정도 나오시구요. 고정으로 하시면 좀 더 높아가지고 5.6% 정도 되세요.
 네 더 궁금하신 거 있으실까요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 앱에서 하시면 되구요 인증센터 메뉴 들어가시면 인증서 관리 거기에 갱신 버튼 있거든요. 거기서 진행하시면 돼요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 앱에서 하시면 되구요 인증센터 메뉴 들어가시면 인증서 관리 거기에 갱신 버튼 있거든요. 거기서 진행하시면 돼요.
 네 이체 방법 안내해 드릴게요. 앱 메인 화면에서 이체 버튼 누르시면 받는 분 계좌번호 입력하는 화면이 나오거든요.
 네 금액 넣으신 다음에 확인 누르시면 인증서 비밀번호나 아까 그 인증서로 한번 인증하시구요 그러면 이체가 완료되세요.
 네 이제 인증서 갱신되셨으니까 정상적으로 이체 가능하세요. 처음 하실 때 한도가 좀 낮을 수 있으니까 그것도 참고하세요.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '지금 보니까 고객님 신용 등급 기준으로 한도가 한 4,000만 원 정도 나오시는데요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '지금 보니까 고객님 신용 등급 기준으로 한도가 한 4,000만 원 정도 나오시는데요.
 금리는 지금 변동금리로 하시면 연 5.2% 정도 나오시구요. 고정으로 하시면 좀 더 높아가지고 5.6% 정도 되세요.
 급여 이체 실적 있으시면 우대금리 들어가가지고요 한 0.3% 정도 빠지세요. 그러면 변동으로 4.9 정도 보시면 되겠네요.
 혹시 소득 증빙 추가로 내시면 한도가 좀 더 올라갈 수도 있으세요.
@@ -2075,552 +2088,563 @@ INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utte
 약정 만기가 이제 한 넉 달 정도 남으셨거든요. 만기까지 기다리셨다가 상환하시면 수수료가 아예 없으세요.
 1년 정기적금으로 월 300,000원 하시면 되는데요 지금 금리가 연 3.8% 들어가시구요.
 매달 25일에 300,000원씩 자동이체로 설정하구요 만기는 내년 6월 8일이 되시겠네요.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 기존 대출 중도상환 문의시죠? 잠시만요 조회 좀 해볼게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 기존 대출 중도상환 문의시죠? 잠시만요 조회 좀 해볼게요.
 근데 약정 만기가 이제 한 넉 달 정도 남으셨거든요. 만기까지 기다리셨다가 상환하시면 수수료가 아예 없으세요.
 네 알겠습니다. 그러면 따로 신청 안 하셔도 되구요 만기 가까워지면 안내 문자 한번 더 가실 거예요.
 네 더 궁금하신 거 있으실까요?
 네 가입 진행할게요. 잠시만요 어 네 정기적금 월 300,000원 1년 만기로 신규 가입 처리됐구요 계좌번호는 가입 완료 문자로 보내드릴게요.
 네 그럼 정리해 드리면요 신용대출 한도하고 금리 안내드렸구요 기존 대출은 만기 때 상환하시기로 하셨고 정기적금 월 300,000원으로 신규 가입까지 도와드렸습니다.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다.
 음 지금 보니까 고객님 신용 등급 기준으로 한도가 한 4,000만 원 정도 나오시는데요.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 대출 한도하고 금리 조회 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 대출 한도하고 금리 조회 도와드릴게요. 본인확인 먼저 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다. 음 지금 보니까 고객님 신용 등급 기준으로 한도가 한 4,000만 원 정도 나오시는데요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 금리는 지금 변동금리로 하시면 연 5.2% 정도 나오시구요. 고정으로 하시면 좀 더 높아가지고 5.6% 정도 되세요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 금리는 지금 변동금리로 하시면 연 5.2% 정도 나오시구요. 고정으로 하시면 좀 더 높아가지고 5.6% 정도 되세요.
 음 고객님 이 대출이 약정일이 아직 좀 남아 있어가지고요 중도상환 수수료가 발생하긴 하는데 잔액에 한 0.7% 그러니까 한 80,000원 조금 넘게 나오시네요.
 네 그러면 1년 정기적금으로 월 300,000원 하시면 되는데요 지금 금리가 연 3.8% 들어가시구요.
 네 이자소득세가 일반 과세로 떼이긴 하는데요 혹시 비과세 조건 되시면 그건 또 따로 안내해 드릴 수 있어요.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '아 네 적금 신규 가입 도와드릴까요? 어떤 상품으로 생각하고 계셨어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '아 네 적금 신규 가입 도와드릴까요? 어떤 상품으로 생각하고 계셨어요?
 네 그러면 1년 정기적금으로 월 300,000원 하시면 되는데요 지금 금리가 연 3.8% 들어가시구요.
 네 이자소득세가 일반 과세로 떼이긴 하는데요 혹시 비과세 조건 되시면 그건 또 따로 안내해 드릴 수 있어요. 일단 일반으로 가입하실게요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1001-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 좀 할게요. 성함하고 생년월일 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 6, '정확성·설명', '설명력 · 전달력', '아 자동이체 출금일 변경하시려는 거네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 6, '정확성·설명', '설명력 · 전달력', '아 자동이체 출금일 변경하시려는 거네요.
 네 저희가 할 수 있는 건 이 계좌에서 출금되는 걸 해지하는 거고요 등록 자체는 통신사 고객센터에서 새 계좌로 다시 해주셔야 해요.
 네 그렇게 하시는 게 안전해요. 통신사에서 새 계좌 등록 끝나면 그때 다시 연락 주시면 여기 해지 바로 도와드릴게요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 비밀번호가 안 맞으시는군요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 비밀번호가 안 맞으시는군요.
 다만 보안 때문에 추가 인증이 필요한데 등록된 휴대폰으로 인증번호 하나 보내드릴게요.
 네 잘 되셨다니 다행이에요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 4, '응대·표현', '정중한 언어표현', '아 네 그럼요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 4, '응대·표현', '정중한 언어표현', '아 네 그럼요.
 아 네 비밀번호가 안 맞으시는군요.
 아 네 그러면 더 시도하지 마시구요 잠기기 전에 비밀번호를 초기화하시는 게 나으세요.
 아 네 인증서 비밀번호 초기화 도와드릴게요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 정리해 드리면요 금융인증서 갱신 도와드렸구요 비밀번호가 안 맞으셔서 초기화해 새로 설정해 드렸고 이체 방법까지 안내해 드렸습니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 정리해 드리면요 금융인증서 갱신 도와드렸구요 비밀번호가 안 맞으셔서 초기화해 새로 설정해 드렸고 이체 방법까지 안내해 드렸습니다.
 네 [name] 고객님 확인됐습니다.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 6, '정확성·설명', '설명력 · 전달력', '공동인증서는 예전에 그 공인인증서라고 부르던 거구요 금융인증서는 좀 더 최근에 나온 건데 클라우드에 저장돼서 따로 USB나 그런 거 없이 쓰실 수 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 6, '정확성·설명', '설명력 · 전달력', '공동인증서는 예전에 그 공인인증서라고 부르던 거구요 금융인증서는 좀 더 최근에 나온 건데 클라우드에 저장돼서 따로 USB나 그런 거 없이 쓰실 수 있어요.
 네 금융인증서 갱신 도와드릴게요.
 네 맞아요. 이름 안 뜨거나 모르는 이름 뜨면 일단 멈추시구요 계좌번호 다시 한번 확인하시는 게 안전하세요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '인증서 비밀번호는 그대로 쓰시면 되세요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '인증서 비밀번호는 그대로 쓰시면 되세요.
 갱신은 그냥 기간만 늘려드리는 거라 새로 외우실 건 없으세요.
 공동인증서는 예전에 그 공인인증서라고 부르던 거구요 금융인증서는 좀 더 최근에 나온 건데 클라우드에 저장돼서 따로 USB나 그런 거 없이 쓰실 수 있어요.
 거기 은행 선택하시고 계좌번호 넣으시면 받는 분 이름이 한번 뜨거든요. 그거 맞는지 확인하시고 금액 넣으시면 돼요.
 처음 하실 때 한도가 좀 낮을 수 있으니까 그것도 참고하세요.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '네 25일에서 28일로 변경 도와드릴게요 잠시만요. 음 변경 처리됐고요 다음 달부터 28일에 출금됩니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1004-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '네 25일에서 28일로 변경 도와드릴게요 잠시만요. 음 변경 처리됐고요 다음 달부터 28일에 출금됩니다.
 아 통신비 자동이체는 통신사 쪽에 출금 계좌가 등록돼 있는 거라서요 저희 은행에서 바로 바꿔드리긴 어렵고 통신사에 신청하셔야 돼요.
 네 저희가 할 수 있는 건 이 계좌에서 출금되는 걸 해지하는 거고요 등록 자체는 통신사 고객센터에서 새 계좌로 다시 해주셔야 해요.
 네 근데 통신사에 새 계좌 등록 안 하시고 여기서만 해지하면요 다음 달 통신비가 미납될 수 있어가지고요 통신사 등록 먼저 하시는 걸 추천드려요.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '네 그러셨군요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '네 그러셨군요.
 다만 지금 계좌가 정지 상태라서 영업점 가셔서 계좌 푸실 때 카드 재발급도 같이 하시는 게 한 번에 되셔서 편하세요.
 네 고객님 요즘 수법이 워낙 교묘해가지고 누구나 당하실 수 있어요. 너무 자책하지 마시구요 지금이라도 빨리 신고하신 게 잘하신 거예요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 4, '응대·표현', '정중한 언어표현', '아 네 그거 전형적인 보이스피싱 수법이세요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 4, '응대·표현', '정중한 언어표현', '아 네 그거 전형적인 보이스피싱 수법이세요.
 네 고객님 요즘 수법이 워낙 교묘해가지고 누구나 당하실 수 있어요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 6, '정확성·설명', '설명력 · 전달력', '그 앱은 원격으로 폰을 조종하는 악성 앱일 수 있거든요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 6, '정확성·설명', '설명력 · 전달력', '그 앱은 원격으로 폰을 조종하는 악성 앱일 수 있거든요.
 네 그거 전형적인 보이스피싱 수법이세요. 절대 고객님 잘못 아니구요 일단 지금 고객님 모든 계좌 출금하고 이체 다 일시 정지 걸었습니다.
 신분증만 꼭 챙겨 가세요. 그래야 본인 확인하고 정지 풀어드릴 수 있어요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '네 그 보내신 상대방 계좌에 대해서도 저희가 지급 정지 요청을 바로 넣을 거구요 혹시 그 돈이 아직 안 빠져나갔으면 돌려받으실 수도 있으세요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '네 그 보내신 상대방 계좌에 대해서도 저희가 지급 정지 요청을 바로 넣을 거구요 혹시 그 돈이 아직 안 빠져나갔으면 돌려받으실 수도 있으세요.
 네 지금 바로 그 입금하신 계좌 정보로 지급 정지 신청 접수했구요 그리고 이게 정식 피해 구제 신청을 하셔야 되거든요. 경찰서 신고도 같이 하셔야 돼요.
 네 경찰하고 금감원 신고 꼭 하시구요 접수번호 받으시면 다시 연락 주세요.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 25일에서 28일로 변경 도와드릴게요 잠시만요. 음 변경 처리됐고요 다음 달부터 28일에 출금됩니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 25일에서 28일로 변경 도와드릴게요 잠시만요. 음 변경 처리됐고요 다음 달부터 28일에 출금됩니다.
 네 저희가 할 수 있는 건 이 계좌에서 출금되는 걸 해지하는 거고요 등록 자체는 통신사 고객센터에서 새 계좌로 다시 해주셔야 해요.
 네 근데 통신사에 새 계좌 등록 안 하시고 여기서만 해지하면요 다음 달 통신비가 미납될 수 있어가지고요 통신사 등록 먼저 하시는 걸 추천드려요.
 네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리요.
 네 [name] 고객님 [code] 확인됐습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 입출금 내역 조회 도와드릴게요. 본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 입출금 내역 조회 도와드릴게요. 본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리요.
 네 [name] 고객님 [code] 확인됐습니다. 어느 기간 내역으로 보시면 될까요?', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 25일에서 28일로 변경 도와드릴게요 잠시만요. 음 변경 처리됐고요 다음 달부터 28일에 출금됩니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 25일에서 28일로 변경 도와드릴게요 잠시만요. 음 변경 처리됐고요 다음 달부터 28일에 출금됩니다.
 아 통신비 자동이체는 통신사 쪽에 출금 계좌가 등록돼 있는 거라서요 저희 은행에서 바로 바꿔드리긴 어렵고 통신사에 신청하셔야 돼요.
 네 저희가 할 수 있는 건 이 계좌에서 출금되는 걸 해지하는 거고요 등록 자체는 통신사 고객센터에서 새 계좌로 다시 해주셔야 해요.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 좀 진행할게요. 성함이랑 휴대폰 뒷자리 좀 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 그러셨구나.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 그러셨구나.
 아 네 [number]번 연속 틀리시면 그 인증서가 일시적으로 잠기긴 하는데요 지금 [number]번이시니까 너무 걱정 안 하셔도 돼요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 6, '정확성·설명', '설명력 · 전달력', '갱신은 그 기존 인증서를 폐기하고 다시 발급받는 식으로 진행이 되거든요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 6, '정확성·설명', '설명력 · 전달력', '갱신은 그 기존 인증서를 폐기하고 다시 발급받는 식으로 진행이 되거든요.
 네 앱에서 이체 메뉴 들어가시면 됩니다.
 아 네 잘 되셨네요. 받으시는 분 통장에도 바로 들어갔을 거예요.
 네 고객님 그럼 오늘 금융인증서 재발급이랑 정기예금 만기금 이체 방법까지 안내 도와드렸구요 더 궁금하신 거 있으세요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '음 고객님 일일 이체한도가 지금 보니까 1회 10,000,000원 1일 50,000,000원으로 돼 있어서요 7,000,000원은 한 번에 문제없이 보내실 수 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '음 고객님 일일 이체한도가 지금 보니까 1회 10,000,000원 1일 50,000,000원으로 돼 있어서요 7,000,000원은 한 번에 문제없이 보내실 수 있어요.
 네 일정 금액 이상은 보안매체가 필요할 수 있는데요 7,000,000원이면 그 인증서랑 이체 비밀번호만으로도 진행되실 거예요.
 네 받으실 은행이랑 계좌번호 입력하시구요 금액 넣으시고 그 다음에 이체 비밀번호랑 아까 새로 발급받으신 인증서로 인증하시면 돼요.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 됩니다. 비밀번호가 기억이 안 나시면 그 인증서를 아예 재발급 받으시면 새 비밀번호로 다시 설정이 되거든요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 됩니다. 비밀번호가 기억이 안 나시면 그 인증서를 아예 재발급 받으시면 새 비밀번호로 다시 설정이 되거든요.
 네 그럼 화면에서 갱신 말고 신규 발급 쪽으로 가셔야 되는데요 뒤로 한 번 나가시면 발급 버튼 보이실 거예요.
 더 궁금하신 거 있으세요?', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 진행할게요. 성함이랑 휴대폰 뒷자리 좀 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 진행할게요. 성함이랑 휴대폰 뒷자리 좀 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 먼저 좀 진행할게요. 성함이랑 휴대폰 뒷자리 좀 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 먼저 좀 진행할게요. 성함이랑 휴대폰 뒷자리 좀 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다. 음 지금 보니까 금융인증서 유효기간이 지난 달에 끝났네요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '갱신은 그 기존 인증서를 폐기하고 다시 발급받는 식으로 진행이 되거든요
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '갱신은 그 기존 인증서를 폐기하고 다시 발급받는 식으로 진행이 되거든요
 일일 이체한도가 지금 보니까 1회 10,000,000원 1일 50,000,000원으로 돼 있어서요
 7,000,000원이면 그 인증서랑 이체 비밀번호만으로도 진행되실 거예요', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 빠르게 할게요. 성함이랑 생년월일 좀 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 2, '응대·표현', '끝인사', '네 놀라셨을 텐데 빨리 연락 주셔서 잘 처리됐습니다. 좋은 하루 되세요 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 4, '응대·표현', '정중한 언어표현', '음 지금 최근 거래 내역 보니까요 다행히 출금이나 이체 시도된 건 아직 없네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 2, '응대·표현', '끝인사', '네 놀라셨을 텐데 빨리 연락 주셔서 잘 처리됐습니다. 좋은 하루 되세요 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 4, '응대·표현', '정중한 언어표현', '음 지금 최근 거래 내역 보니까요 다행히 출금이나 이체 시도된 건 아직 없네요.
 음 그 부분도 걱정되실 텐데요 지금 계좌랑 카드 다 정지된 상태라 그 번호로는 추가로 뭘 할 수가 없어요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 6, '정확성·설명', '설명력 · 전달력', '지금 즉시 고객님 명의 계좌 전체에 지급정지 걸어 드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 6, '정확성·설명', '설명력 · 전달력', '지금 즉시 고객님 명의 계좌 전체에 지급정지 걸어 드릴게요.
 지급정지는 나가는 출금만 막는 거라서요 입금은 정상적으로 들어옵니다. 월급은 걱정 안 하셔도 돼요.
 네 방금 입출금 계좌 2개랑 연결된 카드까지 다 일시 정지 처리됐습니다.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 8, '정확성·설명', '적극성 · 해결의지', '제가 바로 도와드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 8, '정확성·설명', '적극성 · 해결의지', '제가 바로 도와드릴게요.
 일단 지금 고객님 모든 계좌 출금하고 이체 다 일시 정지 걸었습니다.
 그 보내신 상대방 계좌에 대해서도 저희가 지급 정지 요청을 바로 넣을 거구요
 112는 경찰 1332는 금융감독원이거든요. 거기 전화하셔서 신고하시면 되구요 그 신고 접수번호를 받으시면 저희한테 알려주세요.
 지금 정지 걸어둔 거는 고객님이 신분증 가지고 영업점 가셔서 본인 확인 하셔야 풀리세요.
 네 그럼 정리해 드리면요 보이스피싱 피해로 계좌 전체 지급 정지하고 상대 계좌 지급 정지 신청까지 해드렸구요 분실하신 체크카드 정지 처리했고 오늘 입출금 내역까지 확인해 드렸습니다.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다. 우선 계좌부터 바로 지급 정지 걸어드릴게요.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 고객님 많이 놀라셨겠어요. 제가 바로 도와드릴게요. 우선 본인확인 빠르게 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 고객님 많이 놀라셨겠어요. 제가 바로 도와드릴게요. 우선 본인확인 빠르게 좀 할게요. 성함하고 휴대폰 뒷자리 4자리만 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 고객님 [code] 확인됐습니다. 우선 계좌부터 바로 지급 정지 걸어드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 고객님 [code] 확인됐습니다. 우선 계좌부터 바로 지급 정지 걸어드릴게요.
 네 어렵지 않으세요. 112는 경찰 1332는 금융감독원이거든요. 거기 전화하셔서 신고하시면 되구요 그 신고 접수번호를 받으시면 저희한테 알려주세요.
 네 그 보내신 상대방 계좌에 대해서도 저희가 지급 정지 요청을 바로 넣을 거구요 혹시 그 돈이 아직 안 빠져나갔으면 돌려받으실 수도 있으세요.
 네 끝자리 [code] 체크카드 분실 신고 접수했구요 바로 사용 정지 걸었습니다.
 네 재발급은 지금 바로 신청해 드릴 수도 있는데요 다만 지금 계좌가 정지 상태라서 영업점 가셔서 계좌 푸실 때 카드 재발급도 같이 하시는 게 한 번에 되셔서 편하세요.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '네 [name] 고객님 [code] 확인됐습니다. 우선 계좌부터 바로 지급 정지 걸어드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1005-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '네 [name] 고객님 [code] 확인됐습니다. 우선 계좌부터 바로 지급 정지 걸어드릴게요.
 일단 지금 고객님 모든 계좌 출금하고 이체 다 일시 정지 걸었습니다.
 이게 정식 피해 구제 신청을 하셔야 되거든요. 경찰서 신고도 같이 하셔야 돼요.
 112는 경찰 1332는 금융감독원이거든요. 거기 전화하셔서 신고하시면 되구요
 통화 끝나시면 그 앱 꼭 바로 삭제하시구요
 지금 정지 걸어둔 거는 고객님이 신분증 가지고 영업점 가셔서 본인 확인 하셔야 풀리세요.
 끝자리 [code] 체크카드 분실 신고 접수했구요 바로 사용 정지 걸었습니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 2, '응대·표현', '끝인사', '네 [name] 고객님 신경 써서 처리하겠습니다. 좋은 하루 보내세요 감사합니다.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네네 그러셨군요 불편하셨겠어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 2, '응대·표현', '끝인사', '네 [name] 고객님 신경 써서 처리하겠습니다. 좋은 하루 보내세요 감사합니다.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네네 그러셨군요 불편하셨겠어요.
 죄송합니다 고객님.
 아 너무 걱정 안 하셔도 됩니다.
 아 잔금 날짜가 걸려 계셔서 급하시겠어요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 4, '응대·표현', '정중한 언어표현', '다시 로그인하시고 전세자금대출 메뉴 한번 눌러봐 주세요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 4, '응대·표현', '정중한 언어표현', '다시 로그인하시고 전세자금대출 메뉴 한번 눌러봐 주세요.
 아 네네 그러셨군요 불편하셨겠어요.
 아 어제까지는 정상이셨는데 오늘부터요?', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 6, '정확성·설명', '설명력 · 전달력', '아 너무 걱정 안 하셔도 됩니다. 돈이 사라진 건 아니구요 수취 계좌 쪽에서 어떤 사유로 입금이 일단 멈춰 있는 상태라서요. 보통 받는 분 계좌가 한도 초과거나 거래 정지 같은 경우에 이렇게 보류가 걸리거든요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '어제 19시 32분에 출금 처리는 정상적으로 됐는데요 어 수취 은행 쪽에서 입금 보류 상태로 걸려 있네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 6, '정확성·설명', '설명력 · 전달력', '아 너무 걱정 안 하셔도 됩니다. 돈이 사라진 건 아니구요 수취 계좌 쪽에서 어떤 사유로 입금이 일단 멈춰 있는 상태라서요. 보통 받는 분 계좌가 한도 초과거나 거래 정지 같은 경우에 이렇게 보류가 걸리거든요.', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '어제 19시 32분에 출금 처리는 정상적으로 됐는데요 어 수취 은행 쪽에서 입금 보류 상태로 걸려 있네요.
 이 보류 건은 보통 영업일 기준으로 하루나 이틀 안에 자동으로 다시 받는 분 계좌로 입금되거나 아니면 고객님 계좌로 반환 처리가 됩니다.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '번거로우시겠지만
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '번거로우시겠지만
 네 충분히 그러실 수 있어요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 8, '정확성·설명', '적극성 · 해결의지', '제가 일단 오류 건으로 기록을 남기고 기술팀에 확인 요청을 넣어드리겠습니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 8, '정확성·설명', '적극성 · 해결의지', '제가 일단 오류 건으로 기록을 남기고 기술팀에 확인 요청을 넣어드리겠습니다.
 제가 이 건을 긴급 처리 건으로 해서 입금 정정 요청을 바로 넣어드릴게요.
 혹시 앱을 완전히 종료하셨다가 다시 켜보시겠어요? 백그라운드까지 싹 닫고요.
 이 보류 건은 보통 영업일 기준으로 하루나 이틀 안에 자동으로 다시 받는 분 계좌로 입금되거나 아니면 고객님 계좌로 반환 처리가 됩니다.
 더 궁금하신 점 없으실까요?', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다 감사합니다.
 어 그러면 혹시 앱 버전이 최신인지 한번 보셨을까요?', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다 감사합니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 불편하셨겠네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 불편하셨겠네요.
 아 인증서는 따로 저장 위치가 있어가지고 재설치해도 보통은 유지되는데요 혹시 모르니까 클라우드나 PC에 백업 한 번 해두시면 안심이에요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 4, '응대·표현', '정중한 언어표현', '음 그러시군요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 4, '응대·표현', '정중한 언어표현', '음 그러시군요.
 음 출금은 잡혀 있는데 상대 은행으로 입금 완료 처리가 안 돼가지고요 아마 그때 앱 오류랑 같이 거래가 중간에 끊긴 것 같아요.
 음 어제 20시 4분에 150,000원 출금 시도가 있었는데요 이게 처리 중 상태로 멈춰 있네요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 6, '정확성·설명', '설명력 · 전달력', '인증서는 따로 저장 위치가 있어가지고 재설치해도 보통은 유지되는데요 혹시 모르니까 클라우드나 PC에 백업 한 번 해두시면 안심이에요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 6, '정확성·설명', '설명력 · 전달력', '인증서는 따로 저장 위치가 있어가지고 재설치해도 보통은 유지되는데요 혹시 모르니까 클라우드나 PC에 백업 한 번 해두시면 안심이에요.
 제가 지금 이 거래 강제 취소 요청 넣어드릴게요. 그럼 오늘 안으로 고객님 계좌로 150,000원 다시 돌아옵니다.
 어제 몇 시쯤 얼마를 어디로 보내셨어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 8, '정확성·설명', '적극성 · 해결의지', '제가 지금 이 거래 강제 취소 요청 넣어드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 8, '정확성·설명', '적극성 · 해결의지', '제가 지금 이 거래 강제 취소 요청 넣어드릴게요.
 미결제 거래 취소 요청 접수했고요 처리되면 문자로 알림 가게 해뒀습니다. 다시 보내실 때는 앱 재설치 후에 하시는 게 안전할 것 같아요.
 더 궁금하신 점 있으시면 다시 연락 주세요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '지금 즉시 고객님 명의 계좌 전체에 지급정지 걸어 드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '지금 즉시 고객님 명의 계좌 전체에 지급정지 걸어 드릴게요.
 지급정지는 나가는 출금만 막는 거라서요 입금은 정상적으로 들어옵니다. 월급은 걱심 안 하셔도 돼요.
 보이스피싱은 경찰서 112로 신고하셔야 되구요 저희 쪽에서도 사고 접수 등록 같이 해 드릴게요.
 지급정지는 고객님이 직접 해제 요청하시거나 경찰 확인서 나오기 전까지는 계속 유지됩니다.
 끝자리 [code] 체크카드 1장 있으시네요. 이거 바로 분실 신고로 정지 걸어 드릴게요.
 최근 일주일 내역은요 어제 카드 결제 12,000원 그저께 급여 입금 그리고 공과금 자동이체 정도네요. 이상한 출금은 없습니다.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 지금 즉시 고객님 명의 계좌 전체에 지급정지 걸어 드릴게요. 잠시만요 어 처리 들어갑니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 지금 즉시 고객님 명의 계좌 전체에 지급정지 걸어 드릴게요. 잠시만요 어 처리 들어갑니다.
 그리고 혹시 모르니까 인터넷뱅킹 비밀번호도 한 번 바꾸시는 걸 추천드려요.
 네 보이스피싱은 경찰서 112로 신고하셔야 되구요 저희 쪽에서도 사고 접수 등록 같이 해 드릴게요.
 더 필요하신 거 있으세요?', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함이랑 생년월일 좀 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '성함이랑 생년월일 좀 말씀해 주시겠어요?
 네 [name] 고객님 확인됐습니다.
 어떤 상황이신지 간단히 말씀해 주시겠어요?', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '성함이랑 생년월일 좀 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '성함이랑 생년월일 좀 말씀해 주시겠어요?
 네 [name] 고객님 확인됐습니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '아 너무 걱정 안 하셔도 됩니다. 돈이 사라진 건 아니구요 수취 계좌 쪽에서 어떤 사유로 입금이 일단 멈춰 있는 상태라서요. 보통 받는 분 계좌가 한도 초과거나 거래 정지 같은 경우에 이렇게 보류가 걸리거든요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '아 너무 걱정 안 하셔도 됩니다. 돈이 사라진 건 아니구요 수취 계좌 쪽에서 어떤 사유로 입금이 일단 멈춰 있는 상태라서요. 보통 받는 분 계좌가 한도 초과거나 거래 정지 같은 경우에 이렇게 보류가 걸리거든요.
 네 맞아요. 출금은 됐기 때문에 다시 보내시면 안 되구요 이 보류 건은 보통 영업일 기준으로 하루나 이틀 안에 자동으로 다시 받는 분 계좌로 입금되거나 아니면 고객님 계좌로 반환 처리가 됩니다.
 아 잔금 날짜가 걸려 계셔서 급하시겠어요. 제가 이 건을 긴급 처리 건으로 해서 입금 정정 요청을 바로 넣어드릴게요.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1006-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 네 대출 상담 도와드릴게요. 본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리 4자리요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인 확인 먼저 좀 부탁드릴게요. 성함하고 생년월일 앞에 6자리 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 2, '응대·표현', '끝인사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 4, '응대·표현', '정중한 언어표현', '어 보니까 현재 한도가 30,000,000원으로 잡혀 있으시고요 금리는 연 4.8% 적용되고 계시네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 2, '응대·표현', '끝인사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 4, '응대·표현', '정중한 언어표현', '어 보니까 현재 한도가 30,000,000원으로 잡혀 있으시고요 금리는 연 4.8% 적용되고 계시네요.
 어 보니까 작년 5월에 실행된 건이 있으시네요.
 어 이 상품이 중도상환수수료율이 1.2% 로 돼 있고요 대출 실행일부터 3년 동안 적용되는데 남은 기간에 따라서 수수료가 좀 줄어들어요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리 4자리요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리 4자리요.
 네 [name] 고객님 [code] 확인됐습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 6, '정확성·설명', '설명력 · 전달력', '네 금리 인하 요구권이라는 게 있어서요 소득이 늘었거나 신용점수가 좋아지셨으면 그걸로 한번 신청해 보실 수 있어요
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 6, '정확성·설명', '설명력 · 전달력', '네 금리 인하 요구권이라는 게 있어서요 소득이 늘었거나 신용점수가 좋아지셨으면 그걸로 한번 신청해 보실 수 있어요
 네 한도 증액은 가능은 한데요 그게 고객님 소득이나 신용 상태 그런 거를 다시 심사를 해봐야 돼서요
 네 그러면 우대금리 조건 충족되실 거예요', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '현재 한도가 30,000,000원으로 잡혀 있으시고요 금리는 연 4.8% 적용되고 계시네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '현재 한도가 30,000,000원으로 잡혀 있으시고요 금리는 연 4.8% 적용되고 계시네요.
 한도 증액은 가능은 한데요 그게 고객님 소득이나 신용 상태 그런 거를 다시 심사를 해봐야 돼서요. 지금 바로 얼마까지 된다 이렇게 말씀드리기는 좀 어렵거든요.
 이 상품이 중도상환수수료율이 1.2% 로 돼 있고요 대출 실행일부터 3년 동안 적용되는데 남은 기간에 따라서 수수료가 좀 줄어들어요.
 기본금리에 우대 다 합치면 연 4.5%까지 됩니다.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 한도 증액은 가능은 한데요 그게 고객님 소득이나 신용 상태 그런 거를 다시 심사를 해봐야 돼서요. 지금 바로 얼마까지 된다 이렇게 말씀드리기는 좀 어렵거든요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 한도 증액은 가능은 한데요 그게 고객님 소득이나 신용 상태 그런 거를 다시 심사를 해봐야 돼서요. 지금 바로 얼마까지 된다 이렇게 말씀드리기는 좀 어렵거든요.
 아 연봉이 오르셨으면 긍정적으로 보실 수 있어요. 다만 증액 심사는 앱에서 신청하시거나 영업점 방문하셔서 진행하셔야 되구요 소득 증빙 서류 그런 게 좀 필요할 수 있습니다.
 네 금리 인하 요구권이라는 게 있어서요 소득이 늘었거나 신용점수가 좋아지셨으면 그걸로 한번 신청해 보실 수 있어요. 그것도 같이 심사가 들어가는 부분이에요.
 자 동의 처리됐구요 적금 계좌 정상적으로 개설됐습니다. 계좌번호는 문자로 보내드릴게요. 첫 납입은 오늘 바로 200,000원 빠져나가구요 다음 달부터는 매월 오늘 날짜에 자동으로 납입됩니다.
 더 필요하신 거 있으실까요?', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인 확인 먼저 좀 부탁드릴게요. 성함하고 생년월일 앞에 6자리 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인 확인 먼저 좀 부탁드릴게요. 성함하고 생년월일 앞에 6자리 말씀해 주시겠어요?
 네 [name] 고객님 [birth] 확인됐습니다. 어떤 대출 관련해서 궁금하신 거예요?', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 본인 확인 먼저 좀 부탁드릴게요. 성함하고 생년월일 앞에 6자리 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 본인 확인 먼저 좀 부탁드릴게요. 성함하고 생년월일 앞에 6자리 말씀해 주시겠어요?
 네 [name] 고객님 [birth] 확인됐습니다. 어떤 대출 관련해서 궁금하신 거예요?
 아 네 현재 쓰고 계신 마이너스 통장 한도하고 적용 금리 확인 도와드릴게요. 잠시만요 어 보니까 현재 한도가 30,000,000원으로 잡혀 있으시고요 금리는 연 4.8% 적용되고 계시네요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '현재 한도가 30,000,000원으로 잡혀 있으시고요 금리는 연 4.8% 적용되고 계시네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '현재 한도가 30,000,000원으로 잡혀 있으시고요 금리는 연 4.8% 적용되고 계시네요.
 이 상품이 중도상환수수료율이 1.2% 로 돼 있고요 대출 실행일부터 3년 동안 적용되는데 남은 기간에 따라서 수수료가 좀 줄어들어요.
 기본금리에 우대 다 합치면 연 4.5%까지 됩니다.
 자 동의 처리됐구요 적금 계좌 정상적으로 개설됐습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '아 네 마침 저희 그 체크카드 실적 연계 적금 상품이 있어요. 한 달에 그 연결된 체크카드로 300,000원 이상 쓰시면 우대금리 들어가는 상품인데요 기본금리에 우대 다 합치면 연 4.5%까지 됩니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '아 네 마침 저희 그 체크카드 실적 연계 적금 상품이 있어요. 한 달에 그 연결된 체크카드로 300,000원 이상 쓰시면 우대금리 들어가는 상품인데요 기본금리에 우대 다 합치면 연 4.5%까지 됩니다.
 네 12개월 월 200,000원 정기적금으로 진행하겠습니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1007-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 부탁드릴게요. 성함하고 생년월일 6자리 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 2, '응대·표현', '끝인사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 통신비 자동이체 출금 계좌를 변경하고 싶으신 거군요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 2, '응대·표현', '끝인사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 통신비 자동이체 출금 계좌를 변경하고 싶으신 거군요.
 음 근데 통신비 같은 거는요 받는 쪽 통신사에서 출금 계좌를 관리하는 경우가 많아서요 저희 쪽에서 바로 계좌만 바꿔드리기는 좀 어려울 수 있어요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 4, '응대·표현', '정중한 언어표현', '어 보니까 최근 일주일 내역 보이는데요
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 4, '응대·표현', '정중한 언어표현', '어 보니까 최근 일주일 내역 보이는데요
 음 이게 작년 9월에 등록된 적립식 펀드 자동이체로 보이는데요', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 입출금 내역 확인 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 생년월일 6자리 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 입출금 내역 확인 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 생년월일 6자리 말씀해 주시겠어요?
 네 그럼 오늘 도와드린 거 정리해 드릴게요. 입출금 내역 확인해 드렸고 펀드 자동납입은 300,000원에서 100,000원으로 줄여드렸구요 통신비 자동이체 출금 계좌는 끝자리 [code]로 변경했고 매달 25일 200,000원 신탁 적립 자동이체를 새로 등록해 드렸습니다.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 6, '정확성·설명', '설명력 · 전달력', '음 이게 작년 9월에 등록된 적립식 펀드 자동이체로 보이는데요 매달 그 날짜에 300,000원씩 신탁 계좌로 들어가고 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 6, '정확성·설명', '설명력 · 전달력', '음 이게 작년 9월에 등록된 적립식 펀드 자동이체로 보이는데요 매달 그 날짜에 300,000원씩 신탁 계좌로 들어가고 있어요.
 네 그 자동이체 금액을 조정하시거나 아니면 아예 해지하실 수도 있어요. 어떻게 하고 싶으세요? 금액을 줄이실까요 아니면 멈추실까요?
 네 그 통신사 쪽에 연락하셔서 출금 계좌 변경 신청하시는 게 제일 확실하구요 다만 혹시 저희 은행 자동이체 등록 목록에 들어가 있는 거면 제가 여기서 변경 도와드릴 수 있어요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '네 매달 300,000원 나가던 펀드 자동이체를 100,000원으로 변경해 드릴게요. 다음 납입일부터 적용되구요 이번 달 거는 이미 나갔으니까 다음 달부터 100,000원으로 들어갑니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '네 매달 300,000원 나가던 펀드 자동이체를 100,000원으로 변경해 드릴게요. 다음 납입일부터 적용되구요 이번 달 거는 이미 나갔으니까 다음 달부터 100,000원으로 들어갑니다.
 네 그 통신사 쪽에 연락하셔서 출금 계좌 변경 신청하시는 게 제일 확실하구요 다만 혹시 저희 은행 자동이체 등록 목록에 들어가 있는 거면 제가 여기서 변경 도와드릴 수 있어요.
 네 매달 25일에 [code] 계좌에서 200,000원씩 신탁 적립 통장으로 자동이체 등록하겠습니다. 잠시만요 어 등록 완료됐구요 첫 출금은 다음 달 25일부터 시작됩니다.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 그런 걱정 하실 수 있는데요 제가 한번 볼게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 그런 걱정 하실 수 있는데요 제가 한번 볼게요.
 아 그러면 갱신 기간이 지났을 가능성이 높아서요 새로 발급받으시는 게 빠를 거 같아요.
 아 일단 더 넣지 마시구요 한 번만 더 틀리면 잠길 수 있어서요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 그 자동이체 금액을 조정하시거나 아니면 아예 해지하실 수도 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 그 자동이체 금액을 조정하시거나 아니면 아예 해지하실 수도 있어요.
 네 알겠습니다. 그러면 매달 300,000원 나가던 펀드 자동이체를 100,000원으로 변경해 드릴게요.
 네 그 통신사 쪽에 연락하셔서 출금 계좌 변경 신청하시는 게 제일 확실하구요 다만 혹시 저희 은행 자동이체 등록 목록에 들어가 있는 거면 제가 여기서 변경 도와드릴 수 있어요.
 더 필요하신 점 있으실까요?', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 부탁드릴게요. 성함하고 생년월일 6자리 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 부탁드릴게요. 성함하고 생년월일 6자리 말씀해 주시겠어요?
 네 [name] 고객님 [birth] 확인됐습니다.
 네 최근 거래 내역 확인해 드릴게요. 혹시 입출금 계좌 끝자리 한번 말씀해 주시겠어요?', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 입출금 내역 확인 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 생년월일 6자리 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 입출금 내역 확인 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 생년월일 6자리 말씀해 주시겠어요?
 네 [name] 고객님 [birth] 확인됐습니다. 어떤 내역을 확인하고 싶으신 거예요?', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 매달 25일에 [code] 계좌에서 200,000원씩 신탁 적립 통장으로 자동이체 등록하겠습니다. 잠시만요 어 등록 완료됐구요 첫 출금은 다음 달 25일부터 시작됩니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 매달 25일에 [code] 계좌에서 200,000원씩 신탁 적립 통장으로 자동이체 등록하겠습니다. 잠시만요 어 등록 완료됐구요 첫 출금은 다음 달 25일부터 시작됩니다.
 네 통신비 자동이체 출금 계좌를 끝자리 [code] 계좌로 변경하겠습니다. 이거는 다음 출금일부터 새 계좌에서 빠져나가구요 변경 처리 완료됐습니다.
 네 매달 300,000원 나가던 펀드 자동이체를 100,000원으로 변경해 드릴게요. 다음 납입일부터 적용되구요 이번 달 거는 이미 나갔으니까 다음 달부터 100,000원으로 들어갑니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '네 매달 200,000원씩 자동이체 등록해 드릴게요. 출금은 지금 보고 있는 [code] 계좌에서 나가게 하면 될까요? 그리고 매달 며칠에 나가게 해드릴까요?', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '네 매달 200,000원씩 자동이체 등록해 드릴게요. 출금은 지금 보고 있는 [code] 계좌에서 나가게 하면 될까요? 그리고 매달 며칠에 나가게 해드릴까요?', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1009-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?
 아 네 이체 실패 건이시군요. 제가 바로 확인 도와드릴게요. 먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 2, '응대·표현', '끝인사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 신용카드 대금 600,000원을 이체하시려다가 실패가 나셨군요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 2, '응대·표현', '끝인사', '네 [name] 고객님 이용해 주셔서 감사합니다. 좋은 하루 보내세요.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 신용카드 대금 600,000원을 이체하시려다가 실패가 나셨군요.
 아 네 다만 한도를 일정 금액 이상으로 올리시려면요 추가 인증이 좀 필요하거든요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 4, '응대·표현', '정중한 언어표현', '아 네 이체 한도 초과로 막히신 거 같네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 4, '응대·표현', '정중한 언어표현', '아 네 이체 한도 초과로 막히신 거 같네요.
 어 네 보니까요 고객님 오늘 오전에 100,000원 이체하신 건 정상 처리됐구요
 아 그러시면요 지금 OTP가 아직 작동은 하니까 일단 지금 한도 변경은 이 OTP로 하나 진행하시구요
 아 네 잘됐네요 정상적으로 처리됐습니다.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 6, '정확성·설명', '설명력 · 전달력', '아 음 혹시 예전에 비대면 계좌 개설하시면서 처음에 한도가 낮게 잡혔을 수 있어요. 신규 계좌는 보안상 한도를 낮게 시작하는 경우가 있거든요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 6, '정확성·설명', '설명력 · 전달력', '아 음 혹시 예전에 비대면 계좌 개설하시면서 처음에 한도가 낮게 잡혔을 수 있어요. 신규 계좌는 보안상 한도를 낮게 시작하는 경우가 있거든요.
 아 네 이체 한도 초과로 막히신 거 같네요.
 그래서 100,000원 쓰시고 나니까 600,000원이 안 됐던 거예요.
 네 보안은 걱정 안 하셔도 돼요. 모바일 OTP는 그 기기에 따로 잠금이 걸려 있구요 폰 바꾸시면 다시 등록해야 되는 거라서 오히려 더 안전한 편이에요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '1회 1,000,000원 하루 3,000,000원까지는 지금 바로 변경 가능한데 그 이상은 영업점 방문이나 추가 본인인증이 필요해요
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '1회 1,000,000원 하루 3,000,000원까지는 지금 바로 변경 가능한데 그 이상은 영업점 방문이나 추가 본인인증이 필요해요
 실물 OTP는요 새로 발급받으시면 수수료가 한 5,000원 정도 있어요
 모바일 OTP는 그 기기에 따로 잠금이 걸려 있구요 폰 바꾸시면 다시 등록해야 되는 거라서 오히려 더 안전한 편이에요', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 1회 1,000,000원 일일 3,000,000원으로 변경해 드리겠습니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 1회 1,000,000원 일일 3,000,000원으로 변경해 드리겠습니다.
 네 OTP는 배터리 교체가 안 되고 새로 발급받으셔야 되는데요 영업점 가셔서 재발급 받으시거나 아니면 요즘은 앱에 그 모바일 OTP 기능이 있어서 그걸 등록하시면 실물 없이도 쓰실 수 있어요.
 더 궁금하신 점 있으실까요?', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리요.
 네 [name] 고객님 [code] 확인됐습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '먼저 본인확인 좀 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리요.
 네 [name] 고객님 [code] 확인됐습니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '1회 1,000,000원 하루 3,000,000원까지는 지금 바로 변경 가능한데 그 이상은 영업점 방문이나 추가 본인인증이 필요해요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '1회 1,000,000원 하루 3,000,000원까지는 지금 바로 변경 가능한데 그 이상은 영업점 방문이나 추가 본인인증이 필요해요.
 변경하시려면 지금 등록된 인증 수단으로 한번 인증이 필요한데요 혹시 OTP나 보안카드 쓰고 계세요?
 OTP는 배터리 교체가 안 되고 새로 발급받으셔야 되는데요 영업점 가셔서 재발급 받으시거나 아니면 요즘은 앱에 그 모바일 OTP 기능이 있어서 그걸 등록하시면 실물 없이도 쓰실 수 있어요.
 앱에서 인증센터 메뉴 들어가시면 모바일 OTP 발급이 있어요. 거기서 본인인증하시고 비밀번호 6자리 정하시면 바로 발급됩니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 4, '응대·표현', '정중한 언어표현', '음 고객님 일일 이체한도가 지금 보니까 1회 10,000,000원 1일 50,000,000원으로 돼 있어서요', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1008-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 4, '응대·표현', '정중한 언어표현', '음 고객님 일일 이체한도가 지금 보니까 1회 10,000,000원 1일 50,000,000원으로 돼 있어서요', '배점 5');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1016-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 4, '응대·표현', '정중한 언어표현', '어 보니까 이미 비밀번호 오류가 누적돼서 계좌 비밀번호가 잠긴 상태로 나오네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 4, '응대·표현', '정중한 언어표현', '어 보니까 이미 비밀번호 오류가 누적돼서 계좌 비밀번호가 잠긴 상태로 나오네요.
 어 보니까 오류 시도가 다 오늘 그 인증서 발급하시던 시간대에 몰려 있어서요
 어 초기화 완료됐습니다.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 6, '정확성·설명', '설명력 · 전달력', '아 네 인증서가 만료되셨으면요 갱신을 하시면 되는데 만료된 지 오래되면 갱신이 안 되고 새로 발급받으셔야 될 수도 있어요
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 6, '정확성·설명', '설명력 · 전달력', '아 네 인증서가 만료되셨으면요 갱신을 하시면 되는데 만료된 지 오래되면 갱신이 안 되고 새로 발급받으셔야 될 수도 있어요
 아 그러면 갱신 기간이 지났을 가능성이 높아서요 새로 발급받으시는 게 빠를 거 같아요. 앱에서 인증센터 메뉴 들어가시면 공동인증서 발급이 있거든요. 거기서 진행하시면 됩니다.
 네 일반 계좌이체로는 외화예금에 안 들어가구요 꼭 그 외화 입금 메뉴로 하셔야 환율 적용돼서 달러로 바뀌어서 들어가요
 더 궁금하신 점 있으실까요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '아 네 원화 계좌에서 외화예금으로 넣으시는 거는요 일반 이체랑은 좀 달라요. 환전이 같이 이루어지는 거라서 앱에서 외화 입금 또는 환전 입금 이런 메뉴로 들어가셔야 돼요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '아 네 원화 계좌에서 외화예금으로 넣으시는 거는요 일반 이체랑은 좀 달라요. 환전이 같이 이루어지는 거라서 앱에서 외화 입금 또는 환전 입금 이런 메뉴로 들어가셔야 돼요.
 네 일반 계좌이체로는 외화예금에 안 들어가구요 꼭 그 외화 입금 메뉴로 하셔야 환율 적용돼서 달러로 바뀌어서 들어가요. 그때 그 시점 환율로 계산되구요 환전 수수료도 좀 붙습니다.
 네 환전 수수료는요 보통 그 매매기준율에서 일정 비율 붙는 건데 비대면 앱으로 하시면 그 수수료를 한 80에서 90%까지 우대해 주는 이벤트가 있어서요 영업점보다 앱으로 하시는 게 훨씬 유리해요.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 8, '정확성·설명', '적극성 · 해결의지', '제가 계좌 상태 한번 확인해 볼게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 8, '정확성·설명', '적극성 · 해결의지', '제가 계좌 상태 한번 확인해 볼게요.
 제가 본인확인 한번 더 하고 초기화 도와드릴 수 있어요.
 본인확인 완료됐구요 계좌 비밀번호 초기화 처리해 드리겠습니다.
 앱에서 인증센터 메뉴 들어가시면 공동인증서 발급이 있거든요. 거기서 진행하시면 됩니다.
 더 궁금하신 점 있으실까요?', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '네 공동인증서 발급 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '네 공동인증서 발급 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다.
 네 본인확인 위해서 한 가지만 더 여쭤볼게요. 고객님 생년월일 6자리하고 혹시 가입하실 때 등록하신 자택 주소 동까지만 말씀해 주시겠어요?
 네 [birth] 한빛구 새벽동 확인됐습니다. 본인확인 완료됐구요 계좌 비밀번호 초기화 처리해 드리겠습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 공동인증서 발급 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 공동인증서 발급 도와드리겠습니다. 본인확인 먼저 부탁드릴게요. 성함하고 휴대폰 뒷자리 4자리 말씀해 주시겠어요?
 네 [name] 고객님 [code] 확인됐습니다.
 네 본인확인 위해서 한 가지만 더 여쭤볼게요. 고객님 생년월일 6자리하고 혹시 가입하실 때 등록하신 자택 주소 동까지만 말씀해 주시겠어요?
 네 [birth] 한빛구 새벽동 확인됐습니다. 본인확인 완료됐구요 계좌 비밀번호 초기화 처리해 드리겠습니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 환전 수수료는요 보통 그 매매기준율에서 일정 비율 붙는 건데 비대면 앱으로 하시면 그 수수료를 한 80에서 90%까지 우대해 주는 이벤트가 있어서요 영업점보다 앱으로 하시는 게 훨씬 유리해요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 환전 수수료는요 보통 그 매매기준율에서 일정 비율 붙는 건데 비대면 앱으로 하시면 그 수수료를 한 80에서 90%까지 우대해 주는 이벤트가 있어서요 영업점보다 앱으로 하시는 게 훨씬 유리해요.
 아 네 원화 계좌에서 외화예금으로 넣으시는 거는요 일반 이체랑은 좀 달라요. 환전이 같이 이루어지는 거라서 앱에서 외화 입금 또는 환전 입금 이런 메뉴로 들어가셔야 돼요.
 네 맞아요. 원화 금액 넣으시면 그 시점 환율로 얼마가 달러로 들어가는지 미리 보여드리구요 확인하시고 진행하시면 됩니다. 출금 계좌는 원화 통장 선택하시면 거기서 빠지구요.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '네 공동인증서 발급 도와드리겠습니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 고객님 그럼 오늘 앱 오류는 업데이트로 해결됐구요 실패됐던 이체 건도 정상 처리되신 거 확인했습니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '네 공동인증서 발급 도와드리겠습니다.', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1010-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 고객님 그럼 오늘 앱 오류는 업데이트로 해결됐구요 실패됐던 이체 건도 정상 처리되신 거 확인했습니다.
 어 보니까 오늘 오전에 130,000원 이체 시도하신 게 한 건 있는데요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 부탁드려요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '아 네 알겠습니다. 그럼 지금 바로 계좌 일시 정지 거치고 추가 피해 막아 드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '아 네 알겠습니다. 그럼 지금 바로 계좌 일시 정지 거치고 추가 피해 막아 드릴게요.
 네 보이스피싱은 경찰서 112로 신고하셔야 되구요 저희 쪽에서도 사고 접수 등록 같이 해 드릴게요.
 그리고 혹시 모르니까 인터넷뱅킹 비밀번호도 한 번 바꾸시는 걸 추천드려요.
 네 조회해 보니까 끝자리 [code] 체크카드 1장 있으시네요. 이거 바로 분실 신고로 정지 걸어 드릴게요.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '네 지금 즉시 고객님 명의 계좌 전체에 지급정지 걸어 드릴게요. 잠시만요 어 처리 들어갑니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '네 지금 즉시 고객님 명의 계좌 전체에 지급정지 걸어 드릴게요. 잠시만요 어 처리 들어갑니다.
 네 방금 입출금 계좌 2개랑 연결된 카드까지 다 일시 정지 처리됐습니다.
 네 보이스피싱은 경찰서 112로 신고하셔야 되구요 저희 쪽에서도 사고 접수 등록 같이 해 드릴게요.
 그리고 혹시 모르니까 인터넷뱅킹 비밀번호도 한 번 바꾸시는 걸 추천드려요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 좀 부탁드려요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 불편하셨겠네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 불편하셨겠네요.
 음 자동 업데이트 꺼져 있으면 안 될 수도 있어서요 일단 앱 한 번 완전히 종료하셨다가 다시 켜 보시겠어요?', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 4, '응대·표현', '정중한 언어표현', '음 자동 업데이트 꺼져 있으면 안 될 수도 있어서요 일단 앱 한 번 완전히 종료하셨다가 다시 켜 보시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 4, '응대·표현', '정중한 언어표현', '음 자동 업데이트 꺼져 있으면 안 될 수도 있어서요 일단 앱 한 번 완전히 종료하셨다가 다시 켜 보시겠어요?
 아 네 잘 되셨네요. 그 오류는 앱 버전 문제였던 거 같습니다. 이제 정상적으로 조회되실 거예요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 부탁드려요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 부탁드려요.
 네 [name] 고객님 [code] 확인됐습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다. 무엇을 도와드릴까요?
 아 네 불편을 드렸네요. 확인 도와드릴게요. 본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 부탁드려요.
 네 [name] 고객님 [code] 확인됐습니다. 어디로 이체하시다가 실패가 났는지 말씀해 주시겠어요?
 아 네 2,000,000원 이체요. 잠시만요 거래 내역 좀 볼게요. 어 보니까 오늘 이체 실패 건이 2건 찍혀 있네요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '음 이게요 실패 사유가 이체한도 초과로 나와 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '음 이게요 실패 사유가 이체한도 초과로 나와 있어요.
 다만 한도를 올리시려면요 추가 본인인증이랑 보안매체 인증이 좀 필요해요.
 네 일일 10,000,000원으로 올리시려면요 보안카드보다는 OTP가 있어야 그 금액까지 가능하세요. 보안카드만으로는 일일 5,000,000원까지 올라가구요.
 네 앱에서 인증센터 들어가시면요 OTP 발급이라는 메뉴가 있어요. 거기서 모바일 OTP 선택하시고 본인인증 한 번 거치시면 바로 발급됩니다.
 네 맞아요. 별도 단말기 없이 앱 안에서 발급받아서 쓰시는 거라 편하세요. 발급도 무료구요.
 네 기기 변경하시면 보안상 새로 발급받으셔야 되는데요 그것도 앱에서 똑같이 무료로 다시 받으시면 되니까 어렵진 않아요.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '아 자동이체 출금일 변경하시려는 거네요. 며칠로 바꾸시면 될까요?', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 알겠습니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 5, '정확성·설명', '니즈파악 · 재복창', '', '배점 6');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '아 자동이체 출금일 변경하시려는 거네요. 며칠로 바꾸시면 될까요?', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1017-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 알겠습니다.
 음 그 부분도 걱정되실 텐데요 지금 계좌랑 카드 다 정지된 상태라 그 번호로는 추가로 뭘 할 수가 없어요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 6, '정확성·설명', '설명력 · 전달력', '네 [code] 코드면요 보통 일시적인 통신 오류이거나 앱 버전이 좀 오래된 경우에 나는 건데요 혹시 앱 업데이트 최근에 하셨어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 6, '정확성·설명', '설명력 · 전달력', '네 [code] 코드면요 보통 일시적인 통신 오류이거나 앱 버전이 좀 오래된 경우에 나는 건데요 혹시 앱 업데이트 최근에 하셨어요?
 음 자동 업데이트 꺼져 있으면 안 될 수도 있어서요 일단 앱 한 번 완전히 종료하셨다가 다시 켜 보시겠어요?
 네 고객님 그럼 오늘 앱 오류는 업데이트로 해결됐구요 실패됐던 이체 건도 정상 처리되신 거 확인했습니다. 더 도와드릴 거 있으세요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '음 이게 상태가 처리 실패로 돼 있네요. 그 받는 분 계좌번호가 한 자리가 안 맞아서 반려된 거 같습니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '음 이게 상태가 처리 실패로 돼 있네요. 그 받는 분 계좌번호가 한 자리가 안 맞아서 반려된 거 같습니다.
 아 네 그게 아까 그 앱 오류 때문에 화면 표시가 잘못 떴던 거 같아요. 실제로는 출금이 안 됐구요 고객님 통장에서 빠진 돈도 없습니다.
 네 계좌번호 다시 정확히 확인하셔서 보내시면 되구요 이번엔 앱 업데이트도 됐으니까 정상적으로 처리되실 거예요.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 8, '정확성·설명', '적극성 · 해결의지', '음 자동 업데이트 꺼져 있으면 안 될 수도 있어서요 일단 앱 한 번 완전히 종료하셨다가 다시 켜 보시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 8, '정확성·설명', '적극성 · 해결의지', '음 자동 업데이트 꺼져 있으면 안 될 수도 있어서요 일단 앱 한 번 완전히 종료하셨다가 다시 켜 보시겠어요?
 네 그거 눌러서 업데이트 한 번 해 주시구요 끝나면 다시 앱 켜서 조회 시도해 보세요.
 네 그럼 그 이체 건 바로 확인해 볼게요 잠시만요.
 네 계좌번호 다시 정확히 확인하셔서 보내시면 되구요 이번엔 앱 업데이트도 됐으니까 정상적으로 처리되실 거예요.
 더 도와드릴 거 있으세요?', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 좀 부탁드려요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 좀 부탁드려요.
 네 [name] 고객님 [code] 확인됐습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 좀 부탁드려요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 먼저 할게요. 성함이랑 휴대폰 뒷자리 좀 부탁드려요.
 네 [name] 고객님 [code] 확인됐습니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '음 이게 상태가 처리 실패로 돼 있네요. 그 받는 분 계좌번호가 한 자리가 안 맞아서 반려된 거 같습니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '음 이게 상태가 처리 실패로 돼 있네요. 그 받는 분 계좌번호가 한 자리가 안 맞아서 반려된 거 같습니다.
 네 계좌번호 다시 정확히 확인하셔서 보내시면 되구요 이번엔 앱 업데이트도 됐으니까 정상적으로 처리되실 거예요.
 아 네 잘 처리되셨네요. 다행입니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1018-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 좀 할게요. 성함이랑 생년월일 말씀해 주시겠어요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 4, '응대·표현', '정중한 언어표현', '음 현재 전세대출 금리는요 대략 연 4.2%에서 4.8% 사이로 보시면 되구요
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 2, '응대·표현', '끝인사', '네 이용해 주셔서 감사합니다. 좋은 하루 되세요 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 4, '응대·표현', '정중한 언어표현', '음 현재 전세대출 금리는요 대략 연 4.2%에서 4.8% 사이로 보시면 되구요
 네 앱에서 바로 개설 가능하세요. 적금 메뉴 들어가셔서 정기적금 선택하시구요 월 납입액 300,000원 기간 2년으로 설정하시면 됩니다.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일이요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 전세자금대출 문의시군요. 본인확인 먼저 좀 할게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 전세자금대출 문의시군요. 본인확인 먼저 좀 할게요.
 어 보니까 작년에 받으신 대출 1건 있으시네요.
 네 고객님 그럼 오늘 전세대출 한도랑 금리 안내 기존 대출 중도상환수수료 확인 그리고 정기적금 신규 가입까지 도와드렸습니다.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 6, '정확성·설명', '설명력 · 전달력', '전세대출 한도는요 보통 보증금의 한 80%까지 가능하구요 다만 고객님 소득이나 보증기관 조건에 따라 좀 달라지거든요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 6, '정확성·설명', '설명력 · 전달력', '전세대출 한도는요 보통 보증금의 한 80%까지 가능하구요 다만 고객님 소득이나 보증기관 조건에 따라 좀 달라지거든요.
 음 현재 전세대출 금리는요 대략 연 4.2%에서 4.8% 사이로 보시면 되구요 신용도나 우대조건에 따라 좀 내려갈 수도 있어요.
 네 급여이체 하나만으로도 보통 0.1 내지 0.2% 정도는 우대가 들어가구요 거기에 카드까지 쓰시면 더 받으실 수 있어요.
 네 그럼 정기적금이 금리도 더 높아서 유리하실 거예요.
 더 궁금하신 거 있으세요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '정확한 건 소득 서류 보고 심사를 해 봐야 알 수 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '정확한 건 소득 서류 보고 심사를 해 봐야 알 수 있어요.
 신용도나 우대조건에 따라 좀 내려갈 수도 있어요.
 현재 전세대출 금리는요 대략 연 4.2%에서 4.8% 사이로 보시면 되구요
 중도상환수수료율이 잔액 기준으로 한 1.2% 정도 남아 있어서요 잔액이 지금 40,000,000원이니까 한 480,000원 정도 나오실 거 같아요.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 8, '정확성·설명', '적극성 · 해결의지', '정확한 건 소득 서류 보고 심사를 해 봐야 알 수 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 8, '정확성·설명', '적극성 · 해결의지', '정확한 건 소득 서류 보고 심사를 해 봐야 알 수 있어요.
 서류 접수부터 심사까지 한 일주일에서 열흘 정도는 잡으시는 게 좋아요. 그래서 미리 신청해 두시는 걸 추천드려요.
 이 수수료는 시간 지날수록 줄어들거든요. 3년 지나면 아예 면제되기도 하구요.
 네 만기 연장도 가능하세요. 만기 한 달 전쯤 신청하시면 되구요 그때 금리는 그 시점 기준으로 다시 적용됩니다.
 더 궁금하신 거 있으세요?', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 좀 도와주시겠어요? 성함이랑 휴대폰 뒷자리 4자리 말씀해 주세요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 2, '응대·표현', '끝인사', '네 경찰 신고 접수번호 꼭 챙기시고요 더 궁금하신 점 있으시면 다시 연락 주세요. 감사합니다 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 4, '응대·표현', '정중한 언어표현', '음 최근 일주일 내역 보면 25일에 통신비 자동이체 41,000원 정상 출금됐고요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 2, '응대·표현', '끝인사', '네 경찰 신고 접수번호 꼭 챙기시고요 더 궁금하신 점 있으시면 다시 연락 주세요. 감사합니다 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 4, '응대·표현', '정중한 언어표현', '음 최근 일주일 내역 보면 25일에 통신비 자동이체 41,000원 정상 출금됐고요.
 어 그게 상대 계좌에 돈이 남아 있으면 지급정지로 묶어둘 수 있는데요 인출돼버리면 좀 어려울 수도 있어가지고', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 6, '정확성·설명', '설명력 · 전달력', '일단 지금 추가 피해 막는 게 제일 급하니까 제가 바로 계좌 일시 정지부터 걸어드릴게요. 괜찮으실까요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 6, '정확성·설명', '설명력 · 전달력', '일단 지금 추가 피해 막는 게 제일 급하니까 제가 바로 계좌 일시 정지부터 걸어드릴게요. 괜찮으실까요?
 그게 전형적인 보이스피싱 수법이거든요.
 지급정지로 묶어둘 수 있는데요 인출돼버리면 좀 어려울 수도 있어가지고 빨리 처리하는 게 중요하거든요.
 재발급 신청해드리면 등록된 주소로 한 4~5일 정도면 받으실 수 있어요. 지금 같이 신청해드릴까요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '어 그게 상대 계좌에 돈이 남아 있으면 지급정지로 묶어둘 수 있는데요 인출돼버리면 좀 어려울 수도 있어가지고 빨리 처리하는 게 중요하거든요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '어 그게 상대 계좌에 돈이 남아 있으면 지급정지로 묶어둘 수 있는데요 인출돼버리면 좀 어려울 수도 있어가지고 빨리 처리하는 게 중요하거든요.
 네 지금 정지 걸었고요 상대 계좌 지급정지 요청 접수했습니다. 그리고 경찰서 사이버수사대에도 신고하셔야 환급 절차가 진행되거든요.
 재발급 신청해드리면 등록된 주소로 한 4~5일 정도면 받으실 수 있어요.
 네 등록된 주소로 발송할게요. 재발급 신청 접수됐고요 신청비는 무료입니다.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 8, '정확성·설명', '적극성 · 해결의지', '일단 지금 추가 피해 막는 게 제일 급하니까 제가 바로 계좌 일시 정지부터 걸어드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 8, '정확성·설명', '적극성 · 해결의지', '일단 지금 추가 피해 막는 게 제일 급하니까 제가 바로 계좌 일시 정지부터 걸어드릴게요.
 경찰서 사이버수사대에도 신고하셔야 환급 절차가 진행되거든요. 1325로 신고 도와드릴까요?
 재발급 신청해드리면 등록된 주소로 한 4~5일 정도면 받으실 수 있어요. 지금 같이 신청해드릴까요?
 더 궁금하신 점 있으시면 다시 연락 주세요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 휴대폰 뒷자리 4자리 말씀해 주세요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 휴대폰 뒷자리 4자리 말씀해 주세요.
 네 [name] 고객님 [code] 확인됐고요. 생년월일도 한 번만 더 부탁드릴게요.
 네 확인됐습니다. 그럼 지금 고객님 명의 계좌 전체에 [birth] 지급 정지 걸어드리고요', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 지금 정지 걸었고요 상대 계좌 지급정지 요청 접수했습니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 지금 정지 걸었고요 상대 계좌 지급정지 요청 접수했습니다.
 네 [name] 고객님 [code] 확인됐고요. 생년월일도 한 번만 더 부탁드릴게요.
 네 확인됐습니다. 그럼 지금 고객님 명의 계좌 전체에 [birth] 지급 정지 걸어드리고요', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 지금 정지 걸었고요 상대 계좌 지급정지 요청 접수했습니다. 그리고 경찰서 사이버수사대에도 신고하셔야 환급 절차가 진행되거든요. 1325로 신고 도와드릴까요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '네 지금 정지 걸었고요 상대 계좌 지급정지 요청 접수했습니다. 그리고 경찰서 사이버수사대에도 신고하셔야 환급 절차가 진행되거든요. 1325로 신고 도와드릴까요?
 네 끝자리 [code] 카드 조회되고요 이 카드 분실 신고로 정지 처리하겠습니다. 분실 신고하면 기존 카드는 완전히 사용 정지되거든요.
 재발급 신청해드리면 등록된 주소로 한 4~5일 정도면 받으실 수 있어요. 지금 같이 신청해드릴까요?
 네 등록된 주소로 발송할게요. 재발급 신청 접수됐고요 신청비는 무료입니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '일단 지금 추가 피해 막는 게 제일 급하니까 제가 바로 계좌 일시 정지부터 걸어드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-STT-1011-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '일단 지금 추가 피해 막는 게 제일 급하니까 제가 바로 계좌 일시 정지부터 걸어드릴게요.
 경찰서 사이버수사대에도 신고하셔야 환급 절차가 진행되거든요. 1325로 신고 도와드릴까요?
 재발급 신청해드리면 등록된 주소로 한 4~5일 정도면 받으실 수 있어요. 지금 같이 신청해드릴까요?', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일 말씀해 주세요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 2, '응대·표현', '끝인사', '네 환입되면 문자 확인하시고요 더 궁금하신 점 있으시면 다시 연락 주세요. 감사합니다 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 2, '응대·표현', '끝인사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '네 일단 고객님 계좌에서는 출금 표시가 떠 있는데요 이런 미결제 건은 보통 영업일 기준 하루 안에 자동으로 취소돼서 다시 입금되거나 정상 처리되거든요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 2, '응대·표현', '끝인사', '네 환입되면 문자 확인하시고요 더 궁금하신 점 있으시면 다시 연락 주세요. 감사합니다 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 2, '응대·표현', '끝인사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '네 일단 고객님 계좌에서는 출금 표시가 떠 있는데요 이런 미결제 건은 보통 영업일 기준 하루 안에 자동으로 취소돼서 다시 입금되거나 정상 처리되거든요.
 네 친구분이 아직 못 받으셨으면 입금 실패 건이 맞고요 제가 지금 이 거래 강제 취소 요청 넣어드릴게요. 그럼 오늘 안으로 고객님 계좌로 150,000원 다시 돌아옵니다.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일 말씀해 주세요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일 말씀해 주세요.
 네 [name] 고객님 확인됐습니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일 말씀해 주세요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일 말씀해 주세요.
 네 [name] 고객님 확인됐습니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '음 출금은 잡혀 있는데 상대 은행으로 입금 완료 처리가 안 돼가지고요 아마 그때 앱 오류랑 같이 거래가 중간에 끊긴 것 같아요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '음 출금은 잡혀 있는데 상대 은행으로 입금 완료 처리가 안 돼가지고요 아마 그때 앱 오류랑 같이 거래가 중간에 끊긴 것 같아요.
 네 친구분이 아직 못 받으셨으면 입금 실패 건이 맞고요 제가 지금 이 거래 강제 취소 요청 넣어드릴게요. 그럼 오늘 안으로 고객님 계좌로 150,000원 다시 돌아옵니다.
 네 그럼 제가 안내드릴게요. 앱을 백그라운드에서 완전히 닫으시고요 잠시 후에 다시 실행해보시겠어요?', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 2, '응대·표현', '끝인사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 4, '응대·표현', '정중한 언어표현', '음 현재 기준으로 보면 연 4.5%에서 6.2% 사이로 나올 가능성이 높고요 정확한 건 정식 심사 들어가봐야 알 수 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1012-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 2, '응대·표현', '끝인사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 4, '응대·표현', '정중한 언어표현', '음 현재 기준으로 보면 연 4.5%에서 6.2% 사이로 나올 가능성이 높고요 정확한 건 정식 심사 들어가봐야 알 수 있어요.
 아 그게요 가조회 단계에서는 신용점수에 영향이 없어요. 정식 심사 들어갈 때만 조회 이력이 남거든요. 그래서 가조회는 부담 없이 보셔도 돼요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 [name] 고객님 [code] 확인됐습니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 5, '정확성·설명', '니즈파악 · 재복창', '네 [name] 고객님 [code] 확인됐습니다.
 네 고객님 오늘 신용대출 한도랑 금리 안내드렸고요 기존 대출 중도상환이랑 연장 조건 설명드렸습니다. 그리고 정기적금 월 300,000원짜리 자동이체로 가입까지 완료했어요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 6, '정확성·설명', '설명력 · 전달력', '네 한도는 고객님 소득이랑 신용도 거래 실적 이런 거 종합해서 산정되거든요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 6, '정확성·설명', '설명력 · 전달력', '네 한도는 고객님 소득이랑 신용도 거래 실적 이런 거 종합해서 산정되거든요.
 아 우대금리 있어요. 급여이체 하시거나 자동이체 건수 있으시면 최대 한 0.5% 정도까지 깎이거든요.
 아 그게요 가조회 단계에서는 신용점수에 영향이 없어요. 정식 심사 들어갈 때만 조회 이력이 남거든요.
 네 중도상환수수료가 있는데요 이 상품은 실행한 지 3년 이내라 잔액의 0.7% 정도 붙거든요.
 네 그럼 정리해드릴게요. 월 300,000원 24개월 정기적금 매달 15일 자동이체로 가입 진행하고요 우대금리 포함 연 3.9% 적용됩니다. 이대로 신청해드릴까요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '한도는 한 40,000,000에서 50,000,000원 사이 정도 가능성 있어 보이고요 금리는 신용등급 따라 좀 달라지는데
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '한도는 한 40,000,000에서 50,000,000원 사이 정도 가능성 있어 보이고요 금리는 신용등급 따라 좀 달라지는데
 연 4.5%에서 6.2% 사이로 나올 가능성이 높고요 정확한 건 정식 심사 들어가봐야 알 수 있어요
 중도상환수수료가 있는데요 이 상품은 실행한 지 3년 이내라 잔액의 0.7% 정도 붙거든요. 12,000,000원 기준이면 한 84,000원 정도예요
 월 300,000원 24개월 상품으로 보면요 기본금리가 연 3.6%고요 자동이체 등록하시면 우대 붙어서 3.9%까지 적용돼요
 가조회 단계에서는 신용점수에 영향이 없어요. 정식 심사 들어갈 때만 조회 이력이 남거든요', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 적금 가입 접수했고요 첫 출금은 다음 달 15일부터 시작됩니다. 가입 완료 안내는 문자로 보내드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 적금 가입 접수했고요 첫 출금은 다음 달 15일부터 시작됩니다. 가입 완료 안내는 문자로 보내드릴게요.
 네 비대면으로 신청하시면 서류 확인하고 한 영업일 2일 정도 걸리고요 한도랑 금리는 그때 정확하게 확정됩니다.
 네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 대출 상담 도와드릴게요. 본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리 4자리요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 대출 상담 도와드릴게요. 본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리 4자리요.
 네 [name] 고객님 [code] 확인됐습니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '네 전세자금대출 문의시군요. 본인확인 먼저 좀 할게요. 성함이랑 생년월일 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '네 전세자금대출 문의시군요. 본인확인 먼저 좀 할게요. 성함이랑 생년월일 말씀해 주시겠어요?
 네 [name] 고객님 확인됐습니다. 어떤 점이 궁금하세요?', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 전세자금대출 문의시군요. 본인확인 먼저 좀 할게요. 성함이랑 생년월일 말씀해 주시겠어요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '네 전세자금대출 문의시군요. 본인확인 먼저 좀 할게요. 성함이랑 생년월일 말씀해 주시겠어요?
 네 [name] 고객님 확인됐습니다. 어떤 점이 궁금하세요?
 아 네 중도상환수수료요. 잠시만요 기존 대출 조회해 볼게요. 어 보니까 작년에 받으신 대출 1건 있으시네요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '음 현재 기준으로 보면 연 4.5%에서 6.2% 사이로 나올 가능성이 높고요 정확한 건 정식 심사 들어가봐야 알 수 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '음 현재 기준으로 보면 연 4.5%에서 6.2% 사이로 나올 가능성이 높고요 정확한 건 정식 심사 들어가봐야 알 수 있어요.
 네 비대면으로 신청하시면 서류 확인하고 한 영업일 2일 정도 걸리고요 한도랑 금리는 그때 정확하게 확정됩니다.
 네 중도상환수수료가 있는데요 이 상품은 실행한 지 3년 이내라 잔액의 0.7% 정도 붙거든요.
 기본금리가 연 3.6%고요 자동이체 등록하시면 우대 붙어서 3.9%까지 적용돼요.
 네 월 300,000원 24개월 정기적금 매달 15일 자동이체로 가입 진행하고요 우대금리 포함 연 3.9% 적용됩니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '아 네 정기적금 가입 도와드릴게요. 월에 얼마 정도 넣으실 생각이세요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1013-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '아 네 정기적금 가입 도와드릴게요. 월에 얼마 정도 넣으실 생각이세요?
 네 월 300,000원에 24개월 상품으로 보면요 기본금리가 연 3.6%고요 자동이체 등록하시면 우대 붙어서 3.9%까지 적용돼요.
 네 그럼 정리해드릴게요. 월 300,000원 24개월 정기적금 매달 15일 자동이체로 가입 진행하고요 우대금리 포함 연 3.9% 적용됩니다. 이대로 신청해드릴까요?', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 화면에는 출금처럼 보였을 수 있는데요 실제로는 승인 거절돼가지고 출금이 안 됐어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 화면에는 출금처럼 보였을 수 있는데요 실제로는 승인 거절돼가지고 출금이 안 됐어요.
 너무 높게 하면 보안상 좋진 않아가지고요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 4, '응대·표현', '정중한 언어표현', '음 30분 전에 400,000원 출금 시도 있었고요 이게 한도 초과로 거절된 걸로 나오네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 4, '응대·표현', '정중한 언어표현', '음 30분 전에 400,000원 출금 시도 있었고요 이게 한도 초과로 거절된 걸로 나오네요.
 음 보니까 고객님 1일 이체 한도가 300,000원으로 좀 낮게 설정돼 있으시네요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 6, '정확성·설명', '설명력 · 전달력', '아 화면에는 출금처럼 보였을 수 있는데요 실제로는 승인 거절돼가지고 출금이 안 됐어요. 잔액 그대로 있으실 거예요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 6, '정확성·설명', '설명력 · 전달력', '아 화면에는 출금처럼 보였을 수 있는데요 실제로는 승인 거절돼가지고 출금이 안 됐어요. 잔액 그대로 있으실 거예요.
 아 비대면으로 통장 만드실 때 기본 한도가 낮게 잡히는 경우가 있거든요 보안 때문에요.
 네 한도 변경 도와드릴게요. 1일 한도를 얼마로 올려드릴까요?
 아 네 OTP가 보안카드보다 좀 더 안전하긴 해요. 매번 번호가 바뀌니까요.
 네 모바일 OTP는 앱에서 인증수단 메뉴 들어가셔서 발급 누르시면 되는데요 지금 같이 안내드리면서 진행해드릴까요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '1일 이체 한도가 300,000원으로 좀 낮게 설정돼 있으시네요. 그래서 400,000원이 안 넘어간 거예요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '1일 이체 한도가 300,000원으로 좀 낮게 설정돼 있으시네요. 그래서 400,000원이 안 넘어간 거예요.
 1회 3,000,000원 1일 5,000,000원으로 한도 상향 처리됐고요 지금 바로 적용됩니다.
 한도 상향은 보안 매체 인증이 필요해가지고요 혹시 OTP나 보안카드 가지고 계세요?
 모바일 OTP는 앱에서 인증수단 메뉴 들어가셔서 발급 누르시면 되는데요 지금 같이 안내드리면서 진행해드릴까요?', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 한도 변경 도와드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 한도 변경 도와드릴게요.
 아 그러시면 모바일 OTP도 있어요. 그건 앱에서 바로 발급되고 무료라서요 따로 기기 안 들고 다녀도 돼서 편하세요.
 네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일이요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 9, '컴플라이언스(금융규정)', '본인확인 절차 · 순서 · 항목', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일이요.
 네 [name] 고객님 확인됐습니다. 그 이체 언제쯤 하셨고 금액이 얼마였어요?', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일이요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 10, '컴플라이언스(금융규정)', '개인정보 · 정보보호', '본인확인 먼저 좀 도와주시겠어요? 성함이랑 생년월일이요.
 네 [name] 고객님 확인됐습니다. 그 이체 언제쯤 하셨고 금액이 얼마였어요?
 네 잠시만요 최근 거래 내역 조회해볼게요. 음 30분 전에 400,000원 출금 시도 있었고요 이게 한도 초과로 거절된 걸로 나오네요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '음 보니까 고객님 1일 이체 한도가 300,000원으로 좀 낮게 설정돼 있으시네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '음 보니까 고객님 1일 이체 한도가 300,000원으로 좀 낮게 설정돼 있으시네요.
 네 한도 변경 도와드릴게요. 1일 한도를 얼마로 올려드릴까요? 너무 높게 하면 보안상 좋진 않아가지고요.
 네 그 정도면 적당하시고요 근데 한도 상향은 보안 매체 인증이 필요해가지고요 혹시 OTP나 보안카드 가지고 계세요?
 네 인증 완료됐습니다. 1회 3,000,000원 1일 5,000,000원으로 한도 상향 처리됐고요 지금 바로 적용됩니다.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1014-0720', 13, '컴플라이언스(금융규정)', '보안사고 대응 (분실·피싱·부정거래)', '', '배점 8');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 1, '응대·표현', '첫인사 · 본인확인 도입', '네 안녕하세요 고객님 MetaM 은행 고객센터 [name] 입니다.
 본인확인 먼저 좀 부탁드릴게요. 성함이랑 휴대폰 뒷자리요.', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 2, '응대·표현', '끝인사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.', '배점 3');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 그게요 통신비 자동이체는 통신사 쪽에 출금 계좌가 등록돼 있는 거라서요 저희 은행에서 바로 바꿔드리긴 어렵고 통신사에 신청하셔야 돼요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 2, '응대·표현', '끝인사', '네 더 궁금하신 점 있으시면 언제든 다시 연락 주세요. 감사합니다 고객님.', '배점 3');
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1015-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 그게요 통신비 자동이체는 통신사 쪽에 출금 계좌가 등록돼 있는 거라서요 저희 은행에서 바로 바꿔드리긴 어렵고 통신사에 신청하셔야 돼요.
 네 저희가 할 수 있는 건 이 계좌에서 출금되는 걸 해지하는 거고요 등록 자체는 통신사 고객센터에서 새 계좌로 다시 해주셔야 해요.
 네 근데 통신사에 새 계좌 등록 안 하시고 여기서만 해지하면요 다음 달 통신비가 미납될 수 있어가지고요 통신사 등록 먼저 하시는 걸 추천드려요.
 아 자동이체 출금일 변경하시려는 거네요.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '아 네 적금 신규 가입이요. 지금 판매 중인 상품 중에 정기적금이 연 3.5%짜리가 있구요 자유적금도 하나 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 11, '컴플라이언스(금융규정)', '업무별 필수안내 (이체·대출·계좌·카드 등)', '아 네 적금 신규 가입이요. 지금 판매 중인 상품 중에 정기적금이 연 3.5%짜리가 있구요 자유적금도 하나 있어요.
 네 2년이 1년보다 한 0.2% 정도 더 높구요 그래서 길게 넣으실 거면 2년이 좀 더 유리하세요.
 네 앱에서 바로 개설 가능하세요. 적금 메뉴 들어가셔서 정기적금 선택하시구요 월 납입액 300,000원 기간 2년으로 설정하시면 됩니다.
 음 현재 전세대출 금리는요 대략 연 4.2%에서 4.8% 사이로 보시면 되구요 신용도나 우대조건에 따라 좀 내려갈 수도 있어요.
 음 보통 잔금 치르시는 날 맞춰서 실행되구요 서류 접수부터 심사까지 한 일주일에서 열흘 정도는 잡으시는 게 좋아요.', '배점 12');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '아 네 적금 신규 가입이요. 지금 판매 중인 상품 중에 정기적금이 연 3.5%짜리가 있구요 자유적금도 하나 있어요. 매달 정해진 금액 넣으실 거예요 아니면 자유롭게요?
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1019-0720', 12, '컴플라이언스(금융규정)', '금융상품 가입 적합성 · 필수고지', '아 네 적금 신규 가입이요. 지금 판매 중인 상품 중에 정기적금이 연 3.5%짜리가 있구요 자유적금도 하나 있어요. 매달 정해진 금액 넣으실 거예요 아니면 자유롭게요?
 네 그럼 정기적금이 금리도 더 높아서 유리하실 거예요. 가입 기간은 1년이랑 2년 중에 선택하실 수 있구요.
 네 앱에서 바로 개설 가능하세요. 적금 메뉴 들어가셔서 정기적금 선택하시구요 월 납입액 300,000원 기간 2년으로 설정하시면 됩니다.', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 불편을 드렸네요. 확인 도와드릴게요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 3, '응대·표현', '공감/호응 · 쿠션어', '아 네 불편을 드렸네요. 확인 도와드릴게요.
 다만 한도를 올리시려면요 추가 본인인증이랑 보안매체 인증이 좀 필요해요.
 아 네 그럼 일단 어디까지 올리실지 정하구요 보안매체로 인증만 되면 바로 적용됩니다.
 아 네 마침 OTP 문의 주셨는데요', '배점 8');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 4, '응대·표현', '정중한 언어표현', '음 이게요 실패 사유가 이체한도 초과로 나와 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 4, '응대·표현', '정중한 언어표현', '음 이게요 실패 사유가 이체한도 초과로 나와 있어요.
 음 보통 비대면으로 가입하시면 처음엔 한도가 좀 낮게 설정되거든요 보이스피싱 같은 거 예방하는 차원에서요.', '배점 5');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 5, '정확성·설명', '니즈파악 · 재복창', '어 보니까 오늘 이체 실패 건이 2건 찍혀 있네요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 5, '정확성·설명', '니즈파악 · 재복창', '어 보니까 오늘 이체 실패 건이 2건 찍혀 있네요.
 음 이게요 실패 사유가 이체한도 초과로 나와 있어요.
 네 그래서 실패가 났던 거구요 필요하시면 한도 한 번 올려 드릴까요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 6, '정확성·설명', '설명력 · 전달력', '음 이게요 실패 사유가 이체한도 초과로 나와 있어요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 6, '정확성·설명', '설명력 · 전달력', '음 이게요 실패 사유가 이체한도 초과로 나와 있어요.
 아 네 그게요 하루에 이체할 수 있는 총액이 정해져 있거든요. 고객님 일일 이체한도가 지금 3,000,000원으로 돼 있어서요 오전 거랑 합치면 한도를 넘어선 거예요.
 음 보통 비대면으로 가입하시면 처음엔 한도가 좀 낮게 설정되거든요 보이스피싱 같은 거 예방하는 차원에서요.
 네 보안 수준은 거의 동일하다고 보시면 돼요. 실물 기계는 한 5,000원 정도 비용이 있는데 모바일은 무료라 요즘은 모바일 많이들 쓰세요.
 지금 바로 한도 변경 같이 진행해 드릴까요?', '배점 6');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '음 보통 비대면으로 가입하시면 처음엔 한도가 좀 낮게 설정되거든요 보이스피싱 같은 거 예방하는 차원에서요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 7, '정확성·설명', '오안내 · 정확한 안내 · 금지멘트', '음 보통 비대면으로 가입하시면 처음엔 한도가 좀 낮게 설정되거든요 보이스피싱 같은 거 예방하는 차원에서요.
 네 보안 수준은 거의 동일하다고 보시면 돼요. 실물 기계는 한 5,000원 정도 비용이 있는데 모바일은 무료라 요즘은 모바일 많이들 쓰세요.
 네 일일 이체한도 10,000,000원으로 변경 완료됐습니다.', '배점 13');
-INSERT INTO public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 한도 변경 도와드릴게요. 다만 한도를 올리시려면요 추가 본인인증이랑 보안매체 인증이 좀 필요해요.
+INSERT INTO _bank_checklist ("ID", order_no, category, item, agent_utterance, validation_time) VALUES ('BANK-CHT-1020-0720', 8, '정확성·설명', '적극성 · 해결의지', '네 한도 변경 도와드릴게요. 다만 한도를 올리시려면요 추가 본인인증이랑 보안매체 인증이 좀 필요해요.
 네 앱에서 인증센터 들어가시면요 OTP 발급이라는 메뉴가 있어요. 거기서 모바일 OTP 선택하시고 본인인증 한 번 거치시면 바로 발급됩니다.
 네 고객님 그럼 오늘 이체 실패 원인 확인하고 이체한도 10,000,000원으로 변경 그리고 모바일 OTP 발급까지 도와드렸습니다. 더 필요하신 거 있으세요?', '배점 5');
+
+-- 임시 테이블 → 항목 행으로 흡수. max_score IS NULL 조건으로 기존 값 보존(구 ON CONFLICT DO NOTHING 의미).
+UPDATE public.qa_call_item_score s
+   SET agent_utterance = c.agent_utterance,
+       max_score = CASE WHEN c.validation_time LIKE '배점%'
+                        THEN COALESCE(NULLIF(NULLIF(regexp_replace(c.validation_time, '[^0-9.]', '', 'g'), '')::numeric, 0), 5)
+                        ELSE 5 END
+  FROM _bank_checklist c
+ WHERE c."ID" = s."ID" AND c.order_no = s.order_no
+   AND s.max_score IS NULL;
+
 
 
 --

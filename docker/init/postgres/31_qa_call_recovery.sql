@@ -15,11 +15,14 @@
 -- 멱등: CREATE TABLE IF NOT EXISTS — seeder 재실행 안전.
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS public.qa_call_recovery (
+CREATE TABLE IF NOT EXISTS public.qa_call_emotion_recovery (
     id              SERIAL PRIMARY KEY,
     proj_cd         text NOT NULL,
     uid             text NOT NULL,
-    agent_user_id   integer REFERENCES public.admin_users(user_id) ON DELETE SET NULL,  -- 담당 상담사(집계 키)
+    -- 담당 상담사(집계 키). 29 가 admin_users 를 users + trainee_registrations 로 대체하고 30 이
+    -- admin_users 를 VIEW 로 바꿨으므로 뷰에는 FK 를 걸 수 없다("referenced relation is not a table").
+    -- 29:155 가 qa_calls.agent_user_id 를 users(id) 로 재지정한 것과 같은 대상으로 맞춘다(값 동일 — users.id = 구 admin_users.user_id).
+    agent_user_id   integer REFERENCES public.users(id) ON DELETE SET NULL,
     segment_count   integer NOT NULL DEFAULT 0,     -- 구간 수
     neg_seg_count   integer NOT NULL DEFAULT 0,     -- 부정 구간 수
     first_neg_idx   integer,                        -- 첫 부정 구간 순번(1-base), 없으면 NULL
@@ -31,4 +34,4 @@ CREATE TABLE IF NOT EXISTS public.qa_call_recovery (
     UNIQUE (proj_cd, uid)
 );
 
-CREATE INDEX IF NOT EXISTS idx_qa_call_recovery_agent ON public.qa_call_recovery (agent_user_id);
+CREATE INDEX IF NOT EXISTS idx_qa_call_recovery_agent ON public.qa_call_emotion_recovery (agent_user_id);

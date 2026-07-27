@@ -26,6 +26,12 @@ import { buildRubricFromDefs, buildRubricFromDomainDefaults } from './rubricSync
 import { getOrgFewshot } from './ragFewshotConfig.mjs';
 // 순환 import(skillLearn ↔ 본 모듈)이지만 양쪽 다 함수 선언 export 를 런타임에만 호출 — ESM 안전.
 import { getActiveSkillOverlays } from './skillLearn.mjs';
+import {
+    captureSticky,
+    insertItemScoreRows,
+    insertTranscriptRows,
+    restoreSticky,
+} from './itemScoreIngest.mjs';
 
 const DEFAULT_BASE_URL = 'http://localhost:8081';
 // EC2 원격 백엔드 (V3 qa-pipeline, 8081 직접 접근) — call.pipeline_target==='ec2' 시 사용.
@@ -446,11 +452,16 @@ function buildEvaluatePayload(call) {
                 Array.isArray(call?.additive_items) && call.additive_items.length
                     ? call.additive_items
                     : undefined,
-            // MTG 스킬 overlay 인라인({item_number: md}) — MTG DB(qa_skill_versions) 소유 모델.
+            // MTG 스킬 overlay 인라인({item_number: md}) — MTG DB(qa_skill_store) 소유 모델.
             // 백엔드 apply 게이트가 파일 스토어보다 최우선 사용 → 배포 스왑·등록 소실과 무관하게
             // 평가 주입이 DB 활성 버전 기준으로 동작. 미동봉이면 백엔드 파일 스토어 거동(무회귀).
             skill_overlays:
                 call?.skill_overlays && typeof call.skill_overlays === 'object' ? call.skill_overlays : undefined,
+            // KSQI-STT(신규 17항목, 코오롱 9항목 레거시 v2/nodes/ksqi 와 완전 분리) 실행 토글 —
+            // organizations.ksqi_stt_enabled(evaluateStandardCall 이 주입) 를 그대로 전달.
+            // 항상 명시적 boolean(다른 옵션 필드와 달리 undefined 로 생략하지 않음) — 백엔드가
+            // state["ksqi_stt_enabled"] 게이트로 그대로 읽어 신규 모듈 실행 여부를 결정.
+            ksqi_stt_enabled: call?.ksqi_stt_enabled === true,
         },
     };
 }
@@ -609,9 +620,9 @@ export async function ingestCallFromQaPipeline(pool, call, opts = {}) {
 // 표준 18항목 트랙 (track='standard') — 코오롱 등 표준(default) 8카테고리 18항목 브랜드.
 // ------------------------------------------------------------
 // 9-order 컬렉션 환산을 우회하고, qa-pipeline /evaluate 의 18 항목을 1:1 로
-//   qa_checklist_rows(validation_time='배점 N') + qa_evaluation_rows(ai_eval=파이프라인 score 직결)
+//   qa_call_item_score(ai_eval=파이프라인 score 직결, max_score=항목 만점, agent_utterance=근거 발화)
 //   + qa_calls(org_id 명시, department='고객지원실', role='전체') 에 직접 적재.
-// 분석 라우트가 qa_evaluation_rows.ai_eval 로 Pentagon 5축을 LIVE 도출하므로 스케일링/환산 없음.
+// 분석 라우트가 qa_call_item_score.ai_eval 로 Pentagon 5축을 LIVE 도출하므로 스케일링/환산 없음.
 // 위 collection 함수/상수(mapEvaluateResponse/DASHBOARD_ITEM_MAPPING/JOB_MAX_SCORES)는 무변경.
 // ============================================================
 
@@ -845,15 +856,21 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
                 const ms = asNumber(ev.max_score);
                 return ms !== null && ms > 0 ? ms : 5;
             })();
-            sumEarned += aiEval;
-            sumMax += itemMax;
-            checklist.push({
-                order_no: ono,
-                category: safeStr(slot.category).trim(),
-                item: safeStr(slot.item).trim() || itemNameOf(ev),
-                agent_utterance: agentQuoteOf(ev),
-                validation_time: `배점 ${itemMax}`,
-            });
+            // ★ 2026-07-14: 추가항목도 Y/N 이면 총점·체크리스트 제외 (루브릭 매퍼와 동일 정책 —
+            //   목록 분모 파서가 체크리스트 행을 배점 합산하므로 행 부재만이 분모 제외 수단).
+            //   additiveMeta 에 scoring_type 미동봉이면 기존과 byte-identical (무회귀).
+            const isYesNoAdd = safeStr(slot.scoring_type).trim().toLowerCase() === 'yes_no';
+            if (!isYesNoAdd) {
+                sumEarned += aiEval;
+                sumMax += itemMax;
+                checklist.push({
+                    order_no: ono,
+                    category: safeStr(slot.category).trim(),
+                    item: safeStr(slot.item).trim() || itemNameOf(ev),
+                    agent_utterance: agentQuoteOf(ev),
+                    validation_time: `배점 ${itemMax}`,
+                });
+            }
             evaluations.push({
                 order_no: ono,
                 category: safeStr(slot.category).trim(),
@@ -963,22 +980,26 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
         })();
         const aiEval = round1(score);
         // Y/N(컴플라이언스 체크) 항목은 콜 총점(ai_score)·만점 합산에서 제외 — 점수 무관 순수 모니터링
-        // (기획 docs/YN_EVAL_ITEM_PLAN §4.2). 결과 행(checklist/evaluations)은 그대로 기록 →
-        // qa_evaluation_rows 에 충족(ai_eval>0)/미충족(ai_eval=0)으로 남아 위반율 집계에 사용.
+        // (기획 docs/YN_EVAL_ITEM_PLAN §4.2). 평가 행(evaluations)만 기록 →
+        // qa_call_item_score 에 충족(ai_eval>0)/미충족(ai_eval=0)으로 남아 위반율 집계·상세 Y/N 표시에 사용.
+        // ★ 2026-07-14: Y/N 항목은 max_score=NULL(분모 제외) — 10.13 배포 대시보드 목록 분모 파서
+        //   (parseMaxPointsFromValidationTime)가 체크리스트 행을 무조건 배점(최소 5)으로 합산해
+        //   금지어 행이 있으면 합계가 /105 로 표기됨 (0713 RCA: 분모 제외는 행 부재만 가능).
+        //   총점(ai_score)은 이미 Y/N 제외라 체크리스트 생략이 점수 무영향.
         const isYesNo = safeStr(slot.scoring_type).trim().toLowerCase() === 'yes_no';
         if (!isYesNo) {
             rawTotal += aiEval;
             sumEarned += aiEval;
             sumMax += itemMax;
-        }
 
-        checklist.push({
-            order_no: orderNo,
-            category: slot.category,
-            item: slot.item,
-            agent_utterance: agentQuoteOf(ev),
-            validation_time: `배점 ${itemMax}`,
-        });
+            checklist.push({
+                order_no: orderNo,
+                category: slot.category,
+                item: slot.item,
+                agent_utterance: agentQuoteOf(ev),
+                validation_time: `배점 ${itemMax}`,
+            });
+        }
         evaluations.push({
             order_no: orderNo,
             category: slot.category,
@@ -1031,7 +1052,7 @@ async function resolveStandardOrgId(pool, call) {
 }
 
 /**
- * 표준 18항목 트랜잭션 적재. qa_analysis_report 는 쓰지 않음(분석 라우트 fallback 생성).
+ * 표준 18항목 트랜잭션 적재. qa_call_pentagon_result 는 쓰지 않음(분석 라우트 fallback 생성).
  * 멱등: 자식 DELETE WHERE "ID"=$1 후 재삽입 + qa_calls ON CONFLICT DO UPDATE(org_id/department/role 포함).
  * @returns {Promise<{ok, qa_id, ai_score, total_score, role, department, org_id, turns}>}
  */
@@ -1137,10 +1158,11 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await client.query(`DELETE FROM qa_analysis_report WHERE "ID" = $1`, [id]);
-        await client.query(`DELETE FROM qa_evaluation_rows WHERE "ID" = $1`, [id]);
-        await client.query(`DELETE FROM qa_checklist_rows WHERE "ID" = $1`, [id]);
-        await client.query(`DELETE FROM qa_conversations WHERE "ID" = $1`, [id]);
+        await client.query(`DELETE FROM qa_call_pentagon_result WHERE "ID" = $1`, [id]);
+        // 재적재는 채점 결과를 덮어쓰지만 '스킬 학습 제외' 지정(사람의 결정)은 보존한다.
+        const _sticky = await captureSticky(client, id);
+        await client.query(`DELETE FROM qa_call_item_score WHERE "ID" = $1`, [id]);
+        await client.query(`DELETE FROM qa_call_transcript WHERE "ID" = $1`, [id]);
         await client.query(
             `INSERT INTO qa_calls
                  ("ID","CALL_SEQ","CDATE","UID","AI_SCORE","TOTAL_SCORE",
@@ -1168,28 +1190,14 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
                is_sandbox = false`,
             [id, callSeq, cdate, uid, score, score, department, role, orgId, projCd, agentCode, agentUserId, ioDivi, durationSec]
         );
-        for (const t of conversation) {
-            await client.query(
-                `INSERT INTO qa_conversations ("ID", turn_no, speaker, "text") VALUES ($1,$2,$3,$4)`,
-                [id, t.turn_no, t.speaker, t.text]
-            );
-        }
-        for (const c of mapped.checklist) {
-            await client.query(
-                `INSERT INTO qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time)
-                 VALUES ($1,$2,$3,$4,$5,$6)`,
-                [id, c.order_no, c.category, c.item, c.agent_utterance, c.validation_time]
-            );
-        }
-        for (const e of mapped.evaluations) {
-            await client.query(
-                `INSERT INTO qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-                [id, e.order_no, e.category, e.item, e.reason_text, e.ai_eval, e.manual_eval]
-            );
-        }
+        // 전사 + 항목별 평가 적재 — 각각 다중행 INSERT 1회 (구: 행마다 개별 쿼리).
+        // 항목 점수와 근거 발화는 qa_call_item_score 한 테이블로 병합 적재된다(마이그레이션 67).
+        await insertTranscriptRows(client, id, conversation);
+        await insertItemScoreRows(client, id, mapped.evaluations, mapped.checklist);
+        await restoreSticky(client, id, _sticky);
+
         // 펜타곤 축별 정성평가 적재 — 백엔드(pure pure_pentagon)가 생성한 축별 {rating,analysis,summary}
-        // 를 qa_analysis_report 에 기록 → 분석 라우트(GET /api/analysis)가 점수밴드 보일러플레이트
+        // 를 qa_call_pentagon_result 에 기록 → 분석 라우트(GET /api/analysis)가 점수밴드 보일러플레이트
         // (buildDynamicFallbackReportRows) 대신 LLM 분석을 표시. axis_number→item_type_no, name→item_type,
         // analysis→comment(NOT NULL), summary→summary. 비-pentagon 브랜드(pentagon 미수신)는 미적재 →
         // 읽기 라우트 폴백 유지(무회귀). 99 종합의견 행은 읽기 라우트가 첫 축 summary 로 자동 부여(중복 방지 미적재).
@@ -1205,7 +1213,7 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
             const comment = safeStr(ax.analysis).trim() || summary || '';
             if (!comment) continue;
             await client.query(
-                `INSERT INTO qa_analysis_report ("ID", item_type_no, item_type, rating, comment, summary)
+                `INSERT INTO qa_call_pentagon_result ("ID", item_type_no, item_type, rating, comment, summary)
                  VALUES ($1,$2,$3,$4,$5,$6)`,
                 [id, Math.trunc(axisNo), itemType, rating, comment, summary]
             );
@@ -1218,6 +1226,88 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         client.release();
     }
 
+    // KSQI STT 보고서 적재(보조 축) — 브랜드 채점(위 트랜잭션 COMMIT 완료)과 분리한 별도 트랜잭션.
+    // 일반 평가와 동형의 2테이블에 저장: qa_call_ksqi_score(항목 점수·사유 + 근거 evidence jsonb)
+    // + qa_call_ksqi_summary(영역 A/B·전체 집계). 재적재는 DELETE 후 INSERT 로 멱등.
+    // 테이블 부재/실패는 조용히 스킵해 브랜드 적재에 영향 주지 않는다(보조 모듈 = 메인 무영향 원칙).
+    // 스키마는 docker/init/postgres/65_qa_ksqi_rows.sql (기존 jsonb 백필 포함).
+    if (mapped?.ksqi_report) {
+        const kr = mapped.ksqi_report;
+        const kc = await pool.connect();
+        try {
+            await kc.query('BEGIN');
+            await kc.query('DELETE FROM qa_call_ksqi_score WHERE "ID" = $1', [id]);
+            await kc.query('DELETE FROM qa_call_ksqi_summary WHERE "ID" = $1', [id]);
+            const num = (v) => (v == null || Number.isNaN(Number(v)) ? null : Number(v));
+            const items = Array.isArray(kr.items) ? kr.items : [];
+            for (const it of items) {
+                const itemNo = Math.trunc(Number(it?.item_number));
+                if (!Number.isFinite(itemNo)) continue;
+                // 근거 발화는 항목 행에 인라인(구 qa_call_ksqi_evidence 흡수) — 배열 순서가 곧 구 seq.
+                const evs = (Array.isArray(it?.evidence) ? it.evidence : []).map((e) => ({
+                    speaker: safeStr(e?.speaker),
+                    quote: safeStr(e?.quote),
+                }));
+                await kc.query(
+                    `INSERT INTO qa_call_ksqi_score ("ID", item_number, item_name, area, kind, score, max_score, na, defect, rationale, evidence)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+                     ON CONFLICT ("ID", item_number) DO NOTHING`,
+                    [
+                        id,
+                        itemNo,
+                        safeStr(it?.item_name),
+                        safeStr(it?.area),
+                        safeStr(it?.kind) || 'llm',
+                        num(it?.score),
+                        num(it?.max_score),
+                        it?.na === true,
+                        it?.defect === true,
+                        safeStr(it?.rationale),
+                        JSON.stringify(evs),
+                    ]
+                );
+            }
+            await kc.query(
+                `INSERT INTO qa_call_ksqi_summary ("ID",
+                    area_a_raw, area_a_max, area_a_scaled, area_a_grade, area_a_excellent,
+                    area_b_raw, area_b_max, area_b_scaled, area_b_grade, area_b_excellent,
+                    overall_raw, overall_max, summary)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                [
+                    id,
+                    num(kr.area_a?.raw),
+                    num(kr.area_a?.max),
+                    num(kr.area_a?.scaled),
+                    kr.area_a?.grade ?? null,
+                    typeof kr.area_a?.excellent === 'boolean' ? kr.area_a.excellent : null,
+                    num(kr.area_b?.raw),
+                    num(kr.area_b?.max),
+                    num(kr.area_b?.scaled),
+                    kr.area_b?.grade ?? null,
+                    typeof kr.area_b?.excellent === 'boolean' ? kr.area_b.excellent : null,
+                    num(kr.overall?.raw),
+                    num(kr.overall?.max),
+                    safeStr(kr.summary),
+                ]
+            );
+            await kc.query('COMMIT');
+        } catch (e) {
+            try {
+                await kc.query('ROLLBACK');
+            } catch {}
+            console.warn(`[ingest] KSQI 정규화 테이블 적재 스킵 (ID=${id}, 테이블 부재 가능): ${e.message}`);
+        } finally {
+            kc.release();
+        }
+        // 전환기 이중 기록 — 기존 qa_calls.ksqi_report(jsonb) 병행 유지. 읽기 경로는 이미 3테이블로
+        // 전환되어 롤백 대비 용도만 남음. 안정화 확인 후 이 블록과 컬럼 제거 예정.
+        try {
+            await pool.query(`UPDATE qa_calls SET ksqi_report = $2 WHERE "ID" = $1`, [id, JSON.stringify(kr)]);
+        } catch (e) {
+            console.warn(`[ingest] ksqi_report(전환기 jsonb) 적재 스킵 (ID=${id}, 컬럼 부재 가능): ${e.message}`);
+        }
+    }
+
     return {
         ok: true,
         qa_id: id,
@@ -1228,6 +1318,24 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         org_id: orgId,
         turns: conversation.length,
     };
+}
+
+/**
+ * org 의 KSQI-STT 실행 토글(organizations.ksqi_stt_enabled) 조회 — 미설정/조회 실패는
+ * 안전 기본값 false(신규 모듈 미실행, 기존 브랜드 무회귀). getOrgFewshot 과 동일한 org 단건 조회 패턴.
+ */
+async function getOrgKsqiSttEnabled(pool, orgId) {
+    if (orgId === null || orgId === undefined) return false;
+    try {
+        const { rows } = await pool.query(
+            `SELECT ksqi_stt_enabled FROM public.organizations WHERE id = $1 LIMIT 1`,
+            [orgId],
+        );
+        return rows[0]?.ksqi_stt_enabled === true;
+    } catch (err) {
+        console.error('getOrgKsqiSttEnabled error:', err);
+        return false;
+    }
 }
 
 /**
@@ -1415,13 +1523,17 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
         warnings.push(`루브릭 빌드 건너뜀(표준 트랙 진행): ${String(err?.message || err)}`);
     }
 
-    // MTG 스킬 overlay 동봉 — MTG DB(qa_skill_versions)의 활성 버전을 요청에 직접 실어 보냄.
+    // MTG 스킬 overlay 동봉 — MTG DB(qa_skill_store)의 활성 버전을 요청에 직접 실어 보냄.
     // 백엔드는 동봉본을 파일 스토어보다 최우선 주입(무상태 평가) — rubric_inline 과 동일 원칙.
     // 활성 버전 부재/조회 실패 시 null → 미동봉(백엔드 파일 스토어 거동, 무회귀).
     const _skillInline = await getActiveSkillOverlays(pool, rubricCall?.org_id ?? call?.org_id);
     if (_skillInline?.overlays && Object.keys(_skillInline.overlays).length) {
         rubricCall = { ...rubricCall, skill_overlays: _skillInline.overlays };
     }
+
+    // KSQI-STT 실행 토글 — 해당 org 의 ksqi_stt_enabled 를 metadata 로 동봉(True 시 백엔드가
+    // 신규 KSQI-STT 모듈 실행). skill_overlays 와 동일한 org_id 해석(rubricCall 우선 → call 폴백).
+    rubricCall = { ...rubricCall, ksqi_stt_enabled: await getOrgKsqiSttEnabled(pool, rubricCall?.org_id ?? call?.org_id) };
 
     // onProgress 콜백이 있으면 SSE 스트림으로 호출해 노드 진행 이벤트를 중계 (응답 JSON 은 동일).
     const resp =
@@ -1460,9 +1572,13 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
     }
     mapped.warnings = [...warnings, ...(mapped.warnings || [])];
     // 펜타곤 축별 정성평가(pure 트랙 pure_pentagon → result.pentagon) 통과 — ingestStandardCallToDb
-    // 가 axes[] 를 qa_analysis_report 에 적재해 분석 라우트가 점수밴드 보일러플레이트 대신 LLM
+    // 가 axes[] 를 qa_call_pentagon_result 에 적재해 분석 라우트가 점수밴드 보일러플레이트 대신 LLM
     // {rating,analysis,summary} 를 표시. 비-pentagon 브랜드는 resp.pentagon 부재 → null(무회귀).
     mapped.pentagon = resp && typeof resp === 'object' ? resp.pentagon || null : null;
+    // KSQI STT 보고서(A 서비스품질/B 공감 — 브랜드 루브릭과 별개 축) 통과 — ingestStandardCallToDb
+    // 가 qa_calls.ksqi_report(로컬 임시 jsonb, prod 스키마는 담당자 추가 예정)에 저장. KSQI 비활성
+    // 브랜드는 resp.ksqi_stt_report 부재 → null(무회귀).
+    mapped.ksqi_report = resp && typeof resp === 'object' ? resp.ksqi_stt_report || null : null;
 
     // 파이프라인 크래시 vs 포기호 구분: 평가 산출물이 0건인데 응답에 error 필드가 있으면
     // 이는 '포기호/미응대'가 아니라 평가 자체의 실패다(예: report_generator_v2 의 ItemResult
@@ -1568,7 +1684,7 @@ export async function ingestStandardCallFromQaPipeline(pool, call, opts = {}) {
  *      rag_rubric_id, 아니면 inline-org{N}) → 색인 키 = 평가 검색 키 정합.
  *   ② buildRubricFromDefs 로 order_no→eval_item_number(5000+index) 맵 산출 + 루브릭 파일스토어
  *      등록(POST /v2/rubrics, 멱등) → 색인 엔드포인트 load_rubric 게이트 충족.
- *   ③ qa_golden_set ⋈ qa_conversations(전사) → MtgGoldenRecord[] 조립(item_number=②맵).
+ *   ③ qa_golden_set ⋈ qa_call_transcript(전사) → MtgGoldenRecord[] 조립(item_number=②맵).
  *   ④ POST /v2/mtg-rag/{rubric_id}/examples (org_id 동봉 → 백엔드 resolve_allowed_items 가
  *      qa_batch_configs.golden.excluded 존중해 항목 자동 필터). dry_run 지원.
  *
@@ -1639,7 +1755,7 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
     const tmap = {};
     for (const qid of [...new Set(gs.map((g) => g.qa_id))]) {
         const { rows: c } = await pool.query(
-            `SELECT speaker, "text" FROM public.qa_conversations WHERE "ID" = $1 ORDER BY turn_no`,
+            `SELECT speaker, "text" FROM public.qa_call_transcript WHERE "ID" = $1 ORDER BY turn_no`,
             [qid]
         );
         tmap[qid] = c.map((r) => `${r.speaker}: ${r.text}`).join('\n');

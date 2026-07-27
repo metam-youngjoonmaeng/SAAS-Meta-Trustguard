@@ -1,12 +1,12 @@
 // 상담사 — 내 평가 결과
 // 실연동: 내 콜 평가 목록·점수·추이(/api/calls), 항목별 점수(/api/evaluations/:qaId),
 //         강점·개선(항목 평균), 배정된 코칭(/api/coaching/mine).
-//         감정·대화 품질(/api/me/ta-metrics): 부정발화·금칙어=03 tb_ta_rslt, 회복률=05 qa_call_recovery. (미연동 시 mock 폴백)
+//         감정·대화 품질(/api/me/ta-metrics): 부정발화·금칙어=03 tb_ta_rslt, 회복률=05 qa_call_emotion_recovery. (미연동 시 mock 폴백)
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon, Gauge, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod, openInWindow, openCallDetail } from './ui';
 import { scoreClass, TUTOR_SCENARIOS } from './mockData';
 import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, fetchMyTaMetricCalls, fetchEvalItemVersions, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
-import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
+import { maxPointsOf } from '../../utils/rubricScore';
 import { buildTutorLink } from '../../utils/coachingTutorLink';
 import { ReviewStatusBadge } from '../../components';
 
@@ -252,13 +252,15 @@ function adaptCall(c) {
 }
 
 // /api/evaluations 응답 → 실제 평가 항목 배열 [{ key, label, pct, ai, max }].
-// 항목명/배점은 콜마다 실제 루브릭(qa_evaluation_rows + qa_checklist_rows)을 그대로 사용한다.
+// 항목명/배점은 콜마다 실제 루브릭(qa_call_item_score)을 그대로 사용한다.
 // (고정 mock DIMENSIONS 에 라벨 매핑하면 이름이 달라 대부분 0 으로 표시되는 문제가 있어 직접 사용.)
 function buildItemScores(evalData) {
     const rows = evalData?.evaluation_rows || [];
     const checklist = evalData?.checklist_rows || [];
     const maxByOrder = new Map();
-    for (const k of checklist) maxByOrder.set(Number(k.order_no), parseMaxPointsFromValidationTime(k.validation_time));
+    // 만점은 숫자 max_score 로 내려온다. maxPointsOf 가 null 을 반환하면 '만점 미상' 이므로
+    // 0 으로 두어 아래 pct 계산에서 자연히 제외된다(임의 5점 부여 금지 — 달성률이 왜곡된다).
+    for (const k of checklist) maxByOrder.set(Number(k.order_no), maxPointsOf(k) ?? 0);
     const out = [];
     for (const r of rows) {
         const order = Number(r.order_no);
@@ -338,7 +340,7 @@ function TrendSpark({ points, color = 'var(--primary)', height = 92, width = 220
     );
 }
 
-// 감정·대화 품질 카드 (부정비율 / 회복률 / 금칙어) — 03 TA + 05 qa_call_recovery 실연동(미연동/무데이터 시 mock 폴백).
+// 감정·대화 품질 카드 (부정비율 / 회복률 / 금칙어) — 03 TA + 05 qa_call_emotion_recovery 실연동(미연동/무데이터 시 mock 폴백).
 function QualityCard({ tone, icon, label, desc, ring, center, delta, footer, hero, onClick, actionLabel }) {
     const TONES = {
         primary: { color: 'var(--primary)', track: 'var(--primary-soft-flat)', soft: 'var(--primary-soft)', ink: 'var(--primary)' },
@@ -429,12 +431,12 @@ function fmtCallTime(v) {
     const p = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
-function QualityDrillModal({ kind, onClose }) {
+function QualityDrillModal({ kind, period = null, onClose }) {
     const [state, setState] = useState({ loading: true, calls: [], error: null });
     useEffect(() => {
         let cancel = false;
         setState({ loading: true, calls: [], error: null });
-        fetchMyTaMetricCalls(kind)
+        fetchMyTaMetricCalls(kind, period)  // 지표 카드와 동일 기간(A-71)
             .then((d) => {
                 if (cancel) return;
                 if (d?.enabled === false) setState({ loading: false, calls: [], error: 'TA 분석이 연동되지 않았습니다.' });
@@ -442,7 +444,7 @@ function QualityDrillModal({ kind, onClose }) {
             })
             .catch(() => { if (!cancel) setState({ loading: false, calls: [], error: '콜 목록을 불러오지 못했습니다.' }); });
         return () => { cancel = true; };
-    }, [kind]);
+    }, [kind, period]);
     const meta = DRILL_META[kind] || {};
     const { loading, calls, error } = state;
 
@@ -572,9 +574,15 @@ export default function CounselorResults() {
                 if (!cancelled) setCoaching([]);
             }
         })();
+        return () => { cancelled = true; };
+    }, []);
+
+    // TA 지표(부정발화·금칙어·회복률) — 기간 선택에 반응해 재조회(A-71).
+    useEffect(() => {
+        let cancelled = false;
         (async () => {
             try {
-                const data = await fetchMyTaMetrics();  // 부정발화·금칙어(03 tb_ta_rslt, 본인 콜 기준)
+                const data = await fetchMyTaMetrics(period);  // 03 tb_ta_rslt, 본인 콜 + 설정 기간 기준
                 if (!cancelled) setTaMetrics(data || { enabled: false });
             } catch (e) {
                 console.error('TA 지표 로딩 실패:', e);
@@ -582,7 +590,7 @@ export default function CounselorResults() {
             }
         })();
         return () => { cancelled = true; };
-    }, []);
+    }, [period]);
 
     // 평가체계 버전 목록(effective_from) — 최근 평가 목록의 QA 항목버전 드롭다운/매칭용. (평가 리스트와 동일 소스)
     useEffect(() => {
@@ -608,6 +616,21 @@ export default function CounselorResults() {
         .filter((g) => !g.memberArchived)
         .sort((a, b) => (coachingAllDone(a) ? 1 : 0) - (coachingAllDone(b) ? 1 : 0));
 
+    // 상단 집계 — 배정 전체(coaching, 본인 정리분 포함) 기준. 카드 pill(완료/진행 중/시작 전)과 동일 분류.
+    // boardCoaching 으로 세면 정리(X)한 완료 건이 빠져 총 배정 수가 실제보다 작게 보임(현장 피드백: 6건인데 5건).
+    const coachingCounts = (() => {
+        let notStarted = 0, inProgress = 0, completed = 0;
+        for (const g of coaching) {
+            const sc = Array.isArray(g.scenarios) ? g.scenarios : [];
+            const my = Array.isArray(g.completed) ? g.completed : [];
+            const doneCount = sc.filter((c) => my.includes(c)).length;
+            if (coachingAllDone(g)) completed += 1;
+            else if (doneCount > 0) inProgress += 1;
+            else notStarted += 1;
+        }
+        return { total: coaching.length, notStarted, inProgress, completed };
+    })();
+
     // 각 평가의 항목별 점수 로드(강점·개선 집계 + 선택 상세). 최근 50건으로 제한.
     useEffect(() => {
         if (!evals || !evals.length) return undefined;
@@ -622,7 +645,20 @@ export default function CounselorResults() {
         return () => { cancelled = true; };
     }, [evals]);
 
-    const myEvals = evals || [];
+    // 기간 선택(A-71) — KPI 카드·최근 평가 목록·파생 집계 전부 설정 기간의 콜만 반영.
+    //   '전체'(start/end null) = 무필터. 날짜 파싱 불가 콜은 숨기지 않고 포함(데이터 유실 방지).
+    const myEvals = useMemo(() => {
+        const list = evals || [];
+        if (!period?.start && !period?.end) return list;
+        const from = period?.start ? period.start.getTime() : null;
+        const to = period?.end ? period.end.getTime() + 24 * 60 * 60 * 1000 : null; // end 당일 포함
+        return list.filter((e) => {
+            const d = e.callDatetime ? new Date(String(e.callDatetime).replace(' ', 'T')) : null;
+            if (!d || Number.isNaN(d.getTime())) return true;
+            const t = d.getTime();
+            return (from == null || t >= from) && (to == null || t < to);
+        });
+    }, [evals, period]);
     const needsReviewCount = myEvals.filter((r) => REVIEW_NEEDS_ME.has(r.status)).length;  // 대기+검수중
 
     // ── 평가체계 버전 매칭(콜 날짜 → 버전) — 평가 리스트(Dashboard)와 동일 규칙: effective_from 이하 최신 버전 ──
@@ -742,7 +778,7 @@ export default function CounselorResults() {
 
     // 감정·대화 품질 — 03(Meta_Summary) 실연동(본인 콜 uid 기준). TA 미연동/무데이터 시 mock 폴백.
     //  - 부정발화·금칙어: 03 tb_ta_rslt 종합값.
-    //  - 회복률(부정→긍정): 05 자체 기준("부정으로 안 끝남")으로 03 구간감정 분석 → qa_call_recovery.
+    //  - 회복률(부정→긍정): 05 자체 기준("부정으로 안 끝남")으로 03 구간감정 분석 → qa_call_emotion_recovery.
     //    분모=부정 발생 통화, 분자=마지막 구간이 긍정/중립. 부정 통화 0건이면 recReal=false(해당 없음).
     const ta = taMetrics && taMetrics.enabled && taMetrics.total > 0 ? taMetrics : null;
     const recReal = Boolean(ta && ta.recovery_denom > 0);          // 회복률 실데이터 유효
@@ -818,7 +854,7 @@ export default function CounselorResults() {
             <div className="panel" style={{ marginBottom: 22 }}>
                 <div className="panel-head">
                     <h3>감정 · 대화 품질</h3>
-                    <div className="sub" style={{ marginLeft: 12 }}>{taReal ? 'TA 분석 기반 · 내 통화 전체' : 'STT 발화 분석 기반 · 이번주'}</div>
+                    <div className="sub" style={{ marginLeft: 12 }}>{taReal ? 'TA 분석 기반 · 설정 기간별 통화 분석' : 'STT 발화 분석 기반 · 이번주'}</div>
                     <span className="pill blue" style={{ marginLeft: 'auto', fontSize: 10.5 }}>
                         <Icon name="audio-lines" size={10} />{taReal ? `${quality.negative.total}건 통화 분석` : '512개 발화 분석'}
                     </span>
@@ -890,7 +926,7 @@ export default function CounselorResults() {
                 </div>
             </div>
 
-            {drillKind && <QualityDrillModal kind={drillKind} onClose={() => setDrillKind(null)} />}
+            {drillKind && <QualityDrillModal kind={drillKind} period={period} onClose={() => setDrillKind(null)} />}
 
             {/* 배정된 코칭 플랜 */}
             <div className="panel" style={{ marginBottom: 22 }}>
@@ -903,10 +939,16 @@ export default function CounselorResults() {
                         <span className="muted-text" style={{ fontSize: 12 }}>· 관리자가 직접 지정한 학습 커리큘럼</span>
                     </div>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {boardCoaching.length > 0 && (
-                            <span className="pill blue" style={{ fontSize: 10.5 }}>
-                                <Icon name="inbox" size={10} />{boardCoaching.length}건 진행 중
-                            </span>
+                        {/* 상태별 건수 — 총 배정 / 학습 미진행 / 학습 진행중 / 진행 완료 (현장 피드백 반영) */}
+                        {coachingCounts.total > 0 && (
+                            <>
+                                <span className="pill navy" style={{ fontSize: 10.5 }}>
+                                    <Icon name="inbox" size={10} />총 {coachingCounts.total}건
+                                </span>
+                                <span className="pill yellow" style={{ fontSize: 10.5 }}>미진행 {coachingCounts.notStarted}</span>
+                                <span className="pill blue" style={{ fontSize: 10.5 }}>진행 중 {coachingCounts.inProgress}</span>
+                                <span className="pill green" style={{ fontSize: 10.5 }}>완료 {coachingCounts.completed}</span>
+                            </>
                         )}
                         <button
                             className="btn-mini"

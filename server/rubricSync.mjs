@@ -257,7 +257,7 @@ export async function buildRubricFromDefs(pool, orgId) {
         orderMap.push(orderNo);
         // rowMeta.max_score = 표시 분모(displayMax = 만점 폼 필드) — 채점 스케일(item.max_score=maxScore)과 분리.
         // scoring_type='yes_no' = 컴플라이언스 체크 항목 → 매퍼가 점수 합산(ai_score)에서 제외(순수 모니터링,
-        // 기획 docs/YN_EVAL_ITEM_PLAN §4.2). 결과 행 자체는 기록(qa_evaluation_rows) → 위반율 집계에 사용.
+        // 기획 docs/YN_EVAL_ITEM_PLAN §4.2). 결과 행 자체는 기록(qa_call_item_score) → 위반율 집계에 사용.
         rowMeta.push({
             order_no: orderNo,
             category: categoryName,

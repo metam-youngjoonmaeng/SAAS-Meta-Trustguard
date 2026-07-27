@@ -52,14 +52,33 @@ function getPool() {
 }
 
 /**
+ * 기간 조건 SQL 조각 — range={from,to}(YYYY-MM-DD, 둘 다 선택). cdate 기준, to 는 당일 포함.
+ * params 배열에 값을 push 하고 " AND ..." 문자열을 돌려준다(빈 range 면 '').
+ */
+function rangeSql(params, range) {
+    let sql = '';
+    if (range?.from) {
+        params.push(range.from);
+        sql += ` AND cdate >= $${params.length}::date`;
+    }
+    if (range?.to) {
+        params.push(range.to);
+        sql += ` AND cdate < ($${params.length}::date + 1)`;
+    }
+    return sql;
+}
+
+/**
  * (proj_cd, uids[]) → TA 지표 집계. tb_ta_rslt(realtime) 기준, 콜(=행) 단위.
  * 반환: { total, negative, banned }  (모두 정수, 03 에 매칭된 콜만 분모)
- * uids 가 비면 0 집계. 미설정/오류 시 throw(호출부에서 가드/캐치).
+ * uids 가 비면 0 집계. range={from,to} 지정 시 cdate 기간 필터(A-71). 미설정/오류 시 throw.
  */
-export async function fetchTaMetricsByUids(projCd, uids) {
+export async function fetchTaMetricsByUids(projCd, uids, range = null) {
     if (!Array.isArray(uids) || uids.length === 0) {
         return { total: 0, negative: 0, banned: 0 };
     }
+    const params = [projCd, uids];
+    const cond = rangeSql(params, range);
     const { rows } = await getPool().query(
         `SELECT
             count(*)::int AS total,
@@ -69,8 +88,8 @@ export async function fetchTaMetricsByUids(projCd, uids) {
                   AND jsonb_array_length(to_jsonb(banned_hits)) > 0
             )::int AS banned
          FROM public.tb_ta_rslt
-         WHERE proj_cd = $1 AND uid = ANY($2::text[])`,
-        [projCd, uids]
+         WHERE proj_cd = $1 AND uid = ANY($2::text[])${cond}`,
+        params
     );
     const r = rows[0] || {};
     return { total: r.total || 0, negative: r.negative || 0, banned: r.banned || 0 };
@@ -79,14 +98,18 @@ export async function fetchTaMetricsByUids(projCd, uids) {
 /**
  * (proj_cd, uids[]) → 콜별 구간 감정열. 회복률(부정→긍정) 분석 입력.
  * 03 tb_ta_rslt.segments(JSON).segments[] 의 구간별 sentiment 를 idx 순으로 추출.
- * 반환: [{ uid, sentiments: ['중립','부정',...] }]  (segments 없는 콜은 제외)
+ * sentiment_cls(대표감정, 수기검토 변경 반영본)도 동봉 — 회복률 분모 판정(A-72)에 사용.
+ * 반환: [{ uid, cdate, channel, sentiment_cls, sentiments: ['중립','부정',...] }]  (segments 없는 콜 제외)
+ * range={from,to} 지정 시 cdate 기간 필터(A-71).
  */
-export async function fetchSegmentSentimentsByUids(projCd, uids) {
+export async function fetchSegmentSentimentsByUids(projCd, uids, range = null) {
     if (!Array.isArray(uids) || uids.length === 0) return [];
+    const params = [projCd, uids];
+    const cond = rangeSql(params, range);
     const { rows } = await getPool().query(
-        `SELECT uid, cdate, channel_type, segments FROM public.tb_ta_rslt
-          WHERE proj_cd = $1 AND uid = ANY($2::text[]) AND segments IS NOT NULL`,
-        [projCd, uids]
+        `SELECT uid, cdate, channel_type, sentiment_cls, segments FROM public.tb_ta_rslt
+          WHERE proj_cd = $1 AND uid = ANY($2::text[]) AND segments IS NOT NULL${cond}`,
+        params
     );
     const out = [];
     for (const r of rows) {
@@ -99,7 +122,13 @@ export async function fetchSegmentSentimentsByUids(projCd, uids) {
             .filter((s) => s && s.sentiment)
             .sort((a, b) => (Number(a.idx) || 0) - (Number(b.idx) || 0));
         // cdate/channel 은 드릴다운 콜목록용(집계 호출부는 uid/sentiments 만 사용 — 하위호환).
-        out.push({ uid: r.uid, cdate: r.cdate, channel: r.channel_type, sentiments: ordered.map((s) => String(s.sentiment)) });
+        out.push({
+            uid: r.uid,
+            cdate: r.cdate,
+            channel: r.channel_type,
+            sentiment_cls: r.sentiment_cls == null ? null : String(r.sentiment_cls),
+            sentiments: ordered.map((s) => String(s.sentiment)),
+        });
     }
     return out;
 }
@@ -108,14 +137,16 @@ export async function fetchSegmentSentimentsByUids(projCd, uids) {
  * (proj_cd, uids[]) → 부정 감정으로 분류된 콜 목록(드릴다운용). sentiment_cls='부정'.
  * 반환: [{ uid, cdate, channel, sentiment }]  (최신순)
  */
-export async function fetchNegativeCallsByUids(projCd, uids) {
+export async function fetchNegativeCallsByUids(projCd, uids, range = null) {
     if (!Array.isArray(uids) || uids.length === 0) return [];
+    const params = [projCd, uids];
+    const cond = rangeSql(params, range);
     const { rows } = await getPool().query(
         `SELECT uid, cdate, channel_type, sentiment_cls
            FROM public.tb_ta_rslt
-          WHERE proj_cd = $1 AND uid = ANY($2::text[]) AND sentiment_cls = '부정'
+          WHERE proj_cd = $1 AND uid = ANY($2::text[]) AND sentiment_cls = '부정'${cond}
           ORDER BY cdate DESC NULLS LAST`,
-        [projCd, uids]
+        params
     );
     return rows.map((r) => ({ uid: r.uid, cdate: r.cdate, channel: r.channel_type, sentiment: r.sentiment_cls }));
 }
@@ -125,17 +156,19 @@ export async function fetchNegativeCallsByUids(projCd, uids) {
  * banned_hits 요소 = { seq, word, snippet, utterance }. word 중복 제거 후 최대 8개.
  * 반환: [{ uid, cdate, channel, hits:[{ word, utterance }] }]  (최신순)
  */
-export async function fetchForbiddenCallsByUids(projCd, uids) {
+export async function fetchForbiddenCallsByUids(projCd, uids, range = null) {
     if (!Array.isArray(uids) || uids.length === 0) return [];
+    const params = [projCd, uids];
+    const cond = rangeSql(params, range);
     const { rows } = await getPool().query(
         `SELECT uid, cdate, channel_type, banned_hits
            FROM public.tb_ta_rslt
           WHERE proj_cd = $1 AND uid = ANY($2::text[])
             AND banned_hits IS NOT NULL
             AND jsonb_typeof(to_jsonb(banned_hits)) = 'array'
-            AND jsonb_array_length(to_jsonb(banned_hits)) > 0
+            AND jsonb_array_length(to_jsonb(banned_hits)) > 0${cond}
           ORDER BY cdate DESC NULLS LAST`,
-        [projCd, uids]
+        params
     );
     return rows.map((r) => {
         let hits = r.banned_hits;

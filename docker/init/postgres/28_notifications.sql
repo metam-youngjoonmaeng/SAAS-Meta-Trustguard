@@ -8,7 +8,7 @@
 -- 03(Meta-Summary)의 알림은 client-only(폴링+localStorage)라 대상 전달이 불가 →
 -- 여기서는 수신자(recipient_user_id) 기준 DB 저장으로 구현.
 --
--- 변동(diff) 알림용: qa_evaluation_rows.counselor_eval = '검토완료(review_done)
+-- 변동(diff) 알림용: qa_call_item_score.counselor_eval = '검토완료(review_done)
 -- 시점 상담사 점수' 스냅샷. 최종승인 시 manual_eval(관리자 최종)과 비교.
 --
 -- seed-if-empty.sh 가 매 기동마다 idempotent 재적용.
@@ -37,5 +37,5 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread
     ON public.notifications (recipient_user_id) WHERE read_at IS NULL;
 
 -- 검토완료 시점 상담사 점수 스냅샷(최종승인 시 diff 비교 기준)
-ALTER TABLE public.qa_evaluation_rows
+ALTER TABLE public.qa_call_item_score
     ADD COLUMN IF NOT EXISTS counselor_eval double precision;

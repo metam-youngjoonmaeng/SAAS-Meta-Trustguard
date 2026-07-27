@@ -18,36 +18,36 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
-ALTER TABLE IF EXISTS ONLY public.qa_evaluation_rows DROP CONSTRAINT IF EXISTS "qa_evaluation_rows_ID_fkey";
-ALTER TABLE IF EXISTS ONLY public.qa_conversations DROP CONSTRAINT IF EXISTS "qa_conversations_ID_fkey";
+ALTER TABLE IF EXISTS ONLY public.qa_call_item_score DROP CONSTRAINT IF EXISTS "qa_evaluation_rows_ID_fkey";
+ALTER TABLE IF EXISTS ONLY public.qa_call_transcript DROP CONSTRAINT IF EXISTS "qa_conversations_ID_fkey";
 ALTER TABLE IF EXISTS ONLY public.qa_consumer_keywords DROP CONSTRAINT IF EXISTS "qa_consumer_keywords_ID_fkey";
 ALTER TABLE IF EXISTS ONLY public.qa_consumer_eval_rows DROP CONSTRAINT IF EXISTS "qa_consumer_eval_rows_ID_fkey";
 ALTER TABLE IF EXISTS ONLY public.qa_consumer_ai_categories DROP CONSTRAINT IF EXISTS "qa_consumer_ai_categories_ID_fkey";
-ALTER TABLE IF EXISTS ONLY public.qa_checklist_rows DROP CONSTRAINT IF EXISTS "qa_checklist_rows_ID_fkey";
-ALTER TABLE IF EXISTS ONLY public.qa_analysis_report DROP CONSTRAINT IF EXISTS "qa_analysis_report_ID_fkey";
+ALTER TABLE IF EXISTS ONLY public.qa_call_item_evidence DROP CONSTRAINT IF EXISTS "qa_checklist_rows_ID_fkey";
+ALTER TABLE IF EXISTS ONLY public.qa_call_pentagon_result DROP CONSTRAINT IF EXISTS "qa_analysis_report_ID_fkey";
 DROP INDEX IF EXISTS public.idx_qa_consumer_keywords_id;
 DROP INDEX IF EXISTS public.idx_qa_audit_resource;
 DROP INDEX IF EXISTS public.idx_qa_audit_created;
 DROP INDEX IF EXISTS public.idx_qa_audit_actor_time;
 DROP INDEX IF EXISTS public.idx_qa_audit_action;
-ALTER TABLE IF EXISTS ONLY public.qa_evaluation_rows DROP CONSTRAINT IF EXISTS qa_evaluation_rows_pkey;
-ALTER TABLE IF EXISTS ONLY public.qa_conversations DROP CONSTRAINT IF EXISTS qa_conversations_pkey;
+ALTER TABLE IF EXISTS ONLY public.qa_call_item_score DROP CONSTRAINT IF EXISTS qa_evaluation_rows_pkey;
+ALTER TABLE IF EXISTS ONLY public.qa_call_transcript DROP CONSTRAINT IF EXISTS qa_conversations_pkey;
 ALTER TABLE IF EXISTS ONLY public.qa_consumer_keywords DROP CONSTRAINT IF EXISTS qa_consumer_keywords_pkey;
 ALTER TABLE IF EXISTS ONLY public.qa_consumer_eval_rows DROP CONSTRAINT IF EXISTS qa_consumer_eval_rows_pkey;
 ALTER TABLE IF EXISTS ONLY public.qa_consumer_ai_categories DROP CONSTRAINT IF EXISTS qa_consumer_ai_categories_pkey;
-ALTER TABLE IF EXISTS ONLY public.qa_checklist_rows DROP CONSTRAINT IF EXISTS qa_checklist_rows_pkey;
+ALTER TABLE IF EXISTS ONLY public.qa_call_item_evidence DROP CONSTRAINT IF EXISTS qa_checklist_rows_pkey;
 ALTER TABLE IF EXISTS ONLY public.qa_calls DROP CONSTRAINT IF EXISTS qa_calls_pkey;
 ALTER TABLE IF EXISTS ONLY public.qa_audit_logs DROP CONSTRAINT IF EXISTS qa_audit_logs_pkey;
-ALTER TABLE IF EXISTS ONLY public.qa_analysis_report DROP CONSTRAINT IF EXISTS qa_analysis_report_pkey;
+ALTER TABLE IF EXISTS ONLY public.qa_call_pentagon_result DROP CONSTRAINT IF EXISTS qa_analysis_report_pkey;
 ALTER TABLE IF EXISTS ONLY public.admin_users DROP CONSTRAINT IF EXISTS admin_users_pkey;
 ALTER TABLE IF EXISTS ONLY public.admin_users DROP CONSTRAINT IF EXISTS admin_users_login_id_key;
 ALTER TABLE IF EXISTS public.qa_consumer_keywords ALTER COLUMN keyword_id DROP DEFAULT;
 ALTER TABLE IF EXISTS public.qa_audit_logs ALTER COLUMN audit_id DROP DEFAULT;
 ALTER TABLE IF EXISTS public.admin_users ALTER COLUMN user_id DROP DEFAULT;
 DROP TABLE IF EXISTS public.qa_evaluation_rows__sandbox_snapshot;
-DROP TABLE IF EXISTS public.qa_evaluation_rows;
+DROP TABLE IF EXISTS public.qa_call_item_score;
 DROP TABLE IF EXISTS public.qa_conversations__sandbox_snapshot;
-DROP TABLE IF EXISTS public.qa_conversations;
+DROP TABLE IF EXISTS public.qa_call_transcript;
 DROP SEQUENCE IF EXISTS public.qa_consumer_keywords_keyword_id_seq;
 DROP TABLE IF EXISTS public.qa_consumer_keywords__sandbox_snapshot;
 DROP TABLE IF EXISTS public.qa_consumer_keywords;
@@ -56,14 +56,14 @@ DROP TABLE IF EXISTS public.qa_consumer_eval_rows;
 DROP TABLE IF EXISTS public.qa_consumer_ai_categories__sandbox_snapshot;
 DROP TABLE IF EXISTS public.qa_consumer_ai_categories;
 DROP TABLE IF EXISTS public.qa_checklist_rows__sandbox_snapshot;
-DROP TABLE IF EXISTS public.qa_checklist_rows;
+DROP TABLE IF EXISTS public.qa_call_item_evidence;
 DROP TABLE IF EXISTS public.qa_calls__sandbox_snapshot;
 DROP TABLE IF EXISTS public.qa_calls;
 DROP SEQUENCE IF EXISTS public.qa_audit_logs_audit_id_seq;
 DROP TABLE IF EXISTS public.qa_audit_logs__sandbox_snapshot;
 DROP TABLE IF EXISTS public.qa_audit_logs;
 DROP TABLE IF EXISTS public.qa_analysis_report__sandbox_snapshot;
-DROP TABLE IF EXISTS public.qa_analysis_report;
+DROP TABLE IF EXISTS public.qa_call_pentagon_result;
 DROP SEQUENCE IF EXISTS public.admin_users_user_id_seq;
 DROP TABLE IF EXISTS public.admin_users;
 SET default_tablespace = '';
@@ -107,10 +107,10 @@ ALTER SEQUENCE public.admin_users_user_id_seq OWNED BY public.admin_users.user_i
 
 
 --
--- Name: qa_analysis_report; Type: TABLE; Schema: public; Owner: -
+-- Name: qa_call_pentagon_result; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.qa_analysis_report (
+CREATE TABLE public.qa_call_pentagon_result (
     "ID" text NOT NULL,
     item_type_no integer NOT NULL,
     item_type text NOT NULL,
@@ -249,10 +249,10 @@ CREATE TABLE public.qa_calls__sandbox_snapshot (
 
 
 --
--- Name: qa_checklist_rows; Type: TABLE; Schema: public; Owner: -
+-- Name: qa_call_item_evidence; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.qa_checklist_rows (
+CREATE TABLE public.qa_call_item_evidence (
     "ID" text NOT NULL,
     order_no integer NOT NULL,
     category text NOT NULL,
@@ -393,10 +393,10 @@ ALTER SEQUENCE public.qa_consumer_keywords_keyword_id_seq OWNED BY public.qa_con
 
 
 --
--- Name: qa_conversations; Type: TABLE; Schema: public; Owner: -
+-- Name: qa_call_transcript; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.qa_conversations (
+CREATE TABLE public.qa_call_transcript (
     "ID" text NOT NULL,
     turn_no integer NOT NULL,
     speaker text NOT NULL,
@@ -417,10 +417,10 @@ CREATE TABLE public.qa_conversations__sandbox_snapshot (
 
 
 --
--- Name: qa_evaluation_rows; Type: TABLE; Schema: public; Owner: -
+-- Name: qa_call_item_score; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.qa_evaluation_rows (
+CREATE TABLE public.qa_call_item_score (
     "ID" text NOT NULL,
     order_no integer NOT NULL,
     category text NOT NULL,
@@ -478,10 +478,10 @@ COPY public.admin_users (user_id, login_id, password_hash, display_name, role, i
 
 
 --
--- Data for Name: qa_analysis_report; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: qa_call_pentagon_result; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.qa_analysis_report ("ID", item_type_no, item_type, rating, comment, summary) FROM stdin;
+COPY public.qa_call_pentagon_result ("ID", item_type_no, item_type, rating, comment, summary) FROM stdin;
 QA-20260308-0001	1	오프닝 및 목적 안내	보통	오프닝 인사와 소속·성명 고지는 이루어졌으나 안내 도입부에서 회원 호명이 약함	\N
 QA-20260308-0001	2	설명 명확성	보통	미납 금액과 일정 안내는 이루어졌으나 분할 옵션 등 추가 정보 제공이 부족함	\N
 QA-20260308-0001	3	준수·고지 품질	보통	본인 확인은 정상 수행되었으나 사후 안내 멘트가 간략함	\N
@@ -615,10 +615,10 @@ QA-20260308-0008	C-20260308-100008	2026-03-08T16:50:21+09:00	QA-20260308-0008	0	
 
 
 --
--- Data for Name: qa_checklist_rows; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: qa_call_item_evidence; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.qa_checklist_rows ("ID", order_no, category, item, agent_utterance, validation_time) FROM stdin;
+COPY public.qa_call_item_evidence ("ID", order_no, category, item, agent_utterance, validation_time) FROM stdin;
 QA-20260308-0001	1	친절도	인사말, 소속, 성명 모두 정확하게 시행	안녕하세요 신한카드 컬렉션관리부 김민지 상담원입니다.	배점 3
 QA-20260308-0001	2	친절도	본인 확인이 정확하게 이루어진 경우	본인 확인을 위해 성함과 생년월일 부탁드립니다.	배점 4
 QA-20260308-0001	3	친절도	종료 인사 시행	오늘 통화 감사드립니다. 좋은 하루 보내세요.	배점 3
@@ -971,10 +971,10 @@ COPY public.qa_consumer_keywords__sandbox_snapshot (keyword_id, "ID", level, maj
 
 
 --
--- Data for Name: qa_conversations; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: qa_call_transcript; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.qa_conversations ("ID", turn_no, speaker, text) FROM stdin;
+COPY public.qa_call_transcript ("ID", turn_no, speaker, text) FROM stdin;
 QA-20260308-0001	1	상담사	안녕하세요 신한카드 컬렉션관리부 김민지 상담원입니다.
 QA-20260308-0001	2	고객	네.
 QA-20260308-0001	3	상담사	본인 확인을 위해 성함과 생년월일 부탁드립니다.
@@ -1171,10 +1171,10 @@ QA-20260308-0008	8	고객	네.
 
 
 --
--- Data for Name: qa_evaluation_rows; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: qa_call_item_score; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.qa_evaluation_rows ("ID", order_no, category, item, reason_text, ai_eval, manual_eval) FROM stdin;
+COPY public.qa_call_item_score ("ID", order_no, category, item, reason_text, ai_eval, manual_eval) FROM stdin;
 QA-20260308-0001	1	친절도	인사말, 소속, 성명 모두 정확하게 시행	오프닝에서 신한카드 컬렉션관리부 소속과 성명을 명확히 고지함	3	3
 QA-20260308-0001	2	친절도	본인 확인이 정확하게 이루어진 경우	성함과 생년월일을 통한 본인 확인 절차를 정상적으로 수행함	4	4
 QA-20260308-0001	3	친절도	종료 인사 시행	종료 인사가 짧고 형식적이며 회원 호명이 누락됨	2	2
@@ -1314,10 +1314,10 @@ ALTER TABLE ONLY public.admin_users
 
 
 --
--- Name: qa_analysis_report qa_analysis_report_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: qa_call_pentagon_result qa_analysis_report_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.qa_analysis_report
+ALTER TABLE ONLY public.qa_call_pentagon_result
     ADD CONSTRAINT qa_analysis_report_pkey PRIMARY KEY ("ID", item_type_no);
 
 
@@ -1338,10 +1338,10 @@ ALTER TABLE ONLY public.qa_calls
 
 
 --
--- Name: qa_checklist_rows qa_checklist_rows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: qa_call_item_evidence qa_checklist_rows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.qa_checklist_rows
+ALTER TABLE ONLY public.qa_call_item_evidence
     ADD CONSTRAINT qa_checklist_rows_pkey PRIMARY KEY ("ID", order_no);
 
 
@@ -1370,18 +1370,18 @@ ALTER TABLE ONLY public.qa_consumer_keywords
 
 
 --
--- Name: qa_conversations qa_conversations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: qa_call_transcript qa_conversations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.qa_conversations
+ALTER TABLE ONLY public.qa_call_transcript
     ADD CONSTRAINT qa_conversations_pkey PRIMARY KEY ("ID", turn_no);
 
 
 --
--- Name: qa_evaluation_rows qa_evaluation_rows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: qa_call_item_score qa_evaluation_rows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.qa_evaluation_rows
+ALTER TABLE ONLY public.qa_call_item_score
     ADD CONSTRAINT qa_evaluation_rows_pkey PRIMARY KEY ("ID", order_no);
 
 
@@ -1421,18 +1421,18 @@ CREATE INDEX idx_qa_consumer_keywords_id ON public.qa_consumer_keywords USING bt
 
 
 --
--- Name: qa_analysis_report qa_analysis_report_ID_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: qa_call_pentagon_result qa_analysis_report_ID_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.qa_analysis_report
+ALTER TABLE ONLY public.qa_call_pentagon_result
     ADD CONSTRAINT "qa_analysis_report_ID_fkey" FOREIGN KEY ("ID") REFERENCES public.qa_calls("ID") ON DELETE CASCADE;
 
 
 --
--- Name: qa_checklist_rows qa_checklist_rows_ID_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: qa_call_item_evidence qa_checklist_rows_ID_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.qa_checklist_rows
+ALTER TABLE ONLY public.qa_call_item_evidence
     ADD CONSTRAINT "qa_checklist_rows_ID_fkey" FOREIGN KEY ("ID") REFERENCES public.qa_calls("ID") ON DELETE CASCADE;
 
 
@@ -1461,18 +1461,18 @@ ALTER TABLE ONLY public.qa_consumer_keywords
 
 
 --
--- Name: qa_conversations qa_conversations_ID_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: qa_call_transcript qa_conversations_ID_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.qa_conversations
+ALTER TABLE ONLY public.qa_call_transcript
     ADD CONSTRAINT "qa_conversations_ID_fkey" FOREIGN KEY ("ID") REFERENCES public.qa_calls("ID") ON DELETE CASCADE;
 
 
 --
--- Name: qa_evaluation_rows qa_evaluation_rows_ID_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: qa_call_item_score qa_evaluation_rows_ID_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.qa_evaluation_rows
+ALTER TABLE ONLY public.qa_call_item_score
     ADD CONSTRAINT "qa_evaluation_rows_ID_fkey" FOREIGN KEY ("ID") REFERENCES public.qa_calls("ID") ON DELETE CASCADE;
 
 

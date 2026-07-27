@@ -12,6 +12,32 @@ export function parseMaxPointsFromValidationTime(vt) {
     return Number.isFinite(n) && n > 0 ? n : 5;
 }
 
+/**
+ * 항목 만점 해석 — 병합(마이그레이션 67) 이후의 정본 경로.
+ *
+ * 배경: 구 모델은 항목 만점을 qa_checklist_rows.validation_time 에 '배점 N' 문자열로 저장하고
+ *       읽을 때마다 파싱했다. Y/N 항목은 체크리스트 행을 아예 만들지 않아 총점 분모에서 빠졌다.
+ *       병합 후에는 항목이 한 행뿐이므로 max_score = NULL 이 '분모 제외'를 표현한다.
+ *
+ * ★ null 반환은 "만점 정보 없음 = 분모에서 제외" 를 뜻한다. 절대 0 이나 5 로 대체하지 말 것 —
+ *   그렇게 하면 Y/N 항목이 분모에 새로 잡혀 총점이 조용히 틀어진다.
+ *
+ * DB 행(max_score:number)과 적재 중 메모리 객체(validation_time:'배점 N') 양쪽을 모두 받는다.
+ *
+ * @param {{max_score?: number|null, validation_time?: string|null}} row
+ * @returns {number|null} 만점, 또는 분모 제외를 뜻하는 null
+ */
+export function maxPointsOf(row) {
+    if (row?.max_score !== null && row?.max_score !== undefined && row?.max_score !== '') {
+        const n = Number(row.max_score);
+        return Number.isFinite(n) && n > 0 ? n : null;
+    }
+    if (row?.validation_time !== null && row?.validation_time !== undefined) {
+        return parseMaxPointsFromValidationTime(row.validation_time);
+    }
+    return null;
+}
+
 // 새 수기평가 모델의 판단 라벨 — manual_eval 컬럼에 점수 tier 대신 그대로 저장된다.
 // 점수 집계(parseStoredEarned)에서는 '평가제외' 와 동일하게 제외 처리.
 export const MANUAL_JUDGMENT_LABELS = ['낮음', '동일', '높음'];
@@ -70,9 +96,9 @@ export function computeManualRubricPct(evaluationRows, checklistRows) {
     let num = 0;
     let den = 0;
     for (const er of evaluationRows || []) {
-        const ch = chByOrder.get(Number(er.order_no));
-        if (!ch) continue;
-        const maxPts = parseMaxPointsFromValidationTime(ch.validation_time);
+        const ch = chByOrder.get(Number(er.order_no)) || er;
+        const maxPts = maxPointsOf(ch) ?? maxPointsOf(er);
+        if (maxPts === null) continue;   // 만점 없음 = 분모 제외
         const item = String(er.item || ch.item || '').trim();
         const earned = parseStoredEarned(er.manual_eval, maxPts, item);
         if (earned === null) continue;
@@ -89,9 +115,9 @@ export function computeManualRubricPct(evaluationRows, checklistRows) {
 export function validateMergedManualEvals(mergedEvalRows, checklistRows) {
     const chByOrder = new Map((checklistRows || []).map((r) => [Number(r.order_no), r]));
     for (const er of mergedEvalRows || []) {
-        const ch = chByOrder.get(Number(er.order_no));
-        if (!ch) continue;
-        const maxPts = parseMaxPointsFromValidationTime(ch.validation_time);
+        const ch = chByOrder.get(Number(er.order_no)) || er;
+        const maxPts = maxPointsOf(ch) ?? maxPointsOf(er);
+        if (maxPts === null) continue;   // 만점 없음 = 검증 대상 아님
         const item = String(er.item || ch.item || '').trim();
         const allowed = allowedManualEvalValues(item, maxPts);
         const v = String(er.manual_eval ?? '').trim();

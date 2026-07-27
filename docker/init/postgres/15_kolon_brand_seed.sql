@@ -10,10 +10,10 @@
 --   department='기본', version=1, ON CONFLICT (org_id, department, order_no, version) DO NOTHING).
 -- - qa_calls.department CHECK 의 '고객지원실' 은 04/08 마이그가 이미 widest 리스트로 확장 →
 --   표준 트랙(department='고객지원실', role='전체')에 추가 변경 불필요. (참고용 idempotent 재보강 포함)
--- - pentagon_axes 시드는 생략: 분석 라우트(server/index.js)가 qa_evaluation_rows.ai_eval 로
+-- - pentagon_axes 시드는 생략: 분석 라우트(server/index.js)가 qa_call_item_score.ai_eval 로
 --   Pentagon 5축을 LIVE 도출하고, FE constants(DEFAULT_BRAND_CONFIG) fallback 으로 표시되므로
 --   고정 축 시드가 불필요(오히려 live 도출과 이중관리 위험).
--- - mock 콜(qa_calls/qa_conversations/checklist/evaluation/analysis)은 시드하지 않음 —
+-- - mock 콜(qa_calls/qa_call_transcript/checklist/evaluation/analysis)은 시드하지 않음 —
 --   실데이터는 표준 트랙 ingest(파이프라인 평가 결과)로만 유입.
 -- - seed-if-empty.sh 가 매 기동 idempotent 재적용하므로 모든 쓰기는 NOT EXISTS / ON CONFLICT 가드.
 -- ============================================================
