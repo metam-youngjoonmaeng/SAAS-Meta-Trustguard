@@ -1,12 +1,12 @@
 // 상담사 — 내 평가 결과
 // 실연동: 내 콜 평가 목록·점수·추이(/api/calls), 항목별 점수(/api/evaluations/:qaId),
 //         강점·개선(항목 평균), 배정된 코칭(/api/coaching/mine).
-//         감정·대화 품질(/api/me/ta-metrics): 부정발화·금칙어=03 tb_ta_rslt, 회복률=05 qa_call_recovery. (미연동 시 mock 폴백)
+//         감정·대화 품질(/api/me/ta-metrics): 부정발화·금칙어=03 tb_ta_rslt, 회복률=05 qa_call_emotion_recovery. (미연동 시 mock 폴백)
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon, Gauge, ChannelChip, ColumnFilter, PageHead, PeriodPicker, Donut, Modal, defaultPeriod, openInWindow, openCallDetail } from './ui';
 import { scoreClass, TUTOR_SCENARIOS } from './mockData';
 import { fetchCalls, fetchEvaluations, fetchMyCoaching, fetchMyTaMetrics, fetchMyTaMetricCalls, fetchEvalItemVersions, archiveMyCoaching, QA_ACTOR_STORAGE_KEY } from '../../services/api';
-import { parseMaxPointsFromValidationTime } from '../../utils/rubricScore';
+import { maxPointsOf } from '../../utils/rubricScore';
 import { buildTutorLink } from '../../utils/coachingTutorLink';
 import { ReviewStatusBadge } from '../../components';
 
@@ -252,13 +252,15 @@ function adaptCall(c) {
 }
 
 // /api/evaluations 응답 → 실제 평가 항목 배열 [{ key, label, pct, ai, max }].
-// 항목명/배점은 콜마다 실제 루브릭(qa_evaluation_rows + qa_checklist_rows)을 그대로 사용한다.
+// 항목명/배점은 콜마다 실제 루브릭(qa_call_item_score)을 그대로 사용한다.
 // (고정 mock DIMENSIONS 에 라벨 매핑하면 이름이 달라 대부분 0 으로 표시되는 문제가 있어 직접 사용.)
 function buildItemScores(evalData) {
     const rows = evalData?.evaluation_rows || [];
     const checklist = evalData?.checklist_rows || [];
     const maxByOrder = new Map();
-    for (const k of checklist) maxByOrder.set(Number(k.order_no), parseMaxPointsFromValidationTime(k.validation_time));
+    // 만점은 숫자 max_score 로 내려온다. maxPointsOf 가 null 을 반환하면 '만점 미상' 이므로
+    // 0 으로 두어 아래 pct 계산에서 자연히 제외된다(임의 5점 부여 금지 — 달성률이 왜곡된다).
+    for (const k of checklist) maxByOrder.set(Number(k.order_no), maxPointsOf(k) ?? 0);
     const out = [];
     for (const r of rows) {
         const order = Number(r.order_no);
@@ -338,7 +340,7 @@ function TrendSpark({ points, color = 'var(--primary)', height = 92, width = 220
     );
 }
 
-// 감정·대화 품질 카드 (부정비율 / 회복률 / 금칙어) — 03 TA + 05 qa_call_recovery 실연동(미연동/무데이터 시 mock 폴백).
+// 감정·대화 품질 카드 (부정비율 / 회복률 / 금칙어) — 03 TA + 05 qa_call_emotion_recovery 실연동(미연동/무데이터 시 mock 폴백).
 function QualityCard({ tone, icon, label, desc, ring, center, delta, footer, hero, onClick, actionLabel }) {
     const TONES = {
         primary: { color: 'var(--primary)', track: 'var(--primary-soft-flat)', soft: 'var(--primary-soft)', ink: 'var(--primary)' },
@@ -776,7 +778,7 @@ export default function CounselorResults() {
 
     // 감정·대화 품질 — 03(Meta_Summary) 실연동(본인 콜 uid 기준). TA 미연동/무데이터 시 mock 폴백.
     //  - 부정발화·금칙어: 03 tb_ta_rslt 종합값.
-    //  - 회복률(부정→긍정): 05 자체 기준("부정으로 안 끝남")으로 03 구간감정 분석 → qa_call_recovery.
+    //  - 회복률(부정→긍정): 05 자체 기준("부정으로 안 끝남")으로 03 구간감정 분석 → qa_call_emotion_recovery.
     //    분모=부정 발생 통화, 분자=마지막 구간이 긍정/중립. 부정 통화 0건이면 recReal=false(해당 없음).
     const ta = taMetrics && taMetrics.enabled && taMetrics.total > 0 ? taMetrics : null;
     const recReal = Boolean(ta && ta.recovery_denom > 0);          // 회복률 실데이터 유효

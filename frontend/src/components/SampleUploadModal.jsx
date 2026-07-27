@@ -264,7 +264,7 @@ export default function SampleUploadModal({ onUploaded }) {
             // pipeline_target: 서버 어댑터가 평가 백엔드 base URL 을 선택 (local | ec2)
             pipeline_target: pipelineTarget,
             // transcript: qa-pipeline /evaluate 전달용 원문 문자열.
-            // conversation: 대화 탭(qa_conversations) 적재용 턴 배열 — 서버 표준 트랙이 분리 소비.
+            // conversation: 대화 탭(qa_call_transcript) 적재용 턴 배열 — 서버 표준 트랙이 분리 소비.
             transcript,
             conversation: parseTranscriptToTurns(transcript),
         };

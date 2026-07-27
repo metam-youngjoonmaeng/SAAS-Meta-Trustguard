@@ -51,7 +51,7 @@ SELECT "ID", "CALL_SEQ", "CDATE", "UID", "AI_SCORE", "TOTAL_SCORE",
   FROM _hw_calls
 ON CONFLICT ("ID") DO NOTHING;
 
--- ── 4. qa_checklist_rows ─────────────────────────────────────
+-- ── 4. qa_call_item_evidence ─────────────────────────────────────
 CREATE TEMP TABLE _hw_checklist (
     "ID" text, order_no integer, category text, item text,
     agent_utterance text, validation_time text
@@ -124,12 +124,10 @@ QA-20260301-0008	7	정보보호	정보보호	안녕하세요 MetaM 고객센터 
 QA-20260301-0008	8	상담태도	상담태도	이용 혜택 변경 안내드리려고 연락드렸습니다.	배점 20
 \.
 
-INSERT INTO public.qa_checklist_rows
-    ("ID", order_no, category, item, agent_utterance, validation_time)
-SELECT * FROM _hw_checklist
-ON CONFLICT ("ID", order_no) DO NOTHING;
+-- 근거 발화·만점은 qa_call_item_score 로 병합(마이그레이션 67) — 평가행 적재 후 UPDATE 로 채운다.
+-- (아래 5번 항목 적재가 끝난 뒤 실행되므로 여기서는 임시테이블만 유지)
 
--- ── 5. qa_evaluation_rows ────────────────────────────────────
+-- ── 5. qa_call_item_score ────────────────────────────────────
 CREATE TEMP TABLE _hw_eval (
     "ID" text, order_no integer, category text, item text,
     reason_text text, ai_eval double precision, manual_eval double precision
@@ -202,12 +200,32 @@ QA-20260301-0007	4	문의내용 파악/경청	문의내용 파악/경청	문의 
 QA-20260301-0007	5	사과/대기/감사표현	사과/대기/감사표현	사과·대기·감사 및 메모 가능 멘트 충족도	10	10
 \.
 
-INSERT INTO public.qa_evaluation_rows
+INSERT INTO public.qa_call_item_score
     ("ID", order_no, category, item, reason_text, ai_eval, manual_eval)
 SELECT * FROM _hw_eval
 ON CONFLICT ("ID", order_no) DO NOTHING;
 
--- ── 6. qa_conversations ──────────────────────────────────────
+-- 근거 발화 + 항목 만점 채우기 (구 qa_call_item_evidence 적재분).
+-- max_score IS NULL 조건 → 이미 값이 있는 행은 건드리지 않아 DO NOTHING 과 동일한 보존 의미.
+--
+-- ★ 컬럼 선보장: 두 컬럼의 정본 소유자는 67_merge_item_evidence.sql 이지만 67 은 이 파일(04)보다
+--   뒤에 실행된다. 빈 볼륨 첫 부팅은 01_init 이 두 컬럼 없는 테이블을 만들고 04 가 곧바로 UPDATE 하므로
+--   여기서 보장하지 않으면 42703(column does not exist)로 시더 전체가 죽는다(ON_ERROR_STOP=1).
+--   기존 볼륨에서는 67 이 이미 추가해 둔 상태라 IF NOT EXISTS 로 no-op.
+ALTER TABLE public.qa_call_item_score
+    ADD COLUMN IF NOT EXISTS agent_utterance text,
+    ADD COLUMN IF NOT EXISTS max_score       numeric;
+
+UPDATE public.qa_call_item_score s
+   SET agent_utterance = c.agent_utterance,
+       max_score = CASE WHEN validation_time LIKE '배점%'
+                       THEN COALESCE(NULLIF(NULLIF(regexp_replace(validation_time, '[^0-9.]', '', 'g'), '')::numeric, 0), 5)
+                       ELSE 5 END
+  FROM _hw_checklist c
+ WHERE c."ID" = s."ID" AND c.order_no = s.order_no
+   AND s.max_score IS NULL;
+
+-- ── 6. qa_call_transcript ──────────────────────────────────────
 CREATE TEMP TABLE _hw_conv (
     "ID" text, turn_no integer, speaker text, text text
 ) ON COMMIT DROP;
@@ -302,12 +320,12 @@ QA-20260301-0008	9	고객	강요처럼 느껴져서 불편하네요.
 QA-20260301-0008	10	상담사	혜택과 조건을 빠르게 한번에 설명드리겠습니다.
 \.
 
-INSERT INTO public.qa_conversations
+INSERT INTO public.qa_call_transcript
     ("ID", turn_no, speaker, text)
 SELECT * FROM _hw_conv
 ON CONFLICT ("ID", turn_no) DO NOTHING;
 
--- ── 7. qa_analysis_report ────────────────────────────────────
+-- ── 7. qa_call_pentagon_result ────────────────────────────────────
 CREATE TEMP TABLE _hw_analysis (
     "ID" text, item_type_no integer, item_type text,
     rating text, comment text, summary text
@@ -356,7 +374,7 @@ QA-20260301-0008	4	대화·경청 품질	주의	고객 불편 신호가 있었�
 QA-20260301-0008	5	발화 안정성	실패	과도한 속도와 확정형 표현으로 전달력 및 수용성이 저하되었습니다.	\N
 \.
 
-INSERT INTO public.qa_analysis_report
+INSERT INTO public.qa_call_pentagon_result
     ("ID", item_type_no, item_type, rating, comment, summary)
 SELECT * FROM _hw_analysis
 ON CONFLICT ("ID", item_type_no) DO NOTHING;

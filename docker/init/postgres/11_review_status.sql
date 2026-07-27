@@ -61,7 +61,7 @@ SET review_status = 'completed',
 WHERE c.review_status = 'pending'
   AND EXISTS (
       SELECT 1
-      FROM public.qa_evaluation_rows er
+      FROM public.qa_call_item_score er
       WHERE er."ID" = c."ID"
         AND ABS(er.manual_eval - er.ai_eval) > 1e-9
   );

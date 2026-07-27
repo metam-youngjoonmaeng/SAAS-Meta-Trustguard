@@ -85,7 +85,7 @@ export const RADAR_KEYS = [
     'aftercare',
 ];
 
-/** Pentagon 축 표시명 — 백엔드 qa_analysis_report.item_type 와 동일해야 호버 리포트가 매칭됨 */
+/** Pentagon 축 표시명 — 백엔드 qa_call_pentagon_result.item_type 와 동일해야 호버 리포트가 매칭됨 */
 export const RADAR_LABELS = [
     '인사·본인확인',
     '응대 화법·음성',
@@ -189,7 +189,7 @@ export function fitBandFor(score) {
 
 export const CHECKLIST_KEYS = COLLECTION_CHECKLIST_KEYS;
 
-// order_no 는 골든셋 사례 조회 매칭 키. qa_evaluation_rows.item 의 긴 문구와 무관하게
+// order_no 는 골든셋 사례 조회 매칭 키. qa_call_item_score.item 의 긴 문구와 무관하게
 // (org_id, order_no) 로 매칭하기 위해 UI 모델에 보존.
 export const CHECKLIST_TEMPLATE = COLLECTION_CHECKLIST.map((row) => ({
     order_no: row.order_no,
@@ -206,7 +206,7 @@ export const HANWHA_CHECKLIST_KEYS = [
     '사과/대기/감사표현', '정확한 업무처리', '정보보호', '상담태도',
 ];
 
-// order_no 는 한화 시드 qa_evaluation_rows.order_no (1..8) 와 동일 순서로 정렬되어 있으므로
+// order_no 는 한화 시드 qa_call_item_score.order_no (1..8) 와 동일 순서로 정렬되어 있으므로
 // 골든셋 사례 매칭이 신한과 동일 경로(order_no 기준)로 동작.
 export const HANWHA_CHECKLIST_TEMPLATE = [
     { order_no: 1, category: '전화수신/종료태도',   item: '전화수신/종료태도',   validation_time: '배점 10' },

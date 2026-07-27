@@ -6,7 +6,7 @@
 --
 -- AI agent 는 (category, item) 기준으로 이 테이블을 SELECT 하여
 -- "이 항목 평가 시 참고할 정답 케이스" 로 프롬프트에 주입한다.
--- 따라서 원본 qa_evaluation_rows / qa_calls 를 JOIN 하지 않고도
+-- 따라서 원본 qa_call_item_score / qa_calls 를 JOIN 하지 않고도
 -- 한 행으로 케이스 한 건이 완결되도록 발화·사유·점수를 스냅샷한다.
 -- (원본 eval 행이 후에 수정되어도 골든셋 판정 시점 값은 보존)
 --

@@ -5,8 +5,8 @@
  *   ① rubric_id 해석 = getOrgFewshot(rag_rubric_id) || inline-org{N} — 생성·조회 키 정합
  *   ② buildRubricFromDefs 로 order_no→item_number(RUBRIC_ITEM_BASE+index)/max_score 맵 산출
  *      + 루브릭 파일스토어 사전 등록(POST /v2/rubrics, 멱등·실패 무시)
- *   ③ 정정 케이스 수집(qa_evaluation_rows ⋈ qa_calls ⟕ qa_checklist_rows — 승인콜·비샌드박스,
- *      manual_eval_option ∈ '낮음'|'높음') + 콜단위 검수사유(qa_review_events 최신 1건, 일괄 조회)
+ *   ③ 정정 케이스 수집(qa_call_item_score ⋈ qa_calls — 승인콜·비샌드박스,
+ *      manual_eval_option ∈ '낮음'|'높음') + 콜단위 검수사유(qa_call_review_event 최신 1건, 일괄 조회)
  *   ④ POST {base}/v2/mtg-skill/{rubric_id}/generate (auto_activate) — 버전 생성·저장·활성화는
  *      qa-pipeline 담당(MTG 는 프록시·수집만)
  *
@@ -68,14 +68,14 @@ async function registerRubricForOrg(pool, orgId, rubricId, base) {
 /**
  * 격리키 변경 자동 이관(auto-heal) — RAG few-shot 설정 저장/해제로 rubric_id 해석이 바뀌면
  * (예: inline-org42 → rbrc_org42) 기존 스킬 버전이 옛 키 아래 미아가 된다. 현재 키에 버전이
- * 없을 때 옛 후보 키(qa_skill_memory 의 이 org 행 + 규칙상 두 형태)를 뒤져 버전이 있으면
- * 파이프라인 adopt 로 스토어를 통째 이관하고 qa_skill_memory 행 키도 승계한다.
+ * 없을 때 옛 후보 키(qa_skill_store 의 이 org 행 + 규칙상 두 형태)를 뒤져 버전이 있으면
+ * 파이프라인 adopt 로 스토어를 통째 이관하고 qa_skill_store 행 키도 승계한다.
  * @returns {Promise<boolean>} 이관 발생 여부
  */
 async function adoptLegacySkillStore(pool, orgId, rubricId, base, { register = true } = {}) {
     const candidates = new Set([`rbrc_org${orgId}`, `inline-org${orgId}`]);
     try {
-        const { rows } = await pool.query('SELECT rubric_id FROM public.qa_skill_memory WHERE org_id = $1', [orgId]);
+        const { rows } = await pool.query('SELECT rubric_id FROM public.qa_skill_store WHERE org_id = $1', [orgId]);
         for (const r of rows) candidates.add(safeStr(r.rubric_id).trim());
     } catch {
         /* 메모리 테이블 조회 실패 — 규칙 후보만으로 진행 */
@@ -108,11 +108,11 @@ async function adoptLegacySkillStore(pool, orgId, rubricId, base, { register = t
             // 메모리 행 키 승계 — 새 키 행이 이미 있으면(학습이 새 키로 이미 돈 경우) 보존, 옛 행 유지.
             try {
                 await pool.query(
-                    `UPDATE public.qa_skill_memory
+                    `UPDATE public.qa_skill_store
                         SET rubric_id = $2,
                             memory = jsonb_set(memory, '{rubric_id}', to_jsonb($2::text))
                       WHERE rubric_id = $1
-                        AND NOT EXISTS (SELECT 1 FROM public.qa_skill_memory m2 WHERE m2.rubric_id = $2)`,
+                        AND NOT EXISTS (SELECT 1 FROM public.qa_skill_store m2 WHERE m2.rubric_id = $2)`,
                     [cand, rubricId]
                 );
             } catch (e) {
@@ -181,8 +181,8 @@ async function readSkillExcludedOrders(pool, orgId) {
 
 /**
  * 정정 케이스 수집 — 승인(review_status='approved')·비샌드박스 콜의 항목행 중 검수자가
- * '낮음'(AI 과소평가)/'높음'(AI 과대평가) 정정 판단을 내린 행. 근거 발화는 qa_checklist_rows
- * (같은 order_no) LEFT JOIN, 콜단위 검수사유는 qa_review_events 최신 1건(qa_id 묶음 일괄 조회).
+ * '낮음'(AI 과소평가)/'높음'(AI 과대평가) 정정 판단을 내린 행. 근거 발화는 qa_call_item_score.agent_utterance
+ * (같은 order_no) LEFT JOIN, 콜단위 검수사유는 qa_call_review_event 최신 1건(qa_id 묶음 일괄 조회).
  * @returns {Promise<{rows:Array, callReasons:Object}>}
  */
 export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMIT } = {}) {
@@ -190,16 +190,12 @@ export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMI
     const { rows } = await pool.query(
         `SELECT er."ID" AS qa_id, er.order_no, er.category, er.item,
                 er.ai_eval, er.manual_eval_option, er.reason_text,
-                cr.agent_utterance, c.org_id, c."CDATE"
-           FROM qa_evaluation_rows er
+                er.agent_utterance, c.org_id, c."CDATE"
+           FROM qa_call_item_score er
            JOIN qa_calls c ON c."ID" = er."ID"
-           LEFT JOIN qa_checklist_rows cr ON cr."ID" = er."ID" AND cr.order_no = er.order_no
           WHERE c.review_status = 'approved' AND c.is_sandbox = false
             AND c.org_id = $1 AND er.manual_eval_option IN ('낮음','높음')
-            AND NOT EXISTS (
-                SELECT 1 FROM qa_skill_excluded x
-                 WHERE x.qa_id = er."ID" AND x.order_no = er.order_no AND x.org_id = c.org_id
-            )
+            AND er.skill_excluded_at IS NULL
           ORDER BY c."CDATE" DESC LIMIT $2`,
         [orgId, lim]
     );
@@ -210,7 +206,7 @@ export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMI
         const qaIds = [...new Set(rows.map((r) => String(r.qa_id)))];
         const { rows: ev } = await pool.query(
             `SELECT DISTINCT ON (qa_id) qa_id, reason
-               FROM qa_review_events
+               FROM qa_call_review_event
               WHERE qa_id = ANY($1::text[]) AND reason IS NOT NULL
               ORDER BY qa_id, id DESC`,
             [qaIds]
@@ -235,12 +231,12 @@ export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMI
  *                    case_count:number, items_changed?:Array, activated?:boolean, error?:string}>}
  */
 /**
- * qa_skill_memory 에서 브랜드 메모리(memory.json 전체 blob) 로드 — 부재/오류 시 빈 골격.
+ * qa_skill_store 에서 브랜드 메모리(memory.json 전체 blob) 로드 — 부재/오류 시 빈 골격.
  * 파이프라인 load_memory(rubric_id) 와 정합하는 스키마({schema_version, rubric_id, items}).
  */
 async function loadSkillMemory(pool, rubricId) {
     try {
-        const { rows } = await pool.query('SELECT memory FROM public.qa_skill_memory WHERE rubric_id = $1', [rubricId]);
+        const { rows } = await pool.query('SELECT memory FROM public.qa_skill_store WHERE rubric_id = $1', [rubricId]);
         const mem = rows[0]?.memory;
         if (mem && typeof mem === 'object' && !Array.isArray(mem)) return mem;
     } catch (e) {
@@ -250,14 +246,14 @@ async function loadSkillMemory(pool, rubricId) {
 }
 
 /**
- * 학습 응답의 최종 메모리(blob)를 qa_skill_memory 에 UPSERT — rubric_id 단위 통째 교체.
+ * 학습 응답의 최종 메모리(blob)를 qa_skill_store 에 UPSERT — rubric_id 단위 통째 교체.
  * 쓰기 주체가 학습 마감 1회뿐 + 동시 학습 already_running 가드라 blob 통째 저장이라도 경합 없음.
  */
 async function saveSkillMemory(pool, rubricId, orgId, memory) {
     if (!memory || typeof memory !== 'object' || Array.isArray(memory)) return false;
     try {
         await pool.query(
-            `INSERT INTO public.qa_skill_memory (rubric_id, org_id, memory, updated_at)
+            `INSERT INTO public.qa_skill_store (rubric_id, org_id, memory, updated_at)
                  VALUES ($1, $2, $3::jsonb, now())
              ON CONFLICT (rubric_id) DO UPDATE
                 SET memory = EXCLUDED.memory, org_id = EXCLUDED.org_id, updated_at = now()`,
@@ -295,7 +291,7 @@ const MEM_SUMMARY_JOURNAL = 5; // 항목당 최근 학습 기록(journal)
 
 /**
  * 브랜드 에이전트 메모리 요약 — 실시간 로그 '메모리' 행 토글 조회용(읽기 전용, SELECT 만).
- * qa_skill_memory blob 을 항목별로 정리: 방향 통계·최근 케이스·패턴·journal·last_learned·effect.
+ * qa_skill_store blob 을 항목별로 정리: 방향 통계·최근 케이스·패턴·journal·last_learned·effect.
  * 항목명 매핑(buildRubricFromDefs) 실패는 무해 — 번호만 표시.
  */
 export async function fetchSkillMemorySummary(pool, orgId) {
@@ -303,7 +299,7 @@ export async function fetchSkillMemorySummary(pool, orgId) {
     let mem = null;
     let updatedAt = null;
     try {
-        const { rows } = await pool.query('SELECT memory, updated_at FROM public.qa_skill_memory WHERE rubric_id = $1', [rubricId]);
+        const { rows } = await pool.query('SELECT memory, updated_at FROM public.qa_skill_store WHERE rubric_id = $1', [rubricId]);
         mem = rows[0]?.memory ?? null;
         updatedAt = rows[0]?.updated_at ?? null;
     } catch (e) {
@@ -342,11 +338,11 @@ export async function fetchSkillMemorySummary(pool, orgId) {
     return { ok: true, rubric_id: rubricId, updated_at: updatedAt, items };
 }
 
-/* ── 스킬셋 버전 DB 영속(qa_skill_versions) ─────────────────────────────
+/* ── 스킬셋 버전 DB 영속(qa_skill_store) ─────────────────────────────
  * 배경(2026-07-07): 스킬 버전·룰 원문은 파이프라인 디스크 파일로만 저장되어 배포 스왑 시
  * 소실(org4 사고). 변이(학습/활성화/설정) 후 파이프라인 store-dump 를 받아 PG 에 통째 보관하고,
  * 파이프라인 스토어가 비어 있으면 보관본을 store-restore 로 되밀어 자가 복원한다.
- * 소유 모델은 qa_skill_memory 와 동일 — DB(=이 서버의 PG)가 생존 계층, 파이프라인 파일은 작업 사본. */
+ * 소유 모델은 qa_skill_store 와 동일 — DB(=이 서버의 PG)가 생존 계층, 파이프라인 파일은 작업 사본. */
 
 let _skillVersionsTableReady = null;
 function ensureSkillVersionsTable(pool) {
@@ -354,9 +350,10 @@ function ensureSkillVersionsTable(pool) {
     if (!_skillVersionsTableReady) {
         _skillVersionsTableReady = pool
             .query(
-                `CREATE TABLE IF NOT EXISTS public.qa_skill_versions (
+                `CREATE TABLE IF NOT EXISTS public.qa_skill_store (
                      rubric_id  text PRIMARY KEY,
                      org_id     integer REFERENCES public.organizations(id) ON DELETE CASCADE,
+                     memory     jsonb NOT NULL DEFAULT '{}',
                      store      jsonb NOT NULL DEFAULT '{}',
                      updated_at timestamptz NOT NULL DEFAULT now()
                  )`
@@ -373,7 +370,7 @@ function ensureSkillVersionsTable(pool) {
 async function loadSkillStoreBackup(pool, rubricId) {
     try {
         await ensureSkillVersionsTable(pool);
-        const { rows } = await pool.query('SELECT store FROM public.qa_skill_versions WHERE rubric_id = $1', [rubricId]);
+        const { rows } = await pool.query('SELECT store FROM public.qa_skill_store WHERE rubric_id = $1', [rubricId]);
         const s = rows[0]?.store;
         if (s && typeof s === 'object' && !Array.isArray(s)) return s;
     } catch (e) {
@@ -391,7 +388,7 @@ async function persistSkillStore(pool, orgId, rubricId, base) {
         }
         await ensureSkillVersionsTable(pool);
         await pool.query(
-            `INSERT INTO public.qa_skill_versions (rubric_id, org_id, store, updated_at)
+            `INSERT INTO public.qa_skill_store (rubric_id, org_id, store, updated_at)
                  VALUES ($1, $2, $3::jsonb, now())
              ON CONFLICT (rubric_id) DO UPDATE
                 SET store = EXCLUDED.store, org_id = EXCLUDED.org_id, updated_at = now()`,
@@ -428,7 +425,7 @@ async function restoreSkillStoreIfEmpty(pool, rubricId, base) {
 }
 
 /**
- * 활성 스킬 overlay 맵 — MTG DB 보관본(qa_skill_versions)에서 직접 산출(파이프라인 무조회).
+ * 활성 스킬 overlay 맵 — MTG DB 보관본(qa_skill_store)에서 직접 산출(파이프라인 무조회).
  * 평가 요청 동봉(metadata.skill_overlays)용: {item_number(str): overlay md}. 학습 제외 항목 제외.
  * 활성 버전 부재/보관본 부재/오류 전부 null — 호출측은 미동봉(기존 거동)으로 폴백.
  */
@@ -500,7 +497,7 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
         logger.warn(`[skill-learn] 격리키 이관 시도 실패(신규 키로 진행): ${e?.message || e}`);
     }
 
-    // 스킬셋 보관본 주입 — MTG DB(qa_skill_versions)가 원본, 파이프라인 파일은 작업 사본.
+    // 스킬셋 보관본 주입 — MTG DB(qa_skill_store)가 원본, 파이프라인 파일은 작업 사본.
     //   빈 스토어 여부와 무관하게 항상 되밀어(멱등 merge — 누락 버전만 복원) 버전 lineage
     //   (v1→v2…)를 이어서 학습(배포 스왑 소실·부분 소실 모두 커버).
     try {
@@ -552,7 +549,7 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
     const targetItems = Object.values(byItem).sort((a, b) => a.item_number - b.item_number);
     emit({ stage: 'generate', case_count: cases.length, target_items: targetItems, rubric_id: rubricId });
 
-    // 메모리 소유 = MTG DB(qa_skill_memory). 누적 메모리를 동봉 → 파이프라인이 학습 입력으로 사용,
+    // 메모리 소유 = MTG DB(qa_skill_store). 누적 메모리를 동봉 → 파이프라인이 학습 입력으로 사용,
     //   응답 memory 로 최종본을 돌려받아 DB 에 UPSERT(SSOT). 로드 실패해도 빈 골격으로 진행(무해).
     const skillMemory = await loadSkillMemory(pool, rubricId);
     const memBefore = skillMemoryStats(skillMemory);
@@ -682,7 +679,7 @@ function renderVersionsFromBackup(backup) {
     };
 }
 
-/** 버전 목록 — MTG DB(qa_skill_versions) 단독 조회(소유 모델: DB=원본, 조회 경로에 EC2 없음).
+/** 버전 목록 — MTG DB(qa_skill_store) 단독 조회(소유 모델: DB=원본, 조회 경로에 EC2 없음).
  *  보관본 부재 = "학습된 버전 없음"이 정답. DB 영속 도입 전 파이프라인 파일에만 남은 옛 버전은
  *  다음 학습이 그 위에서 lineage 를 이어 결과를 DB 로 영속하며 자연 회수된다. */
 export async function fetchSkillVersions(pool, orgId) {
@@ -758,7 +755,7 @@ export async function activateSkillVersion(pool, orgId, versionId, opts = {}) {
     if (backup?.store && known) {
         try {
             await pool.query(
-                `UPDATE public.qa_skill_versions
+                `UPDATE public.qa_skill_store
                     SET store = jsonb_set(store, '{store,active_version_id}', $2::jsonb, true), updated_at = now()
                   WHERE rubric_id = $1`,
                 [rubricId, JSON.stringify(vid)]
@@ -810,7 +807,7 @@ export async function pushSkillSettings(pool, orgId, excludedOrders, opts = {}) 
     try {
         await ensureSkillVersionsTable(pool);
         await pool.query(
-            `UPDATE public.qa_skill_versions
+            `UPDATE public.qa_skill_store
                 SET store = jsonb_set(store, '{store,excluded_items}', $2::jsonb, true), updated_at = now()
               WHERE rubric_id = $1`,
             [rubricId, JSON.stringify(excludedItems)]

@@ -62,12 +62,12 @@ ALTER TABLE public.qa_calls
     ADD COLUMN IF NOT EXISTS org_id integer
     REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
-ALTER TABLE public.qa_calls__sandbox_snapshot
-    ADD COLUMN IF NOT EXISTS org_id integer;
+-- qa_calls__sandbox_snapshot 관련 구문 제거(66_drop_dead_call_tables) —
+-- 스냅샷→복원 모델 폐기(sandboxSession.mjs, is_sandbox 컬럼 방식으로 대체)로 테이블 자체가 사라져
+-- 여기서 ALTER/UPDATE 하면 재기동 시 ON_ERROR_STOP 으로 시더가 죽는다.
 
 -- 기존 baseline 콜은 모두 신한카드(id=1) 소속으로 backfill
 UPDATE public.qa_calls SET org_id = 1 WHERE org_id IS NULL;
-UPDATE public.qa_calls__sandbox_snapshot SET org_id = 1 WHERE org_id IS NULL;
 
 -- backfill 후 NOT NULL 강제 + DEFAULT 신한카드(id=1) — load.sql 의 \COPY 가 org_id 미포함이어도 안전
 ALTER TABLE public.qa_calls ALTER COLUMN org_id SET DEFAULT 1;

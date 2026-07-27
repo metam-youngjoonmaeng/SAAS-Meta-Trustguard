@@ -1042,7 +1042,7 @@ function MemorySnapshot({ state }) {
     return (
         <>
             <div className="text-[11px] font-semibold text-[var(--ink-500)] uppercase tracking-wide mb-2">
-                에이전트 메모리 — 현재 DB(qa_skill_memory) 상태{d.updated_at ? ` · ${fmtTime(d.updated_at)} 갱신` : ''} · {d.rubric_id || ''}
+                에이전트 메모리 — 현재 DB(qa_skill_store) 상태{d.updated_at ? ` · ${fmtTime(d.updated_at)} 갱신` : ''} · {d.rubric_id || ''}
             </div>
             <div className="space-y-2">
                 {items.map((it) => (

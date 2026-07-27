@@ -1,7 +1,7 @@
 /**
  * AI 평가 신뢰도 판정 백필/재판정 (배치관리 ②).
  *
- *   qa_evaluation_rows(점수+근거) ──(Gemini 판정)──▶ qa_confidence_judgments(항목별 플래그)
+ *   qa_call_item_score(점수+근거) ──(Gemini 판정)──▶ qa_call_annotation(항목별 플래그)
  *
  * precompute: 콜당 1회 판정해 저장 → 배치 미리보기/선별은 저장값만 필터(빠름).
  * 멱등: 아직 판정 안 됐거나(prompt_version 불일치) 한 콜만 처리. 재판정 = 프롬프트 version 증가 후 재실행.
@@ -36,9 +36,9 @@ export async function runJudgeBackfill(pool, { limit = 500, orgId = 0, onProgres
         `SELECT c."ID" AS id
            FROM qa_calls c
           WHERE c.is_sandbox = false
-            AND EXISTS (SELECT 1 FROM qa_evaluation_rows er WHERE er."ID" = c."ID")
+            AND EXISTS (SELECT 1 FROM qa_call_item_score er WHERE er."ID" = c."ID")
             AND NOT EXISTS (
-                SELECT 1 FROM qa_confidence_judgments j
+                SELECT 1 FROM qa_call_annotation j
                  WHERE j.qa_id = c."ID" AND j.prompt_version = $1)
           ORDER BY c."CDATE" DESC
           LIMIT $2`,
@@ -52,9 +52,8 @@ export async function runJudgeBackfill(pool, { limit = 500, orgId = 0, onProgres
     for (const t of targets) {
         const { rows: items } = await pool.query(
             `SELECT er.order_no, er.item, er.ai_eval AS score, er.reason_text,
-                    NULLIF(regexp_replace(coalesce(cl.validation_time,''), '[^0-9]', '', 'g'), '')::int AS max
-               FROM qa_evaluation_rows er
-               LEFT JOIN qa_checklist_rows cl ON cl."ID" = er."ID" AND cl.order_no = er.order_no
+                    er.max_score::int AS max
+               FROM qa_call_item_score er
               WHERE er."ID" = $1
               ORDER BY er.order_no`,
             [t.id]
@@ -67,7 +66,9 @@ export async function runJudgeBackfill(pool, { limit = 500, orgId = 0, onProgres
             const hasC = judged.some((j) => j.contradiction);
             if (hasU || hasW || hasC) flagged += 1;
             await pool.query(
-                `INSERT INTO qa_confidence_judgments
+                // 병합 테이블(마이그레이션 71) — 배치는 판정 컬럼만 SET.
+                // comments(사람이 남긴 코멘트)는 EXCLUDED 에 없으므로 절대 덮이지 않는다.
+                `INSERT INTO qa_call_annotation
                      (qa_id, judgments, has_uncertain, has_weak, has_contradiction, prompt_version, model, judged_at)
                  VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7, now())
                  ON CONFLICT (qa_id) DO UPDATE SET

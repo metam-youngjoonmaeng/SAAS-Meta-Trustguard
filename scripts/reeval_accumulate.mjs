@@ -55,7 +55,7 @@ if (!APPLY) {
 let ok = 0;
 for (const c of calls) {
   const { rows: turns } = await pool.query(
-    `SELECT speaker, text FROM public.qa_conversations WHERE "ID"=$1 ORDER BY turn_no ASC`, [c.id]);
+    `SELECT speaker, text FROM public.qa_call_transcript WHERE "ID"=$1 ORDER BY turn_no ASC`, [c.id]);
   const transcript = turns.map((t) => ({ speaker: t.speaker, text: t.text }));
   if (!transcript.length) { console.log(`  ${c.id}: 전사 0턴 — skip`); continue; }
 

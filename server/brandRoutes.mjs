@@ -824,7 +824,7 @@ export function createBrandRouter(pool) {
         const client = await pool.connect();
         try {
             // 브랜드 삭제 = 평가 데이터까지 한 번에 제거. qa_calls.org_id 가 ON DELETE RESTRICT 이므로
-            // 콜을 먼저 명시 삭제(자식 qa_evaluation_rows/checklist/conversations/analysis_report/
+            // 콜을 먼저 명시 삭제(자식 qa_call_item_score/checklist/conversations/analysis_report/
             // golden_set/review_events 등은 qa_calls FK 가 ON DELETE CASCADE → 자동 연쇄). 이어서
             // organizations 삭제 시 eval_item_defs/pentagon_axes/change_log 가 CASCADE 로 함께 제거.
             // 트랜잭션으로 묶어 부분 삭제(고아 데이터) 방지.
@@ -838,10 +838,10 @@ export function createBrandRouter(pool) {
                 await client.query('DELETE FROM public.qa_calls WHERE org_id = $1', [id]);
             }
             // FK 없는 브랜드별 부속 행 명시 정리 — qa_batch_configs(배치·골든/스킬 학습주기 설정),
-            // qa_skill_memory(스킬 학습 메모리). 잔존 시 고아 설정이 스케줄러 자동 발화를 계속
+            // qa_skill_store(스킬 학습 메모리). 잔존 시 고아 설정이 스케줄러 자동 발화를 계속
             // 트리거(예: 삭제 브랜드 goldenFreq=hourly → 매시 no_rubric_items 실패 알림).
             await client.query('DELETE FROM public.qa_batch_configs WHERE org_id = $1', [id]);
-            await client.query('DELETE FROM public.qa_skill_memory WHERE org_id = $1', [id]);
+            await client.query('DELETE FROM public.qa_skill_store WHERE org_id = $1', [id]);
             await client.query('DELETE FROM public.organizations WHERE id = $1', [id]);
             await client.query('COMMIT');
             await insertQaAuditLog(pool, {

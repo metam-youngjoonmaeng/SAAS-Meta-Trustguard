@@ -500,6 +500,14 @@ JI-20260301-0008	5	발화 안정성	실패	과도한 속도와 확정형 표현�
 
 
 -- ── 3. 브랜드 존재시에만 본 테이블로 적재 ──────────────────────
+-- ★ 컬럼 선보장: 아래 DO 블록이 qa_call_item_score.agent_utterance / max_score 를 UPDATE 하는데,
+--   두 컬럼의 정본 소유자인 67_merge_item_evidence.sql 은 이 파일보다 뒤에 실행된다. 빈 볼륨 첫 부팅에서
+--   '지역정보개발원' org 가 이미 있으면 조기반환에 걸리지 않고 그대로 42703 으로 init 이 죽는다
+--   (ON_ERROR_STOP=1). 04_hanwha_brand_seed.sql 과 동일한 이유의 방어.
+ALTER TABLE public.qa_call_item_score
+    ADD COLUMN IF NOT EXISTS agent_utterance text,
+    ADD COLUMN IF NOT EXISTS max_score       numeric;
+
 DO $$
 DECLARE
     target_org_id integer;
@@ -522,25 +530,30 @@ BEGIN
       FROM _ji_calls
     ON CONFLICT ("ID") DO NOTHING;
 
-    INSERT INTO public.qa_checklist_rows
-        ("ID", order_no, category, item, agent_utterance, validation_time)
-    SELECT "ID", order_no, category, item, agent_utterance, validation_time
-      FROM _ji_checklist
-    ON CONFLICT ("ID", order_no) DO NOTHING;
-
-    INSERT INTO public.qa_evaluation_rows
+    INSERT INTO public.qa_call_item_score
         ("ID", order_no, category, item, reason_text, ai_eval, manual_eval)
     SELECT "ID", order_no, category, item, reason_text, ai_eval, manual_eval
       FROM _ji_eval
     ON CONFLICT ("ID", order_no) DO NOTHING;
 
-    INSERT INTO public.qa_conversations
+    -- 근거 발화 + 항목 만점 (구 qa_call_item_evidence 적재분 — 마이그레이션 67 로 병합).
+    -- max_score IS NULL 조건으로 기존 값 보존 (DO NOTHING 과 동일 의미).
+    UPDATE public.qa_call_item_score s
+       SET agent_utterance = c.agent_utterance,
+           max_score = CASE WHEN validation_time LIKE '배점%'
+                   THEN COALESCE(NULLIF(NULLIF(regexp_replace(validation_time, '[^0-9.]', '', 'g'), '')::numeric, 0), 5)
+                   ELSE 5 END
+      FROM _ji_checklist c
+     WHERE c."ID" = s."ID" AND c.order_no = s.order_no
+       AND s.max_score IS NULL;
+
+    INSERT INTO public.qa_call_transcript
         ("ID", turn_no, speaker, text)
     SELECT "ID", turn_no, speaker, text
       FROM _ji_conv
     ON CONFLICT ("ID", turn_no) DO NOTHING;
 
-    INSERT INTO public.qa_analysis_report
+    INSERT INTO public.qa_call_pentagon_result
         ("ID", item_type_no, item_type, rating, comment, summary)
     SELECT "ID", item_type_no, item_type, rating, comment, summary
       FROM _ji_analysis
@@ -573,7 +586,7 @@ BEGIN
         (target_org_id, 18, '개인정보 보호',    '정보 보호 준수',               NULL, NULL, '기본', 1, now(), NULL, now())
     ON CONFLICT (org_id, department, order_no, version) DO NOTHING;
 
-    RAISE NOTICE '지역정보개발원(org_id=%) 시드 완료: 8 콜, 144 체크리스트, 144 평가, qa_conversations, 40 분석, 18 평가항목', target_org_id;
+    RAISE NOTICE '지역정보개발원(org_id=%) 시드 완료: 8 콜, 144 체크리스트, 144 평가, qa_call_transcript, 40 분석, 18 평가항목', target_org_id;
 END $$;
 
 COMMIT;

@@ -67,16 +67,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_trainee_registrations_user_id ON public.tra
 -- 정의(tr.must_change_password 참조)가 깨지지 않도록 여기서 컬럼 존재를 보장한다(63 이 마지막에 다시 DROP).
 ALTER TABLE public.trainee_registrations ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
 
--- ── 3) auth_sessions (02/03 스키마 그대로 — 파리티용) ─────────
-CREATE TABLE IF NOT EXISTS public.auth_sessions (
-    session_id    varchar(36) PRIMARY KEY,
-    trainee_id    integer REFERENCES public.trainee_registrations(id) ON DELETE CASCADE,
-    issued_at     timestamp with time zone NOT NULL DEFAULT now(),
-    expires_at    timestamp with time zone NOT NULL,
-    last_seen_at  timestamp with time zone NOT NULL DEFAULT now(),
-    revoked       boolean NOT NULL DEFAULT false
-);
-CREATE INDEX IF NOT EXISTS ix_auth_sessions_trainee_id ON public.auth_sessions(trainee_id);
+-- ── 3) auth_sessions — 제거됨 (마이그레이션 71) ───────────────
+--    형제 프로젝트(02/03) 스키마 파리티용 자리표시자였고 MTG 코드 참조 0건·행 0건.
+--    로그인 세션은 서버 인메모리(Map, TTL 12h)에 있고 영속 기록은 users.last_active_trainee_id
+--    한 컬럼뿐이라 인증 경로에 전혀 개입하지 않았다.
+--    여기서 다시 만들면 71 이 매 기동 삭제하는 무의미한 생성→삭제 왕복이 된다.
 
 -- ── 4) admin_users → users 백필 ──────────────────────────────
 -- ICS 계정 판별: login_id 에 '@' 포함(= user_cd@proj_cd) → 합성 .ics

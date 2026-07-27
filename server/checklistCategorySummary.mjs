@@ -1,7 +1,7 @@
 /**
  * checklist_rows → 대분류별 "득점/만점" (scripts/seed_postgres_from_csv.py 의 build_checklist_category_earned_max_str 와 동일 목적)
  */
-import { parseMaxPointsFromValidationTime, parseStoredEarned } from './rubricManual.mjs';
+import { maxPointsOf, parseStoredEarned } from './rubricManual.mjs';
 
 // 신한카드 — 컬렉션관리부 9항목을 4 대분류로 묶어 노출.
 export const CHECKLIST_KEYS = [
@@ -98,7 +98,8 @@ export function buildChecklistYnKorFromChecklistRows(checklistRows, keys = CHECK
         let totalMax = 0;
         let totalEarned = 0;
         for (const row of rows) {
-            const m = parseMaxPointsFromValidationTime(row.validation_time);
+            const m = maxPointsOf(row);
+            if (m === null) continue;   // 만점 없음 = 분모 제외
             totalMax += m;
             const earned = parseStoredEarned(row.result, m, row.item);
             totalEarned += earned === null ? 0 : earned;

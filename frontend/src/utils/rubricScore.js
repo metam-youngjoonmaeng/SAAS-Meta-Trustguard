@@ -18,6 +18,27 @@ export function parseMaxPointsFromValidationTime(vt) {
     return Number.isFinite(n) && n > 0 ? n : 5;
 }
 
+/**
+ * 행의 항목 만점 — server/rubricManual.mjs::maxPointsOf 와 동일 규약.
+ *
+ * API 는 만점을 숫자 `max_score` 로 내려준다(qa_call_item_score). 정적 폴백 템플릿
+ * (constants.js)은 아직 문자열 `validation_time`('배점 10') 을 쓰므로 둘 다 받는다.
+ * 둘 다 없으면 null — 호출부가 '만점 미상' 을 스스로 판단하게 한다.
+ * ★ parseMaxPointsFromValidationTime 을 바로 부르면 값이 없을 때 조용히 5 점이 붙어
+ *   분모가 틀어지므로, 응답 행에는 반드시 이 함수를 쓴다.
+ */
+export function maxPointsOf(row) {
+    const ms = row?.max_score;
+    if (ms !== null && ms !== undefined && ms !== '') {
+        const n = Number(ms);
+        if (Number.isFinite(n) && n > 0) return n;
+    }
+    if (row?.validation_time !== null && row?.validation_time !== undefined) {
+        return parseMaxPointsFromValidationTime(row.validation_time);
+    }
+    return null;
+}
+
 export function rubricTierOptions(item, maxPts) {
     const it = String(item || '').trim();
     if (ITEM_TIER_OPTIONS[it]) {

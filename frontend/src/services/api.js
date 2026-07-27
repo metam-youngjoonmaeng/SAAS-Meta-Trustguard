@@ -389,7 +389,12 @@ export async function removeSkillset(qaId, orderNo) {
     );
 }
 
-/** 소비자보호부 20항목 Y/N 저장 → qa_consumer_eval_rows 갱신 */
+/**
+ * 소비자보호부 20항목 Y/N 저장 — 폐지됨.
+ * 신한 PoC 전용 트랙이 브랜드별 동적 루브릭(eval_item_defs)으로 세대교체되어
+ * 저장 대상 테이블(qa_consumer_*)이 제거(마이그레이션 66)됐다. 서버는 410 을 반환한다.
+ * 수기 점수 저장은 saveManualPatches(manual_patches) 를 사용할 것.
+ */
 export async function saveConsumerYnPatches(qaId, consumerYnPatches) {
     if (!qaId) throw new Error('qaId is required');
     return request(`/api/evaluations/${encodeURIComponent(qaId)}`, {
@@ -816,7 +821,7 @@ export async function fetchSkillLogRecent({ limit = 100 } = {}) {
 }
 
 /**
- * 에이전트 메모리(qa_skill_memory) 항목별 요약 — 실시간 로그 '메모리' 행 토글 상세.
+ * 에이전트 메모리(qa_skill_store) 항목별 요약 — 실시간 로그 '메모리' 행 토글 상세.
  * { ok, rubric_id, updated_at, items: [{ item_number, item_name, case_count, dir_high, dir_low,
  *   contested, cases[], patterns[], journal[], last_learned, effect }] }
  */
