@@ -26,7 +26,12 @@ import { buildRubricFromDefs, buildRubricFromDomainDefaults } from './rubricSync
 import { getOrgFewshot } from './ragFewshotConfig.mjs';
 // 순환 import(skillLearn ↔ 본 모듈)이지만 양쪽 다 함수 선언 export 를 런타임에만 호출 — ESM 안전.
 import { getActiveSkillOverlays } from './skillLearn.mjs';
-import { insertItemScoreRows, insertTranscriptRows } from './itemScoreIngest.mjs';
+import {
+    captureSticky,
+    insertItemScoreRows,
+    insertTranscriptRows,
+    restoreSticky,
+} from './itemScoreIngest.mjs';
 
 const DEFAULT_BASE_URL = 'http://localhost:8081';
 // EC2 원격 백엔드 (V3 qa-pipeline, 8081 직접 접근) — call.pipeline_target==='ec2' 시 사용.
@@ -1154,6 +1159,8 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
     try {
         await client.query('BEGIN');
         await client.query(`DELETE FROM qa_call_pentagon_result WHERE "ID" = $1`, [id]);
+        // 재적재는 채점 결과를 덮어쓰지만 '스킬 학습 제외' 지정(사람의 결정)은 보존한다.
+        const _sticky = await captureSticky(client, id);
         await client.query(`DELETE FROM qa_call_item_score WHERE "ID" = $1`, [id]);
         await client.query(`DELETE FROM qa_call_transcript WHERE "ID" = $1`, [id]);
         await client.query(
@@ -1187,6 +1194,7 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         // 항목 점수와 근거 발화는 qa_call_item_score 한 테이블로 병합 적재된다(마이그레이션 67).
         await insertTranscriptRows(client, id, conversation);
         await insertItemScoreRows(client, id, mapped.evaluations, mapped.checklist);
+        await restoreSticky(client, id, _sticky);
 
         // 펜타곤 축별 정성평가 적재 — 백엔드(pure pure_pentagon)가 생성한 축별 {rating,analysis,summary}
         // 를 qa_call_pentagon_result 에 기록 → 분석 라우트(GET /api/analysis)가 점수밴드 보일러플레이트

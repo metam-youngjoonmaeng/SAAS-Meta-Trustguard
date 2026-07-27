@@ -46,6 +46,40 @@ export function buildItemScoreRows(evaluations, checklist) {
 }
 
 /**
+ * 재적재(DELETE → INSERT) 를 가로질러 살아남아야 하는 '사람이 내린 결정' 을 보존한다.
+ *
+ * skill_excluded_at(스킬 학습 제외 지정)은 원래 별도 테이블 qa_skill_excluded 에 있어서
+ * 콜을 재평가해도 그대로 남았다. 마이그레이션 70 이 이를 qa_call_item_score 컬럼으로 흡수하면서
+ * 재적재가 지우는 행 안으로 들어갔고, 그대로 두면 재평가 한 번에 관리자의 제외 지정이 조용히 사라진다.
+ * 채점 결과(점수·사유)는 재평가로 덮어쓰는 게 맞지만 제외 지정은 아니다 → 지우기 전에 떠서 되돌린다.
+ *
+ * 사용법: DELETE 직전 captureSticky() → INSERT 직후 restoreSticky().
+ * @returns {Promise<Array<{order_no:number, skill_excluded_at:string}>>}
+ */
+export async function captureSticky(client, callId) {
+    const { rows } = await client.query(
+        `SELECT order_no, skill_excluded_at FROM qa_call_item_score
+          WHERE "ID" = $1 AND skill_excluded_at IS NOT NULL`,
+        [callId]
+    );
+    return rows;
+}
+
+/** captureSticky 로 뜬 값을 재적재된 행에 복원. 재적재로 사라진 항목(order_no)은 자연히 건너뛴다. */
+export async function restoreSticky(client, callId, sticky) {
+    if (!sticky || !sticky.length) return 0;
+    const { rowCount } = await client.query(
+        `UPDATE qa_call_item_score s
+            SET skill_excluded_at = x.skill_excluded_at
+           FROM jsonb_to_recordset($2::jsonb)
+                AS x(order_no int, skill_excluded_at timestamptz)
+          WHERE s."ID" = $1 AND s.order_no = x.order_no`,
+        [callId, JSON.stringify(sticky)]
+    );
+    return rowCount;
+}
+
+/**
  * 다중행 INSERT 1회. jsonb_to_recordset 은 텍스트→숫자 암묵 캐스팅을 관용하지 않으므로
  * buildItemScoreRows 가 숫자 컬럼을 미리 Number|null 로 정규화한다.
  * @param {import('pg').PoolClient} client 트랜잭션 클라이언트

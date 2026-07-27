@@ -1,7 +1,12 @@
 /* SAMPLE_UPLOAD_FEATURE — 임시 기능. 제거 시 이 파일 삭제 + index.js 의 SAMPLE_UPLOAD_FEATURE 마커 라인 제거 */
 
 import { CHECKLIST_TEMPLATE, CHECKLIST_KEYS, RADAR_KEYS, RADAR_REPORT_LABELS } from './sampleIngestConstants.mjs';
-import { insertItemScoreRows, insertTranscriptRows } from './itemScoreIngest.mjs';
+import {
+    captureSticky,
+    insertItemScoreRows,
+    insertTranscriptRows,
+    restoreSticky,
+} from './itemScoreIngest.mjs';
 
 const SAMPLE_ID_PREFIX = 'sample-';
 
@@ -250,6 +255,8 @@ export async function ingestSampleToDb(pool, input, output) {
         await client.query('BEGIN');
         // 같은 ID가 있으면 자식 row를 먼저 비우고 다시 채움 (단순·안전).
         await client.query(`DELETE FROM qa_call_pentagon_result WHERE "ID" = $1`, [rows.call.ID]);
+        // 재적재는 채점 결과를 덮어쓰지만 '스킬 학습 제외' 지정(사람의 결정)은 보존한다.
+        const _sticky = await captureSticky(client, rows.call.ID);
         await client.query(`DELETE FROM qa_call_item_score WHERE "ID" = $1`, [rows.call.ID]);
         await client.query(`DELETE FROM qa_call_transcript WHERE "ID" = $1`, [rows.call.ID]);
         // 샘플 업로드는 sandbox 데이터로 분류 — sandbox 세션 종료 시 is_sandbox=true 만 정리된다.
@@ -268,6 +275,7 @@ export async function ingestSampleToDb(pool, input, output) {
         // 전사 + 항목별 평가 — 각각 다중행 INSERT 1회. 점수와 근거는 병합 테이블 하나에 적재(마이그레이션 67).
         await insertTranscriptRows(client, rows.call.ID, rows.conversation);
         await insertItemScoreRows(client, rows.call.ID, rows.evaluations, rows.checklist);
+        await restoreSticky(client, rows.call.ID, _sticky);
         for (const r of rows.report) {
             await client.query(
                 `INSERT INTO qa_call_pentagon_result ("ID", item_type_no, item_type, rating, comment, summary)
