@@ -2375,9 +2375,16 @@ app.put('/api/evaluations/:qaId/admin-comments', async (req, res) => {
 });
 
 // 평가 콜 삭제 (관리자 전용, 벌크). body { ids:[qaId, ...] } 또는 { id:qaId } 단건 수용.
-//   qa_calls 행 삭제 시 자식 테이블(qa_call_item_score·qa_call_pentagon_result·qa_call_transcript·
-//   qa_golden_set·qa_call_review_event·qa_call_ksqi_score·qa_call_ksqi_summary·
-//   qa_call_emotion_recovery)이 FK ON DELETE CASCADE 로 함께 제거된다 — 별도 자식 DELETE 불필요.
+//   qa_calls 행 삭제 시 아래 자식은 FK ON DELETE CASCADE 로 함께 제거된다:
+//     qa_call_item_score · qa_call_pentagon_result · qa_call_transcript · qa_golden_set ·
+//     qa_call_review_event · qa_call_ksqi_score · qa_call_ksqi_summary · qa_call_annotation
+//   ★ qa_call_emotion_recovery 는 CASCADE 대상이 **아니다** — 명시 DELETE 필요 (2026-07-28).
+//     이 테이블은 qa_id/"ID" 컬럼이 없고 키가 (proj_cd, uid) 복합인데, 부모 qa_calls 에
+//     (proj_cd,"UID") UNIQUE 가 없고 proj_cd 가 nullable 이라 복합 FK 자체가 성립하지 않는다.
+//     종전 주석은 "CASCADE 로 함께 제거된다 — 별도 자식 DELETE 불필요" 라고 단정했으나
+//     실제 FK 가 없어 콜 삭제 후 도달 불가한 행이 잔존했다(선언과 실제 불일치).
+//     조인 키는 qa_calls(proj_cd, "UID") — 회복률 적재 쿼리(grp)가 쓰는 키와 동일.
+//     부모를 지우면 매핑이 사라지므로 반드시 qa_calls DELETE **앞에서** 지운다.
 //   sandbox 계정은 운영 행(is_sandbox=false) 삭제 불가 — 배치에 운영행 포함 시 전체 거부(평가/검수 PUT 가드 일관).
 //   SELECT(가드)→DELETE 를 한 트랜잭션으로 묶어 TOCTOU 방지.
 app.delete('/api/calls', requireAdmin, async (req, res) => {
@@ -2405,8 +2412,22 @@ app.delete('/api/calls', requireAdmin, async (req, res) => {
             res.status(403).json({ message: 'sandbox account cannot delete production calls' });
             return;
         }
+        // CASCADE 미적용 자식 — 부모 삭제 전에 (proj_cd, "UID") 매핑으로 직접 제거.
+        //   proj_cd/UID 가 NULL 인 콜은 애초에 회복률 적재 대상이 아니므로(grp 쿼리가
+        //   IS NOT NULL 필터) 매칭 0건이 정상이다.
+        const { rowCount: recoveryDeleted } = await client.query(
+            `DELETE FROM public.qa_call_emotion_recovery r
+                   USING public.qa_calls c
+                   WHERE c."ID" = ANY($1)
+                     AND c.proj_cd IS NOT NULL AND c."UID" IS NOT NULL
+                     AND r.proj_cd = c.proj_cd AND r.uid = c."UID"`,
+            [ids]
+        );
         const { rowCount } = await client.query('DELETE FROM qa_calls WHERE "ID" = ANY($1)', [ids]);
         await client.query('COMMIT');
+        if (recoveryDeleted > 0) {
+            console.log(`[calls:delete] qa_call_emotion_recovery ${recoveryDeleted} rows removed (no FK cascade)`);
+        }
         await insertQaAuditLog(pool, {
             req,
             action: 'QA_CALL_DELETE',
