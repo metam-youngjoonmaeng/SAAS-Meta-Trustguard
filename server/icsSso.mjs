@@ -80,10 +80,16 @@ export function normalizeIcsDate(v) {
 // USER_M 계정 1건 + AUTH_TYPE='S' 역할 한글명(AUTH_NM) 목록 조회. 미존재 시 null.
 async function fetchIcsUser(projCd, userCd) {
     const pool = getIcsPool();
+    // USER_NM 은 mtm30 에서 AES 암호화(HEX) 저장 → 복호화 뷰 v_user_dec 를 (PROJ_CD, USER_CD)
+    // 로 조인해 평문 실명(USER_NM_DEC)을 함께 가져온다. 뷰는 SECURITY DEFINER 로 복호화하므로
+    // ics_ro 는 뷰 SELECT 만으로 평문 취득(키·함수 미노출). PROJ_CD 로 조인해야 브랜드 간 USER_CD 중복 시 안 섞임.
     const [urows] = await pool.query(
-        `SELECT USER_ID, USER_CD, PROJ_CD, USER_PS, USER_STATUS,
-                USER_NM, EMAIL, TEAM_CD, STATION, JOIN_DATE, RETIRE_DATE, DUP_LOGIN_YN
-           FROM USER_M WHERE PROJ_CD = ? AND USER_CD = ?`,
+        `SELECT u.USER_ID, u.USER_CD, u.PROJ_CD, u.USER_PS, u.USER_STATUS,
+                v.USER_NM AS USER_NM_DEC, u.EMAIL, u.TEAM_CD,
+                u.STATION, u.JOIN_DATE, u.RETIRE_DATE, u.DUP_LOGIN_YN
+           FROM USER_M u
+           LEFT JOIN v_user_dec v ON v.PROJ_CD = u.PROJ_CD AND v.USER_CD = u.USER_CD
+          WHERE u.PROJ_CD = ? AND u.USER_CD = ?`,
         [projCd, userCd]
     );
     if (!urows || urows.length === 0) return null;
@@ -103,8 +109,8 @@ async function fetchIcsUser(projCd, userCd) {
         proj_cd: u.PROJ_CD,
         user_status: u.USER_STATUS,
         auth_nms: (arows || []).map((r) => r.auth_nm).filter(Boolean),
-        // 인사 필드(우리 trainee_registrations 로 동기화)
-        user_nm: u.USER_NM || null,
+        // 표시명 = ICS 실명(v_user_dec 복호화). 빈값이면 null → 호출부에서 코드 폴백.
+        user_nm: u.USER_NM_DEC != null && String(u.USER_NM_DEC).trim() !== '' ? String(u.USER_NM_DEC).trim() : null,
         email: u.EMAIL || null,
         team_cd: u.TEAM_CD || null,
         extension: u.STATION != null && String(u.STATION).trim() !== '' ? String(u.STATION).trim() : null,
@@ -164,8 +170,9 @@ export function createIcsSsoRouter(pool, { createSession }) {
 
         const role = mapRole(icsUser.auth_nms);
         const loginId = `${userCd}@${projCd}`.toLowerCase();
-        // ICS USER_NM/EMAIL 은 암호화 저장(복호화 키 없음) → 표시명은 userCd 유지.
-        const displayName = userCd;
+        // 표시명 = ICS 실명(v_user_dec 복호화 USER_NM). 없으면 코드(userCd) 폴백.
+        // SSO(ICS 병합) 모드는 ICS 가 이름 원천 → 로그인마다 실명으로 동기화(사용자관리 수동편집 비활성 원칙).
+        const displayName = icsUser.user_nm || userCd;
         const defaultOrgId = Number(process.env.ICS_SSO_DEFAULT_ORG_ID || 0) || null;
         // ICS 사용자는 SSO 전용 — 직접 로그인 불가하도록 랜덤(매칭 불가) 해시.
         const randomHash = crypto.randomBytes(32).toString('hex');
