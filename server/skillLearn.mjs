@@ -7,6 +7,8 @@
  *      + 루브릭 파일스토어 사전 등록(POST /v2/rubrics, 멱등·실패 무시)
  *   ③ 정정 케이스 수집(qa_call_item_score ⋈ qa_calls — 승인콜·비샌드박스,
  *      manual_eval_option ∈ '낮음'|'높음') + 콜단위 검수사유(qa_call_review_event 최신 1건, 일괄 조회)
+ *      + 콜 전사(qa_call_transcript 일괄 조회 → transcript_body, TRANSCRIPT_CAP 앞뒤 보존 절단).
+ *      전사 없이 근거 발화만 주면 "앞뒤 맥락 때문에 그 발화가 정당했다" 류 정정을 LLM 이 못 가린다.
  *   ④ POST {base}/v2/mtg-skill/{rubric_id}/generate (auto_activate) — 버전 생성·저장·활성화는
  *      qa-pipeline 담당(MTG 는 프록시·수집만)
  *
@@ -27,6 +29,11 @@ const RUBRIC_REGISTER_TIMEOUT_MS = 30_000; // 루브릭 사전 등록(멱등) �
 const EVIDENCE_CAP = 1000; // 근거 발화(agent_utterance) 상한
 const CALL_REASON_CAP = 500; // 콜단위 검수사유 상한
 const DEFAULT_CASE_LIMIT = 200; // 케이스 수집 기본 상한(최신순)
+// 콜 전사(transcript_body) 상한. 근거 발화만으로는 "앞뒤 맥락 때문에 그 발화가 정당했다" 류의
+//   정정을 LLM 이 판단할 수 없어 전사를 동봉한다(골든 색인의 transcript_body 와 같은 취지).
+//   초과분은 앞·뒤를 함께 남긴다 — QA 항목이 첫인사(앞)와 끝인사(뒤) 양쪽에 걸려 있어
+//   머리만 자르면 종료 구간 항목의 근거가 통째로 사라진다.
+const TRANSCRIPT_CAP = 6000;
 
 function safeStr(value) {
     return value === null || value === undefined ? '' : String(value);
@@ -35,6 +42,25 @@ function safeStr(value) {
 function asNumber(value) {
     const n = Number(value);
     return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * 전사 상한 적용 — 초과 시 앞·뒤를 절반씩 남기고 가운데를 생략 표시로 접는다.
+ * 머리만 자르면(slice) 종료 구간(끝인사·마무리 안내) 항목의 근거가 사라지므로 양끝을 보존한다.
+ * 턴 경계(\n)에서 자르기 때문에 발화가 중간에 잘려 화자가 뒤섞이지 않는다.
+ */
+function capTranscript(text) {
+    const s = safeStr(text);
+    if (s.length <= TRANSCRIPT_CAP) return s;
+    const half = Math.floor(TRANSCRIPT_CAP / 2);
+    const head = s.slice(0, half);
+    const tail = s.slice(-half);
+    // 잘린 조각 안의 불완전한 턴 제거 — head 는 마지막 개행까지, tail 은 첫 개행 이후만.
+    const headCut = head.slice(0, Math.max(head.lastIndexOf('\n'), 0) || head.length);
+    const tailIdx = tail.indexOf('\n');
+    const tailCut = tailIdx >= 0 ? tail.slice(tailIdx + 1) : tail;
+    const omitted = s.length - headCut.length - tailCut.length;
+    return `${headCut}\n… (중략 ${omitted}자) …\n${tailCut}`;
 }
 
 /** 스킬 학습 base URL — 골든 학습(ingestGoldenSetToRag)과 동일하게 EC2 타깃 기본. */
@@ -199,11 +225,12 @@ export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMI
           ORDER BY c."CDATE" DESC LIMIT $2`,
         [orgId, lim]
     );
-    if (!rows.length) return { rows: [], callReasons: {} };
+    if (!rows.length) return { rows: [], callReasons: {}, transcripts: {} };
+    const qaIds = [...new Set(rows.map((r) => String(r.qa_id)))];
+
     // 콜단위 검수사유 — 케이스별 개별 조회 대신 qa_id 묶음 1회 조회(qa_id 별 최신 1건). 없으면 생략.
     const callReasons = {};
     try {
-        const qaIds = [...new Set(rows.map((r) => String(r.qa_id)))];
         const { rows: ev } = await pool.query(
             `SELECT DISTINCT ON (qa_id) qa_id, reason
                FROM qa_call_review_event
@@ -218,7 +245,31 @@ export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMI
     } catch (e) {
         logger.warn(`[skill-learn] 콜단위 검수사유 조회 실패(생략하고 진행): ${e?.message || e}`);
     }
-    return { rows, callReasons };
+
+    // 콜 전사 — 케이스가 참조하는 콜 전량을 ANY($1) 단일 조회로 가져온다.
+    //   골든 색인(ingestGoldenSetToRag)은 콜별 개별 SELECT(N+1)지만, 여기는 케이스 상한이 200건이라
+    //   참조 콜도 유한해 한 번에 끝낸다. 조회 실패는 생략하고 진행 — 전사가 없어도 학습은 돈다.
+    const transcripts = {};
+    try {
+        const { rows: tr } = await pool.query(
+            `SELECT "ID" AS qa_id, speaker, "text" AS text
+               FROM public.qa_call_transcript
+              WHERE "ID" = ANY($1::text[])
+              ORDER BY "ID", turn_no`,
+            [qaIds]
+        );
+        const byCall = new Map();
+        for (const t of tr) {
+            const k = String(t.qa_id);
+            if (!byCall.has(k)) byCall.set(k, []);
+            byCall.get(k).push(`${safeStr(t.speaker)}: ${safeStr(t.text)}`);
+        }
+        for (const [k, lines] of byCall) transcripts[k] = capTranscript(lines.join('\n'));
+    } catch (e) {
+        logger.warn(`[skill-learn] 콜 전사 조회 실패(생략하고 진행): ${e?.message || e}`);
+    }
+
+    return { rows, callReasons, transcripts };
 }
 
 /**
@@ -508,7 +559,7 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
 
     // ③ 정정 케이스 수집 — order_no→item_number 매핑 불가(비활성/미존재 항목) 행은 제외.
     emit({ stage: 'collect' });
-    const { rows, callReasons } = await collectSkillCases(pool, orgId, { limit: opts.limit });
+    const { rows, callReasons, transcripts } = await collectSkillCases(pool, orgId, { limit: opts.limit });
     const cases = rows
         .map((r) => {
             const orderNo = asNumber(r.order_no);
@@ -524,6 +575,10 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
                 ai_reason: safeStr(r.reason_text),
                 evidence: safeStr(r.agent_utterance).slice(0, EVIDENCE_CAP),
             };
+            // 콜 전사 — 근거 발화 한 대목만으로는 앞뒤 맥락 판단이 안 되므로 동봉.
+            //   없는 콜(전사 미적재)은 필드를 아예 빼서 백엔드가 '(없음)' 으로 처리하게 한다.
+            const transcript = transcripts[String(r.qa_id)];
+            if (transcript) c.transcript_body = transcript;
             const callReason = callReasons[String(r.qa_id)];
             if (callReason) c.call_reason = callReason.slice(0, CALL_REASON_CAP);
             const dt = fmtDateTime(r.CDATE);
