@@ -41,6 +41,11 @@ export function buildItemScoreRows(evaluations, checklist) {
             manual_eval: toNum(e.manual_eval),
             agent_utterance: ch ? (ch.agent_utterance ?? null) : null,
             max_score: ch ? maxPointsOf(ch) : null,
+            // 항목별 AI 신뢰도 — 평가 백엔드가 응답에 실어 보내는 원값을 그대로 보관(마이그레이션 74).
+            //   필드명 규약이 아직 확정 전이라 ai_confidence / confidence 둘 다 수용.
+            //   ★ 값이 없으면 null 로 남긴다 — 0 으로 채우면 '신뢰도 0' 과 구분이 사라진다.
+            //   ★ 스케일(0~1 vs 0~100) 환산을 여기서 하지 않는다 — 규약 확정 후 조회측에서 해석.
+            ai_confidence: toNum(e.ai_confidence ?? e.confidence),
         };
     });
 }
@@ -90,13 +95,13 @@ export async function insertItemScoreRows(client, callId, evaluations, checklist
     await client.query(
         `INSERT INTO qa_call_item_score
              ("ID", order_no, category, item, reason_text, ai_eval, manual_eval,
-              agent_utterance, max_score)
+              agent_utterance, max_score, ai_confidence)
          SELECT $1, r.order_no, r.category, r.item, r.reason_text, r.ai_eval, r.manual_eval,
-                r.agent_utterance, r.max_score
+                r.agent_utterance, r.max_score, r.ai_confidence
            FROM jsonb_to_recordset($2::jsonb)
                 AS r(order_no int, category text, item text, reason_text text,
                      ai_eval float8, manual_eval float8,
-                     agent_utterance text, max_score numeric)`,
+                     agent_utterance text, max_score numeric, ai_confidence numeric)`,
         [callId, JSON.stringify(rows)]
     );
     return rows.length;

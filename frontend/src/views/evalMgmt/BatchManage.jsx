@@ -6,7 +6,6 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Icon, PageHead, Modal, Tabs } from './ui';
 import {
     fetchBatchConfig, saveBatchConfig, previewBatch, fetchBatchEvalItems,
-    fetchBatchPrompt, saveBatchPrompt, rejudgeConfidence, fetchRejudgeStatus, fetchBatchPromptHistory,
     runBatchNow, runGoldenLearn, fetchGoldenLearnStatus, fetchGoldenLearnCoverage,
     runSkillLearn, fetchSkillLearnStatus, fetchSkillVersions,
 } from '../../services/api';
@@ -170,396 +169,9 @@ function FilterCard({ idx, icon, title, tag, desc, on, onToggle, est, children }
     );
 }
 
-// 판정 기준 수정(연필) 버튼 — 서브룰 우측. 클릭 시 프롬프트 편집 모달 오픈(해당 섹션 포커스).
-function PencilBtn({ onClick, title }) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            title={title}
-            style={{
-                width: 28, height: 28, borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0,
-                background: 'transparent', border: 0, color: 'var(--ink-500)', transition: 'color .12s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-500)'; }}
-        >
-            <Icon name="pencil" size={15} />
-        </button>
-    );
-}
-
-const taStyle = {
-    width: '100%', minHeight: 132, padding: '10px 12px', background: 'white', border: '1px solid var(--border-strong)',
-    borderRadius: 10, fontSize: 13, fontFamily: 'inherit', color: 'var(--ink-900)', outline: 'none', lineHeight: 1.6, resize: 'vertical',
-    boxSizing: 'border-box',
-};
-
-// ── 단어 단위 diff(LCS) — AI QA 항목관리 변경이력(EvalItems)과 동일 로직. 공백/개행 토큰 보존. ──
-function diffTokenize(s) {
-    return String(s ?? '').split(/(\s+)/).filter((t) => t.length > 0);
-}
-// 초대형 입력용 줄 단위 폴백 — 토큰² 폭주 방지.
-function diffOpsByLine(aStr, bStr) {
-    const a = String(aStr ?? '').split(/(\n)/).filter((t) => t.length > 0);
-    const b = String(bStr ?? '').split(/(\n)/).filter((t) => t.length > 0);
-    const n = a.length, m = b.length;
-    const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
-    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
-        dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-    }
-    const ops = []; let i = 0, j = 0;
-    while (i < n && j < m) {
-        if (a[i] === b[j]) { ops.push({ t: 'eq', v: a[i] }); i++; j++; }
-        else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ t: 'del', v: a[i] }); i++; }
-        else { ops.push({ t: 'ins', v: b[j] }); j++; }
-    }
-    while (i < n) { ops.push({ t: 'del', v: a[i] }); i++; }
-    while (j < m) { ops.push({ t: 'ins', v: b[j] }); j++; }
-    return ops;
-}
-function diffOps(aStr, bStr) {
-    const a = diffTokenize(aStr), b = diffTokenize(bStr);
-    const n = a.length, m = b.length;
-    if (n * m > 9000000) return diffOpsByLine(aStr, bStr); // 성능 가드
-    const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
-    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
-        dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-    }
-    const ops = []; let i = 0, j = 0;
-    while (i < n && j < m) {
-        if (a[i] === b[j]) { ops.push({ t: 'eq', v: a[i] }); i++; j++; }
-        else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ t: 'del', v: a[i] }); i++; }
-        else { ops.push({ t: 'ins', v: b[j] }); j++; }
-    }
-    while (i < n) { ops.push({ t: 'del', v: a[i] }); i++; }
-    while (j < m) { ops.push({ t: 'ins', v: b[j] }); j++; }
-    return ops;
-}
-// 변경 강조: mode='before' → 삭제분 빨강, 'after' → 추가분 초록. 반대편 변경분은 숨김.
-function DiffText({ value, other, mode }) {
-    const cur = value === null || value === undefined ? '' : String(value);
-    if (cur === '') return <span style={{ fontStyle: 'italic', color: 'var(--ink-300)' }}>(없음)</span>;
-    const oth = other === null || other === undefined ? '' : String(other);
-    const before = mode === 'before' ? cur : oth;
-    const after = mode === 'before' ? oth : cur;
-    const ops = diffOps(before, after);
-    return (
-        <>
-            {ops.map((op, idx) => {
-                if (op.t === 'eq') return <span key={idx}>{op.v}</span>;
-                if (mode === 'before' && op.t === 'del') return <mark key={idx} style={{ background: 'var(--destructive-soft)', color: 'var(--destructive)', borderRadius: 3, padding: '0 2px' }}>{op.v}</mark>;
-                if (mode === 'after' && op.t === 'ins') return <mark key={idx} style={{ background: 'var(--success-soft)', color: 'var(--success)', borderRadius: 3, padding: '0 2px' }}>{op.v}</mark>;
-                return null;
-            })}
-        </>
-    );
-}
-
-const DIFF_FIELDS = [
-    { key: 'uncertain_def', label: '불확실 표현' },
-    { key: 'contradiction_def', label: '근거–점수 모순' },
-];
-
-// ② 판정 프롬프트 편집 — 두 정의문(불확실/모순)을 한 모달에서 편집. 저장 시 변경되면 재판정 트리거.
-// focus='uncertain'|'contradiction' — 클릭한 섹션을 강조/자동포커스.
-function PromptEditModal({ focus, onClose, onChanged }) {
-    const isUnc = focus === 'uncertain';
-    const critLabel = isUnc ? '불확실 표현' : '근거–점수 모순';
-    const [loading, setLoading] = useState(true);
-    const [u, setU] = useState('');   // 두 정의문 모두 로드 — 화면엔 focus 하나만 보이지만 저장 시 둘 다 전송(미편집분 보존).
-    const [c, setC] = useState('');
-    const [meta, setMeta] = useState(null);
-    const [busy, setBusy] = useState(false);       // 저장(PUT) 진행 — 버튼/입력 잠금
-    const [rejudging, setRejudging] = useState(false); // 기존 평가 재판정 — 백그라운드(닫아도 계속)
-    const [status, setStatus] = useState(null); // 재판정 진행상황
-    const [msg, setMsg] = useState(null);        // { type, text }
-    const [view, setView] = useState('edit');    // 'edit' | 'history'
-    const [history, setHistory] = useState(null); // null=미로드, []=이력없음
-    const [histExpanded, setHistExpanded] = useState(null); // 펼친 버전
-
-    useEffect(() => {
-        let alive = true;
-        fetchBatchPrompt()
-            .then((r) => {
-                if (!alive || !r?.ok) return;
-                setU(r.uncertain_def || '');
-                setC(r.contradiction_def || '');
-                setMeta(r);
-            })
-            .catch(() => setMsg({ type: 'error', text: '프롬프트 조회 실패' }))
-            .finally(() => { if (alive) setLoading(false); });
-        return () => { alive = false; };
-    }, []);
-
-    const restoreDefaults = () => {
-        if (!meta) return;
-        if (isUnc) setU(meta.default_uncertain_def || '');
-        else setC(meta.default_contradiction_def || '');
-        setMsg({ type: 'info', text: '기본값으로 되돌렸습니다. 저장해야 적용됩니다.' });
-    };
-
-    const pollUntilDone = useCallback(async () => {
-        // running 이 false 가 될 때까지 1.5s 간격 폴링.
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-            await new Promise((r) => setTimeout(r, 1500));
-            let s;
-            try { s = await fetchRejudgeStatus(); } catch { return; }
-            setStatus(s);
-            if (!s.running) return s;
-        }
-    }, []);
-
-    const openHistory = useCallback(async () => {
-        setView('history');
-        setHistExpanded(null);
-        try {
-            const r = await fetchBatchPromptHistory();
-            setHistory(r?.items || []);
-        } catch { setHistory([]); }
-    }, []);
-
-    const fmtTs = (s) => {
-        if (!s) return '';
-        const d = new Date(s);
-        if (Number.isNaN(d.getTime())) return String(s);
-        const p = (n) => String(n).padStart(2, '0');
-        return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-    };
-
-    const handleSave = async () => {
-        // 1) 저장(PUT) — 빠르고 블로킹. 끝나면 버튼 잠금 해제(닫기 가능).
-        setBusy(true); setMsg(null); setStatus(null);
-        let saved;
-        try {
-            saved = await saveBatchPrompt({ uncertain_def: u, contradiction_def: c });
-        } catch (e) {
-            setMsg({ type: 'error', text: '저장 실패: ' + (e?.message || '오류') });
-            setBusy(false);
-            return;
-        }
-        setBusy(false);
-        if (saved.unchanged) { setMsg({ type: 'info', text: '변경 사항이 없습니다.' }); return; }
-        onChanged?.();
-        if (!meta?.judge_enabled) {
-            setMsg({ type: 'warn', text: `저장 완료 (v${saved.version}). GEMINI_API_KEY 미설정 — 새 기준은 이후 평가부터 적용됩니다.` });
-            return;
-        }
-        // 2) 기존 평가 재판정 — 백그라운드. 모달을 닫아도 서버에서 계속 진행된다.
-        setMsg({ type: 'done', text: `저장 완료 (v${saved.version}). 기존 ${saved.stale_count}콜은 백그라운드에서 재판정 중 — 닫으셔도 됩니다.` });
-        setRejudging(true);
-        setStatus({ running: true, done: 0, total: saved.stale_count });
-        try {
-            await rejudgeConfidence();
-            const fin = await pollUntilDone();
-            const n = fin?.result?.done ?? fin?.done ?? saved.stale_count;
-            setMsg({ type: 'done', text: `저장 완료 · 기존 ${n}콜 재판정 반영됨.` });
-            onChanged?.();
-        } catch (e) {
-            setMsg({ type: 'warn', text: '저장은 완료됐지만 재판정 실패: ' + (e?.message || '오류') });
-        } finally {
-            setRejudging(false);
-        }
-    };
-
-    const msgColor = msg?.type === 'error' ? 'var(--danger, var(--cat-payment))'
-        : msg?.type === 'warn' ? 'var(--warning-ink, var(--warning))'
-        : msg?.type === 'done' ? 'var(--success-ink, var(--success))' : 'var(--primary)';
-
-    const isHistory = view === 'history';
-    const editFoot = (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-            <button
-                type="button" onClick={restoreDefaults} disabled={busy || loading}
-                style={{ background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit' }}
-            >
-                기본값 복원
-            </button>
-            <div style={{ flex: 1 }} />
-            <button
-                type="button" onClick={busy ? undefined : onClose} disabled={busy}
-                style={{ background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit' }}
-            >
-                닫기
-            </button>
-            <button
-                type="button" onClick={handleSave} disabled={busy || loading}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--primary)', color: 'white', border: 0, padding: '9px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: busy || loading ? 'default' : 'pointer', fontFamily: 'inherit', opacity: busy || loading ? 0.6 : 1 }}
-            >
-                <Icon name="save" size={15} />{busy ? '저장 중…' : '저장'}
-            </button>
-        </div>
-    );
-    const historyFoot = (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-            <button
-                type="button" onClick={() => setView('edit')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
-            >
-                <Icon name="chevron-left" size={15} />편집으로
-            </button>
-            <div style={{ flex: 1 }} />
-            <button
-                type="button" onClick={onClose}
-                style={{ background: 'white', border: '1px solid var(--border-strong)', color: 'var(--ink-600)', padding: '9px 14px', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
-            >
-                닫기
-            </button>
-        </div>
-    );
-
-    return (
-        <Modal
-            title={isHistory ? '판정 기준 변경 이력' : `${critLabel} — 판정 기준 수정`}
-            width={isHistory ? 880 : 620}
-            onClose={busy ? undefined : onClose}
-            foot={isHistory ? historyFoot : editFoot}
-        >
-            {loading ? (
-                <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-500)', fontSize: 13 }}>불러오는 중…</div>
-            ) : isHistory ? (
-                <HistoryView
-                    history={history} expanded={histExpanded} onToggle={setHistExpanded} fmtTs={fmtTs}
-                    baseUncertain={meta?.default_uncertain_def || ''}
-                    baseContradiction={meta?.default_contradiction_def || ''}
-                />
-            ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    {/* 헤더 액션 — 공용 Modal 헤더는 수정 불가라 본문 상단 우측에 '변경이력' 배치. */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: -4 }}>
-                        <button
-                            type="button" onClick={openHistory} disabled={busy}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'transparent', border: 0, color: 'var(--ink-500)', fontSize: 12, fontWeight: 600, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', padding: '2px 4px' }}
-                            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-500)'; }}
-                        >
-                            <Icon name="history" size={14} />변경이력
-                        </button>
-                    </div>
-
-                    <div style={{ fontSize: 12, color: 'var(--ink-500)', lineHeight: 1.55, background: 'var(--warning-soft)', border: '1px solid var(--warning-border)', borderRadius: 8, padding: '9px 12px' }}>
-                        <Icon name="info" size={13} style={{ verticalAlign: '-2px', marginRight: 5, color: 'var(--warning-ink)' }} />
-                        AI가 매긴 점수·근거를 LLM이 읽고 판정합니다. 출력 형식 같은 골격은 시스템이 고정하고, 아래 <strong>판단 기준</strong>만 수정합니다. 저장하면 새 기준이 적용되고, 기존 평가는 백그라운드에서 다시 판정됩니다.
-                    </div>
-
-                    <div style={{ padding: 14, borderRadius: 12, background: 'var(--background-soft)', border: '1px solid var(--border-soft)' }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)', marginBottom: 6 }}>{critLabel}로 판정할 기준</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--ink-500)', marginBottom: 8, lineHeight: 1.5 }}>
-                            {isUnc
-                                ? '근거 문장이 단정하지 못하고 추측·인상에 기댄 경우를 무엇으로 볼지 적습니다.'
-                                : '근거 내용과 부여된 점수의 방향이 어긋나는 경우를 무엇으로 볼지 적습니다.'}
-                        </div>
-                        <textarea
-                            value={isUnc ? u : c}
-                            onChange={(e) => (isUnc ? setU : setC)(e.target.value)}
-                            disabled={busy} autoFocus style={{ ...taStyle, minHeight: 200 }}
-                        />
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, color: 'var(--ink-500)' }}>
-                        <span>모델 {meta?.model || '—'}</span>
-                        <span>·</span>
-                        <span>현재 버전 v{meta?.version ?? 0}{meta?.is_default ? ' (기본값)' : ''}</span>
-                        {!meta?.judge_enabled && <span style={{ color: 'var(--warning-ink)' }}>· 판정 키 미설정</span>}
-                    </div>
-
-                    {status && status.running && (
-                        <div style={{ fontSize: 12.5, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Icon name="loader" size={14} />재판정 중… {status.done ?? 0}/{status.total ?? '—'}콜
-                        </div>
-                    )}
-                    {msg && (
-                        <div style={{ fontSize: 12.5, color: msgColor, fontWeight: 600, lineHeight: 1.5 }}>{msg.text}</div>
-                    )}
-                </div>
-            )}
-        </Modal>
-    );
-}
-
-// 변경 이력 뷰 — 버전별 스냅샷 목록(최신순). 행 클릭 시 그 버전의 두 정의문 전체 노출(읽기전용).
-// 직전(더 오래된) 버전과 비교해 어떤 기준이 바뀌었는지 배지로 표시.
-function HistoryView({ history, expanded, onToggle, fmtTs, baseUncertain = '', baseContradiction = '' }) {
-    // 가장 오래된 항목의 '이전'은 시스템 기본값(v0). 첫 변경도 기본값 대비 diff 로 보이게 한다.
-    const baseline = { version: 0, uncertain_def: baseUncertain, contradiction_def: baseContradiction, isBaseline: true };
-    const prevOf = (idx) => history?.[idx + 1] || baseline;
-    if (history === null) {
-        return <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-500)', fontSize: 13 }}>이력 불러오는 중…</div>;
-    }
-    if (history.length === 0) {
-        return (
-            <div style={{ padding: 28, textAlign: 'center', color: 'var(--ink-500)', fontSize: 13, lineHeight: 1.6 }}>
-                <Icon name="history" size={22} style={{ color: 'var(--ink-300)', marginBottom: 8 }} />
-                <div>아직 변경 이력이 없습니다.</div>
-                <div style={{ fontSize: 11.5 }}>현재 기본값으로 동작 중 — 저장하면 이력이 쌓입니다.</div>
-            </div>
-        );
-    }
-    const changedLabels = (idx) => {
-        const cur = history[idx];
-        const prev = prevOf(idx); // 더 오래된 버전(없으면 기본값 v0)
-        const out = [];
-        if ((cur.uncertain_def || '') !== (prev.uncertain_def || '')) out.push('불확실 표현');
-        if ((cur.contradiction_def || '') !== (prev.contradiction_def || '')) out.push('근거–점수 모순');
-        return out.length ? out : ['변경'];
-    };
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {history.map((h, idx) => {
-                const open = expanded === h.version;
-                return (
-                    <div key={h.version} style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'white', overflow: 'hidden' }}>
-                        <button
-                            type="button" onClick={() => onToggle(open ? null : h.version)}
-                            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', background: 'transparent', border: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
-                        >
-                            <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)', fontVariantNumeric: 'tabular-nums', minWidth: 30 }}>v{h.version}</span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                    {changedLabels(idx).map((lbl) => (
-                                        <span key={lbl} style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 9999, background: 'var(--primary-soft-flat)', color: 'var(--primary)' }}>{lbl}</span>
-                                    ))}
-                                </div>
-                                <div style={{ fontSize: 11.5, color: 'var(--ink-500)', marginTop: 4 }}>
-                                    {fmtTs(h.updated_at)}{h.updated_by_name ? ` · ${h.updated_by_name}` : ''}
-                                </div>
-                            </div>
-                            <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} style={{ color: 'var(--ink-400)' }} />
-                        </button>
-                        {open && (
-                            <div style={{ borderTop: '1px solid var(--border-soft)', background: 'var(--background-soft)', padding: 13, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                {(() => {
-                                    const prev = prevOf(idx); // 더 오래된 버전(없으면 기본값 v0)
-                                    const prevLabel = prev.isBaseline ? '기본값' : `v${prev.version}`;
-                                    const changed = DIFF_FIELDS.filter((f) => (h[f.key] || '') !== (prev[f.key] || ''));
-                                    if (changed.length === 0) {
-                                        return <div style={{ fontSize: 11.5, fontStyle: 'italic', color: 'var(--ink-500)' }}>이 버전에서 바뀐 기준이 없습니다.</div>;
-                                    }
-                                    return changed.map((f) => (
-                                        <div key={f.key}>
-                                            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-700)', marginBottom: 5 }}>{f.label}</div>
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'white' }}>
-                                                <div style={{ padding: '6px 10px', background: 'var(--background-soft)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border-soft)', fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--ink-500)' }}>이전 ({prevLabel})</div>
-                                                <div style={{ padding: '6px 10px', background: 'var(--primary-soft-flat)', borderBottom: '1px solid var(--border-soft)', fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--primary)' }}>현재 (v{h.version})</div>
-                                                <div style={{ padding: '9px 10px', borderRight: '1px solid var(--border)', fontSize: 12, color: 'var(--ink-600)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
-                                                    <DiffText value={prev[f.key]} other={h[f.key]} mode="before" />
-                                                </div>
-                                                <div style={{ padding: '9px 10px', fontSize: 12, color: 'var(--ink-900)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
-                                                    <DiffText value={h[f.key]} other={prev[f.key]} mode="after" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ));
-                                })()}
-                            </div>
-                        )}
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
+// 구 Gemini 판정 프롬프트 UI(PencilBtn · diff 렌더러 · PromptEditModal · HistoryView) 제거 —
+//   신뢰도는 평가 백엔드가 응답에 실어 보내고(qa_call_item_score.ai_confidence) 임계값만
+//   배치 설정(config.confidence.threshold)에 저장하므로 편집·재판정 화면이 필요 없다.
 
 export default function BatchManage() {
     // 조건 on/off
@@ -571,8 +183,17 @@ export default function BatchManage() {
     const setQk = (k, v) => setQ((s) => ({ ...s, [k]: v }));
 
     // ② AI 신뢰도 (weak '근거 빈약'은 기준 모호 + 과검출(53%)로 제외 — 불확실 표현·근거-점수 모순만)
-    const [c, setC] = useState({ uncertain: true, contradiction: true });
+    // ② AI 신뢰도 — 평가 백엔드가 준 항목별 ai_confidence 임계 미달 선별.
+    //   threshold: null = 미설정(조건 비활성). 백엔드 스케일(0~1 vs 0~100) 규약 확정 전이라
+    //   기본값을 두지 않는다 — 기본값이 있으면 값이 들어오는 순간 전건 도장이 될 수 있다.
+    //   입력 중 빈 문자열('')은 그대로 보관하고 저장 시점에만 null 로 정규화(타이핑 중 리셋 방지).
+    const [c, setC] = useState({ threshold: null });
     const setCk = (k, v) => setC((s) => ({ ...s, [k]: v }));
+    // 저장/미리보기용 정규화 — '' 또는 숫자 아님 → null.
+    const cThreshold = useMemo(() => {
+        const n = Number(c.threshold);
+        return c.threshold === null || c.threshold === '' || !Number.isFinite(n) ? null : n;
+    }, [c.threshold]);
     const [excluded, setExcluded] = useState(new Set()); // 제외할 평가항목 order_no 집합(기본: 전 항목 포함)
     const toggleExcluded = (key) => setExcluded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
     const [evalItems, setEvalItems] = useState([]); // 실제 평가된 항목(order_no+item) — ② 적용 항목 칩
@@ -599,8 +220,7 @@ export default function BatchManage() {
     const [loaded, setLoaded] = useState(false);
     const [saving, setSaving] = useState(false);
     const [savedAt, setSavedAt] = useState(null);
-    const [promptModal, setPromptModal] = useState(null);  // null | 'uncertain' | 'contradiction'
-    const [previewNonce, setPreviewNonce] = useState(0);    // 재판정 후 미리보기 강제 갱신
+    const [previewNonce, setPreviewNonce] = useState(0);    // 배치 저장/실행 후 미리보기 강제 갱신
     const [batchView, setBatchView] = useState('eval');     // 'eval' | 'golden' — 평가배치/골든셋배치 분리 토글
     // 골든셋 규모/학습 기준일(정밀) — 골든 탭 진입 + 학습 실행 후(nonce) 로드. ★effect(아래)에서 참조하므로
     //   반드시 그 effect 보다 먼저 선언(TDZ ReferenceError 회피 — 매 렌더 deps 평가 시점 초기화 완료 보장).
@@ -613,7 +233,7 @@ export default function BatchManage() {
     // 현재 화면 state → 서버 config 직렬화(Set→배열).
     // '점수·표본 검증'(①) 통합: 무작위·고점(bias)은 카드 마스터(on.quality)와 동행 — 카드를 켜면 함께 적용.
     const config = useMemo(() => ({
-        on: { ...on, bias: on.quality }, quality: q, confidence: { ...c, excluded: Array.from(excluded) }, tenure, bias, scope,
+        on: { ...on, bias: on.quality }, quality: q, confidence: { threshold: cThreshold, excluded: Array.from(excluded) }, tenure, bias, scope,
         golden: { excluded: Array.from(goldenExcluded) },
         skill: { excluded: Array.from(skillExcluded) },
     }), [on, q, c, excluded, tenure, bias, scope, goldenExcluded, skillExcluded]);
@@ -629,9 +249,10 @@ export default function BatchManage() {
                     if (cfg.on) setOn((s) => ({ ...s, ...cfg.on }));
                     if (cfg.quality) setQ((s) => ({ ...s, ...cfg.quality }));
                     if (cfg.confidence) {
-                        const { excluded: ex, ...rest } = cfg.confidence;
-                        setC((s) => ({ ...s, ...rest }));
-                        if (Array.isArray(ex)) setExcluded(new Set(ex));
+                        // 구 스키마(uncertain/contradiction — Gemini 판정 시절)는 무시하고 threshold 만 채택.
+                        const th = Number(cfg.confidence.threshold);
+                        setC({ threshold: Number.isFinite(th) ? th : null });
+                        if (Array.isArray(cfg.confidence.excluded)) setExcluded(new Set(cfg.confidence.excluded));
                     }
                     if (cfg.tenure) setTenure((s) => ({ ...s, ...cfg.tenure }));
                     if (cfg.bias) setBias((s) => ({ ...s, ...cfg.bias }));
@@ -1084,18 +705,31 @@ export default function BatchManage() {
                     </SubRule>
                 </FilterCard>
 
-                {/* ② AI 신뢰도 검증 */}
+                {/* ② AI 신뢰도 검증 — 평가 백엔드가 항목별로 보내는 신뢰도(ai_confidence) 임계 미달 선별 */}
                 <FilterCard idx={2} icon="scan-search" title="AI 신뢰도 검증" tag="AI 오판 보정" est={cardEst('confidence')}
-                    desc="AI 평가 근거가 불확실하거나 점수와 모순되는 콜을 선별합니다."
+                    desc="평가 백엔드가 산출한 항목별 AI 신뢰도가 기준보다 낮은 콜을 선별합니다."
                     on={on.confidence} onToggle={() => toggle('confidence')}>
-                    <SubRule on={c.uncertain} onToggle={() => setCk('uncertain', !c.uncertain)} label="불확실 표현 포함"
-                        desc={'근거 문장에 "~같음", "애매", "판단 어려움" 등 불확실 표현이 있는 경우'}>
-                        <PencilBtn title="불확실 표현 판정 기준 수정" onClick={() => setPromptModal('uncertain')} />
+                    <SubRule on={c.threshold !== null} onToggle={() => setCk('threshold', c.threshold === null ? '' : null)}
+                        label="신뢰도 미달" desc="항목 중 하나라도 AI 신뢰도가 기준 미만이면 검토 대상">
+                        <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>신뢰도</span>
+                        <input type="number" step="any" value={c.threshold ?? ''}
+                            placeholder="미설정"
+                            onChange={(e) => setCk('threshold', e.target.value)}
+                            style={{ ...bInput, width: 76 }} />
+                        <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>미만</span>
                     </SubRule>
-                    <SubRule on={c.contradiction} onToggle={() => setCk('contradiction', !c.contradiction)} label="근거–점수 모순"
-                        desc="근거는 부정적인데 점수가 높게 부여된 경우">
-                        <PencilBtn title="근거-점수 모순 판정 기준 수정" onClick={() => setPromptModal('contradiction')} />
-                    </SubRule>
+                    {/* 임계값 미설정이면 조건이 꺼진 상태 — '왜 0건인지' 를 화면에 명시한다. */}
+                    {on.confidence && c.threshold === null && (
+                        <div style={{ fontSize: 11, color: 'var(--ink-500)', lineHeight: 1.5, background: 'var(--warning-soft)', border: '1px solid var(--warning-border)', borderRadius: 8, padding: '8px 11px' }}>
+                            <Icon name="info" size={12} style={{ verticalAlign: '-2px', marginRight: 4, color: 'var(--warning-ink)' }} />
+                            임계값이 설정되지 않아 선별되지 않습니다. 평가 백엔드가 보내는 신뢰도의 실제 분포를 확인한 뒤 기준을 정하세요.
+                        </div>
+                    )}
+                    {preview?.conditions?.confidence?.note && (
+                        <div style={{ fontSize: 11, color: 'var(--ink-500)', padding: '2px 4px', lineHeight: 1.5 }}>
+                            {preview.conditions.confidence.note}
+                        </div>
+                    )}
 
                     {/* 적용 평가 항목 선택 */}
                     <div style={{ marginTop: 4, padding: '12px 14px', borderRadius: 10, background: 'white', border: '1px solid var(--border)' }}>
@@ -1472,13 +1106,6 @@ export default function BatchManage() {
                 </button>
             </div>
 
-            {promptModal && (
-                <PromptEditModal
-                    focus={promptModal}
-                    onClose={() => setPromptModal(null)}
-                    onChanged={() => setPreviewNonce((n) => n + 1)}
-                />
-            )}
         </div>
     );
 }

@@ -17,10 +17,13 @@
 --    효과: "이 브랜드 루브릭이 언제 어떻게 바뀌었나" 를 UNION 없이 한 번에 조회.
 --
 -- 병합하지 않은 1:1 쌍 (의도적 보류)
---   qa_batch_configs + qa_batch_prompts : 둘 다 org_id PK 지만 '배치 조건' vs '판정 프롬프트'로
+--   qa_batch_configs + qa_confidence_prompt : 둘 다 org_id 기준이지만 '배치 조건' vs '판정 프롬프트'로
 --       관심사가 다르고 updated_by 감사 주체가 갈린다. org_id 일치는 우연.
---   qa_call_comment + qa_call_confidence : 사람이 쓰는 코멘트 vs 배치가 쓰는 AI 판정.
---       쓰기 경로·수명이 달라 한 행을 두 주체가 갱신하게 되면 오히려 나빠진다.
+--       (프롬프트 쪽은 70 에서 현재본+이력을 qa_confidence_prompt 로 합쳤을 뿐, 조건과는 여전히 별개)
+--
+-- ※ qa_call_comment + qa_call_confidence 는 이 시점엔 보류했으나 71 에서 qa_call_annotation 으로
+--    병합했다. 갱신이 서로 다른 컬럼만 건드리는 UPSERT(배치=judgments/has_*, 사용자=comments)라
+--    한 행을 공유해도 충돌하지 않는다는 걸 확인했기 때문. 판단 근거는 71 헤더 참조.
 --
 -- 멱등: 신규 테이블 IF NOT EXISTS, 이관은 원본이 남아 있을 때만, DROP 은 IF EXISTS.
 -- 롤백: logs/dbbackup/qa_dashboard_before_optimize.sql

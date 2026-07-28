@@ -42,15 +42,28 @@ CREATE TABLE IF NOT EXISTS public.qa_call_annotation (
     judged_at         timestamptz
 );
 
+-- ★ 판정 컬럼(judgments/has_*/prompt_version/model/judged_at)은 마이그레이션 75 에서 제거됐다.
+--   시더가 매 기동 02~75 를 재적용하므로, 75 를 이미 지난 DB 에서 이 블록이 그대로 돌면
+--   "column judgments does not exist" 로 시더 전체가 죽는다(실측 exit 3).
+--   → 컬럼 존재 여부로 가드해, 75 미적용 DB(첫 부팅·레거시)에서만 병합·색인한다.
 DO $$
+DECLARE
+    has_judgment_cols boolean := EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'qa_call_annotation'
+           AND column_name = 'judgments'
+    );
 BEGIN
+    -- 관리자 코멘트는 계속 살아있는 기능 — 무조건 병합.
     IF to_regclass('public.qa_call_comment') IS NOT NULL THEN
         INSERT INTO public.qa_call_annotation (qa_id, comments, comments_at)
         SELECT qa_id, COALESCE(comments, '[]'::jsonb), updated_at FROM public.qa_call_comment
         ON CONFLICT (qa_id) DO UPDATE
             SET comments = EXCLUDED.comments, comments_at = EXCLUDED.comments_at;
     END IF;
-    IF to_regclass('public.qa_call_confidence') IS NOT NULL THEN
+
+    IF has_judgment_cols AND to_regclass('public.qa_call_confidence') IS NOT NULL THEN
         INSERT INTO public.qa_call_annotation
             (qa_id, judgments, has_uncertain, has_weak, has_contradiction, prompt_version, model, judged_at)
         SELECT qa_id, judgments, has_uncertain, has_weak, has_contradiction, prompt_version, model, judged_at
@@ -64,15 +77,17 @@ BEGIN
                 model = EXCLUDED.model,
                 judged_at = EXCLUDED.judged_at;
     END IF;
+
+    -- 검수 우선순위 선별(신뢰도 플래그로 콜 필터)용 — 플래그 컬럼이 있을 때만.
+    IF has_judgment_cols THEN
+        EXECUTE 'CREATE INDEX IF NOT EXISTS idx_qa_call_annotation_flags'
+             || ' ON public.qa_call_annotation (qa_id)'
+             || ' WHERE has_uncertain OR has_weak OR has_contradiction';
+    END IF;
 END $$;
 
 DROP TABLE IF EXISTS public.qa_call_comment    CASCADE;
 DROP TABLE IF EXISTS public.qa_call_confidence CASCADE;
-
--- 검수 우선순위 선별(신뢰도 플래그로 콜 필터)용
-CREATE INDEX IF NOT EXISTS idx_qa_call_annotation_flags
-    ON public.qa_call_annotation (qa_id)
-    WHERE has_uncertain OR has_weak OR has_contradiction;
 
 COMMENT ON TABLE public.qa_call_annotation IS
     '콜 부가정보(콜당 1행). comments=관리자 코멘트(사람), judgments/has_*=AI 신뢰도 판정(배치). 구 qa_call_comment + qa_call_confidence 병합.';

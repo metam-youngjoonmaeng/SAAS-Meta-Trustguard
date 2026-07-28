@@ -27,11 +27,6 @@ import { fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion, push
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
 import { callAnswerStats, ipccEnabled } from './xhubSource.mjs';
 import { taEnabled, fetchTaMetricsByUids, fetchSegmentSentimentsByUids, fetchNegativeCallsByUids, fetchForbiddenCallsByUids } from './taSource.mjs';
-import {
-    buildSystemPrompt, resolvePromptParts, judgeEnabled, judgeModel,
-    DEFAULT_UNCERTAIN_DEF, DEFAULT_CONTRADICTION_DEF,
-} from './geminiJudge.mjs';
-import { runJudgeBackfill } from './judgeConfidence.mjs';
 import { applyManualReviewStamps } from './manualReview.mjs';
 import { randomUUID } from 'node:crypto';
 import { createBrandRouter } from './brandRoutes.mjs';
@@ -6118,10 +6113,11 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
         const bHigh = num(bias.highThreshold, 101);
         const bHighRel = bias.highMode === 'rel';        // 평균점수 이상: 상대값(평균 대비 +N) | 절대값
         const bHighRelPts = num(bias.highRel, 0);
-        // ② 신뢰도 — 저장된 LLM 판정(qa_call_annotation)을 선택 항목으로 스코프해서 필터.
-        const uncOn = !!conf.uncertain;
-        const conOn = !!conf.contradiction;
-        const confOn = !!(on.confidence && (uncOn || conOn));
+        // ② 신뢰도 — 평가 백엔드가 준 항목별 신뢰도(qa_call_item_score.ai_confidence) 임계 미달.
+        //   임계값 미설정(null)이면 조건 비활성. 도장 로직(manualReview.mjs)과 동일 식.
+        const cThresholdRaw = Number(conf.threshold);
+        const cThreshold = Number.isFinite(cThresholdRaw) ? cThresholdRaw : null;
+        const confOn = !!(on.confidence && cThreshold !== null);
         // 적용 평가 항목: excluded(order_no 배열) 제외 = 나머지만 검사. 빈 배열이면 전 항목.
         const excluded = Array.isArray(conf.excluded)
             ? conf.excluded.map((x) => Number(x)).filter((n) => Number.isInteger(n))
@@ -6139,36 +6135,38 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
         const tsOn = !!(on.tenure && tenure.senior);
         const tsY = Math.max(0, Math.round(num(tenure.seniorYears, 5)));
 
-        const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, confOn, uncOn, conOn, excluded, randomOn, randomPct, tjOn, tjM, tsOn, tsY, bHighRel, bHighRelPts];
+        const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, confOn, cThreshold, excluded, randomOn, randomPct, tjOn, tjM, tsOn, tsY, bHighRel, bHighRelPts];
         let orgClause = '';
         if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
 
         const sql = `
             WITH scoped AS (
-                SELECT c."ID" AS id, c."TOTAL_SCORE"::numeric AS score, c.duration_sec, cj.judgments,
+                SELECT c."ID" AS id, c."TOTAL_SCORE"::numeric AS score, c.duration_sec,
                        tr.hire_date AS hire_date
                   FROM qa_calls c
-                  LEFT JOIN qa_call_annotation cj ON cj.qa_id = c."ID"
                   LEFT JOIN trainee_registrations tr ON tr.user_id = c.agent_user_id
                  WHERE c.is_sandbox = false ${orgClause}
             ), in_scope AS (
-                SELECT id, score, duration_sec, judgments, hire_date FROM scoped
+                SELECT id, score, duration_sec, hire_date FROM scoped
                  WHERE duration_sec IS NOT NULL AND duration_sec >= $1 AND duration_sec < $2
             ), agg AS (
                 SELECT avg(score) AS org_avg FROM in_scope
             ), flagged AS (
                 SELECT
                     ($3 AND ( ($4 AND a.org_avg IS NOT NULL AND i.score <= a.org_avg - $5) OR (NOT $4 AND i.score < $6) )) AS q_match,
-                    ($7 AND ( ($19 AND a.org_avg IS NOT NULL AND i.score >= a.org_avg + $20) OR (NOT $19 AND i.score >= $8) )) AS b_match,
+                    ($7 AND ( ($18 AND a.org_avg IS NOT NULL AND i.score >= a.org_avg + $19) OR (NOT $18 AND i.score >= $8) )) AS b_match,
                     ($9 AND EXISTS (
-                        SELECT 1 FROM jsonb_array_elements(coalesce(i.judgments, '[]'::jsonb)) e
-                         WHERE NOT ((e->>'order_no')::int = ANY($12::int[]))
-                           AND ( ($10 AND (e->>'uncertain')::boolean) OR ($11 AND (e->>'contradiction')::boolean) )
+                        SELECT 1 FROM qa_call_item_score er
+                         WHERE er."ID" = i.id AND er.ai_confidence IS NOT NULL
+                           AND er.ai_confidence < $10::numeric
+                           AND NOT (er.order_no = ANY($11::int[]))
                     )) AS c_match,
-                    ($13 AND (((hashtext(i.id) % 100) + 100) % 100) < $14) AS r_match,
-                    ($15 AND i.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND i.hire_date::date >= (CURRENT_DATE - make_interval(months => $16))) AS te_j_match,
-                    ($17 AND i.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND i.hire_date::date <= (CURRENT_DATE - make_interval(years  => $18))) AS te_s_match,
-                    (i.judgments IS NOT NULL) AS judged
+                    ($12 AND (((hashtext(i.id) % 100) + 100) % 100) < $13) AS r_match,
+                    ($14 AND i.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND i.hire_date::date >= (CURRENT_DATE - make_interval(months => $15))) AS te_j_match,
+                    ($16 AND i.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND i.hire_date::date <= (CURRENT_DATE - make_interval(years  => $17))) AS te_s_match,
+                    -- 신뢰도 수신 여부 — 백엔드가 이 콜에 ai_confidence 를 하나라도 보냈나(진단 표시용).
+                    EXISTS (SELECT 1 FROM qa_call_item_score er2
+                             WHERE er2."ID" = i.id AND er2.ai_confidence IS NOT NULL) AS judged
                   FROM in_scope i CROSS JOIN agg a
             )
             SELECT
@@ -6206,8 +6204,20 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
                         note: '평균점수 미달만 반영 — 필수항목 기준 미정' }
                     : { supported: true, count: 0, note: '비활성' },
                 confidence: on.confidence
-                    ? { supported: true, count: r.confidence_cnt, judged: r.judged_cnt,
-                        note: r.judged_cnt < r.in_scope_cnt ? `LLM 판정 ${r.judged_cnt}/${r.in_scope_cnt}콜 (미판정분 재판정 필요)` : null }
+                    ? {
+                        supported: true,
+                        count: r.confidence_cnt,
+                        judged: r.judged_cnt,
+                        threshold: cThreshold,
+                        // 임계값 미설정이면 조건이 꺼진 상태 — 화면에 '왜 0건인지' 를 명시해야 한다.
+                        note: cThreshold === null
+                            ? '신뢰도 임계값 미설정 — 값을 지정해야 선별됩니다'
+                            : r.judged_cnt === 0
+                                ? `평가 백엔드 신뢰도 미수신 (0/${r.in_scope_cnt}콜)`
+                                : r.judged_cnt < r.in_scope_cnt
+                                    ? `신뢰도 수신 ${r.judged_cnt}/${r.in_scope_cnt}콜 — 미수신분은 선별 대상 아님`
+                                    : null,
+                    }
                     : { supported: true, count: 0, note: '비활성' },
                 risk:       { supported: false, count: 0, note: '리스크 기준(금칙어·고객신호) 정의 대기' },
                 tenure: on.tenure
@@ -6228,80 +6238,16 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
     }
 });
 
-// ── AI 신뢰도 검증 ② 판정 프롬프트(B안) — 두 정의문 편집 + 재판정 ──────────────
-// v1: 단일 전역 판정 프롬프트(org 0). 브랜드별 프롬프트는 후속(runJudgeBackfill orgId 인자화 동반).
-const PROMPT_ORG = 0;
-
-// 재판정 잡 상태(인프로세스 1개). 프롬프트가 전역(org 0)이라 잡도 전역 1개로 충분.
-// API 재기동 시 중단돼도 멱등(재실행이 남은 콜만 다시 처리).
-let rejudgeJob = { running: false, started_at: null, finished_at: null, done: 0, total: null, result: null, error: null };
-
-// GET /api/batch/prompt — 편집 UI 용. 두 정의문(불확실/모순) + 메타 + 판정 가용 여부.
-app.get('/api/batch/prompt', requireAdmin, async (req, res) => {
-    try {
-        const p = await resolvePromptParts(pool, PROMPT_ORG);
-        res.json({
-            ok: true,
-            uncertain_def: p.uncertainDef,
-            contradiction_def: p.contradictionDef,
-            default_uncertain_def: DEFAULT_UNCERTAIN_DEF,
-            default_contradiction_def: DEFAULT_CONTRADICTION_DEF,
-            version: p.version,
-            is_default: p.isDefault,
-            updated_at: p.updatedAt,
-            judge_enabled: judgeEnabled(),
-            model: judgeModel(),
-        });
-    } catch (e) {
-        console.error('GET /api/batch/prompt error:', e?.message || e);
-        res.status(500).json({ ok: false, message: '판정 프롬프트 조회 실패' });
-    }
-});
-
-// PUT /api/batch/prompt — 두 정의문 저장(변경 시 version 증가 → 기존 판정 stale → 재판정 대상).
-// body: { uncertain_def, contradiction_def }. 빈 값/기본값과 동일하면 NULL 저장(기본값 폴백).
-app.put('/api/batch/prompt', requireAdmin, async (req, res) => {
-    const inU = String(req.body?.uncertain_def ?? '').trim();
-    const inC = String(req.body?.contradiction_def ?? '').trim();
-    try {
-        const cur = await resolvePromptParts(pool, PROMPT_ORG);
-        const newU = inU || DEFAULT_UNCERTAIN_DEF;
-        const newC = inC || DEFAULT_CONTRADICTION_DEF;
-        // 변경 없음 → 불필요한 version 증가/재판정 방지.
-        if (newU === cur.uncertainDef.trim() && newC === cur.contradictionDef.trim()) {
-            return res.json({ ok: true, version: cur.version, unchanged: true, stale_count: 0 });
-        }
-        const storeU = newU === DEFAULT_UNCERTAIN_DEF ? null : newU;
-        const storeC = newC === DEFAULT_CONTRADICTION_DEF ? null : newC;
-        const systemPrompt = buildSystemPrompt({ uncertainDef: newU, contradictionDef: newC });
-        const updatedBy = req.session?.user_id ?? null;
-        // 현재본과 이력이 한 테이블로 통합(마이그레이션 70) — 새 버전 행을 append 하면
-        // 그 자체가 현재본(=org 별 최대 version)이자 이력이 된다. 별도 history INSERT 불필요.
-        const { rows } = await pool.query(
-            `INSERT INTO public.qa_confidence_prompt
-                 (org_id, version, system_prompt, uncertain_def, contradiction_def,
-                  updated_at, updated_by, updated_by_name)
-             SELECT $1,
-                    COALESCE((SELECT MAX(version) FROM public.qa_confidence_prompt WHERE org_id = $1), 0) + 1,
-                    $2, $3, $4, now(), $5, $6
-             RETURNING version`,
-            [PROMPT_ORG, systemPrompt, storeU, storeC, updatedBy, req.session?.display_name ?? null]
-        );
-        const version = rows[0]?.version ?? 1;
-        const { rows: sc } = await pool.query(
-            `SELECT count(*)::int AS n FROM qa_calls c
-              WHERE c.is_sandbox = false
-                AND EXISTS (SELECT 1 FROM qa_call_item_score er WHERE er."ID" = c."ID")
-                AND NOT EXISTS (SELECT 1 FROM qa_call_annotation j
-                                 WHERE j.qa_id = c."ID" AND j.prompt_version = $1)`,
-            [version]
-        );
-        res.json({ ok: true, version, unchanged: false, stale_count: sc[0]?.n ?? 0 });
-    } catch (e) {
-        console.error('PUT /api/batch/prompt error:', e?.message || e);
-        res.status(500).json({ ok: false, message: '판정 프롬프트 저장 실패' });
-    }
-});
+// ── ② AI 신뢰도 검증 ─────────────────────────────────────────────────────────
+// 신뢰도 출처 = 평가 백엔드가 응답에 실어 보내는 항목별 신뢰도
+//   → qa_call_item_score.ai_confidence (마이그레이션 74).
+// 구 구현(geminiJudge.mjs / judgeConfidence.mjs / qa_confidence_prompt + 판정 프롬프트 편집·재판정
+//   API 5개)은 마이그레이션 75 에서 제거했다. 이유: 평가 본선은 resolvePipelineBaseUrl() 로
+//   라우팅되는데 Gemini 판정기만 그 함수를 거치지 않고 외부(generativelanguage.googleapis.com)로
+//   직행해, 평가 백엔드와 무관하게 동작했다(실사용도 0 — 키 미설정·판정 0행).
+// 임계값은 config.confidence.threshold — 미설정(null)이면 조건 비활성(매칭 0건).
+//   ★ 백엔드 신뢰도 스케일(0~1 vs 0~100) 규약이 확정 전이므로 기본값을 두지 않는다.
+//     기본값을 넣으면 값이 들어오기 시작할 때 전건 도장 같은 사고가 난다.
 
 // POST /api/batch/run — 수기평가 대상 도장 즉시 실행(수동 트리거). 배치주기 '수동'/'매일'/'매시간'에서
 //   '지금 실행' 버튼이 호출. in-scope 전체 미도장 대상에 도장(멱등·누적). body 없음.
@@ -6314,61 +6260,6 @@ app.post('/api/batch/run', requireAdmin, async (req, res) => {
         console.error('POST /api/batch/run error:', e?.message || e);
         res.status(500).json({ ok: false, message: '배치 실행 실패' });
     }
-});
-
-// GET /api/batch/prompt/history — 판정 프롬프트 변경 이력(버전별 스냅샷, 최신순). 읽기전용.
-app.get('/api/batch/prompt/history', requireAdmin, async (req, res) => {
-    try {
-        const { rows } = await pool.query(
-            `SELECT version, uncertain_def, contradiction_def, updated_at, updated_by, updated_by_name
-               FROM public.qa_confidence_prompt
-              WHERE org_id = $1
-              ORDER BY version DESC, id DESC
-              LIMIT 100`,
-            [PROMPT_ORG]
-        );
-        res.json({ ok: true, items: rows });
-    } catch (e) {
-        console.error('GET /api/batch/prompt/history error:', e?.message || e);
-        res.status(500).json({ ok: false, message: '변경 이력 조회 실패' });
-    }
-});
-
-// POST /api/batch/rejudge — 현재 프롬프트 버전으로 미판정 콜 재판정(백그라운드 비동기).
-// 즉시 반환하고 진행상황은 GET /api/batch/rejudge/status 로 폴링.
-app.post('/api/batch/rejudge', requireAdmin, async (req, res) => {
-    if (!judgeEnabled()) {
-        return res.status(400).json({ ok: false, message: 'GEMINI_API_KEY 미설정 — 재판정 불가' });
-    }
-    if (rejudgeJob.running) {
-        return res.json({ ok: true, running: true, already: true, done: rejudgeJob.done, total: rejudgeJob.total });
-    }
-    rejudgeJob = { running: true, started_at: new Date().toISOString(), finished_at: null, done: 0, total: null, result: null, error: null };
-    // fire-and-forget. 예외는 잡 상태에 기록(프로세스 안 죽게).
-    runJudgeBackfill(pool, {
-        limit: 1000,
-        orgId: PROMPT_ORG,
-        onProgress: ({ done, total }) => { rejudgeJob.done = done; rejudgeJob.total = total; },
-    })
-        .then((r) => {
-            rejudgeJob.running = false;
-            rejudgeJob.finished_at = new Date().toISOString();
-            rejudgeJob.total = r.total;
-            rejudgeJob.done = r.done;
-            rejudgeJob.result = r;
-        })
-        .catch((e) => {
-            rejudgeJob.running = false;
-            rejudgeJob.finished_at = new Date().toISOString();
-            rejudgeJob.error = e?.message || String(e);
-            logger.warn(`[rejudge] 실패: ${rejudgeJob.error}`);
-        });
-    res.json({ ok: true, started: true });
-});
-
-// GET /api/batch/rejudge/status — 재판정 진행상황 폴링.
-app.get('/api/batch/rejudge/status', requireAdmin, (req, res) => {
-    res.json({ ok: true, ...rejudgeJob });
 });
 
 bootstrap()

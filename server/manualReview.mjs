@@ -6,8 +6,12 @@
  *   - 사유는 카드·세부규칙 수준 한글 라벨(상세 배지용): "저품질 검증 · 평균점수 미달" 등
  *   - 누적: 한 번 찍히면 유지(manual_review_at 은 최초 시각), 재실행은 사유만 갱신, 해제 안 함
  *   - qaIds 주면 그 콜들만 재계산(실시간/판정직후), 없으면 in-scope 전체
- * 지원 조건: 저품질(평균점수 미달)·신뢰도(불확실/모순)·편향(비정상 고점·무작위 표본)·근속(신입/장기근속).
- * 필수항목·리스크(금칙어·고객신호)는 아직 도장 대상 아님(데이터/정의 대기).
+ * 지원 조건: 저품질(평균점수 미달)·신뢰도(ai_confidence 임계 미달)·편향(비정상 고점·무작위 표본)·
+ *   근속(신입/장기근속). 리스크(금칙어·고객신호)는 아직 도장 대상 아님(정의 대기).
+ *
+ * ★ 신뢰도 출처 = qa_call_item_score.ai_confidence (평가 백엔드가 응답에 실어 보내는 항목별 신뢰도).
+ *   구 구현은 Gemini 를 직접 호출해 qa_call_annotation.judgments 에 { uncertain / contradiction } 을
+ *   재판정하는 2차 레이어였고, 마이그레이션 75 에서 제거했다(평가 백엔드 라우팅을 우회했고 실사용 0).
  */
 import { logger } from './logger.mjs';
 
@@ -46,8 +50,12 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
     const bHigh = num(bias.highThreshold, 101);
     const bHighRel = bias.highMode === 'rel';        // 평균점수 이상: 상대값(평균 대비 +N) | 절대값
     const bHighRelPts = num(bias.highRel, 0);
-    const uncOn = !!(on.confidence && conf.uncertain);
-    const conOn = !!(on.confidence && conf.contradiction);
+    // ② 신뢰도 — 평가 백엔드가 준 항목별 신뢰도(qa_call_item_score.ai_confidence)가 임계 미달인 콜.
+    //   임계값 미설정(null)이면 조건 자체를 끈다. 기본값을 두지 않는 것은 의도 —
+    //   백엔드 스케일(0~1 vs 0~100) 규약 확정 전에 기본값을 넣으면 값이 들어오는 순간 전건 도장이 된다.
+    const cThresholdRaw = Number(conf.threshold);
+    const cThreshold = Number.isFinite(cThresholdRaw) ? cThresholdRaw : null;
+    const confOn = !!(on.confidence && cThreshold !== null);
     const excluded = Array.isArray(conf.excluded) ? conf.excluded.map(Number).filter(Number.isInteger) : [];
     // ⑤ 무작위 표본(편향점검) — 결정적 해시 샘플링: 콜별 고정이라 멱등(재실행해도 같은 집합, 누적 없음).
     const rOn = !!(on.bias && bias.random);
@@ -59,9 +67,9 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
     const tsOn = !!(on.tenure && tenure.senior);
     const tsY = Math.max(0, Math.round(num(tenure.seniorYears, 5)));
 
-    if (!qOn && !bHighOn && !uncOn && !conOn && !rOn && !tjOn && !tsOn) return 0; // 활성(지원) 조건 없음
+    if (!qOn && !bHighOn && !confOn && !rOn && !tjOn && !tsOn) return 0; // 활성(지원) 조건 없음
 
-    const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, uncOn, conOn, excluded, rOn, rPct, tjOn, tjM, tsOn, tsY, bHighRel, bHighRelPts];
+    const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, confOn, cThreshold, excluded, rOn, rPct, tjOn, tjM, tsOn, tsY, bHighRel, bHighRelPts];
     let orgClause = '';
     if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
     let idClause = '';
@@ -76,15 +84,14 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
         SELECT c."ID" AS id,
           ($3 AND (($4 AND a.org_avg IS NOT NULL AND c."TOTAL_SCORE" <= a.org_avg - $5) OR (NOT $4 AND c."TOTAL_SCORE" < $6))) AS q,
           ($7 AND (($18 AND a.org_avg IS NOT NULL AND c."TOTAL_SCORE" >= a.org_avg + $19) OR (NOT $18 AND c."TOTAL_SCORE" >= $8))) AS b,
-          ($9 AND EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(cj.judgments,'[]'::jsonb)) e
-                   WHERE NOT ((e->>'order_no')::int = ANY($11::int[])) AND (e->>'uncertain')::boolean)) AS cf_unc,
-          ($10 AND EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(cj.judgments,'[]'::jsonb)) e
-                   WHERE NOT ((e->>'order_no')::int = ANY($11::int[])) AND (e->>'contradiction')::boolean)) AS cf_con,
+          ($9 AND EXISTS (SELECT 1 FROM qa_call_item_score er
+                   WHERE er."ID" = c."ID" AND er.ai_confidence IS NOT NULL
+                     AND er.ai_confidence < $10::numeric
+                     AND NOT (er.order_no = ANY($11::int[])))) AS cf,
           ($12 AND (((hashtext(c."ID") % 100) + 100) % 100) < $13) AS r,
           ($14 AND tr.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND tr.hire_date::date >= (CURRENT_DATE - make_interval(months => $15))) AS te_j,
           ($16 AND tr.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND tr.hire_date::date <= (CURRENT_DATE - make_interval(years  => $17))) AS te_s
         FROM qa_calls c
-        LEFT JOIN qa_call_annotation cj ON cj.qa_id = c."ID"
         LEFT JOIN trainee_registrations tr ON tr.user_id = c.agent_user_id
         CROSS JOIN agg a
         WHERE c.is_sandbox = false ${orgClause}
@@ -95,15 +102,14 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
         manual_review = true,
         manual_review_reasons =
             (CASE WHEN m.q      THEN jsonb_build_array('점수·표본 검증 · 평균점수 미달') ELSE '[]'::jsonb END)
-         || (CASE WHEN m.cf_unc THEN jsonb_build_array('AI 신뢰도 검증 · 불확실 표현') ELSE '[]'::jsonb END)
-         || (CASE WHEN m.cf_con THEN jsonb_build_array('AI 신뢰도 검증 · 근거-점수 모순') ELSE '[]'::jsonb END)
+         || (CASE WHEN m.cf     THEN jsonb_build_array('AI 신뢰도 검증 · 신뢰도 미달') ELSE '[]'::jsonb END)
          || (CASE WHEN m.b      THEN jsonb_build_array('점수·표본 검증 · 평균점수 이상') ELSE '[]'::jsonb END)
          || (CASE WHEN m.r      THEN jsonb_build_array('점수·표본 검증 · 무작위 표본') ELSE '[]'::jsonb END)
          || (CASE WHEN m.te_j   THEN jsonb_build_array('대상자 특정 · 신입 상담사') ELSE '[]'::jsonb END)
          || (CASE WHEN m.te_s   THEN jsonb_build_array('대상자 특정 · 장기 근속') ELSE '[]'::jsonb END),
         manual_review_at = COALESCE(t.manual_review_at, now())
       FROM matched m
-      WHERE t."ID" = m.id AND (m.q OR m.b OR m.cf_unc OR m.cf_con OR m.r OR m.te_j OR m.te_s)
+      WHERE t."ID" = m.id AND (m.q OR m.b OR m.cf OR m.r OR m.te_j OR m.te_s)
       RETURNING t."ID"`;
 
     try {
@@ -115,17 +121,6 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
     }
 }
 
-/** judgeConfidence 등에서 여러 콜(여러 org일 수 있음)을 org별로 묶어 도장. */
-export async function stampByQaIds(pool, qaIds) {
-    const ids = (qaIds || []).filter(Boolean);
-    if (!ids.length) return 0;
-    const { rows } = await pool.query(
-        `SELECT DISTINCT org_id FROM qa_calls WHERE "ID" = ANY($1)`,
-        [ids]
-    );
-    let total = 0;
-    for (const r of rows) {
-        total += await applyManualReviewStamps(pool, r.org_id ?? 0, { qaIds: ids });
-    }
-    return total;
-}
+// stampByQaIds(여러 콜을 org별로 묶어 도장)는 유일 호출자였던 judgeConfidence.mjs 와 함께 제거(75).
+//   지금은 실시간 도장(icsQaPoller — 단일 org 컨텍스트)과 '지금 실행'(POST /api/batch/run)만 남아
+//   applyManualReviewStamps 를 직접 호출한다. org 혼재 묶음 도장이 다시 필요해지면 되살릴 것.
