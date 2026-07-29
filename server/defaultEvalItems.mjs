@@ -1,6 +1,7 @@
 // 신규 브랜드 생성 시 eval_item_defs 에 기본 시드되는 18 항목.
 // 원본: 01-QA_Dashboard/src/constants.js 의 CHECKLIST_TEMPLATE (STT 상담 품질 평가표).
 // criterion / prompt_template 는 NULL — UI 에서 운영자가 추후 작성.
+// ★통합DB: org_id(int) → tenant_id(citext). 테이블은 search_path(trustguard,common,public)로 해석.
 
 export const DEFAULT_EVAL_ITEMS = [
     { order_no: 1,  category: '인사 예절',         item: '첫인사' },
@@ -23,60 +24,58 @@ export const DEFAULT_EVAL_ITEMS = [
     { order_no: 18, category: '개인정보 보호',     item: '정보 보호 준수' },
 ];
 
-// 신규 브랜드(id≥4) 최소 시드 — '첫인사' 1항목만. 코오롱 표준 18항목 자동 상속 차단.
-// (요구: 신규 브랜드는 텅 빈 상태에서 첫인사만 — 나머지는 운영자가 UI 에서 추가)
+// 신규 브랜드 최소 시드 — '첫인사' 1항목만. 표준 18항목 자동 상속 차단.
 export const MINIMAL_EVAL_ITEMS = [
     { order_no: 1, category: '인사 예절', item: '첫인사' },
 ];
 
-// 07_eval_item_defs.sql 의 4-tuple UNIQUE (org_id, department, order_no, version) 키에 정합.
-// department 는 버전 스코프 marker — 신규 브랜드는 부서 구분 없이 '기본' 스코프 단일 트랙으로 시작.
-// (신한처럼 부서별 트랙이 필요하면 추후 별도 시드 또는 마이그로 분기)
+// eval_item_defs 4-tuple UNIQUE (tenant_id, department, order_no, version) 키에 정합.
+// department 는 버전 스코프 marker — 신규 브랜드는 '기본' 스코프 단일 트랙으로 시작.
 const SEED_DEPARTMENT = '기본';
 const SEED_VERSION = 1;
 
-// 항목 배열을 받아 eval_item_defs 에 시드하는 공통 구현 (criterion/prompt = NULL).
-async function seedEvalItems(client, orgId, items) {
-    if (!Number.isFinite(Number(orgId))) {
-        throw new Error('seedEvalItems: orgId must be a number');
+// tenant_id 유효성(citext 문자열) 가드.
+function assertTenant(tenantId, fn) {
+    if (!tenantId || typeof tenantId !== 'string') {
+        throw new Error(`${fn}: tenantId must be a non-empty string`);
     }
+}
+
+// 항목 배열을 받아 eval_item_defs 에 시드하는 공통 구현 (criterion/prompt = NULL).
+async function seedEvalItems(client, tenantId, items) {
+    assertTenant(tenantId, 'seedEvalItems');
     for (const row of items) {
         await client.query(
-            `INSERT INTO public.eval_item_defs
-                 (org_id, order_no, category, item, criterion, prompt_template,
+            `INSERT INTO eval_item_defs
+                 (tenant_id, order_no, category, item, criterion, prompt_template,
                   department, version, effective_from, deactivated_at, updated_at)
              VALUES ($1, $2, $3, $4, NULL, NULL, $5, $6, now(), NULL, now())
-             ON CONFLICT (org_id, department, order_no, version) DO NOTHING`,
-            [orgId, row.order_no, row.category, row.item, SEED_DEPARTMENT, SEED_VERSION]
+             ON CONFLICT (tenant_id, department, order_no, version) DO NOTHING`,
+            [tenantId, row.order_no, row.category, row.item, SEED_DEPARTMENT, SEED_VERSION]
         );
     }
     return items.length;
 }
 
-// 코오롱 표준 18항목 시드 (기존 호출 호환 — 현재 신규 생성 경로에서는 미사용).
-export async function seedDefaultEvalItems(client, orgId) {
-    return seedEvalItems(client, orgId, DEFAULT_EVAL_ITEMS);
+// 표준 18항목 시드 (기존 호출 호환 — 현재 신규 생성 경로에서는 미사용).
+export async function seedDefaultEvalItems(client, tenantId) {
+    return seedEvalItems(client, tenantId, DEFAULT_EVAL_ITEMS);
 }
 
 // 신규 브랜드 시드 — 첫인사 1항목.
-export async function seedMinimalEvalItems(client, orgId) {
-    return seedEvalItems(client, orgId, MINIMAL_EVAL_ITEMS);
+export async function seedMinimalEvalItems(client, tenantId) {
+    return seedEvalItems(client, tenantId, MINIMAL_EVAL_ITEMS);
 }
 
 // 신규 브랜드 시드 — 도메인(업종)별 기본 평가항목(domain_default_eval_items)을 복제.
-// domain_default_eval_items 의 활성 행을 eval_item_defs 로 그대로 옮긴다
-// (department='기본', version=1; 메타 컬럼 pentagon_axis/scoring_type/max_score/is_active 포함).
-// 도메인이 없거나(domainId=null) 해당 도메인에 디폴트가 0건이면 0 을 반환 →
-// 호출부가 seedMinimalEvalItems('첫인사') 로 폴백한다.
-export async function seedEvalItemsFromDomain(client, orgId, domainId) {
-    if (!Number.isFinite(Number(orgId))) {
-        throw new Error('seedEvalItemsFromDomain: orgId must be a number');
-    }
+// 도메인이 없거나 디폴트 0건이면 0 반환 → 호출부가 seedMinimalEvalItems 로 폴백.
+export async function seedEvalItemsFromDomain(client, tenantId, domainId) {
+    assertTenant(tenantId, 'seedEvalItemsFromDomain');
     if (domainId == null || !Number.isFinite(Number(domainId))) return 0;
     const { rows } = await client.query(
         `SELECT order_no, category, item, criterion, prompt_template,
                 pentagon_axis, scoring_type, max_score, is_active
-           FROM public.domain_default_eval_items
+           FROM domain_default_eval_items
           WHERE domain_id = $1 AND is_active = true
           ORDER BY order_no ASC, id ASC`,
         [domainId]
@@ -84,14 +83,14 @@ export async function seedEvalItemsFromDomain(client, orgId, domainId) {
     if (rows.length === 0) return 0;
     for (const r of rows) {
         await client.query(
-            `INSERT INTO public.eval_item_defs
-                 (org_id, order_no, category, item, criterion, prompt_template,
+            `INSERT INTO eval_item_defs
+                 (tenant_id, order_no, category, item, criterion, prompt_template,
                   pentagon_axis, scoring_type, max_score, is_active,
                   department, version, effective_from, deactivated_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), NULL, now())
-             ON CONFLICT (org_id, department, order_no, version) DO NOTHING`,
+             ON CONFLICT (tenant_id, department, order_no, version) DO NOTHING`,
             [
-                orgId, r.order_no, r.category, r.item, r.criterion ?? null,
+                tenantId, r.order_no, r.category, r.item, r.criterion ?? null,
                 r.prompt_template ?? null, r.pentagon_axis ?? null,
                 r.scoring_type || 'numeric', r.max_score ?? null,
                 r.is_active === false ? false : true,
@@ -103,16 +102,12 @@ export async function seedEvalItemsFromDomain(client, orgId, domainId) {
 }
 
 // 신규 브랜드 시드 — 도메인(업종)별 기본 펜타곤 축(domain_default_pentagon_axes)을 복제.
-// 활성 축을 pentagon_axes 로 옮긴다(department='기본', version=1). 도메인 없거나 0건이면 0 반환
-// → pentagon_axes 행이 없으면 프론트가 brandConfig.radarLabels 코드 기본값으로 폴백(기존 동작).
-export async function seedPentagonAxesFromDomain(client, orgId, domainId) {
-    if (!Number.isFinite(Number(orgId))) {
-        throw new Error('seedPentagonAxesFromDomain: orgId must be a number');
-    }
+export async function seedPentagonAxesFromDomain(client, tenantId, domainId) {
+    assertTenant(tenantId, 'seedPentagonAxesFromDomain');
     if (domainId == null || !Number.isFinite(Number(domainId))) return 0;
     const { rows } = await client.query(
         `SELECT axis_no, label, description, prompt_template, is_active
-           FROM public.domain_default_pentagon_axes
+           FROM domain_default_pentagon_axes
           WHERE domain_id = $1 AND is_active = true
           ORDER BY axis_no ASC, id ASC`,
         [domainId]
@@ -120,13 +115,13 @@ export async function seedPentagonAxesFromDomain(client, orgId, domainId) {
     if (rows.length === 0) return 0;
     for (const r of rows) {
         await client.query(
-            `INSERT INTO public.pentagon_axes
-                 (org_id, department, axis_no, label, description, prompt_template,
+            `INSERT INTO pentagon_axes
+                 (tenant_id, department, axis_no, label, description, prompt_template,
                   is_active, version, effective_from, deactivated_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), NULL, now())
-             ON CONFLICT (org_id, department, axis_no, version) DO NOTHING`,
+             ON CONFLICT (tenant_id, department, axis_no, version) DO NOTHING`,
             [
-                orgId, SEED_DEPARTMENT, r.axis_no, r.label, r.description ?? null,
+                tenantId, SEED_DEPARTMENT, r.axis_no, r.label, r.description ?? null,
                 r.prompt_template ?? null, r.is_active === false ? false : true,
                 SEED_VERSION,
             ]
@@ -135,28 +130,23 @@ export async function seedPentagonAxesFromDomain(client, orgId, domainId) {
     return rows.length;
 }
 
-// 신규 브랜드 시드 — KSQI 표준 항목 세트 복제(63_ksqi_item_defs.sql 시딩분과 동일).
-// 기존 행에서 번호별 표준 정의(DISTINCT ON)를 골라 새 org 로 복사한다 — 항목 원본을
-// JS 에 중복 정의하지 않기 위함. 테이블 부재(prod 미적용)·원본 0건이면 0 반환(무해 스킵,
-// 다음 기동의 seeder 재적용이 보충).
-export async function seedKsqiItemDefs(client, orgId) {
-    if (!Number.isFinite(Number(orgId))) {
-        throw new Error('seedKsqiItemDefs: orgId must be a number');
-    }
+// 신규 브랜드 시드 — KSQI 표준 항목 세트 복제. 테이블 부재·원본 0건이면 0 반환(무해 스킵).
+export async function seedKsqiItemDefs(client, tenantId) {
+    assertTenant(tenantId, 'seedKsqiItemDefs');
     try {
         const { rows } = await client.query(
             `SELECT 1 FROM information_schema.tables
-             WHERE table_schema = 'public' AND table_name = 'ksqi_item_defs' LIMIT 1`
+             WHERE table_schema = 'trustguard' AND table_name = 'ksqi_item_defs' LIMIT 1`
         );
         if (rows.length === 0) return 0;
         const { rowCount } = await client.query(
-            `INSERT INTO public.ksqi_item_defs (org_id, number, name, area, category, kind, max_score)
+            `INSERT INTO ksqi_item_defs (tenant_id, number, name, area, category, kind, max_score)
              SELECT $1, d.number, d.name, d.area, d.category, d.kind, d.max_score
                FROM (SELECT DISTINCT ON (number) number, name, area, category, kind, max_score
-                       FROM public.ksqi_item_defs
-                      ORDER BY number, org_id) d
-                 ON CONFLICT (org_id, number) DO NOTHING`,
-            [orgId]
+                       FROM ksqi_item_defs
+                      ORDER BY number, tenant_id) d
+                 ON CONFLICT (tenant_id, number) DO NOTHING`,
+            [tenantId]
         );
         return rowCount ?? 0;
     } catch {

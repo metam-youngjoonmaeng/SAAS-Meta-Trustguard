@@ -664,6 +664,8 @@ export function createBrandRouter(pool) {
     });
 
     router.post('/admin/organizations', requireSuperAdmin, async (req, res) => {
+        // 통합DB: 브랜드 = common.tenants(PK tenant_id citext=proj_cd). 생성 시 tenant_id 필수 입력.
+        const tenantId = String(req.body?.tenant_id || req.body?.proj_cd || '').trim().toLowerCase();
         const name = String(req.body?.name || '').trim();
         const short = String(req.body?.short || '').trim().slice(0, 2);
         const color = String(req.body?.color || '#055AAF').trim();
@@ -675,6 +677,10 @@ export function createBrandRouter(pool) {
             res.status(400).json({ message: 'name 필수' });
             return;
         }
+        if (!tenantId || !/^[a-z0-9][a-z0-9_-]*$/.test(tenantId)) {
+            res.status(400).json({ message: 'tenant_id(브랜드 코드) 필수 — 영소문자/숫자로 시작, [a-z0-9_-]' });
+            return;
+        }
         const client = await pool.connect();
         let out;
         let seededItemCount = 0;
@@ -682,10 +688,10 @@ export function createBrandRouter(pool) {
         try {
             await client.query('BEGIN');
             const { rows } = await client.query(
-                `INSERT INTO public.organizations (name, short, color, domain_id)
-                 VALUES ($1, $2, $3, $4)
-                 RETURNING id, name, short, color, active, domain_id`,
-                [name, short, color, domainId]
+                `INSERT INTO common.tenants (tenant_id, name, short, color, domain_id)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING tenant_id AS id, name, short, color, active, domain_id`,
+                [tenantId, name, short, color, domainId]
             );
             out = rows[0];
             // 신규 브랜드 = 선택한 도메인(업종) 기본 평가항목 + 펜타곤 축 복제.
@@ -723,8 +729,8 @@ export function createBrandRouter(pool) {
     });
 
     router.patch('/admin/brands/:id', requireSuperAdmin, async (req, res) => {
-        const id = Number(req.params.id);
-        if (!Number.isFinite(id)) {
+        const id = String(req.params.id || '').trim().toLowerCase();   // = tenant_id(citext)
+        if (!id) {
             res.status(400).json({ message: 'invalid id' });
             return;
         }
@@ -767,7 +773,7 @@ export function createBrandRouter(pool) {
         try {
             await client.query('BEGIN');
             // 도메인 변경 감지용 현재 값
-            const cur = await client.query('SELECT domain_id FROM public.organizations WHERE id = $1', [id]);
+            const cur = await client.query('SELECT domain_id FROM common.tenants WHERE tenant_id = $1', [id]);
             if (cur.rows.length === 0) {
                 await client.query('ROLLBACK').catch(() => {});
                 client.release();
@@ -775,8 +781,8 @@ export function createBrandRouter(pool) {
                 return;
             }
             const { rows } = await client.query(
-                `UPDATE public.organizations SET ${fields.join(', ')} WHERE id = $${idx}
-                 RETURNING id, name, short, color, active, domain_id${hasKsqiCol ? ', ksqi_stt_enabled' : ''}`,
+                `UPDATE common.tenants SET ${fields.join(', ')} WHERE tenant_id = $${idx}
+                 RETURNING tenant_id AS id, name, short, color, active, domain_id${hasKsqiCol ? ', ksqi_stt_enabled' : ''}`,
                 values
             );
             out = rows[0];
@@ -816,33 +822,40 @@ export function createBrandRouter(pool) {
     });
 
     router.delete('/admin/brands/:id', requireSuperAdmin, async (req, res) => {
-        const id = Number(req.params.id);
-        if (!Number.isFinite(id)) {
+        const id = String(req.params.id || '').trim().toLowerCase();   // = tenant_id(citext)
+        if (!id) {
             res.status(400).json({ message: 'invalid id' });
             return;
         }
         const client = await pool.connect();
         try {
-            // 브랜드 삭제 = 평가 데이터까지 한 번에 제거. qa_calls.org_id 가 ON DELETE RESTRICT 이므로
-            // 콜을 먼저 명시 삭제(자식 qa_call_item_score/checklist/conversations/analysis_report/
-            // golden_set/review_events 등은 qa_calls FK 가 ON DELETE CASCADE → 자동 연쇄). 이어서
-            // organizations 삭제 시 eval_item_defs/pentagon_axes/change_log 가 CASCADE 로 함께 제거.
-            // 트랜잭션으로 묶어 부분 삭제(고아 데이터) 방지.
+            // 통합DB 브랜드 삭제 = 콜·평가·테넌트 스코프 설정을 한 번에 제거.
+            //   common.calls.tenant_id 는 ON DELETE 제약이 없어(RESTRICT) 콜을 먼저 삭제 →
+            //   qa_evaluations 및 자식(eval_item_score/pentagon/annotation/recovery/review/golden/
+            //   ksqi) + common.call_transcript 가 CASCADE 로 연쇄 제거.
+            //   테넌트 스코프 trustguard 표(FK 가 ON UPDATE만, ON DELETE RESTRICT)는 명시 삭제.
+            //   마지막으로 common.tenants 삭제 → memberships(ON DELETE CASCADE) 자동 정리.
             await client.query('BEGIN');
             const { rows: refRows } = await client.query(
-                'SELECT COUNT(*)::int AS cnt FROM public.qa_calls WHERE org_id = $1',
+                'SELECT COUNT(*)::int AS cnt FROM common.calls WHERE tenant_id = $1',
                 [id]
             );
             const callCount = refRows[0]?.cnt ?? 0;
             if (callCount > 0) {
-                await client.query('DELETE FROM public.qa_calls WHERE org_id = $1', [id]);
+                await client.query('DELETE FROM common.calls WHERE tenant_id = $1', [id]);
             }
-            // FK 없는 브랜드별 부속 행 명시 정리 — qa_batch_configs(배치·골든/스킬 학습주기 설정),
-            // qa_skill_store(스킬 학습 메모리). 잔존 시 고아 설정이 스케줄러 자동 발화를 계속
-            // 트리거(예: 삭제 브랜드 goldenFreq=hourly → 매시 no_rubric_items 실패 알림).
-            await client.query('DELETE FROM public.qa_batch_configs WHERE org_id = $1', [id]);
-            await client.query('DELETE FROM public.qa_skill_store WHERE org_id = $1', [id]);
-            await client.query('DELETE FROM public.organizations WHERE id = $1', [id]);
+            for (const tbl of [
+                'trustguard.eval_item_defs', 'trustguard.pentagon_axes', 'trustguard.coaching_assignments',
+                'trustguard.notifications', 'trustguard.rubric_change_log', 'trustguard.qa_confidence_prompt',
+                'trustguard.qa_batch_configs', 'trustguard.qa_skill_store', 'trustguard.ics_qa_poll_watermark',
+                'trustguard.ksqi_item_defs',
+            ]) {
+                await client.query(`DELETE FROM ${tbl} WHERE tenant_id = $1`, [id]).catch((e) => {
+                    // ksqi_item_defs 등 미적용 테이블 부재 시 무해 스킵.
+                    if (e?.code !== '42P01') throw e;
+                });
+            }
+            await client.query('DELETE FROM common.tenants WHERE tenant_id = $1', [id]);
             await client.query('COMMIT');
             await insertQaAuditLog(pool, {
                 req,
