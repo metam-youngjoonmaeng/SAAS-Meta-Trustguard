@@ -159,37 +159,26 @@ export async function insertQaAuditLog(pool, p) {
  * @param {object} p - { req, actor:{user_id,login_id,display_name,role}, org_id, event, reason }
  */
 export async function insertLoginHistory(pool, p) {
+    // 통합DB: common.login_history(user_id, membership_id, email, name, event=common.logineventtype,
+    //   ip_address, user_agent). 구 login_id/role/org_id/reason 컬럼은 없음 →
+    //   실패 사유·역할·브랜드는 qa_audit_logs(insertQaAuditLog)가 detail_json 으로 별도 보존.
+    //   email/name 은 actor 에서(로그인ID는 이메일 규약이라 email 로 보관), membership_id 는 있으면.
     const actor = p.actor || {};
     const meta = clientMetaFromReq(p.req || {});
     const row = {
         user_id: actor.user_id ?? null,
-        login_id: String(actor.login_id || '(unknown)').slice(0, 128),
-        display_name: actor.display_name != null ? String(actor.display_name).slice(0, 200) : null,
-        role: actor.role != null ? String(actor.role).slice(0, 64) : null,
-        org_id: p.org_id != null && p.org_id !== '' ? Number(p.org_id) : null,
+        membership_id: p.membership_id ?? actor.membership_id ?? null,
+        email: actor.email ?? (actor.login_id != null ? String(actor.login_id).slice(0, 200) : null),
+        name: actor.display_name != null ? String(actor.display_name).slice(0, 200) : null,
         event: String(p.event || 'login_success').slice(0, 32),
-        reason: p.reason != null ? String(p.reason).slice(0, 64) : null,
-        client_ip: meta.client_ip,
+        ip_address: meta.client_ip,
         user_agent: meta.user_agent,
     };
-    if (!Number.isFinite(row.org_id)) row.org_id = null;
     try {
         await pool.query(
-            `INSERT INTO public.login_history (
-                user_id, login_id, display_name, role, org_id,
-                event, reason, client_ip, user_agent
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [
-                row.user_id,
-                row.login_id,
-                row.display_name,
-                row.role,
-                row.org_id,
-                row.event,
-                row.reason,
-                row.client_ip,
-                row.user_agent,
-            ]
+            `INSERT INTO login_history (user_id, membership_id, email, name, event, ip_address, user_agent)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [row.user_id, row.membership_id, row.email, row.name, row.event, row.ip_address, row.user_agent]
         );
     } catch (err) {
         console.error('[login-history] insert failed:', err);

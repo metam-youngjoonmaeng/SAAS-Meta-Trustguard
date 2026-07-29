@@ -609,8 +609,9 @@ function createSession(user) {
         login_id: user.login_id,
         display_name: user.display_name,
         role: user.role,
-        org_id: user.org_id ?? null,
-        trainee_id: user.trainee_id ?? null,   // 활성 멤버십 id(다중소속 전환용). 미상이면 null → org_id 로 대체 매칭.
+        // 통합DB: 활성 브랜드 = tenant_id(citext, =proj_cd, 구 org_id) · 활성 멤버십 = membership_id(구 trainee_id)
+        tenant_id: user.tenant_id ?? null,
+        membership_id: user.membership_id ?? null,
         expires_at: Date.now() + SESSION_TTL_MS,
     });
     return token;
