@@ -276,8 +276,8 @@ export async function ingestCollectionCallToDb(pool, body) {
             `INSERT INTO qa_calls
                  ("ID","CALL_SEQ","CDATE","UID","AI_SCORE","TOTAL_SCORE",
                   department, role,
-                  ai_analysis_target, ai_analysis_reason, voc_code, promotion_code, is_sandbox)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,NULL,NULL,NULL,false)
+                  ai_analysis_target, ai_analysis_reason, is_sandbox)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,NULL,false)
              ON CONFLICT ("ID") DO UPDATE SET
                "CALL_SEQ" = EXCLUDED."CALL_SEQ",
                "CDATE" = EXCLUDED."CDATE",
@@ -288,8 +288,6 @@ export async function ingestCollectionCallToDb(pool, body) {
                role = EXCLUDED.role,
                ai_analysis_target = NULL,
                ai_analysis_reason = NULL,
-               voc_code = NULL,
-               promotion_code = NULL,
                is_sandbox = false`,
             [
                 rows.call.ID,

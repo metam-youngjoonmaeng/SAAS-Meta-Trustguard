@@ -1167,8 +1167,8 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
             `INSERT INTO qa_calls
                  ("ID","CALL_SEQ","CDATE","UID","AI_SCORE","TOTAL_SCORE",
                   department, role, org_id, proj_cd, agent_code, agent_user_id, io_divi, duration_sec,
-                  ai_analysis_target, ai_analysis_reason, voc_code, promotion_code, is_sandbox)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NULL,NULL,NULL,NULL,false)
+                  ai_analysis_target, ai_analysis_reason, is_sandbox)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NULL,NULL,false)
              ON CONFLICT ("ID") DO UPDATE SET
                "CALL_SEQ" = EXCLUDED."CALL_SEQ",
                "CDATE" = EXCLUDED."CDATE",
@@ -1185,8 +1185,6 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
                duration_sec = COALESCE(EXCLUDED.duration_sec, qa_calls.duration_sec),
                ai_analysis_target = NULL,
                ai_analysis_reason = NULL,
-               voc_code = NULL,
-               promotion_code = NULL,
                is_sandbox = false`,
             [id, callSeq, cdate, uid, score, score, department, role, orgId, projCd, agentCode, agentUserId, ioDivi, durationSec]
         );

@@ -217,8 +217,6 @@ CREATE TABLE public.qa_calls (
     role text DEFAULT 'PDS1'::text NOT NULL,
     ai_analysis_target text,
     ai_analysis_reason text,
-    voc_code text,
-    promotion_code text,
     is_sandbox boolean DEFAULT false NOT NULL,
     CONSTRAINT qa_calls_ai_target_chk CHECK (((ai_analysis_target IS NULL) OR (ai_analysis_target = ANY (ARRAY['O'::text, 'X'::text])))),
     CONSTRAINT qa_calls_department_chk CHECK ((department = ANY (ARRAY['컬렉션관리부'::text, '소비자보호부'::text]))),
@@ -586,15 +584,15 @@ COPY public.qa_audit_logs__sandbox_snapshot (audit_id, created_at, actor_user_id
 -- Data for Name: qa_calls; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.qa_calls ("ID", "CALL_SEQ", "CDATE", "UID", "AI_SCORE", "TOTAL_SCORE", department, role, ai_analysis_target, ai_analysis_reason, voc_code, promotion_code) FROM stdin;
-QA-20260308-0001	C-20260308-100001	2026-03-08T09:15:22+09:00	QA-20260308-0001	72.09	70.93	컬렉션관리부	PDS1	\N	\N	\N	\N
-QA-20260308-0002	C-20260308-100002	2026-03-08T10:32:48+09:00	QA-20260308-0002	86.21	86.21	컬렉션관리부	PDS2	\N	\N	\N	\N
-QA-20260308-0003	C-20260308-100003	2026-03-08T11:45:11+09:00	QA-20260308-0003	96.43	97.62	컬렉션관리부	PDS3	\N	\N	\N	\N
-QA-20260308-0004	C-20260308-100004	2026-03-08T13:20:39+09:00	QA-20260308-0004	61.9	61.9	컬렉션관리부	수동대인	\N	\N	\N	\N
-QA-20260308-0005	C-20260308-100005	2026-03-08T14:35:02+09:00	QA-20260308-0005	87.78	88.89	컬렉션관리부	인바운드	\N	\N	\N	\N
-QA-20260308-0006	C-20260308-100006	2026-03-08T15:10:14+09:00	QA-20260308-0006	0	0	소비자보호부	전체	O	통화길이 180초 이상 & 금칙어 미감지 & 적합성 설문 진행	VOC-A12	PROM-B05
-QA-20260308-0007	C-20260308-100007	2026-03-08T16:05:33+09:00	QA-20260308-0007	0	0	소비자보호부	전체	O	통화길이 240초 이상 & VOC 코드 분석 대상	VOC-A07	PROM-C11
-QA-20260308-0008	C-20260308-100008	2026-03-08T16:50:21+09:00	QA-20260308-0008	0	0	소비자보호부	전체	X	통화길이 60초 미만 & 금칙어 미발견	VOC-Z01	PROM-Z00
+COPY public.qa_calls ("ID", "CALL_SEQ", "CDATE", "UID", "AI_SCORE", "TOTAL_SCORE", department, role, ai_analysis_target, ai_analysis_reason) FROM stdin;
+QA-20260308-0001	C-20260308-100001	2026-03-08T09:15:22+09:00	QA-20260308-0001	72.09	70.93	컬렉션관리부	PDS1	\N	\N
+QA-20260308-0002	C-20260308-100002	2026-03-08T10:32:48+09:00	QA-20260308-0002	86.21	86.21	컬렉션관리부	PDS2	\N	\N
+QA-20260308-0003	C-20260308-100003	2026-03-08T11:45:11+09:00	QA-20260308-0003	96.43	97.62	컬렉션관리부	PDS3	\N	\N
+QA-20260308-0004	C-20260308-100004	2026-03-08T13:20:39+09:00	QA-20260308-0004	61.9	61.9	컬렉션관리부	수동대인	\N	\N
+QA-20260308-0005	C-20260308-100005	2026-03-08T14:35:02+09:00	QA-20260308-0005	87.78	88.89	컬렉션관리부	인바운드	\N	\N
+QA-20260308-0006	C-20260308-100006	2026-03-08T15:10:14+09:00	QA-20260308-0006	0	0	소비자보호부	전체	O	통화길이 180초 이상 & 금칙어 미감지 & 적합성 설문 진행
+QA-20260308-0007	C-20260308-100007	2026-03-08T16:05:33+09:00	QA-20260308-0007	0	0	소비자보호부	전체	O	통화길이 240초 이상 & VOC 코드 분석 대상
+QA-20260308-0008	C-20260308-100008	2026-03-08T16:50:21+09:00	QA-20260308-0008	0	0	소비자보호부	전체	X	통화길이 60초 미만 & 금칙어 미발견
 \.
 
 

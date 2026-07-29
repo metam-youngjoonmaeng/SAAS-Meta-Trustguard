@@ -772,8 +772,6 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId, ksqiMode = f
                                     <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">상담번호</th>
                                     <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">상담일시</th>
                                     <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">상담사명</th>
-                                    <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">VOC</th>
-                                    <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)]">판촉</th>
                                     <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)] text-right">합계</th>
                                     <th className="sticky top-0 z-20 bg-[var(--background-soft)] border-b border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--ink-500)] text-right">미충족</th>
                                 </tr>
@@ -781,13 +779,13 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId, ksqiMode = f
                             <tbody className="divide-y divide-[var(--muted)]">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={8} className="py-20 text-center text-[var(--ink-400)] text-[13px]">
+                                        <td colSpan={6} className="py-20 text-center text-[var(--ink-400)] text-[13px]">
                                             데이터를 불러오는 중입니다...
                                         </td>
                                     </tr>
                                 ) : filteredCalls.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8} className="py-20 text-center">
+                                        <td colSpan={6} className="py-20 text-center">
                                             <div className="flex flex-col items-center gap-2 text-[var(--ink-400)]">
                                                 <FileX size={40} strokeWidth={1.5} className="opacity-60" />
                                                 <p className="text-[13px]">조회 결과가 없습니다.</p>
@@ -825,8 +823,6 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId, ksqiMode = f
                                             </td>
                                             <td className="px-3 py-3 text-[13px] text-[var(--ink-700)]">{formatDateTime(row.call_datetime)}</td>
                                             <td className="px-3 py-3 text-[13px] text-[var(--ink-700)]">{row.agent_name || '-'}</td>
-                                            <td className="px-3 py-3 text-[13px] text-[var(--ink-700)]">{row.voc_code || '-'}</td>
-                                            <td className="px-3 py-3 text-[13px] text-[var(--ink-700)]">{row.promotion_code || '-'}</td>
                                             <td className="px-3 py-3 text-right text-[14px] font-semibold text-[var(--ink-900)] tabular-nums">
                                                 {earned === null ? '-' : `${earned}/${total}`}
                                             </td>
