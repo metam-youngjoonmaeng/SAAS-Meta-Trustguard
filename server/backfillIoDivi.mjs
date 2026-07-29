@@ -18,7 +18,7 @@ async function main() {
         console.error('[backfill-io] ICS_DB_* 미설정 — ICS 조회 불가. 중단.');
         process.exit(1);
     }
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c search_path=trustguard,common,public' });
 
     const { rows } = await pool.query(
         `SELECT "ID" AS id, "UID" AS uid, proj_cd

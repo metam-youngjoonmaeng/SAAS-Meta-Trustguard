@@ -514,7 +514,8 @@ if (!databaseUrl) {
     throw new Error('[qa-api] DATABASE_URL 환경변수가 설정되지 않았습니다.');
 }
 
-const pool = new Pool({ connectionString: databaseUrl });
+// 통합DB(00-Meta-Unified) 컷오버: 스키마 분리(trustguard/common) → search_path 로 미한정 테이블명 해석.
+const pool = new Pool({ connectionString: databaseUrl, options: '-c search_path=trustguard,common,public' });
 
 // 검수 단계: pending → in_review → review_done(검토요청) → [admin_revised(관리자 수정·상담사 확인대기)] → approved(최종승인).
 // 레거시 3단계의 'completed' 는 'approved' 로 정규화(저장/입력 모두 호환).
@@ -573,8 +574,6 @@ function toCallRow(row) {
         role: row.role || 'PDS1',
         ai_analysis_target: row.ai_analysis_target ?? null,
         ai_analysis_reason: row.ai_analysis_reason ?? null,
-        voc_code: row.voc_code ?? null,
-        promotion_code: row.promotion_code ?? null,
         consumer_violations: consumerViolations,
         consumer_total: consumerTotal,
         checklist_yn_kor:
@@ -1449,8 +1448,6 @@ app.get('/api/calls', async (req, res) => {
                 c.role AS role,
                 c.ai_analysis_target AS ai_analysis_target,
                 c.ai_analysis_reason AS ai_analysis_reason,
-                c.voc_code AS voc_code,
-                c.promotion_code AS promotion_code,
                 c.org_id AS org_id,
                 c.review_status AS review_status,
                 c.review_round AS review_round,
@@ -1949,7 +1946,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
     }
     try {
         const { rows: callRows } = await pool.query(
-            `SELECT "ID" AS qa_id, department, role, org_id, ai_analysis_target, ai_analysis_reason, voc_code, promotion_code,
+            `SELECT "ID" AS qa_id, department, role, org_id, ai_analysis_target, ai_analysis_reason,
                     manual_review, manual_review_reasons
              FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
             [qaId]
@@ -1991,8 +1988,6 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
                 role: callMeta.role || '전체',
                 ai_analysis_target: callMeta.ai_analysis_target,
                 ai_analysis_reason: callMeta.ai_analysis_reason,
-                voc_code: callMeta.voc_code,
-                promotion_code: callMeta.promotion_code,
                 consumer_eval_rows: [],
                 consumer_keywords: [],
                 consumer_ai_categories: [],
