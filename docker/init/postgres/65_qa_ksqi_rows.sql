@@ -12,12 +12,13 @@
 -- 백필은 qa_calls.ksqi_report 컬럼이 있는 DB(로컬)에서만 동작하고, 컬럼이 없는 DB(운영)에서는
 -- 테이블 생성만 수행한다(DO 블록 가드로 컬럼 부재 시 파싱조차 되지 않아 무회귀).
 
+-- kind(판정 방식) 컬럼은 두지 않는다 — 원본은 파이프라인 rules.py 이고 여기 컬럼은 사본이었다
+-- (전 행 'llm'). 상세 화면도 이 필드를 쓰지 않았다. 기존 DB 는 마이그레이션 78 이 정리한다.
 CREATE TABLE IF NOT EXISTS public.qa_call_ksqi_score (
     "ID"        text    NOT NULL REFERENCES public.qa_calls("ID") ON DELETE CASCADE,
     item_number integer NOT NULL,
     item_name   text    NOT NULL DEFAULT '',
     area        text    NOT NULL DEFAULT '',
-    kind        text    NOT NULL DEFAULT 'llm',
     score       double precision,
     max_score   double precision,
     na          boolean NOT NULL DEFAULT false,
@@ -31,18 +32,14 @@ CREATE TABLE IF NOT EXISTS public.qa_call_ksqi_score (
 ALTER TABLE public.qa_call_ksqi_score
     ADD COLUMN IF NOT EXISTS evidence jsonb NOT NULL DEFAULT '[]'::jsonb;
 
+-- 환산(scaled)·등급(grade)·우수(excellent)는 컬럼으로 두지 않는다 — raw/max 의 순수 파생값이라
+-- 조회 시 계산한다(마이그레이션 77, 2026-07-29 합의). 기존 DB 의 6컬럼은 77 이 정리한다.
 CREATE TABLE IF NOT EXISTS public.qa_call_ksqi_summary (
     "ID"             text PRIMARY KEY REFERENCES public.qa_calls("ID") ON DELETE CASCADE,
     area_a_raw       double precision,
     area_a_max       double precision,
-    area_a_scaled    double precision,
-    area_a_grade     text,
-    area_a_excellent boolean,
     area_b_raw       double precision,
     area_b_max       double precision,
-    area_b_scaled    double precision,
-    area_b_grade     text,
-    area_b_excellent boolean,
     overall_raw      double precision,
     overall_max      double precision,
     summary          text NOT NULL DEFAULT ''
@@ -55,23 +52,18 @@ BEGIN
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'qa_calls' AND column_name = 'ksqi_report'
     ) THEN
+        -- scaled/grade/excellent 는 백필하지 않는다 — 컬럼 자체가 없다(위 CREATE + 77 참조).
         INSERT INTO public.qa_call_ksqi_summary (
             "ID",
-            area_a_raw, area_a_max, area_a_scaled, area_a_grade, area_a_excellent,
-            area_b_raw, area_b_max, area_b_scaled, area_b_grade, area_b_excellent,
+            area_a_raw, area_a_max,
+            area_b_raw, area_b_max,
             overall_raw, overall_max, summary
         )
         SELECT c."ID",
                (c.ksqi_report->'area_a'->>'raw')::float8,
                (c.ksqi_report->'area_a'->>'max')::float8,
-               (c.ksqi_report->'area_a'->>'scaled')::float8,
-               c.ksqi_report->'area_a'->>'grade',
-               (c.ksqi_report->'area_a'->>'excellent')::boolean,
                (c.ksqi_report->'area_b'->>'raw')::float8,
                (c.ksqi_report->'area_b'->>'max')::float8,
-               (c.ksqi_report->'area_b'->>'scaled')::float8,
-               c.ksqi_report->'area_b'->>'grade',
-               (c.ksqi_report->'area_b'->>'excellent')::boolean,
                (c.ksqi_report->'overall'->>'raw')::float8,
                (c.ksqi_report->'overall'->>'max')::float8,
                COALESCE(c.ksqi_report->>'summary', '')
@@ -81,13 +73,12 @@ BEGIN
 
         -- 근거(evidence)는 항목 행에 인라인 — 원본 배열 순서를 그대로 보존해 담는다.
         INSERT INTO public.qa_call_ksqi_score (
-            "ID", item_number, item_name, area, kind, score, max_score, na, defect, rationale, evidence
+            "ID", item_number, item_name, area, score, max_score, na, defect, rationale, evidence
         )
         SELECT c."ID",
                (it->>'item_number')::int,
                COALESCE(it->>'item_name', ''),
                COALESCE(it->>'area', ''),
-               COALESCE(it->>'kind', 'llm'),
                (it->>'score')::float8,
                (it->>'max_score')::float8,
                COALESCE((it->>'na')::boolean, false),

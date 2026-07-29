@@ -1341,24 +1341,44 @@ async function loadKsqiReport(pool, qaId) {
         ]);
         if (!sumRows[0]) return null;
         const s = sumRows[0];
+        // kind(판정 방식) 는 조회하지 않는다 — 마이그레이션 78 에서 컬럼 제거. 원본은 파이프라인
+        // rules.py 이고 화면(KsqiEvalSection)도 이 필드를 쓰지 않았다.
         const { rows: itemRows } = await pool.query(
-            `SELECT item_number, item_name, area, kind, score, max_score, na, defect, rationale, evidence
+            `SELECT item_number, item_name, area, score, max_score, na, defect, rationale, evidence
              FROM public.qa_call_ksqi_score WHERE "ID" = $1 ORDER BY item_number`,
             [qaId]
         );
-        const areaObj = (p) => ({
-            raw: s[`${p}_raw`],
-            max: s[`${p}_max`],
-            scaled: s[`${p}_scaled`],
-            grade: s[`${p}_grade`],
-            excellent: s[`${p}_excellent`],
-        });
+        // 환산·등급·우수는 저장하지 않고 여기서 계산한다(2026-07-29 합의) — raw/max 의 파생값이라
+        // 저장하면 같은 사실이 두 곳에 남는다. 응답 계약(scaled/grade/excellent)은 종전과 동일해
+        // 프론트(KsqiEvalSection)는 무변경. 식은 파이프라인 v2/nodes/ksqi_stt/rules.py 미러:
+        //   scale_100(raw, area) = round(raw / area_max * 100, 1)
+        //   is_excellent         = scaled >= AREA_META[area].excellent_threshold
+        // ★ 임계를 파이프라인에서 바꾸면 여기도 함께 고쳐야 한다(과거 콜 판정이 소급 변경됨).
+        const KSQI_EXCELLENT_THRESHOLD = { area_a: 92, area_b: 80 };
+        const areaObj = (p) => {
+            const raw = s[`${p}_raw`];
+            const max = s[`${p}_max`];
+            const rawN = Number(raw);
+            const maxN = Number(max);
+            // max 가 없거나 0 이면 환산 불가 — null 로 두어 화면이 '-' 로 떨어지게 한다(0% 오표기 방지).
+            const scaled =
+                Number.isFinite(rawN) && Number.isFinite(maxN) && maxN > 0
+                    ? Math.round((rawN / maxN) * 1000) / 10
+                    : null;
+            const excellent = scaled === null ? null : scaled >= KSQI_EXCELLENT_THRESHOLD[p];
+            return {
+                raw,
+                max,
+                scaled,
+                grade: excellent === null ? null : excellent ? '우수' : '미달',
+                excellent,
+            };
+        };
         return {
             items: itemRows.map((r) => ({
                 item_number: r.item_number,
                 item_name: r.item_name,
                 area: r.area,
-                kind: r.kind,
                 score: r.score,
                 max_score: r.max_score,
                 na: r.na,
@@ -1382,10 +1402,17 @@ app.get('/api/calls', async (req, res) => {
         // KSQI 점수/유무(area_a·area_b scaled + overall) — qa_call_ksqi_summary(정규화) 조인으로 추출,
         // 테이블 부재 시 안전 폴백.
         const hasKsqi = await hasKsqiTables(pool);
+        // 환산(scaled)은 컬럼이 아니라 raw/max 로 SQL 에서 계산한다(마이그레이션 77) — 목록 필터·정렬이
+        // 스칼라를 요구하므로 select 식으로 산출한다. 식은 파이프라인 rules.py::scale_100 미러:
+        //   round(raw / max * 100, 1). max 가 NULL·0 이면 NULL(환산 불가 → 화면 '-').
         const ksqiCols = hasKsqi
             ? `(ks."ID" IS NOT NULL) AS has_ksqi,
-               ks.area_a_scaled::float AS ksqi_a,
-               ks.area_b_scaled::float AS ksqi_b,
+               CASE WHEN ks.area_a_max > 0
+                    THEN round((ks.area_a_raw / ks.area_a_max * 100)::numeric, 1)::float
+               END AS ksqi_a,
+               CASE WHEN ks.area_b_max > 0
+                    THEN round((ks.area_b_raw / ks.area_b_max * 100)::numeric, 1)::float
+               END AS ksqi_b,
                ks.overall_raw::float AS ksqi_overall_raw,
                ks.overall_max::float AS ksqi_overall_max`
             : `false AS has_ksqi,
@@ -3218,8 +3245,10 @@ app.get('/api/ksqi-stt/catalog', async (req, res) => {
     const orgId = Number(req.query.org_id) || null;
     try {
         if (orgId && (await hasKsqiItemDefsTable(pool))) {
+            // kind 는 DB 에서 읽지 않는다 — 마이그레이션 78 에서 컬럼 제거. 판정 방식의 원본은
+            // 파이프라인 rules.py 이므로 아래 criterion 병합과 같은 경로로 가져온다(사본 제거).
             const { rows } = await pool.query(
-                `SELECT number, name, area, category, kind, max_score, is_active
+                `SELECT number, name, area, category, max_score, is_active
                    FROM public.ksqi_item_defs
                   WHERE org_id = $1
                   ORDER BY number`,
@@ -3243,7 +3272,8 @@ app.get('/api/ksqi-stt/catalog', async (req, res) => {
                             name: r.name,
                             area: r.area,
                             category: r.category,
-                            kind: r.kind,
+                            // 판정 방식 — 파이프라인 카탈로그(원본) 값. 병합 실패 시 'llm'(현 전 항목 값).
+                            kind: p.kind ?? 'llm',
                             max_score: Number(r.max_score),
                             is_active: r.is_active !== false,
                             criterion: p.criterion ?? '',

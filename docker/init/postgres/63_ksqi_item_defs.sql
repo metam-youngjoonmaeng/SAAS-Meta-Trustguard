@@ -7,6 +7,8 @@
 -- 멱등: 매 기동마다 seeder 재적용 → CREATE/INSERT 모두 IF NOT EXISTS / ON CONFLICT DO NOTHING.
 --       신규 브랜드는 브랜드 생성 API 가 즉시 시딩하고, 다음 기동 시에도 자동 보충된다.
 
+-- kind(판정 방식) 컬럼은 두지 않는다 — 원본은 파이프라인 rules.py 의 규칙별 kind 이고, 여기
+-- 컬럼은 그 사본이었다(전 행 'llm'). 카탈로그 API 가 파이프라인에서 직접 받는다(마이그레이션 78).
 CREATE TABLE IF NOT EXISTS public.ksqi_item_defs (
     id         serial PRIMARY KEY,
     org_id     integer NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
@@ -14,7 +16,6 @@ CREATE TABLE IF NOT EXISTS public.ksqi_item_defs (
     name       text    NOT NULL,
     area       text    NOT NULL,
     category   text    NOT NULL DEFAULT '',
-    kind       text    NOT NULL DEFAULT 'llm',
     max_score  integer NOT NULL DEFAULT 10,
     is_active  boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now(),

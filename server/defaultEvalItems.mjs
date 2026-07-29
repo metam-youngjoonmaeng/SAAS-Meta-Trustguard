@@ -149,10 +149,12 @@ export async function seedKsqiItemDefs(client, orgId) {
              WHERE table_schema = 'public' AND table_name = 'ksqi_item_defs' LIMIT 1`
         );
         if (rows.length === 0) return 0;
+        // kind(판정 방식)는 복제하지 않는다 — 마이그레이션 78 에서 컬럼 제거. 원본은 파이프라인
+        // rules.py 이고, 여기 컬럼은 108행 전부 'llm' 인 사본이었다.
         const { rowCount } = await client.query(
-            `INSERT INTO public.ksqi_item_defs (org_id, number, name, area, category, kind, max_score)
-             SELECT $1, d.number, d.name, d.area, d.category, d.kind, d.max_score
-               FROM (SELECT DISTINCT ON (number) number, name, area, category, kind, max_score
+            `INSERT INTO public.ksqi_item_defs (org_id, number, name, area, category, max_score)
+             SELECT $1, d.number, d.name, d.area, d.category, d.max_score
+               FROM (SELECT DISTINCT ON (number) number, name, area, category, max_score
                        FROM public.ksqi_item_defs
                       ORDER BY number, org_id) d
                  ON CONFLICT (org_id, number) DO NOTHING`,

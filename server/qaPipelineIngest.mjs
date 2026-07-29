@@ -1248,16 +1248,20 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
                     speaker: safeStr(e?.speaker),
                     quote: safeStr(e?.quote),
                 }));
+                // kind(판정 방식)는 적재하지 않는다 — 원본은 채점 파이프라인
+                // v2/nodes/ksqi_stt/rules.py 의 규칙별 kind 이고, MTG 컬럼은 그 사본이었다.
+                // 사본이 원본과 어긋나 혼선만 낳았다(코드는 llm/auto · DB 코멘트는 llm/stt/rule ·
+                // 실제 데이터는 468행 전부 llm). 소비처도 없었다 — 상세 화면(KsqiEvalSection)은
+                // 이 필드를 읽지 않는다. 마이그레이션 78 에서 컬럼 제거(2026-07-29).
                 await kc.query(
-                    `INSERT INTO qa_call_ksqi_score ("ID", item_number, item_name, area, kind, score, max_score, na, defect, rationale, evidence)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+                    `INSERT INTO qa_call_ksqi_score ("ID", item_number, item_name, area, score, max_score, na, defect, rationale, evidence)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
                      ON CONFLICT ("ID", item_number) DO NOTHING`,
                     [
                         id,
                         itemNo,
                         safeStr(it?.item_name),
                         safeStr(it?.area),
-                        safeStr(it?.kind) || 'llm',
                         num(it?.score),
                         num(it?.max_score),
                         it?.na === true,
@@ -1267,24 +1271,24 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
                     ]
                 );
             }
+            // 환산(scaled)·등급(grade)·우수(excellent)는 적재하지 않는다 — raw/max 에서 순수
+            // 계산으로 재현되는 파생값이라 저장하면 같은 사실이 두 곳에 남는다(2026-07-29 합의).
+            //   scaled = round(raw / max * 100, 1) · excellent = scaled >= 임계(A 92 · B 80)
+            //   grade  = excellent ? '우수' : '미달'
+            // 조회 시 index.js 의 ksqi 재조립(areaObj)이 계산해 기존 응답 계약을 그대로 유지하므로
+            // 프론트(KsqiEvalSection)는 무변경. 엔진 응답에는 여전히 3필드가 실려 오지만 무시한다.
             await kc.query(
                 `INSERT INTO qa_call_ksqi_summary ("ID",
-                    area_a_raw, area_a_max, area_a_scaled, area_a_grade, area_a_excellent,
-                    area_b_raw, area_b_max, area_b_scaled, area_b_grade, area_b_excellent,
+                    area_a_raw, area_a_max,
+                    area_b_raw, area_b_max,
                     overall_raw, overall_max, summary)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
                 [
                     id,
                     num(kr.area_a?.raw),
                     num(kr.area_a?.max),
-                    num(kr.area_a?.scaled),
-                    kr.area_a?.grade ?? null,
-                    typeof kr.area_a?.excellent === 'boolean' ? kr.area_a.excellent : null,
                     num(kr.area_b?.raw),
                     num(kr.area_b?.max),
-                    num(kr.area_b?.scaled),
-                    kr.area_b?.grade ?? null,
-                    typeof kr.area_b?.excellent === 'boolean' ? kr.area_b.excellent : null,
                     num(kr.overall?.raw),
                     num(kr.overall?.max),
                     safeStr(kr.summary),
