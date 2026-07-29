@@ -17,7 +17,6 @@ import {
 import { AUDIT_ACTION, insertQaAuditLog, insertLoginHistory, pruneOldAuditLogs } from './auditLog.mjs';
 import { logger, requestLogger } from './logger.mjs';
 import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChecklistKeys, LEGACY_STANDARD_ORG_IDS } from './checklistCategorySummary.mjs';
-/* SAMPLE_UPLOAD_FEATURE */ import { ingestSampleToDb, clearSamplesFromDb } from './sampleIngest.mjs';
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
 import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult, fetchGoldenIndexCoverage, resolvePipelineBaseUrl } from './qaPipelineIngest.mjs';
@@ -32,11 +31,6 @@ import { randomUUID } from 'node:crypto';
 import { createBrandRouter } from './brandRoutes.mjs';
 import { createUserProfileRouter } from './userProfile.mjs';
 import { createIcsSsoRouter } from './icsSso.mjs';
-import {
-    SANDBOX_LOGIN_ID,
-    beginSandboxSession,
-    endSandboxSession,
-} from './sandboxSession.mjs';
 
 const { Pool } = pg;
 
@@ -565,8 +559,6 @@ function toCallRow(row) {
         role: row.role || 'PDS1',
         ai_analysis_target: row.ai_analysis_target ?? null,
         ai_analysis_reason: row.ai_analysis_reason ?? null,
-        voc_code: row.voc_code ?? null,
-        promotion_code: row.promotion_code ?? null,
         consumer_violations: consumerViolations,
         consumer_total: consumerTotal,
         checklist_yn_kor:
@@ -650,20 +642,6 @@ app.use((req, res, next) => {
         return;
     }
     req.session = session;
-    next();
-});
-
-// 운영 ingest 엔드포인트는 sandbox 계정(test1) 차단 — sandbox 정리 시 휘발되면 안 되는 운영 데이터를 막는다.
-const SANDBOX_FORBIDDEN_PATH_PREFIXES = ['/api/ingest/'];
-app.use((req, res, next) => {
-    if (!req.path.startsWith('/api/')) return next();
-    if (!req.session) return next();
-    if (req.session.login_id !== SANDBOX_LOGIN_ID) return next();
-    const blocked = SANDBOX_FORBIDDEN_PATH_PREFIXES.some((p) => req.path.startsWith(p));
-    if (blocked) {
-        res.status(403).json({ message: 'sandbox account cannot write production data' });
-        return;
-    }
     next();
 });
 
@@ -870,7 +848,7 @@ app.get('/api/svc/brand-qa-scores', async (req, res) => {
     const end = String(req.query.end || '').trim();
     try {
         const params = [projCd];
-        const where = ['o.proj_cd = $1', 'c.is_sandbox = false', 'c."TOTAL_SCORE" IS NOT NULL'];
+        const where = ['o.proj_cd = $1', 'c."TOTAL_SCORE" IS NOT NULL'];
         if (dateRe.test(start)) { params.push(start); where.push(`c."CDATE"::date >= $${params.length}::date`); }
         if (dateRe.test(end)) { params.push(end); where.push(`c."CDATE"::date <= $${params.length}::date`); }
         const { rows } = await pool.query(
@@ -1129,18 +1107,6 @@ app.post('/api/auth/login', async (req, res) => {
             res.status(401).json({ message: 'invalid credentials', reason: 'bad_password' });
             return;
         }
-        // 샌드박스 계정: 인증 성공 + 감사 로그 기록 전에 스냅샷.
-        // 이 스냅샷에는 test1의 로그인 감사 로그가 포함되지 않으므로,
-        // 로그아웃 시 복원하면 test1의 모든 흔적(로그인 이벤트 포함)이 사라진다.
-        if (row.login_id === SANDBOX_LOGIN_ID) {
-            try {
-                await beginSandboxSession(pool);
-            } catch (sandboxErr) {
-                console.error('[qa-api] sandbox session begin failed:', sandboxErr);
-                res.status(500).json({ message: '샌드박스 세션 초기화 실패' });
-                return;
-            }
-        }
         await insertQaAuditLog(pool, {
             req,
             actor: {
@@ -1206,9 +1172,6 @@ app.post('/api/auth/logout', async (req, res) => {
     const sessionBeforeDestroy = lookupSession(sessionToken);
     destroySession(sessionToken);
     try {
-        if (loginId === SANDBOX_LOGIN_ID) {
-            await endSandboxSession(pool);
-        }
         await insertQaAuditLog(pool, {
             req,
             actor: {
@@ -1468,8 +1431,6 @@ app.get('/api/calls', async (req, res) => {
                 c.role AS role,
                 c.ai_analysis_target AS ai_analysis_target,
                 c.ai_analysis_reason AS ai_analysis_reason,
-                c.voc_code AS voc_code,
-                c.promotion_code AS promotion_code,
                 c.org_id AS org_id,
                 c.review_status AS review_status,
                 c.review_round AS review_round,
@@ -1566,13 +1527,13 @@ app.get('/api/calls', async (req, res) => {
  * GET /api/agents
  * 실제로 콜을 처리·평가받은 상담사(qa_calls.agent_user_id)를 admin_users 와 조인해
  * 이름·부서·평균점수·콜수를 반환. 코칭 배정 대상/멤버 표시의 실데이터 소스.
- * org 스코프 + is_sandbox 제외. 부서는 admin_users.department 가 비면 콜의 부서로 대체.
+ * org 스코프. 부서는 admin_users.department 가 비면 콜의 부서로 대체.
  * ────────────────────────────────────────────────────────── */
 app.get('/api/agents', async (req, res) => {
     try {
         const activeOrgId = resolveActiveOrgId(req);
         const params = [];
-        let where = `WHERE c.is_sandbox = false AND c.agent_user_id IS NOT NULL`;
+        let where = `WHERE c.agent_user_id IS NOT NULL`;
         if (activeOrgId != null) {
             params.push(activeOrgId);
             where += ` AND c.org_id = $${params.length}`;
@@ -1610,7 +1571,7 @@ app.get('/api/agents', async (req, res) => {
 /* ── 전체 통계(대시보드) ──────────────────────────────────────
  * GET /api/stats?department=<부서|all>&period=day|week|month
  *
- * 점수 = qa_calls."TOTAL_SCORE"(0~100). 코칭대상 = 80점 미만. is_sandbox 제외.
+ * 점수 = qa_calls."TOTAL_SCORE"(0~100). 코칭대상 = 80점 미만.
  * 기간 앵커 = 해당 스코프의 최신 CDATE(과거 시드 데이터도 항상 보이도록 상대창).
  *   day=1일, week=7일, month=30일 (앵커일 기준 거슬러). 직전 동일창과 비교해 delta 산출.
  * 부서 그룹화(팀 개념 없음) + 상담사 랭킹은 agent_user_id→admin_users 이름조인,
@@ -1630,11 +1591,12 @@ app.get('/api/stats', async (req, res) => {
         const CDATE_TS = `NULLIF(NULLIF(NULLIF(c."CDATE", ''), '0000-00-00 00:00:00'), '0000-00-00')::timestamp`;
         const CDATE_DT = `NULLIF(NULLIF(NULLIF(c."CDATE", ''), '0000-00-00 00:00:00'), '0000-00-00')::date`;
 
-        // 공통 스코프(WHERE) 빌더 — is_sandbox 제외 + org + (상담사 본인필터) + 선택 부서.
+        // 공통 스코프(WHERE) 빌더 — org + (상담사 본인필터) + 선택 부서.
         // 반환: { where, params } — alias 'c'.
+        // WHERE TRUE 로 시작해 이후 조건이 모두 생략돼도 문법이 성립하게 둔다.
         const buildScope = ({ withDept = false } = {}) => {
             const params = [];
-            let where = `WHERE c.is_sandbox = false`;
+            let where = `WHERE TRUE`;
             if (orgId != null) { params.push(orgId); where += ` AND c.org_id = $${params.length}`; }
             where += agentScopeSql(req, params, 'c');
             if (withDept && department) { params.push(department); where += ` AND c.department = $${params.length}`; }
@@ -1968,7 +1930,7 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
     }
     try {
         const { rows: callRows } = await pool.query(
-            `SELECT "ID" AS qa_id, department, role, org_id, ai_analysis_target, ai_analysis_reason, voc_code, promotion_code,
+            `SELECT "ID" AS qa_id, department, role, org_id, ai_analysis_target, ai_analysis_reason,
                     manual_review, manual_review_reasons
              FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
             [qaId]
@@ -2010,8 +1972,6 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
                 role: callMeta.role || '전체',
                 ai_analysis_target: callMeta.ai_analysis_target,
                 ai_analysis_reason: callMeta.ai_analysis_reason,
-                voc_code: callMeta.voc_code,
-                promotion_code: callMeta.promotion_code,
                 consumer_eval_rows: [],
                 consumer_keywords: [],
                 consumer_ai_categories: [],
@@ -2153,24 +2113,6 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
     if (!qaId) {
         res.status(400).json({ message: 'qaId is required' });
         return;
-    }
-
-    // sandbox 계정은 운영 행(is_sandbox=false) 평가를 수정할 수 없음 — 운영 데이터 무결성 보호.
-    if (req.session?.login_id === SANDBOX_LOGIN_ID) {
-        try {
-            const { rows: targetRow } = await pool.query(
-                `SELECT is_sandbox FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
-                [qaId]
-            );
-            if (targetRow[0] && targetRow[0].is_sandbox === false) {
-                res.status(403).json({ message: 'sandbox account cannot modify production evaluations' });
-                return;
-            }
-        } catch (err) {
-            console.error('PUT /api/evaluations sandbox guard error:', err);
-            res.status(500).json({ message: 'failed to verify target row' });
-            return;
-        }
     }
 
     // 쓰기 권한: 관리자=전체 / 상담사=본인 콜 + (검토요청·최종승인 전까지)만 수정(이의제기) / 그 외 차단.
@@ -2412,8 +2354,6 @@ app.put('/api/evaluations/:qaId/admin-comments', async (req, res) => {
 //     실제 FK 가 없어 콜 삭제 후 도달 불가한 행이 잔존했다(선언과 실제 불일치).
 //     조인 키는 qa_calls(proj_cd, "UID") — 회복률 적재 쿼리(grp)가 쓰는 키와 동일.
 //     부모를 지우면 매핑이 사라지므로 반드시 qa_calls DELETE **앞에서** 지운다.
-//   sandbox 계정은 운영 행(is_sandbox=false) 삭제 불가 — 배치에 운영행 포함 시 전체 거부(평가/검수 PUT 가드 일관).
-//   SELECT(가드)→DELETE 를 한 트랜잭션으로 묶어 TOCTOU 방지.
 app.delete('/api/calls', requireAdmin, async (req, res) => {
     // body.ids(배열) 우선, 없으면 body.id(단건) 수용. trim + 중복/공백 제거.
     const rawIds = Array.isArray(req.body?.ids)
@@ -2429,16 +2369,6 @@ app.delete('/api/calls', requireAdmin, async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        const { rows: targets } = await client.query(
-            `SELECT "ID" AS id, is_sandbox FROM qa_calls WHERE "ID" = ANY($1)`,
-            [ids]
-        );
-        // sandbox 계정: 배치에 운영 행(is_sandbox=false) 포함 시 전체 거부.
-        if (req.session?.login_id === SANDBOX_LOGIN_ID && targets.some((t) => t.is_sandbox === false)) {
-            await client.query('ROLLBACK');
-            res.status(403).json({ message: 'sandbox account cannot delete production calls' });
-            return;
-        }
         // CASCADE 미적용 자식 — 부모 삭제 전에 (proj_cd, "UID") 매핑으로 직접 제거.
         //   proj_cd/UID 가 NULL 인 콜은 애초에 회복률 적재 대상이 아니므로(grp 쿼리가
         //   IS NOT NULL 필터) 매칭 0건이 정상이다.
@@ -2496,11 +2426,11 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
         return;
     }
 
-    // 현재 콜 상태 로드 — 전이 검증·알림 수신자(상담사)·sandbox 판정에 사용.
+    // 현재 콜 상태 로드 — 전이 검증·알림 수신자(상담사) 판정에 사용.
     let cur;
     try {
         const { rows } = await pool.query(
-            `SELECT review_status, agent_user_id, org_id, is_sandbox FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
+            `SELECT review_status, agent_user_id, org_id FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
             [qaId]
         );
         if (!rows[0]) {
@@ -2511,12 +2441,6 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
     } catch (err) {
         console.error('PUT /api/calls/:qaId/review-status load error:', err);
         res.status(500).json({ message: 'failed to load target row' });
-        return;
-    }
-
-    // sandbox 계정은 운영 행 검수상태도 수정 불가 — 운영 데이터 보호.
-    if (req.session?.login_id === SANDBOX_LOGIN_ID && cur.is_sandbox === false) {
-        res.status(403).json({ message: 'sandbox account cannot modify production calls' });
         return;
     }
 
@@ -2884,24 +2808,6 @@ app.post('/api/golden-set/:qaId/:orderNo', requireAdmin, async (req, res) => {
         return;
     }
 
-    // sandbox 계정은 운영 콜의 골드셋을 만들 수 없음 (운영 데이터 무결성 보호).
-    if (req.session?.login_id === SANDBOX_LOGIN_ID) {
-        try {
-            const { rows: targetRow } = await pool.query(
-                `SELECT is_sandbox FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
-                [qaId]
-            );
-            if (targetRow[0] && targetRow[0].is_sandbox === false) {
-                res.status(403).json({ message: 'sandbox account cannot modify production data' });
-                return;
-            }
-        } catch (err) {
-            console.error('POST /api/golden-set sandbox guard error:', err);
-            res.status(500).json({ message: 'failed to verify target row' });
-            return;
-        }
-    }
-
     try {
         // 스냅샷 소스: 평가행 + 체크리스트(발화) + 콜 메타
         // 등록자는 qa_calls.user_id (검수자) 로 추적되므로 별도 컬럼 적재 불필요.
@@ -2961,23 +2867,6 @@ app.delete('/api/golden-set/:qaId/:orderNo', requireAdmin, async (req, res) => {
         return;
     }
 
-    if (req.session?.login_id === SANDBOX_LOGIN_ID) {
-        try {
-            const { rows: targetRow } = await pool.query(
-                `SELECT is_sandbox FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
-                [qaId]
-            );
-            if (targetRow[0] && targetRow[0].is_sandbox === false) {
-                res.status(403).json({ message: 'sandbox account cannot modify production data' });
-                return;
-            }
-        } catch (err) {
-            console.error('DELETE /api/golden-set sandbox guard error:', err);
-            res.status(500).json({ message: 'failed to verify target row' });
-            return;
-        }
-    }
-
     try {
         const { rowCount } = await pool.query(
             `DELETE FROM qa_golden_set WHERE qa_id = $1 AND order_no = $2`,
@@ -3012,7 +2901,7 @@ app.get('/api/skillset', async (req, res) => {
     const item = String(req.query.item || '').trim();
     const orgId = resolveActiveOrgId(req);
     try {
-        const conds = [`c.review_status = 'approved'`, `c.is_sandbox = false`, `er.manual_eval_option IN ('낮음','높음')`];
+        const conds = [`c.review_status = 'approved'`, `er.manual_eval_option IN ('낮음','높음')`];
         const params = [];
         if (orderNo !== null) {
             params.push(orderNo); conds.push(`er.order_no = $${params.length}`);
@@ -4105,57 +3994,6 @@ app.get('/api/admin/eval-item-history', async (req, res) => {
     }
 });
 
-/* SAMPLE_UPLOAD_FEATURE — 임시 기능. 제거 시 본 블록 전체 삭제 + import 라인 삭제 */
-app.post('/api/sample-ingest', async (req, res) => {
-    const input = req.body?.input;
-    const output = req.body?.output;
-    if (!input || typeof input !== 'object' || !output || typeof output !== 'object') {
-        res.status(400).json({ message: 'input/output JSON 두 개가 모두 필요합니다.' });
-        return;
-    }
-    try {
-        const result = await ingestSampleToDb(pool, input, output);
-        if (!result.ok) {
-            res.status(400).json({ message: result.message });
-            return;
-        }
-        await insertQaAuditLog(pool, {
-            req,
-            action: AUDIT_ACTION.SAMPLE_INGEST,
-            resource_type: 'qa_call',
-            resource_id: String(result.qa_id ?? result.call_seq ?? '(new)').slice(0, 256),
-            http_method: 'POST',
-            http_path: '/api/sample-ingest',
-            detail_json: JSON.stringify({ inserted: result.inserted ?? null }),
-            success: true,
-        });
-        res.json(result);
-    } catch (error) {
-        console.error('POST /api/sample-ingest error:', error);
-        res.status(500).json({ message: String(error?.message || error) });
-    }
-});
-
-app.delete('/api/sample-ingest', async (req, res) => {
-    try {
-        const result = await clearSamplesFromDb(pool);
-        await insertQaAuditLog(pool, {
-            req,
-            action: AUDIT_ACTION.SAMPLE_CLEAR,
-            resource_type: 'qa_call',
-            resource_id: 'sample-bulk',
-            http_method: 'DELETE',
-            http_path: '/api/sample-ingest',
-            detail_json: JSON.stringify({ deleted: result.deleted ?? null }),
-            success: true,
-        });
-        res.json(result);
-    } catch (error) {
-        console.error('DELETE /api/sample-ingest error:', error);
-        res.status(500).json({ message: String(error?.message || error) });
-    }
-});
-
 // AI Canvas pull 동기화 — body 의 url + api_key (또는 환경변수) 로 외부 데이터셋을 GET 한 뒤
 // 각 행의 payload(JSON 문자열) 를 풀어 컬렉션관리부 콜로 적재.
 app.post('/api/ingest/from-ai-canvas', async (req, res) => {
@@ -4632,24 +4470,20 @@ app.put('/api/rag-fewshot-config', requireAdmin, async (req, res) => {
 
 async function bootstrap() {
     // 스키마·관리자 계정·시드 데이터는 docker/init/postgres/01_init.sql 이 PostgreSQL 첫 부팅 시 단일 책임으로 import.
-    // 기존 볼륨용 idempotent 마이그레이션 — qa_calls.is_sandbox 컬럼.
-    // 운영 행과 sandbox 행을 컬럼 단위로 분리해, sandbox 정리(DELETE WHERE is_sandbox=true)가 운영 데이터를 절대 건드리지 못하게 한다.
-    await pool.query(`
-        ALTER TABLE qa_calls ADD COLUMN IF NOT EXISTS is_sandbox boolean NOT NULL DEFAULT false;
-        CREATE INDEX IF NOT EXISTS idx_qa_calls_is_sandbox ON qa_calls(is_sandbox) WHERE is_sandbox = true;
-    `);
+    // (구 sandbox 격리용 is_sandbox 컬럼 ADD/INDEX 레트로핏은 샌드박스 기능 폐기로 제거 — 2026-07-29.
+    //  컬럼 자체는 DDL 미적용으로 잔존하지만 읽고 쓰는 코드가 없다.)
 
-    // 운영 행이 0건이면 부팅을 시끄럽게 — 빈 DB 로 컨테이너만 살아 있는 사고를 콘솔에서 즉시 인지.
+    // 콜이 0건이면 부팅을 시끄럽게 — 빈 DB 로 컨테이너만 살아 있는 사고를 콘솔에서 즉시 인지.
     try {
-        const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM qa_calls WHERE is_sandbox = false`);
-        const prodCount = rows[0]?.n ?? 0;
-        if (prodCount === 0) {
-            console.warn('[qa-api] ⚠ qa_calls 의 운영 행(is_sandbox=false)이 0건입니다. 신규 볼륨/시드 미적용/대량 삭제 사고 가능성 확인 필요.');
+        const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM qa_calls`);
+        const callCount = rows[0]?.n ?? 0;
+        if (callCount === 0) {
+            console.warn('[qa-api] ⚠ qa_calls 가 0건입니다. 신규 볼륨/시드 미적용/대량 삭제 사고 가능성 확인 필요.');
         } else {
-            console.log(`[qa-api] qa_calls production rows: ${prodCount}`);
+            console.log(`[qa-api] qa_calls rows: ${callCount}`);
         }
     } catch (err) {
-        console.error('[qa-api] qa_calls production-row 카운트 점검 실패:', err);
+        console.error('[qa-api] qa_calls 행수 점검 실패:', err);
     }
 }
 
@@ -5651,7 +5485,7 @@ async function syncRagFewshotFromGolden(orgId, config) {
         `SELECT er.order_no, max(er.item) AS item
            FROM qa_call_item_score er
            JOIN qa_calls c ON c."ID" = er."ID"
-          WHERE c.is_sandbox = false AND c.org_id = $1
+          WHERE c.org_id = $1
           GROUP BY er.order_no ORDER BY er.order_no`,
         [orgId]
     );
@@ -6125,7 +5959,7 @@ app.get('/api/batch/eval-items', requireAdmin, async (req, res) => {
             `SELECT er.order_no, max(er.item) AS item, count(DISTINCT er."ID")::int AS calls
                FROM qa_call_item_score er
                JOIN qa_calls c ON c."ID" = er."ID"
-              WHERE c.is_sandbox = false ${orgClause}
+              WHERE TRUE ${orgClause}
               GROUP BY er.order_no
               ORDER BY er.order_no`,
             params
@@ -6196,7 +6030,7 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
                        tr.hire_date AS hire_date
                   FROM qa_calls c
                   LEFT JOIN trainee_registrations tr ON tr.user_id = c.agent_user_id
-                 WHERE c.is_sandbox = false ${orgClause}
+                 WHERE TRUE ${orgClause}
             ), in_scope AS (
                 SELECT id, score, duration_sec, hire_date FROM scoped
                  WHERE duration_sec IS NOT NULL AND duration_sec >= $1 AND duration_sec < $2

@@ -78,7 +78,7 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
     const sql = `
       WITH agg AS (
         SELECT avg(c."TOTAL_SCORE"::numeric) AS org_avg FROM qa_calls c
-         WHERE c.is_sandbox = false ${orgClause}
+         WHERE TRUE ${orgClause}
            AND c.duration_sec IS NOT NULL AND c.duration_sec >= $1 AND c.duration_sec < $2
       ), matched AS (
         SELECT c."ID" AS id,
@@ -94,7 +94,7 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
         FROM qa_calls c
         LEFT JOIN trainee_registrations tr ON tr.user_id = c.agent_user_id
         CROSS JOIN agg a
-        WHERE c.is_sandbox = false ${orgClause}
+        WHERE TRUE ${orgClause}
           AND c.duration_sec IS NOT NULL AND c.duration_sec >= $1 AND c.duration_sec < $2
           ${idClause}
       )

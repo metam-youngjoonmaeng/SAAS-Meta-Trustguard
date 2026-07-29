@@ -100,7 +100,7 @@ async function readJsonFile(file) {
     return JSON.parse(text);
 }
 
-/** "상담사: ... / 고객: ..." 라인 포맷 STT 원문 → 턴 배열 (server/sampleIngest.mjs 파서와 동일 규칙) */
+/** "상담사: ... / 고객: ..." 라인 포맷 STT 원문 → 턴 배열 */
 function parseTranscriptToTurns(transcript) {
     const text = String(transcript || '').trim();
     if (!text) return [];

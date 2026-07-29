@@ -219,7 +219,7 @@ export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMI
                 er.agent_utterance, c.org_id, c."CDATE"
            FROM qa_call_item_score er
            JOIN qa_calls c ON c."ID" = er."ID"
-          WHERE c.review_status = 'approved' AND c.is_sandbox = false
+          WHERE c.review_status = 'approved'
             AND c.org_id = $1 AND er.manual_eval_option IN ('낮음','높음')
             AND er.skill_excluded_at IS NULL
           ORDER BY c."CDATE" DESC LIMIT $2`,

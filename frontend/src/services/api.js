@@ -908,14 +908,3 @@ export function currentOrgId() {
     }
 }
 
-/* SAMPLE_UPLOAD_FEATURE — 임시 기능. 제거 시 아래 두 함수와 SampleUploadModal 컴포넌트 삭제 */
-export async function ingestSample(input, output) {
-    return request('/api/sample-ingest', {
-        method: 'POST',
-        body: JSON.stringify({ input, output }),
-    });
-}
-
-export async function clearSamples() {
-    return request('/api/sample-ingest', { method: 'DELETE' });
-}

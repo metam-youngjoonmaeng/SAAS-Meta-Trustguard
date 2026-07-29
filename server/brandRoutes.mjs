@@ -1559,7 +1559,7 @@ async function brandStatCounts(pool, ids) {
     const { rows: callRows } = await pool.query(
         `SELECT org_id, COUNT(*)::int AS cnt
          FROM public.qa_calls
-         WHERE org_id = ANY($1::int[]) AND is_sandbox = false
+         WHERE org_id = ANY($1::int[])
          GROUP BY org_id`,
         [ids]
     );
