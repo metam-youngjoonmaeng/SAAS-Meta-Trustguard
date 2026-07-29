@@ -688,20 +688,18 @@ app.use('/api', createIcsSsoRouter(pool, { createSession }));
 // - super_admin: X-Active-Brand-Id 헤더(없으면 본인 org_id, 그것도 없으면 null=전체)
 // - 그 외 (admin): 세션 org_id 고정 (header 무시 — 다른 브랜드 데이터 접근 차단)
 function resolveActiveOrgId(req, { strict = false } = {}) {
+    // 통합DB: 활성 브랜드 = tenant_id(citext, =proj_cd). 헤더 X-Active-Brand-Id 도 tenant_id 문자열.
+    // (함수명은 호출부 31곳 호환 위해 유지 — 반환값이 int org_id → tenant_id 문자열로 전환됨.)
     if (!req.session) return null;
     if (req.session.role === 'super_admin') {
         const raw = String(req.headers['x-active-brand-id'] || '').trim();
-        if (raw && raw.toLowerCase() !== 'all') {
-            const parsed = Number(raw);
-            if (Number.isFinite(parsed)) return parsed;
-        }
+        if (raw && raw.toLowerCase() !== 'all') return raw.toLowerCase();  // 특정 브랜드 = tenant_id
         if (raw.toLowerCase() === 'all') return null; // 전체 조회
-        // strict(쓰기 라우트): 헤더 없으면 본인 홈 org 자동 폴백 금지 → null 반환 → 핸들러 가드가 400.
-        // (super_admin 이 활성 브랜드 미선택 상태로 쓰면 홈 브랜드 org1(신한카드)을 무단 변조하던 문제 방지)
+        // strict(쓰기 라우트): 헤더 없으면 본인 홈 브랜드 자동 폴백 금지 → null → 핸들러 가드가 400.
         if (strict) return null;
-        return req.session.org_id ?? null;
+        return req.session.tenant_id ?? null;
     }
-    return req.session.org_id ?? null;
+    return req.session.tenant_id ?? null;
 }
 
 // 상담사(role='agent')는 "본인이 응대한 콜"만 볼 수 있다. qa_calls.agent_user_id = 본인 user_id.
@@ -1050,12 +1048,21 @@ app.post('/api/auth/login', async (req, res) => {
         return;
     }
     try {
+        // 통합DB: admin_users 뷰 폐지 → common.users ⋈ common.memberships 직접 조회.
+        //   login_id = username(로컬) 또는 이메일에서 .ics 제거(SSO) — 구 admin_users 뷰 규약과 동일.
+        //   활성 멤버십 우선순위(last_active → active → 최소 id)로 1건 선택.
         const { rows } = await pool.query(
-            `SELECT user_id, login_id, display_name, role, org_id, is_active, password_hash,
-                    department
-             FROM admin_users
-             WHERE login_id = $1
-             LIMIT 1`,
+            `SELECT u.id AS user_id,
+                    COALESCE(u.username, regexp_replace(u.email, '\\.ics$', '')) AS login_id,
+                    u.name AS display_name, u.password_hash,
+                    m.id AS membership_id, m.tenant_id, m.role::text AS role, m.department,
+                    (m.status = 'active') AS is_active
+               FROM common.users u
+               LEFT JOIN common.memberships m ON m.user_id = u.id
+              WHERE COALESCE(u.username, regexp_replace(u.email, '\\.ics$', '')) = $1
+              ORDER BY (m.id = u.last_active_membership_id) DESC NULLS LAST,
+                       (m.status = 'active') DESC, m.id ASC
+              LIMIT 1`,
             [loginId]
         );
         const row = rows[0];
@@ -1168,24 +1175,15 @@ app.post('/api/auth/login', async (req, res) => {
         await insertLoginHistory(pool, {
             req,
             actor: { user_id: row.user_id, login_id: row.login_id, display_name: row.display_name, role: row.role },
-            org_id: row.org_id,
+            membership_id: row.membership_id,
             event: 'login_success',
         });
-        // 활성 멤버십 id 확정(다중소속 전환용) — admin_users VIEW 와 동일 우선순위.
-        try {
-            const { rows: tr } = await pool.query(
-                `SELECT id FROM public.trainee_registrations
-                  WHERE user_id = $1
-                  ORDER BY (id = (SELECT last_active_trainee_id FROM public.users WHERE id = $1)) DESC NULLS LAST,
-                           (status = 'active') DESC, id ASC
-                  LIMIT 1`,
-                [row.user_id]
-            );
-            row.trainee_id = tr[0]?.id ?? null;
-            if (row.trainee_id != null) {
-                await pool.query('UPDATE public.users SET last_active_trainee_id = $1 WHERE id = $2', [row.trainee_id, row.user_id]);
-            }
-        } catch (e) { console.error('active membership resolve error:', e); }
+        // 활성 멤버십은 위 조회에서 이미 확정(row.membership_id/tenant_id) — last_active 만 갱신.
+        if (row.membership_id != null) {
+            try {
+                await pool.query('UPDATE common.users SET last_active_membership_id = $1 WHERE id = $2', [row.membership_id, row.user_id]);
+            } catch (e) { console.error('last_active_membership update error:', e); }
+        }
         const sessionToken = createSession(row);
         res.json({
             ok: true,
@@ -1194,7 +1192,7 @@ app.post('/api/auth/login', async (req, res) => {
                 login_id: row.login_id,
                 display_name: row.display_name,
                 role: row.role,
-                org_id: row.org_id ?? null,
+                tenant_id: row.tenant_id ?? null,
                 department: row.department ?? null,
                 session_token: sessionToken,
             },
@@ -1240,7 +1238,7 @@ app.post('/api/auth/logout', async (req, res) => {
                 display_name: sessionBeforeDestroy?.display_name ?? null,
                 role: sessionBeforeDestroy?.role ?? null,
             },
-            org_id: sessionBeforeDestroy?.org_id ?? null,
+            membership_id: sessionBeforeDestroy?.membership_id ?? null,
             event: 'logout',
         });
         res.json({ ok: true });
@@ -1257,21 +1255,21 @@ app.get('/api/auth/memberships', async (req, res) => {
     if (uid == null) { res.json([]); return; }
     try {
         const { rows } = await pool.query(
-            `SELECT t.id AS trainee_id, t.org_id, o.name AS org_name,
-                    t.role::text AS role, t.department
-               FROM public.trainee_registrations t
-               LEFT JOIN public.organizations o ON o.id = t.org_id
-              WHERE t.user_id = $1 AND t.status = 'active'
-              ORDER BY (t.id = (SELECT last_active_trainee_id FROM public.users WHERE id = $1)) DESC NULLS LAST,
-                       t.id ASC`,
+            `SELECT m.id AS membership_id, m.tenant_id, tn.name AS tenant_name,
+                    m.role::text AS role, m.department
+               FROM common.memberships m
+               LEFT JOIN common.tenants tn ON tn.tenant_id = m.tenant_id
+              WHERE m.user_id = $1 AND m.status = 'active'
+              ORDER BY (m.id = (SELECT last_active_membership_id FROM common.users WHERE id = $1)) DESC NULLS LAST,
+                       m.id ASC`,
             [uid]
         );
-        const activeTid = req.session.trainee_id ?? null;
-        const activeOrg = req.session.org_id ?? null;
+        const activeMid = req.session.membership_id ?? null;
+        const activeTenant = req.session.tenant_id ?? null;
         res.json(rows.map((r) => ({
             ...r,
-            // 현재 활성: 세션의 trainee_id 우선, 없으면 org_id 로 매칭(폴백).
-            current: activeTid != null ? r.trainee_id === activeTid : r.org_id === activeOrg,
+            // 현재 활성: 세션의 membership_id 우선, 없으면 tenant_id 로 매칭(폴백).
+            current: activeMid != null ? r.membership_id === activeMid : r.tenant_id === activeTenant,
         })));
     } catch (error) {
         console.error('GET /api/auth/memberships error:', error);
@@ -1284,36 +1282,37 @@ app.get('/api/auth/memberships', async (req, res) => {
 app.post('/api/auth/switch-org', async (req, res) => {
     const uid = req.session?.user_id;
     if (uid == null) { res.status(401).json({ message: 'not authenticated' }); return; }
-    const traineeId = Number(req.body?.trainee_id);
-    if (!Number.isFinite(traineeId)) { res.status(400).json({ message: 'trainee_id required' }); return; }
+    // body: membership_id(신) 우선, trainee_id(구, 프론트 미전환 호환) 폴백.
+    const membershipId = Number(req.body?.membership_id ?? req.body?.trainee_id);
+    if (!Number.isFinite(membershipId)) { res.status(400).json({ message: 'membership_id required' }); return; }
     try {
         const { rows } = await pool.query(
-            `SELECT t.id, t.org_id, t.role::text AS role, t.department, o.name AS org_name
-               FROM public.trainee_registrations t
-               LEFT JOIN public.organizations o ON o.id = t.org_id
-              WHERE t.id = $1 AND t.user_id = $2 AND t.status = 'active'`,
-            [traineeId, uid]
+            `SELECT m.id, m.tenant_id, m.role::text AS role, m.department, tn.name AS tenant_name
+               FROM common.memberships m
+               LEFT JOIN common.tenants tn ON tn.tenant_id = m.tenant_id
+              WHERE m.id = $1 AND m.user_id = $2 AND m.status = 'active'`,
+            [membershipId, uid]
         );
         if (!rows.length) { res.status(403).json({ message: '해당 조직 멤버십에 접근 권한이 없습니다.' }); return; }
         const m = rows[0];
-        await pool.query('UPDATE public.users SET last_active_trainee_id = $1 WHERE id = $2', [traineeId, uid]);
+        await pool.query('UPDATE common.users SET last_active_membership_id = $1 WHERE id = $2', [membershipId, uid]);
         // 세션은 sessionStore 객체 참조 → 필드 갱신이 그대로 저장됨.
         if (req.session) {
-            req.session.org_id = m.org_id;
+            req.session.tenant_id = m.tenant_id;
             req.session.role = m.role;
-            req.session.trainee_id = m.id;
+            req.session.membership_id = m.id;
         }
         await insertQaAuditLog(pool, {
             req,
             action: AUDIT_ACTION.BRAND_SWITCH || 'BRAND_SWITCH',
-            resource_type: 'trainee_registration',
-            resource_id: String(traineeId),
+            resource_type: 'membership',
+            resource_id: String(membershipId),
             http_method: 'POST',
             http_path: '/api/auth/switch-org',
-            detail_json: JSON.stringify({ org_id: m.org_id, role: m.role }),
+            detail_json: JSON.stringify({ tenant_id: m.tenant_id, role: m.role }),
             success: true,
         });
-        res.json({ ok: true, trainee_id: m.id, org_id: m.org_id, org_name: m.org_name, role: m.role, department: m.department });
+        res.json({ ok: true, membership_id: m.id, tenant_id: m.tenant_id, tenant_name: m.tenant_name, role: m.role, department: m.department });
     } catch (error) {
         console.error('POST /api/auth/switch-org error:', error);
         res.status(500).json({ message: 'Failed to switch organization.' });
