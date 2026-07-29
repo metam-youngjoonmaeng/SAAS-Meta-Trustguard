@@ -62,7 +62,7 @@ function requireSuperAdmin(req, res, next) {
 
 async function domainNameById(pool, domainId) {
     if (domainId == null) return null;
-    const { rows } = await pool.query('SELECT name FROM public.domains WHERE id = $1', [domainId]);
+    const { rows } = await pool.query('SELECT name FROM domains WHERE id = $1', [domainId]);
     return rows[0]?.name ?? null;
 }
 
@@ -75,7 +75,7 @@ export function createBrandRouter(pool) {
         try {
             const { rows } = await pool.query(
                 `SELECT id, name, key, sort_order
-                 FROM public.domains
+                 FROM domains
                  WHERE active = true
                  ORDER BY sort_order ASC, id ASC`
             );
@@ -96,7 +96,7 @@ export function createBrandRouter(pool) {
         }
         try {
             const { rows } = await pool.query(
-                `INSERT INTO public.domains (name, key, sort_order)
+                `INSERT INTO domains (name, key, sort_order)
                  VALUES ($1, $2, $3)
                  RETURNING id, name, key, sort_order`,
                 [name, key, sortOrder]
@@ -148,7 +148,7 @@ export function createBrandRouter(pool) {
         values.push(id);
         try {
             const { rows } = await pool.query(
-                `UPDATE public.domains SET ${fields.join(', ')} WHERE id = $${idx}
+                `UPDATE domains SET ${fields.join(', ')} WHERE id = $${idx}
                  RETURNING id, name, key, sort_order, active`,
                 values
             );
@@ -180,7 +180,7 @@ export function createBrandRouter(pool) {
             return;
         }
         try {
-            await pool.query('DELETE FROM public.domains WHERE id = $1', [id]);
+            await pool.query('DELETE FROM domains WHERE id = $1', [id]);
             await insertQaAuditLog(pool, {
                 req,
                 action: AUDIT_ACTION.DOMAIN_DELETE,
@@ -212,7 +212,7 @@ export function createBrandRouter(pool) {
             const { rows } = await pool.query(
                 `SELECT id, domain_id, order_no, category, item, criterion, prompt_template,
                         pentagon_axis, scoring_type, max_score, is_active
-                 FROM public.domain_default_eval_items
+                 FROM domain_default_eval_items
                  WHERE domain_id = $1
                  ORDER BY order_no ASC, id ASC`,
                 [domainId]
@@ -256,14 +256,14 @@ export function createBrandRouter(pool) {
             await client.query('BEGIN');
             // order_no 발급: 해당 도메인에서 사용 안 된 최소 양의 정수.
             const { rows: usedRows } = await client.query(
-                `SELECT order_no FROM public.domain_default_eval_items WHERE domain_id = $1`,
+                `SELECT order_no FROM domain_default_eval_items WHERE domain_id = $1`,
                 [domainId]
             );
             const usedSet = new Set(usedRows.map((r) => Number(r.order_no)));
             let nextOrderNo = 1;
             while (usedSet.has(nextOrderNo)) nextOrderNo++;
             const { rows } = await client.query(
-                `INSERT INTO public.domain_default_eval_items
+                `INSERT INTO domain_default_eval_items
                    (domain_id, order_no, category, item, criterion, prompt_template,
                     pentagon_axis, scoring_type, max_score, is_active)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -352,7 +352,7 @@ export function createBrandRouter(pool) {
         values.push(itemId);
         try {
             const { rows } = await pool.query(
-                `UPDATE public.domain_default_eval_items SET ${fields.join(', ')} WHERE id = $${idx}
+                `UPDATE domain_default_eval_items SET ${fields.join(', ')} WHERE id = $${idx}
                  RETURNING id, domain_id, order_no, category, item, criterion, prompt_template,
                            pentagon_axis, scoring_type, max_score, is_active`,
                 values
@@ -387,7 +387,7 @@ export function createBrandRouter(pool) {
         }
         try {
             const { rowCount } = await pool.query(
-                'DELETE FROM public.domain_default_eval_items WHERE id = $1',
+                'DELETE FROM domain_default_eval_items WHERE id = $1',
                 [itemId]
             );
             if (rowCount === 0) {
@@ -422,7 +422,7 @@ export function createBrandRouter(pool) {
         try {
             const { rows } = await pool.query(
                 `SELECT id, domain_id, axis_no, label, description, prompt_template, is_active
-                 FROM public.domain_default_pentagon_axes
+                 FROM domain_default_pentagon_axes
                  WHERE domain_id = $1
                  ORDER BY axis_no ASC, id ASC`,
                 [domainId]
@@ -450,14 +450,14 @@ export function createBrandRouter(pool) {
             await client.query('BEGIN');
             // axis_no 발급: 해당 도메인에서 사용 안 된 최소 양의 정수.
             const { rows: usedRows } = await client.query(
-                `SELECT axis_no FROM public.domain_default_pentagon_axes WHERE domain_id = $1`,
+                `SELECT axis_no FROM domain_default_pentagon_axes WHERE domain_id = $1`,
                 [domainId]
             );
             const usedSet = new Set(usedRows.map((r) => Number(r.axis_no)));
             let nextAxisNo = 1;
             while (usedSet.has(nextAxisNo)) nextAxisNo++;
             const { rows } = await client.query(
-                `INSERT INTO public.domain_default_pentagon_axes
+                `INSERT INTO domain_default_pentagon_axes
                    (domain_id, axis_no, label, description, prompt_template, is_active)
                  VALUES ($1, $2, $3, $4, $5, $6)
                  RETURNING id, domain_id, axis_no, label, description, prompt_template, is_active`,
@@ -521,7 +521,7 @@ export function createBrandRouter(pool) {
         values.push(itemId);
         try {
             const { rows } = await pool.query(
-                `UPDATE public.domain_default_pentagon_axes SET ${fields.join(', ')} WHERE id = $${idx}
+                `UPDATE domain_default_pentagon_axes SET ${fields.join(', ')} WHERE id = $${idx}
                  RETURNING id, domain_id, axis_no, label, description, prompt_template, is_active`,
                 values
             );
@@ -554,7 +554,7 @@ export function createBrandRouter(pool) {
         }
         try {
             const { rowCount } = await pool.query(
-                'DELETE FROM public.domain_default_pentagon_axes WHERE id = $1',
+                'DELETE FROM domain_default_pentagon_axes WHERE id = $1',
                 [itemId]
             );
             if (rowCount === 0) {
@@ -583,25 +583,25 @@ export function createBrandRouter(pool) {
     router.get('/admin/organizations', async (req, res) => {
         try {
             const isSuper = req.session?.role === 'super_admin';
-            const ownOrgId = Number(req.session?.org_id) || null;
+            const ownTenant = req.session?.tenant_id ?? null;   // 구 org_id(int) → tenant_id(citext)
             const ksqiSel = (await orgHasKsqiColumn(pool)) ? 'o.ksqi_stt_enabled' : 'false AS ksqi_stt_enabled';
             const { rows: orgRows } = isSuper
                 ? await pool.query(
-                      `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id, ${ksqiSel},
+                      `SELECT o.tenant_id AS id, o.name, o.short, o.color, o.active, o.domain_id, ${ksqiSel},
                               d.name AS domain_name
-                       FROM public.organizations o
-                       LEFT JOIN public.domains d ON d.id = o.domain_id
+                       FROM tenants o
+                       LEFT JOIN domains d ON d.id = o.domain_id
                        WHERE o.active = true
-                       ORDER BY o.id ASC`
+                       ORDER BY o.tenant_id ASC`
                   )
                 : await pool.query(
-                      `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id, ${ksqiSel},
+                      `SELECT o.tenant_id AS id, o.name, o.short, o.color, o.active, o.domain_id, ${ksqiSel},
                               d.name AS domain_name
-                       FROM public.organizations o
-                       LEFT JOIN public.domains d ON d.id = o.domain_id
-                       WHERE o.active = true AND o.id = $1
-                       ORDER BY o.id ASC`,
-                      [ownOrgId]
+                       FROM tenants o
+                       LEFT JOIN domains d ON d.id = o.domain_id
+                       WHERE o.active = true AND o.tenant_id = $1
+                       ORDER BY o.tenant_id ASC`,
+                      [ownTenant]
                   );
 
             const ids = orgRows.map((r) => r.id);
@@ -609,7 +609,7 @@ export function createBrandRouter(pool) {
 
             res.json(
                 orgRows.map((r) => ({
-                    id: r.id,
+                    id: r.id,   // = tenant_id(citext). 프론트 계약 정리는 Stage 4.
                     name: r.name,
                     short: r.short || r.name.slice(0, 1),
                     color: r.color,
@@ -618,8 +618,8 @@ export function createBrandRouter(pool) {
                     ksqi_stt_enabled: r.ksqi_stt_enabled === true,
                     members: counts.members.get(r.id) || 0,
                     sessions: counts.sessions.get(r.id) || 0,
-                    is_own: r.id === ownOrgId,
-                    is_current: r.id === ownOrgId,
+                    is_own: r.id === ownTenant,
+                    is_current: r.id === ownTenant,
                 }))
             );
         } catch (err) {
@@ -633,11 +633,11 @@ export function createBrandRouter(pool) {
         try {
             const ksqiSel = (await orgHasKsqiColumn(pool)) ? 'o.ksqi_stt_enabled' : 'false AS ksqi_stt_enabled';
             const { rows: orgRows } = await pool.query(
-                `SELECT o.id, o.name, o.short, o.color, o.active, o.domain_id, o.created_at, ${ksqiSel},
+                `SELECT o.tenant_id AS id, o.name, o.short, o.color, o.active, o.domain_id, o.created_at, ${ksqiSel},
                         d.name AS domain_name
-                 FROM public.organizations o
-                 LEFT JOIN public.domains d ON d.id = o.domain_id
-                 ORDER BY o.id ASC`
+                 FROM tenants o
+                 LEFT JOIN domains d ON d.id = o.domain_id
+                 ORDER BY o.tenant_id ASC`
             );
             const ids = orgRows.map((r) => r.id);
             const counts = await brandStatCounts(pool, ids);
@@ -1539,30 +1539,32 @@ export function createBrandRouter(pool) {
 }
 
 async function brandStatCounts(pool, ids) {
+    // ids = tenant_id(citext) 배열. 멤버=common.memberships, 콜=common.calls⋈qa_evaluations(is_sandbox).
     const members = new Map();
     const sessions = new Map();
     if (!ids || ids.length === 0) return { members, sessions };
     // 브랜드별 소속 admin 카운트 (super_admin 제외 — super_admin 은 별도 합산해서 모든 브랜드에 더함).
     const { rows: memberRows } = await pool.query(
-        `SELECT org_id, COUNT(*)::int AS cnt
-         FROM public.admin_users
-         WHERE org_id = ANY($1::int[]) AND role <> 'super_admin'
-         GROUP BY org_id`,
+        `SELECT tenant_id, COUNT(*)::int AS cnt
+         FROM common.memberships
+         WHERE tenant_id = ANY($1::citext[]) AND role <> 'super_admin'
+         GROUP BY tenant_id`,
         [ids]
     );
-    for (const r of memberRows) members.set(r.org_id, r.cnt);
+    for (const r of memberRows) members.set(r.tenant_id, r.cnt);
     const { rows: superRows } = await pool.query(
-        `SELECT COUNT(*)::int AS cnt FROM public.admin_users WHERE role = 'super_admin'`
+        `SELECT COUNT(*)::int AS cnt FROM common.memberships WHERE role = 'super_admin'`
     );
     const superCnt = Number(superRows?.[0]?.cnt) || 0;
     for (const id of ids) members.set(id, (members.get(id) || 0) + superCnt);
     const { rows: callRows } = await pool.query(
-        `SELECT org_id, COUNT(*)::int AS cnt
-         FROM public.qa_calls
-         WHERE org_id = ANY($1::int[]) AND is_sandbox = false
-         GROUP BY org_id`,
+        `SELECT c.tenant_id, COUNT(*)::int AS cnt
+         FROM common.calls c
+         JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+         WHERE c.tenant_id = ANY($1::citext[]) AND e.is_sandbox = false
+         GROUP BY c.tenant_id`,
         [ids]
     );
-    for (const r of callRows) sessions.set(r.org_id, r.cnt);
+    for (const r of callRows) sessions.set(r.tenant_id, r.cnt);
     return { members, sessions };
 }
