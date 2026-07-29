@@ -33,7 +33,7 @@ async function orgHasKsqiColumn(pool) {
     try {
         const { rows } = await pool.query(
             `SELECT 1 FROM information_schema.columns
-             WHERE table_schema = 'public' AND table_name = 'organizations' AND column_name = 'ksqi_stt_enabled' LIMIT 1`
+             WHERE table_schema = 'common' AND table_name = 'tenants' AND column_name = 'ksqi_stt_enabled' LIMIT 1`
         );
         _orgKsqiColCache = rows.length > 0;
     } catch {
@@ -892,47 +892,42 @@ export function createBrandRouter(pool) {
     router.get('/admin/users', async (req, res) => {
         try {
             const isSuper = req.session?.role === 'super_admin';
-            const ownOrgId = Number(req.session?.org_id) || null;
+            const ownTenant = req.session?.tenant_id ?? null;   // 구 org_id(int) → tenant_id(citext)
             const rawHeader = String(req.headers['x-active-brand-id'] || '').trim();
             const rawQuery = String(req.query?.brand_id || '').trim();
             const raw = rawHeader || rawQuery;
-            let scopeOrgId;
+            let scopeTenant;   // null = 전체
             if (isSuper) {
-                if (raw.toLowerCase() === 'all') {
-                    scopeOrgId = null;
-                } else {
-                    const parsed = Number(raw);
-                    scopeOrgId = Number.isFinite(parsed) ? parsed : ownOrgId;
-                }
+                scopeTenant = raw.toLowerCase() === 'all' ? null : (raw ? raw.toLowerCase() : ownTenant);
             } else {
-                scopeOrgId = ownOrgId;
+                scopeTenant = ownTenant;
             }
+            // 통합DB: admin_users 뷰 폐지 → common.users ⋈ common.memberships ⋈ tenants.
+            //   login_id = COALESCE(username, email에서 .ics 제거). is_active = 멤버십 status='active'.
+            //   memberships.tenant_id NOT NULL 이라 구 '전역 super_admin(org_id NULL)' 개념은 없음(테넌트 스코프).
             const params = [];
             let where = '';
-            if (scopeOrgId != null) {
-                params.push(scopeOrgId);
-                // 선택한 브랜드 소속만 노출. 단 브랜드 미지정(org_id NULL) super_admin 은 전역 관리자로 간주해 항상 노출.
-                where = `WHERE (u.org_id = $${params.length} OR (u.role = 'super_admin' AND u.org_id IS NULL))`;
-            }
-            if (!isSuper && scopeOrgId == null) {
-                // admin 인데 org_id 가 비어있으면 전역(org_id NULL) super_admin 만 노출 (자기 브랜드 정보가 없어 admin 목록 보장 불가).
-                where = `WHERE u.role = 'super_admin' AND u.org_id IS NULL`;
+            if (scopeTenant != null) {
+                params.push(scopeTenant);
+                where = `WHERE m.tenant_id = $${params.length}`;
             }
             const { rows } = await pool.query(
-                `SELECT u.user_id, u.login_id, u.display_name, u.role, u.is_active,
-                        u.org_id, o.name AS org_name, u.department,
-                        u.email, u.hire_date, u.leave_date, u.extension, u.dup_login_yn,
-                        u.created_at, u.updated_at,
-                        (SELECT MAX(al.created_at) FROM public.qa_audit_logs al
-                         WHERE al.user_id = u.user_id
-                           AND al.action = 'AUTH_LOGIN_SUCCESS') AS last_login_at,
-                        (SELECT COUNT(*) FROM public.qa_audit_logs al
-                         WHERE al.user_id = u.user_id
-                           AND al.action = 'AUTH_LOGIN_SUCCESS')::int AS login_count
-                 FROM public.admin_users u
-                 LEFT JOIN public.organizations o ON o.id = u.org_id
+                `SELECT u.id AS user_id,
+                        COALESCE(u.username, regexp_replace(u.email, '\\.ics$', '')) AS login_id,
+                        u.name AS display_name, m.role::text AS role,
+                        (m.status = 'active') AS is_active,
+                        m.tenant_id, o.name AS org_name, m.department,
+                        u.email, m.hire_date, m.leave_date, m.extension, m.dup_login_yn,
+                        u.created_at, u.created_at AS updated_at,
+                        (SELECT MAX(al.created_at) FROM qa_audit_logs al
+                         WHERE al.user_id = u.id AND al.action = 'AUTH_LOGIN_SUCCESS') AS last_login_at,
+                        (SELECT COUNT(*) FROM qa_audit_logs al
+                         WHERE al.user_id = u.id AND al.action = 'AUTH_LOGIN_SUCCESS')::int AS login_count
+                 FROM common.users u
+                 JOIN common.memberships m ON m.user_id = u.id
+                 LEFT JOIN common.tenants o ON o.tenant_id = m.tenant_id
                  ${where}
-                 ORDER BY u.user_id ASC`,
+                 ORDER BY u.id ASC`,
                 params
             );
             res.json(rows);
@@ -949,7 +944,8 @@ export function createBrandRouter(pool) {
         const loginId = String(req.body?.login_id || '').trim();
         const displayName = String(req.body?.display_name || '').trim();
         const role = String(req.body?.role || 'admin').trim();
-        const orgId = req.body?.org_id == null || req.body?.org_id === '' ? null : Number(req.body.org_id);
+        // 통합DB: 소속 = tenant_id(citext). body.tenant_id 우선, 구 org_id 는 문자열로 폴백.
+        const tenantId = String(req.body?.tenant_id ?? req.body?.org_id ?? '').trim().toLowerCase() || null;
         const department = req.body?.department == null ? null : String(req.body.department).trim() || null;
         if (!loginId || !displayName) {
             res.status(400).json({ message: 'login_id / display_name 모두 필수' });
@@ -959,33 +955,55 @@ export function createBrandRouter(pool) {
             res.status(400).json({ message: '허용된 role: admin | super_admin' });
             return;
         }
+        if (!tenantId) {
+            res.status(400).json({ message: 'tenant_id(소속 브랜드) 필수' });
+            return;
+        }
+        // 로컬(비-SSO) 계정 신원: username = login_id, 합성 이메일 = login_id@metahub.local.
+        const email = `${loginId.toLowerCase()}@metahub.local`;
+        const emailHash = sha256Hex(email);
+        const client = await pool.connect();
         try {
             const initialPassword = resolveInitialPassword();
-            const { rows } = await pool.query(
-                `INSERT INTO public.admin_users (login_id, password_hash, display_name, role, org_id, department)
-                 VALUES ($1, $2, $3, $4, $5, $6)
-                 RETURNING user_id, login_id, display_name, role, is_active, org_id, department, created_at, updated_at`,
-                [loginId, sha256Hex(initialPassword), displayName, role, orgId, department]
+            await client.query('BEGIN');
+            const { rows: urows } = await client.query(
+                `INSERT INTO common.users (email, email_hash, name, username, password_hash)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING id`,
+                [email, emailHash, displayName, loginId, sha256Hex(initialPassword)]
             );
+            const userId = urows[0].id;
+            await client.query(
+                `INSERT INTO common.memberships (user_id, tenant_id, role, department, status)
+                 VALUES ($1, $2, $3::common.userrole, $4, 'active')`,
+                [userId, tenantId, role, department]
+            );
+            await client.query('COMMIT');
+            const out = {
+                user_id: userId, login_id: loginId, display_name: displayName, role,
+                is_active: true, tenant_id: tenantId, department, created_at: new Date().toISOString(),
+            };
             await insertQaAuditLog(pool, {
                 req,
                 action: AUDIT_ACTION.USER_CREATE,
                 resource_type: 'admin_user',
-                resource_id: String(rows[0]?.user_id ?? ''),
+                resource_id: String(userId),
                 http_method: 'POST',
                 http_path: '/api/admin/users',
-                detail_json: JSON.stringify({ login_id: loginId, display_name: displayName, role, org_id: orgId, department, initial_password_issued: true }),
+                detail_json: JSON.stringify({ login_id: loginId, display_name: displayName, role, tenant_id: tenantId, department, initial_password_issued: true }),
                 success: true,
             });
-            // 응답에 초기 비밀번호를 노출하면 super_admin 이 발급 직후 안전하게 안내 가능.
-            res.json({ ...rows[0], initial_password: initialPassword });
+            res.json({ ...out, initial_password: initialPassword });
         } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
             if (err.code === '23505') {
                 res.status(409).json({ message: '이미 사용 중인 login_id 입니다' });
                 return;
             }
             console.error('POST /api/admin/users error:', err);
             res.status(500).json({ message: 'Failed to create user.' });
+        } finally {
+            client.release();
         }
     });
 
@@ -1004,94 +1022,94 @@ export function createBrandRouter(pool) {
                 return;
             }
         }
-        const fields = [];
-        const values = [];
-        let idx = 1;
-        if (typeof req.body?.display_name === 'string') {
-            fields.push(`display_name = $${idx++}`);
-            values.push(String(req.body.display_name).trim());
-        }
-        if (typeof req.body?.role === 'string') {
-            if (!['admin', 'super_admin', 'agent'].includes(req.body.role)) {
+        // 통합DB: users(공통 신원=name) vs memberships(소속·권한) 로 필드 분리 갱신.
+        const b = req.body || {};
+        const userSet = [], userVals = [];
+        const membSet = [], membVals = [];
+        if (typeof b.display_name === 'string') { userSet.push(`name = $${userVals.length + 1}`); userVals.push(String(b.display_name).trim()); }
+        if (typeof b.role === 'string') {
+            if (!['admin', 'super_admin', 'agent'].includes(b.role)) {
                 res.status(400).json({ message: '허용된 role: admin | super_admin | agent' });
                 return;
             }
-            fields.push(`role = $${idx++}`);
-            values.push(req.body.role);
+            membSet.push(`role = $${membVals.length + 1}::common.userrole`); membVals.push(b.role);
         }
-        if (typeof req.body?.is_active === 'boolean' || typeof req.body?.is_active === 'number') {
-            fields.push(`is_active = $${idx++}`);
-            values.push(req.body.is_active ? 1 : 0);
+        if (typeof b.is_active === 'boolean' || typeof b.is_active === 'number') {
+            membSet.push(`status = $${membVals.length + 1}`); membVals.push(b.is_active ? 'active' : 'suspended');
         }
-        if ('org_id' in (req.body || {})) {
-            fields.push(`org_id = $${idx++}`);
-            values.push(req.body.org_id == null || req.body.org_id === '' ? null : Number(req.body.org_id));
+        if ('tenant_id' in b || 'org_id' in b) {
+            const t = String(b.tenant_id ?? b.org_id ?? '').trim().toLowerCase() || null;
+            membSet.push(`tenant_id = $${membVals.length + 1}`); membVals.push(t);
         }
-        if ('department' in (req.body || {})) {
-            fields.push(`department = $${idx++}`);
-            const raw = req.body.department;
-            values.push(raw == null ? null : String(raw).trim() || null);
-        }
-        // 인사 필드 — 입사일/퇴사일(YYYY-MM-DD, 빈값 허용→NULL), 내선번호(빈값→NULL), 중복로그인(Y/N).
-        if ('hire_date' in (req.body || {})) {
-            fields.push(`hire_date = $${idx++}`);
-            const raw = req.body.hire_date;
-            values.push(raw == null ? null : String(raw).trim() || null);
-        }
-        if ('leave_date' in (req.body || {})) {
-            fields.push(`leave_date = $${idx++}`);
-            const raw = req.body.leave_date;
-            values.push(raw == null ? null : String(raw).trim() || null);
-        }
-        if ('extension' in (req.body || {})) {
-            fields.push(`extension = $${idx++}`);
-            const raw = req.body.extension;
-            values.push(raw == null ? null : String(raw).trim() || null);
-        }
-        if ('dup_login_yn' in (req.body || {})) {
-            fields.push(`dup_login_yn = $${idx++}`);
-            values.push(String(req.body.dup_login_yn).trim().toUpperCase() === 'Y' ? 'Y' : 'N');
-        }
-        // 비밀번호는 관리자가 임의로 지정할 수 없음 — POST /api/admin/users/:id/reset-password 로만 초기화 가능.
-        if (fields.length === 0) {
+        if ('department' in b) { membSet.push(`department = $${membVals.length + 1}`); membVals.push(b.department == null ? null : String(b.department).trim() || null); }
+        if ('hire_date' in b) { membSet.push(`hire_date = $${membVals.length + 1}`); membVals.push(b.hire_date == null ? null : String(b.hire_date).trim() || null); }
+        if ('leave_date' in b) { membSet.push(`leave_date = $${membVals.length + 1}`); membVals.push(b.leave_date == null ? null : String(b.leave_date).trim() || null); }
+        if ('extension' in b) { membSet.push(`extension = $${membVals.length + 1}`); membVals.push(b.extension == null ? null : String(b.extension).trim() || null); }
+        if ('dup_login_yn' in b) { membSet.push(`dup_login_yn = $${membVals.length + 1}`); membVals.push(String(b.dup_login_yn).trim().toUpperCase() === 'Y' ? 'Y' : 'N'); }
+        if (userSet.length === 0 && membSet.length === 0) {
             res.status(400).json({ message: '수정 항목이 없습니다' });
             return;
         }
-        fields.push(`updated_at = now()`);
-        values.push(id);
+        const client = await pool.connect();
         try {
-            // UPDATE 후 organizations 와 LEFT JOIN 해서 org_name 까지 함께 반환 — 클라가 화면 상태 정확히 갱신할 수 있게.
-            const { rows } = await pool.query(
-                `WITH upd AS (
-                     UPDATE public.admin_users SET ${fields.join(', ')} WHERE user_id = $${idx}
-                     RETURNING user_id, login_id, display_name, role, is_active, org_id, department,
-                               email, hire_date, leave_date, extension, dup_login_yn, updated_at
-                 )
-                 SELECT upd.*, o.name AS org_name
-                 FROM upd
-                 LEFT JOIN public.organizations o ON o.id = upd.org_id`,
-                values
-            );
-            if (rows.length === 0) {
+            await client.query('BEGIN');
+            const chk = await client.query('SELECT 1 FROM common.users WHERE id = $1', [id]);
+            if (chk.rows.length === 0) {
+                await client.query('ROLLBACK'); client.release();
                 res.status(404).json({ message: '사용자를 찾을 수 없습니다' });
                 return;
             }
-            const detail = { changed: Object.keys(req.body || {}) };
-            await insertQaAuditLog(pool, {
-                req,
-                action: AUDIT_ACTION.USER_UPDATE,
-                resource_type: 'admin_user',
-                resource_id: String(id),
-                http_method: 'PATCH',
-                http_path: `/api/admin/users/${id}`,
-                detail_json: JSON.stringify(detail),
-                success: true,
-            });
-            res.json(rows[0]);
+            if (userSet.length) {
+                userVals.push(id);
+                await client.query(`UPDATE common.users SET ${userSet.join(', ')} WHERE id = $${userVals.length}`, userVals);
+            }
+            if (membSet.length) {
+                // 다중 소속 시 활성/기본 멤버십 1건만 갱신(구 admin_users 뷰 우선순위와 정합).
+                membVals.push(id);
+                await client.query(
+                    `UPDATE common.memberships SET ${membSet.join(', ')}
+                      WHERE id = (SELECT m.id FROM common.memberships m
+                                   WHERE m.user_id = $${membVals.length}
+                                   ORDER BY (m.id = (SELECT last_active_membership_id FROM common.users WHERE id = $${membVals.length})) DESC NULLS LAST,
+                                            (m.status = 'active') DESC, m.id ASC LIMIT 1)`,
+                    membVals
+                );
+            }
+            await client.query('COMMIT');
         } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            client.release();
             console.error('PATCH /api/admin/users/:id error:', err);
             res.status(500).json({ message: 'Failed to update user.' });
+            return;
         }
+        client.release();
+        // 응답 = 갱신 후 admin_users-호환 행 재조회(활성/기본 멤버십 기준).
+        const { rows } = await pool.query(
+            `SELECT u.id AS user_id, COALESCE(u.username, regexp_replace(u.email, '\\.ics$', '')) AS login_id,
+                    u.name AS display_name, m.role::text AS role, (m.status = 'active') AS is_active,
+                    m.tenant_id, o.name AS org_name, m.department, u.email,
+                    m.hire_date, m.leave_date, m.extension, m.dup_login_yn, u.created_at, u.created_at AS updated_at
+               FROM common.users u
+               LEFT JOIN LATERAL (
+                   SELECT mm.* FROM common.memberships mm WHERE mm.user_id = u.id
+                    ORDER BY (mm.id = u.last_active_membership_id) DESC NULLS LAST, (mm.status = 'active') DESC, mm.id ASC LIMIT 1
+               ) m ON true
+               LEFT JOIN common.tenants o ON o.tenant_id = m.tenant_id
+              WHERE u.id = $1`,
+            [id]
+        );
+        await insertQaAuditLog(pool, {
+            req,
+            action: AUDIT_ACTION.USER_UPDATE,
+            resource_type: 'admin_user',
+            resource_id: String(id),
+            http_method: 'PATCH',
+            http_path: `/api/admin/users/${id}`,
+            detail_json: JSON.stringify({ changed: Object.keys(req.body || {}) }),
+            success: true,
+        });
+        res.json(rows[0]);
     });
 
     // POST /api/admin/users/:id/reset-password
@@ -1106,10 +1124,12 @@ export function createBrandRouter(pool) {
         try {
             const initialPassword = resolveInitialPassword();
             const { rows } = await pool.query(
-                `UPDATE public.admin_users
-                    SET password_hash = $1, updated_at = now()
-                 WHERE user_id = $2
-                 RETURNING user_id, login_id, display_name`,
+                `UPDATE common.users
+                    SET password_hash = $1
+                 WHERE id = $2
+                 RETURNING id AS user_id,
+                           COALESCE(username, regexp_replace(email, '\\.ics$', '')) AS login_id,
+                           name AS display_name`,
                 [sha256Hex(initialPassword), id]
             );
             if (rows.length === 0) {
@@ -1144,7 +1164,7 @@ export function createBrandRouter(pool) {
             return;
         }
         try {
-            const { rowCount } = await pool.query('DELETE FROM public.admin_users WHERE user_id = $1', [id]);
+            const { rowCount } = await pool.query('DELETE FROM common.users WHERE id = $1', [id]);
             if (rowCount === 0) {
                 res.status(404).json({ message: '사용자를 찾을 수 없습니다' });
                 return;
@@ -1174,14 +1194,14 @@ export function createBrandRouter(pool) {
         if (!Number.isFinite(userId)) { res.status(400).json({ message: 'invalid userId' }); return; }
         try {
             const { rows } = await pool.query(
-                `SELECT t.id AS trainee_id, t.org_id, o.name AS org_name, t.role::text AS role,
-                        t.department, t.status,
-                        (t.id = u.last_active_trainee_id) AS is_active_membership
-                   FROM public.trainee_registrations t
-                   LEFT JOIN public.organizations o ON o.id = t.org_id
-                   LEFT JOIN public.users u ON u.id = t.user_id
-                  WHERE t.user_id = $1
-                  ORDER BY (t.status = 'active') DESC, t.id ASC`,
+                `SELECT m.id AS membership_id, m.tenant_id, o.name AS tenant_name, m.role::text AS role,
+                        m.department, m.status,
+                        (m.id = u.last_active_membership_id) AS is_active_membership
+                   FROM common.memberships m
+                   LEFT JOIN common.tenants o ON o.tenant_id = m.tenant_id
+                   LEFT JOIN common.users u ON u.id = m.user_id
+                  WHERE m.user_id = $1
+                  ORDER BY (m.status = 'active') DESC, m.id ASC`,
                 [userId]
             );
             res.json(rows);
@@ -1194,37 +1214,37 @@ export function createBrandRouter(pool) {
     // POST /api/admin/users/:userId/memberships { org_id, role, department } — 기존 유저를 새 조직에 소속(멤버십 추가).
     router.post('/admin/users/:userId/memberships', requireSuperAdmin, async (req, res) => {
         const userId = Number(req.params.userId);
-        const orgId = Number(req.body?.org_id);
+        const tenantId = String(req.body?.tenant_id ?? req.body?.org_id ?? '').trim().toLowerCase() || null;
         const role = ['agent', 'admin', 'super_admin'].includes(req.body?.role) ? req.body.role : 'agent';
         const department = req.body?.department == null ? null : String(req.body.department).trim() || null;
-        if (!Number.isFinite(userId) || !Number.isFinite(orgId)) {
-            res.status(400).json({ message: 'userId / org_id 필수' });
+        if (!Number.isFinite(userId) || !tenantId) {
+            res.status(400).json({ message: 'userId / tenant_id 필수' });
             return;
         }
         try {
-            const { rows: urows } = await pool.query('SELECT id, name FROM public.users WHERE id = $1', [userId]);
+            const { rows: urows } = await pool.query('SELECT id FROM common.users WHERE id = $1', [userId]);
             if (!urows.length) { res.status(404).json({ message: '사용자를 찾을 수 없습니다' }); return; }
-            const { rows: orows } = await pool.query('SELECT id FROM public.organizations WHERE id = $1', [orgId]);
+            const { rows: orows } = await pool.query('SELECT 1 FROM common.tenants WHERE tenant_id = $1', [tenantId]);
             if (!orows.length) { res.status(404).json({ message: '조직을 찾을 수 없습니다' }); return; }
             const { rows: dup } = await pool.query(
-                'SELECT 1 FROM public.trainee_registrations WHERE user_id = $1 AND org_id = $2 LIMIT 1',
-                [userId, orgId]
+                'SELECT 1 FROM common.memberships WHERE user_id = $1 AND tenant_id = $2 LIMIT 1',
+                [userId, tenantId]
             );
             if (dup.length) { res.status(409).json({ message: '이미 해당 조직에 소속되어 있습니다' }); return; }
             const { rows: ins } = await pool.query(
-                `INSERT INTO public.trainee_registrations (user_id, org_id, name, department, role, status)
-                 VALUES ($1, $2, $3, $4, $5::public.userrole, 'active')
-                 RETURNING id AS trainee_id, org_id, role::text AS role, department, status`,
-                [userId, orgId, urows[0].name, department, role]
+                `INSERT INTO common.memberships (user_id, tenant_id, department, role, status)
+                 VALUES ($1, $2, $3, $4::common.userrole, 'active')
+                 RETURNING id AS membership_id, tenant_id, role::text AS role, department, status`,
+                [userId, tenantId, department, role]
             );
             await insertQaAuditLog(pool, {
                 req,
                 action: 'USER_MEMBERSHIP_ADD',
-                resource_type: 'trainee_registration',
-                resource_id: String(ins[0].trainee_id),
+                resource_type: 'membership',
+                resource_id: String(ins[0].membership_id),
                 http_method: 'POST',
                 http_path: `/api/admin/users/${userId}/memberships`,
-                detail_json: JSON.stringify({ user_id: userId, org_id: orgId, role }),
+                detail_json: JSON.stringify({ user_id: userId, tenant_id: tenantId, role }),
                 success: true,
             });
             res.status(201).json(ins[0]);
@@ -1241,25 +1261,25 @@ export function createBrandRouter(pool) {
         if (!Number.isFinite(userId) || !Number.isFinite(traineeId)) { res.status(400).json({ message: 'invalid id' }); return; }
         try {
             const { rows: mine } = await pool.query(
-                'SELECT id FROM public.trainee_registrations WHERE id = $1 AND user_id = $2',
+                'SELECT id FROM common.memberships WHERE id = $1 AND user_id = $2',
                 [traineeId, userId]
             );
             if (!mine.length) { res.status(404).json({ message: '멤버십을 찾을 수 없습니다' }); return; }
             const { rows: cnt } = await pool.query(
-                'SELECT count(*)::int AS n FROM public.trainee_registrations WHERE user_id = $1',
+                'SELECT count(*)::int AS n FROM common.memberships WHERE user_id = $1',
                 [userId]
             );
             if ((cnt[0]?.n || 0) <= 1) { res.status(400).json({ message: '마지막 소속은 제거할 수 없습니다(계정 삭제를 사용하세요)' }); return; }
-            await pool.query('DELETE FROM public.trainee_registrations WHERE id = $1', [traineeId]);
-            // 활성 포인터가 방금 지운 멤버십이면 남은 것 중 하나로 재지정(FK ON DELETE SET NULL 후 보정).
+            await pool.query('DELETE FROM common.memberships WHERE id = $1', [traineeId]);
+            // 활성 포인터가 방금 지운 멤버십이면 남은 것 중 하나로 재지정.
             await pool.query(
-                `UPDATE public.users u
-                    SET last_active_trainee_id = (
-                        SELECT t.id FROM public.trainee_registrations t
-                         WHERE t.user_id = u.id
-                         ORDER BY (t.status='active') DESC, t.id ASC LIMIT 1
+                `UPDATE common.users u
+                    SET last_active_membership_id = (
+                        SELECT m.id FROM common.memberships m
+                         WHERE m.user_id = u.id
+                         ORDER BY (m.status='active') DESC, m.id ASC LIMIT 1
                     )
-                  WHERE u.id = $1 AND u.last_active_trainee_id IS NULL`,
+                  WHERE u.id = $1 AND u.last_active_membership_id IS NULL`,
                 [userId]
             );
             await insertQaAuditLog(pool, {
@@ -1305,7 +1325,7 @@ export function createBrandRouter(pool) {
                 `SELECT audit_id, created_at, user_id, login_id, display_name,
                         role, action, resource_type, resource_id,
                         http_method, http_path, client_ip, success, error_message
-                 FROM public.qa_audit_logs
+                 FROM qa_audit_logs
                  ${where}
                  ORDER BY audit_id DESC
                  LIMIT $${params.length}`,
@@ -1329,42 +1349,41 @@ export function createBrandRouter(pool) {
             return;
         }
         const isSuper = role === 'super_admin';
-        const ownOrgId = Number(req.session?.org_id) || null;
+        const ownTenant = req.session?.tenant_id ?? null;
         const rawHeader = String(req.headers['x-active-brand-id'] || '').trim();
         const rawQuery = String(req.query?.brand_id || '').trim();
         const raw = rawHeader || rawQuery;
-        let scopeOrgId;
+        let scopeTenant;
         if (isSuper) {
-            if (raw.toLowerCase() === 'all') {
-                scopeOrgId = null;
-            } else {
-                const parsed = Number(raw);
-                scopeOrgId = Number.isFinite(parsed) ? parsed : ownOrgId;
-            }
+            scopeTenant = raw.toLowerCase() === 'all' ? null : (raw ? raw.toLowerCase() : ownTenant);
         } else {
-            scopeOrgId = ownOrgId;
+            scopeTenant = ownTenant;
         }
         const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);
         const limit = Math.min(Math.max(Number(req.query?.limit) || 200, 1), 1000);
         const eventFilter = String(req.query?.event || '').trim();
+        // 통합DB: common.login_history(user_id/membership_id/email/name/event/ip_address).
+        //   구 login_id/display_name/role/org_id/reason 컬럼 없음 → email/name 로 대체, 역할·사유는 qa_audit_logs.
+        //   테넌트 스코프는 membership_id → common.memberships.tenant_id 조인으로.
         const params = [`${days} days`];
-        const conds = [`created_at >= now() - $1::interval`];
-        if (scopeOrgId != null) {
-            params.push(scopeOrgId);
-            conds.push(`org_id = $${params.length}`);
+        const conds = [`lh.created_at >= now() - $1::interval`];
+        if (scopeTenant != null) {
+            params.push(scopeTenant);
+            conds.push(`lh.membership_id IN (SELECT id FROM common.memberships WHERE tenant_id = $${params.length})`);
         }
         if (eventFilter) {
             params.push(eventFilter);
-            conds.push(`event = $${params.length}`);
+            conds.push(`lh.event = $${params.length}::common.logineventtype`);
         }
         params.push(limit);
         try {
             const { rows } = await pool.query(
-                `SELECT id, created_at, user_id, login_id, display_name, role,
-                        org_id, event, reason, client_ip, user_agent
-                 FROM public.login_history
+                `SELECT lh.id, lh.created_at, lh.user_id, lh.membership_id,
+                        lh.email AS login_id, lh.name AS display_name,
+                        lh.event::text AS event, lh.ip_address AS client_ip, lh.user_agent
+                 FROM common.login_history lh
                  WHERE ${conds.join(' AND ')}
-                 ORDER BY created_at DESC
+                 ORDER BY lh.created_at DESC
                  LIMIT $${params.length}`,
                 params
             );
@@ -1402,7 +1421,7 @@ export function createBrandRouter(pool) {
             const { rows } = await pool.query(
                 `SELECT audit_id, created_at, action, resource_type, resource_id,
                         success, error_message
-                 FROM public.qa_audit_logs
+                 FROM qa_audit_logs
                  WHERE user_id = $1
                    AND created_at >= now() - $2::interval
                    AND action = ANY($3::text[])
