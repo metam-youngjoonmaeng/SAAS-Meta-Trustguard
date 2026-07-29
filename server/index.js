@@ -791,9 +791,10 @@ app.get('/api/svc/eval-items', async (req, res) => {
         return;
     }
     const domainId = Number(req.query.domain_id);
-    const orgId = Number(req.query.org_id);
-    if (!Number.isFinite(domainId) && !Number.isFinite(orgId)) {
-        res.status(400).json({ message: 'domain_id 또는 org_id (number) 가 필요합니다' });
+    // 통합DB: org_id(int) → tenant_id(citext). 크로스서비스 호출 tenant_id 우선, 구 org_id 문자열 폴백.
+    const tenantId = String(req.query.tenant_id ?? req.query.org_id ?? '').trim().toLowerCase() || null;
+    if (!Number.isFinite(domainId) && !tenantId) {
+        res.status(400).json({ message: 'domain_id 또는 tenant_id 가 필요합니다' });
         return;
     }
     try {
@@ -801,14 +802,14 @@ app.get('/api/svc/eval-items', async (req, res) => {
             // 도메인(업종) 기준 — domain_default_eval_items + domain_default_pentagon_axes (표시·설정용).
             const { rows: items } = await pool.query(
                 `SELECT order_no, category, item, criterion, pentagon_axis, scoring_type, max_score
-                   FROM public.domain_default_eval_items
+                   FROM domain_default_eval_items
                   WHERE domain_id = $1 AND is_active = true
                   ORDER BY order_no ASC, id ASC`,
                 [domainId]
             );
             const { rows: axes } = await pool.query(
                 `SELECT axis_no, label, description, prompt_template
-                   FROM public.domain_default_pentagon_axes
+                   FROM domain_default_pentagon_axes
                   WHERE domain_id = $1 AND is_active = true
                   ORDER BY axis_no ASC`,
                 [domainId]
@@ -817,15 +818,15 @@ app.get('/api/svc/eval-items', async (req, res) => {
             return;
         }
         const department = req.query.department ? normalizeDepartment(req.query.department) : null;
-        const params = [orgId];
-        const where = ['org_id = $1', 'deactivated_at IS NULL', 'is_active = true', 'effective_from <= now()'];
+        const params = [tenantId];
+        const where = ['tenant_id = $1', 'deactivated_at IS NULL', 'is_active = true', 'effective_from <= now()'];
         if (department) {
             params.push(department);
             where.push(`department = $${params.length}`);
         }
         const { rows } = await pool.query(
             `SELECT order_no, category, item, criterion, pentagon_axis, scoring_type, max_score, department
-               FROM public.eval_item_defs
+               FROM eval_item_defs
               WHERE ${where.join(' AND ')}
               ORDER BY department ASC, order_no ASC`,
             params
@@ -833,12 +834,12 @@ app.get('/api/svc/eval-items', async (req, res) => {
         // 펜타곤 축(라벨·설명·평가 프롬프트) 동봉 — 도메인 분기와 동일. 엔진이 축별 평가기준 판단에 사용.
         const { rows: axes } = await pool.query(
             `SELECT axis_no, label, description, prompt_template
-               FROM public.pentagon_axes
+               FROM pentagon_axes
               WHERE ${where.join(' AND ')}
               ORDER BY department ASC, axis_no ASC`,
             params
         );
-        res.json({ ok: true, org_id: orgId, count: rows.length, items: rows, pentagon_axes: axes });
+        res.json({ ok: true, tenant_id: tenantId, count: rows.length, items: rows, pentagon_axes: axes });
     } catch (error) {
         console.error('GET /api/svc/eval-items error:', error);
         res.status(500).json({ message: 'Failed to load eval items.' });

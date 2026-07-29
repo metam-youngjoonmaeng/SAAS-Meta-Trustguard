@@ -167,8 +167,8 @@ function sanitizePromptTemplate(value) {
 export async function buildRubricFromDefs(pool, orgId) {
     const { rows } = await pool.query(
         `SELECT order_no, category, item, criterion, prompt_template, max_score, scoring_type, pentagon_axis
-           FROM public.eval_item_defs
-          WHERE org_id = $1
+           FROM eval_item_defs
+          WHERE tenant_id = $1
             AND department = $2
             AND deactivated_at IS NULL
             AND is_active = true
@@ -283,8 +283,8 @@ export async function buildRubricFromDefs(pool, orgId) {
     try {
         const { rows: axisRows } = await pool.query(
             `SELECT axis_no, label, description, prompt_template
-               FROM public.pentagon_axes
-              WHERE org_id = $1
+               FROM pentagon_axes
+              WHERE tenant_id = $1
                 AND department = $2
                 AND deactivated_at IS NULL
                 AND is_active = true
@@ -339,7 +339,7 @@ export async function buildRubricFromDefs(pool, orgId) {
 export async function buildRubricFromDomainDefaults(pool, domainId) {
     const { rows } = await pool.query(
         `SELECT order_no, category, item, criterion, prompt_template, max_score, scoring_type, pentagon_axis
-           FROM public.domain_default_eval_items
+           FROM domain_default_eval_items
           WHERE domain_id = $1
             AND is_active = true
           ORDER BY order_no ASC, id ASC`,
