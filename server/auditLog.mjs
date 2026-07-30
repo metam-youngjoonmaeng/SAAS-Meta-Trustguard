@@ -49,7 +49,7 @@ export const AUDIT_VIEW_WINDOW_DAYS = 1;
 export async function pruneOldAuditLogs(pool) {
     try {
         const { rowCount } = await pool.query(
-            `DELETE FROM public.qa_audit_logs WHERE created_at < now() - $1::interval`,
+            `DELETE FROM trustguard.qa_audit_logs WHERE created_at < now() - $1::interval`,
             [`${AUDIT_RETENTION_DAYS} days`]
         );
         if (rowCount > 0) {

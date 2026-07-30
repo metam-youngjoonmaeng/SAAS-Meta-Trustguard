@@ -232,6 +232,8 @@ export function transformSamplePayload(input, output) {
         rows: {
             call: {
                 ID: qaId,
+                // 통합DB: 샘플은 브랜드 없음 → 기본 테넌트(단일테넌트 시작). is_sandbox=true 로 격리.
+                tenant_id: String(process.env.QA_DEFAULT_TENANT_ID ?? 'metam').trim().toLowerCase(),
                 CALL_SEQ: outputConsult,
                 CDATE: nowAsCdate(),
                 UID: sessionId || qaId,
@@ -253,34 +255,41 @@ export async function ingestSampleToDb(pool, input, output) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        // 같은 ID가 있으면 자식 row를 먼저 비우고 다시 채움 (단순·안전).
-        await client.query(`DELETE FROM qa_call_pentagon_result WHERE "ID" = $1`, [rows.call.ID]);
-        // 재적재는 채점 결과를 덮어쓰지만 '스킬 학습 제외' 지정(사람의 결정)은 보존한다.
-        const _sticky = await captureSticky(client, rows.call.ID);
-        await client.query(`DELETE FROM qa_call_item_score WHERE "ID" = $1`, [rows.call.ID]);
-        await client.query(`DELETE FROM qa_call_transcript WHERE "ID" = $1`, [rows.call.ID]);
-        // 샘플 업로드는 sandbox 데이터로 분류 — sandbox 세션 종료 시 is_sandbox=true 만 정리된다.
+        // 통합DB write-split(샘플=sandbox): ① common.calls upsert(tenant_id,uid)→call_id ② qa_evaluations upsert(is_sandbox=true, department/role는 스키마 기본값)
+        //   ③ 자식(eval_pentagon_result·eval_item_score·common.call_transcript) call_id 삭제·재적재. source_id='sample-...'.
+        const { rows: cc } = await client.query(
+            `INSERT INTO common.calls (tenant_id, uid, source_id, call_seq, cdate, channel)
+             VALUES ($1, $2, $3, $4, $5::timestamptz, 'call')
+             ON CONFLICT (tenant_id, uid) DO UPDATE SET
+               source_id = EXCLUDED.source_id, call_seq = EXCLUDED.call_seq,
+               cdate = EXCLUDED.cdate, updated_at = now()
+             RETURNING call_id`,
+            [rows.call.tenant_id, rows.call.UID, rows.call.ID, rows.call.CALL_SEQ, rows.call.CDATE]
+        );
+        const callId = cc[0].call_id;
         await client.query(
-            `INSERT INTO qa_calls ("ID","CALL_SEQ","CDATE","UID","AI_SCORE","TOTAL_SCORE", is_sandbox)
-             VALUES ($1,$2,$3,$4,$5,$6,true)
-             ON CONFLICT ("ID") DO UPDATE SET
-               "CALL_SEQ" = EXCLUDED."CALL_SEQ",
-               "CDATE" = EXCLUDED."CDATE",
-               "UID" = EXCLUDED."UID",
+            `INSERT INTO trustguard.qa_evaluations (call_id, "AI_SCORE", "TOTAL_SCORE", is_sandbox)
+             VALUES ($1,$2,$3,true)
+             ON CONFLICT (call_id) DO UPDATE SET
                "AI_SCORE" = EXCLUDED."AI_SCORE",
                "TOTAL_SCORE" = EXCLUDED."TOTAL_SCORE",
                is_sandbox = true`,
-            [rows.call.ID, rows.call.CALL_SEQ, rows.call.CDATE, rows.call.UID, rows.call.AI_SCORE, rows.call.TOTAL_SCORE]
+            [callId, rows.call.AI_SCORE, rows.call.TOTAL_SCORE]
         );
-        // 전사 + 항목별 평가 — 각각 다중행 INSERT 1회. 점수와 근거는 병합 테이블 하나에 적재(마이그레이션 67).
-        await insertTranscriptRows(client, rows.call.ID, rows.conversation);
-        await insertItemScoreRows(client, rows.call.ID, rows.evaluations, rows.checklist);
-        await restoreSticky(client, rows.call.ID, _sticky);
+        await client.query(`DELETE FROM eval_pentagon_result WHERE call_id = $1`, [callId]);
+        // 재적재는 채점 결과를 덮어쓰지만 '스킬 학습 제외' 지정(사람의 결정)은 보존한다.
+        const _sticky = await captureSticky(client, callId);
+        await client.query(`DELETE FROM eval_item_score WHERE call_id = $1`, [callId]);
+        await client.query(`DELETE FROM common.call_transcript WHERE call_id = $1`, [callId]);
+        // 전사 + 항목별 평가 — 각각 다중행 INSERT 1회. 점수와 근거는 병합 테이블 하나에 적재.
+        await insertTranscriptRows(client, callId, rows.conversation);
+        await insertItemScoreRows(client, callId, rows.evaluations, rows.checklist);
+        await restoreSticky(client, callId, _sticky);
         for (const r of rows.report) {
             await client.query(
-                `INSERT INTO qa_call_pentagon_result ("ID", item_type_no, item_type, rating, comment, summary)
+                `INSERT INTO eval_pentagon_result (call_id, item_type_no, item_type, rating, comment, summary)
                  VALUES ($1,$2,$3,$4,$5,$6)`,
-                [rows.call.ID, r.item_type_no, r.item_type, r.rating, r.comment, r.summary]
+                [callId, r.item_type_no, r.item_type, r.rating, r.comment, r.summary]
             );
         }
         await client.query('COMMIT');
@@ -299,10 +308,14 @@ export async function ingestSampleToDb(pool, input, output) {
 }
 
 export async function clearSamplesFromDb(pool) {
-    // 이중 안전망: 프리픽스 LIKE 매칭 + is_sandbox=true 둘 다 만족해야 삭제.
-    // 운영 행은 is_sandbox=false 라서 절대 매칭 안 됨.
+    // 이중 안전망: source_id 프리픽스 LIKE + qa_evaluations.is_sandbox=true 둘 다 만족해야 삭제.
+    //   운영 행은 is_sandbox=false 라 절대 매칭 안 됨. common.calls 삭제 → 자식/평가 CASCADE.
     const { rows } = await pool.query(
-        `DELETE FROM qa_calls WHERE "ID" LIKE $1 AND is_sandbox = true RETURNING "ID"`,
+        `DELETE FROM common.calls c
+          WHERE c.source_id LIKE $1
+            AND EXISTS (SELECT 1 FROM trustguard.qa_evaluations e
+                         WHERE e.call_id = c.call_id AND e.is_sandbox = true)
+          RETURNING c.source_id AS "ID"`,
         [`${SAMPLE_ID_PREFIX}%`]
     );
     return { ok: true, deleted: rows.length, ids: rows.map((r) => r.ID) };
