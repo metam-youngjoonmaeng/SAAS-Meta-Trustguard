@@ -4767,36 +4767,38 @@ app.get('/api/agents/:agentId/calls', requireAdmin, async (req, res) => {
             return;
         }
         const orgId = resolveActiveOrgId(req);
+        // 통합DB: 헤더=common.calls(c, agent_user_id/uid/cdate/io_divi/call_seq), 점수=qa_evaluations(e, TOTAL_SCORE).
         const params = [agentId];
         const conds = [`c.agent_user_id = $1`];
-        if (orgId != null) { params.push(orgId); conds.push(`c.org_id = $${params.length}`); }
+        if (orgId != null) { params.push(orgId); conds.push(`c.tenant_id = $${params.length}`); }
         const io = String(req.query.io || '').toUpperCase();
         if (io === 'I' || io === 'O') { params.push(io); conds.push(`c.io_divi = $${params.length}`); }
         const from = String(req.query.from || '').trim();
         const to = String(req.query.to || '').trim();
-        if (/^\d{4}-\d{2}-\d{2}$/.test(from)) { params.push(from); conds.push(`left(c."CDATE",10) >= $${params.length}`); }
-        if (/^\d{4}-\d{2}-\d{2}$/.test(to)) { params.push(to); conds.push(`left(c."CDATE",10) <= $${params.length}`); }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(from)) { params.push(from); conds.push(`c.cdate::date >= $${params.length}::date`); }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(to)) { params.push(to); conds.push(`c.cdate::date <= $${params.length}::date`); }
         // 평가된 콜만(= /api/calls 유니버스). 포기호/미응대 제외.
         conds.push(`(
-            EXISTS (SELECT 1 FROM qa_call_item_score er    WHERE er."ID" = c."ID")
+            EXISTS (SELECT 1 FROM eval_item_score er    WHERE er.call_id = c.call_id)
         )`);
-        conds.push(`EXISTS (SELECT 1 FROM qa_call_transcript q WHERE q."ID" = c."ID" AND q.speaker = '상담사')`);
+        conds.push(`EXISTS (SELECT 1 FROM common.call_transcript q WHERE q.call_id = c.call_id AND q.speaker = 'agent')`);
         const where = `WHERE ${conds.join(' AND ')}`;
         const order = req.query.sort === 'date'
-            ? `c."CDATE" DESC`
-            : `c."TOTAL_SCORE" ASC NULLS LAST, c."CDATE" DESC`;   // 기본: 저점수 우선
+            ? `c.cdate DESC`
+            : `e."TOTAL_SCORE" ASC NULLS LAST, c.cdate DESC`;   // 기본: 저점수 우선
         const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 15));
         const page = Math.max(1, Number(req.query.page) || 1);
         const offset = (page - 1) * limit;
 
-        const { rows: cnt } = await pool.query(`SELECT COUNT(*)::int AS n FROM qa_calls c ${where}`, params);
+        const FROM = `common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id`;
+        const { rows: cnt } = await pool.query(`SELECT COUNT(*)::int AS n FROM ${FROM} ${where}`, params);
         const total = cnt[0]?.n || 0;
         const itemsParams = params.slice();
         itemsParams.push(limit, offset);
         const { rows } = await pool.query(
-            `SELECT c."ID" AS id, c."CDATE" AS date, c."TOTAL_SCORE" AS score,
-                    c."UID" AS uid, c."CALL_SEQ" AS call_no, c.io_divi AS io_divi
-               FROM qa_calls c ${where}
+            `SELECT c.source_id AS id, c.cdate AS date, e."TOTAL_SCORE" AS score,
+                    c.uid AS uid, c.call_seq AS call_no, c.io_divi AS io_divi
+               FROM ${FROM} ${where}
               ORDER BY ${order}
               LIMIT $${itemsParams.length - 1} OFFSET $${itemsParams.length}`,
             itemsParams
@@ -4826,14 +4828,16 @@ app.get('/api/coaching', requireAdmin, async (req, res) => {
         const conds = ['g.archived_at IS NULL'];   // 보드에서 정리(X)한 코칭은 제외(코칭 이력엔 유지).
         if (orgId != null) {
             params.push(orgId);
-            conds.push(`g.org_id = $${params.length}`);
+            conds.push(`g.tenant_id = $${params.length}`);
         }
         const where = `WHERE ${conds.join(' AND ')}`;
+        // 통합DB: coaching_assignments.tenant_id, 배정자·멤버=common.users(login_id=username|이메일 .ics 제거, name=표시명).
         const { rows } = await pool.query(
-            `SELECT g.*, au.display_name AS assigned_by_name,
-                    (SELECT array_agg(mu.login_id) FROM public.admin_users mu WHERE mu.user_id = ANY(g.members)) AS member_logins
-               FROM public.coaching_assignments g
-               LEFT JOIN public.admin_users au ON au.user_id = g.assigned_by_user_id
+            `SELECT g.*, au.name AS assigned_by_name,
+                    (SELECT array_agg(COALESCE(mu.username, regexp_replace(mu.email, '\\.ics$', '')))
+                       FROM common.users mu WHERE mu.id = ANY(g.members)) AS member_logins
+               FROM coaching_assignments g
+               LEFT JOIN common.users au ON au.id = g.assigned_by_user_id
                ${where}
               ORDER BY g.created_at DESC`,
             params
@@ -4842,13 +4846,17 @@ app.get('/api/coaching', requireAdmin, async (req, res) => {
         const reasonsByAssignment = new Map();
         const _rids = rows.map((r) => r.id);
         if (_rids.length) {
+            // 통합DB: coaching_assignment_reasons.qa_call_id=call_id(bigint,→qa_evaluations). 헤더=common.calls, 점수=qa_evaluations.
+            //   외부 표시 callId=common.calls.source_id(텍스트).
             const { rows: rrows } = await pool.query(
                 `SELECT r.assignment_id, r.member_user_id, r.qa_call_id, r.note,
-                        COALESCE(c."CDATE", r.call_date) AS date,
-                        COALESCE(c."TOTAL_SCORE", r.score) AS score,
-                        c."UID" AS uid, c."CALL_SEQ" AS call_no, c.io_divi
-                   FROM public.coaching_assignment_reasons r
-                   LEFT JOIN public.qa_calls c ON c."ID" = r.qa_call_id
+                        c.source_id AS source_id,
+                        COALESCE(c.cdate::text, r.call_date) AS date,
+                        COALESCE(e."TOTAL_SCORE", r.score) AS score,
+                        c.uid AS uid, c.call_seq AS call_no, c.io_divi
+                   FROM coaching_assignment_reasons r
+                   LEFT JOIN common.calls c ON c.call_id = r.qa_call_id
+                   LEFT JOIN trustguard.qa_evaluations e ON e.call_id = r.qa_call_id
                   WHERE r.assignment_id = ANY($1::bigint[])
                   ORDER BY score ASC NULLS LAST`,
                 [_rids]
@@ -4857,7 +4865,7 @@ app.get('/api/coaching', requireAdmin, async (req, res) => {
                 if (!reasonsByAssignment.has(rr.assignment_id)) reasonsByAssignment.set(rr.assignment_id, []);
                 reasonsByAssignment.get(rr.assignment_id).push({
                     memberUserId: rr.member_user_id,
-                    callId: rr.qa_call_id,
+                    callId: rr.source_id ?? rr.qa_call_id,
                     date: rr.date,
                     score: rr.score == null ? null : Number(rr.score),
                     uid: rr.uid,
@@ -4923,7 +4931,7 @@ app.get('/api/coaching/history', requireAdmin, async (req, res) => {
         let where = '';
         if (orgId != null) {
             params.push(orgId);
-            where = `WHERE g.org_id = $${params.length}`;
+            where = `WHERE g.tenant_id = $${params.length}`;
         }
         const { rows } = await pool.query(
             `SELECT
@@ -4933,25 +4941,26 @@ app.get('/api/coaching/history', requireAdmin, async (req, res) => {
                  g.channel     AS channel,
                  g.scenario_codes AS scenario_codes,
                  COALESCE(cardinality(g.scenario_codes), 0) AS scenarios,
-                 ab.display_name AS by_name,
+                 ab.name AS by_name,
                  m.member_uid  AS member_uid,
-                 mu.display_name AS member_name,
-                 mu.login_id   AS member_login,
-                 mu.department   AS member_team,
+                 mu.name AS member_name,
+                 COALESCE(mu.username, regexp_replace(mu.email, '\\.ics$', '')) AS member_login,
+                 mm.department   AS member_team,
                  sc.before_avg AS before_avg,
                  sc.after_avg  AS after_avg
-               FROM public.coaching_assignments g
+               FROM coaching_assignments g
                CROSS JOIN LATERAL unnest(g.members) AS m(member_uid)
-               LEFT JOIN public.admin_users ab ON ab.user_id = g.assigned_by_user_id
-               LEFT JOIN public.admin_users mu ON mu.user_id = m.member_uid
+               LEFT JOIN common.users ab ON ab.id = g.assigned_by_user_id
+               LEFT JOIN common.users mu ON mu.id = m.member_uid
+               LEFT JOIN common.memberships mm ON mm.user_id = m.member_uid AND mm.tenant_id = g.tenant_id
                LEFT JOIN LATERAL (
                    SELECT
-                       round(avg(qc."TOTAL_SCORE") FILTER (WHERE qc."CDATE"::timestamptz <  g.assigned_at))::int AS before_avg,
-                       round(avg(qc."TOTAL_SCORE") FILTER (WHERE qc."CDATE"::timestamptz >= g.assigned_at))::int AS after_avg
-                     FROM public.qa_calls qc
+                       round(avg(qe."TOTAL_SCORE") FILTER (WHERE qc.cdate <  g.assigned_at))::int AS before_avg,
+                       round(avg(qe."TOTAL_SCORE") FILTER (WHERE qc.cdate >= g.assigned_at))::int AS after_avg
+                     FROM common.calls qc
+                     JOIN trustguard.qa_evaluations qe ON qe.call_id = qc.call_id
                     WHERE qc.agent_user_id = m.member_uid
-                      AND qc."CDATE" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'   -- 캐스팅 안전(형식 보장)
-                      AND qc."TOTAL_SCORE" IS NOT NULL
+                      AND qe."TOTAL_SCORE" IS NOT NULL
                ) sc ON TRUE
                ${where}
               ORDER BY g.assigned_at DESC, g.id DESC`,
@@ -5016,8 +5025,8 @@ app.post('/api/coaching', requireAdmin, async (req, res) => {
         try {
             await client.query('BEGIN');
             const ins = await client.query(
-                `INSERT INTO public.coaching_assignments
-                     (org_id, title, target_type, members, action_items, scenario_codes, channel, assigned_by_user_id)
+                `INSERT INTO coaching_assignments
+                     (tenant_id, title, target_type, members, action_items, scenario_codes, channel, assigned_by_user_id)
                  VALUES ($1, $2, $3, $4::int[], $5::text[], $6::text[], $7, $8)
                  RETURNING *`,
                 [orgId, title, targetType, members, items, scenarios, channel, req.session?.user_id ?? null]
@@ -5029,15 +5038,17 @@ app.post('/api/coaching', requireAdmin, async (req, res) => {
                 const callIds = Array.isArray(r?.callIds) ? r.callIds.map((x) => String(x)).filter(Boolean) : [];
                 if (!callIds.length) continue;
                 const note = r?.note != null && String(r.note).trim() ? String(r.note).trim() : null;
-                // 소유 검증 + 표시 스냅샷: 이 콜들이 정말 memberId 상담사의 콜인지(agent_user_id) 확인.
+                // 소유 검증 + 표시 스냅샷: 이 콜들(source_id)이 정말 memberId 상담사 것인지(agent_user_id) 확인.
+                //   통합DB: qa_call_id=call_id(bigint) 로 저장, call_date=cdate 텍스트 스냅샷.
                 const vparams = [callIds, memberId];
-                let vsql = `SELECT "ID" AS id, "CDATE" AS date, "TOTAL_SCORE" AS score
-                              FROM public.qa_calls WHERE "ID" = ANY($1::text[]) AND agent_user_id = $2`;
-                if (orgId != null) { vparams.push(orgId); vsql += ` AND org_id = $3`; }
+                let vsql = `SELECT c.call_id AS id, c.cdate::text AS date, e."TOTAL_SCORE" AS score
+                              FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+                             WHERE c.source_id = ANY($1::text[]) AND c.agent_user_id = $2`;
+                if (orgId != null) { vparams.push(orgId); vsql += ` AND c.tenant_id = $3`; }
                 const { rows: valid } = await client.query(vsql, vparams);
                 for (const vc of valid) {
                     await client.query(
-                        `INSERT INTO public.coaching_assignment_reasons
+                        `INSERT INTO coaching_assignment_reasons
                              (assignment_id, member_user_id, qa_call_id, note, call_date, score)
                          VALUES ($1, $2, $3, $4, $5, $6)
                          ON CONFLICT (assignment_id, member_user_id, qa_call_id) DO NOTHING`,
@@ -5085,10 +5096,10 @@ app.delete('/api/coaching/:id', requireAdmin, async (req, res) => {
         let scope = '';
         if (orgId != null) {
             params.push(orgId);
-            scope = ` AND org_id = $${params.length}`;
+            scope = ` AND tenant_id = $${params.length}`;
         }
         const { rowCount } = await pool.query(
-            `DELETE FROM public.coaching_assignments WHERE id = $1${scope}`,
+            `DELETE FROM coaching_assignments WHERE id = $1${scope}`,
             params
         );
         res.json({ ok: true, deleted: rowCount });
@@ -5111,10 +5122,10 @@ app.post('/api/coaching/:id/archive', requireAdmin, async (req, res) => {
         let scope = '';
         if (orgId != null) {
             params.push(orgId);
-            scope = ` AND org_id = $${params.length}`;
+            scope = ` AND tenant_id = $${params.length}`;
         }
         const { rowCount } = await pool.query(
-            `UPDATE public.coaching_assignments SET archived_at = now() WHERE id = $1${scope}`,
+            `UPDATE coaching_assignments SET archived_at = now() WHERE id = $1${scope}`,
             params
         );
         if (!rowCount) {
@@ -5143,7 +5154,7 @@ app.post('/api/coaching/:id/archive-mine', async (req, res) => {
         }
         // 본인이 멤버인 코칭만 — array_append(중복 방지).
         const { rowCount } = await pool.query(
-            `UPDATE public.coaching_assignments
+            `UPDATE coaching_assignments
                 SET member_archived = (
                     SELECT array_agg(DISTINCT x) FROM unnest(array_append(member_archived, $2)) AS x
                 )
@@ -5169,18 +5180,18 @@ app.get('/api/coaching/mine', async (req, res) => {
             return;
         }
         const { rows } = await pool.query(
-            `SELECT g.*, au.display_name AS assigned_by_name,
+            `SELECT g.*, au.name AS assigned_by_name,
                     sc.before_avg, sc.after_avg
-               FROM public.coaching_assignments g
-               LEFT JOIN public.admin_users au ON au.user_id = g.assigned_by_user_id
+               FROM coaching_assignments g
+               LEFT JOIN common.users au ON au.id = g.assigned_by_user_id
                LEFT JOIN LATERAL (
                    SELECT
-                       round(avg(qc."TOTAL_SCORE") FILTER (WHERE qc."CDATE"::timestamptz <  g.assigned_at))::int AS before_avg,
-                       round(avg(qc."TOTAL_SCORE") FILTER (WHERE qc."CDATE"::timestamptz >= g.assigned_at))::int AS after_avg
-                     FROM public.qa_calls qc
+                       round(avg(qe."TOTAL_SCORE") FILTER (WHERE qc.cdate <  g.assigned_at))::int AS before_avg,
+                       round(avg(qe."TOTAL_SCORE") FILTER (WHERE qc.cdate >= g.assigned_at))::int AS after_avg
+                     FROM common.calls qc
+                     JOIN trustguard.qa_evaluations qe ON qe.call_id = qc.call_id
                     WHERE qc.agent_user_id = $1
-                      AND qc."CDATE" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
-                      AND qc."TOTAL_SCORE" IS NOT NULL
+                      AND qe."TOTAL_SCORE" IS NOT NULL
                ) sc ON TRUE
               WHERE $1 = ANY(g.members)
               ORDER BY g.created_at DESC`,
@@ -5190,13 +5201,16 @@ app.get('/api/coaching/mine', async (req, res) => {
         const reasonsByAssignment = new Map();
         const _rids = rows.map((r) => r.id);
         if (_rids.length) {
+            // 통합DB: qa_call_id=call_id(bigint), 헤더=common.calls(source_id/uid/cdate/call_seq), 점수=qa_evaluations.
             const { rows: rrows } = await pool.query(
                 `SELECT r.assignment_id, r.qa_call_id, r.note,
-                        COALESCE(c."CDATE", r.call_date) AS date,
-                        COALESCE(c."TOTAL_SCORE", r.score) AS score,
-                        c."UID" AS uid, c."CALL_SEQ" AS call_no, c.io_divi
-                   FROM public.coaching_assignment_reasons r
-                   LEFT JOIN public.qa_calls c ON c."ID" = r.qa_call_id
+                        c.source_id AS source_id,
+                        COALESCE(c.cdate::text, r.call_date) AS date,
+                        COALESCE(e."TOTAL_SCORE", r.score) AS score,
+                        c.uid AS uid, c.call_seq AS call_no, c.io_divi
+                   FROM coaching_assignment_reasons r
+                   LEFT JOIN common.calls c ON c.call_id = r.qa_call_id
+                   LEFT JOIN trustguard.qa_evaluations e ON e.call_id = r.qa_call_id
                   WHERE r.member_user_id = $1 AND r.assignment_id = ANY($2::bigint[])
                   ORDER BY score ASC NULLS LAST`,
                 [uid, _rids]
@@ -5204,7 +5218,7 @@ app.get('/api/coaching/mine', async (req, res) => {
             for (const rr of rrows) {
                 if (!reasonsByAssignment.has(rr.assignment_id)) reasonsByAssignment.set(rr.assignment_id, []);
                 reasonsByAssignment.get(rr.assignment_id).push({
-                    callId: rr.qa_call_id,
+                    callId: rr.source_id ?? rr.qa_call_id,
                     date: rr.date,
                     score: rr.score == null ? null : Number(rr.score),
                     uid: rr.uid,
@@ -5227,7 +5241,7 @@ app.get('/api/coaching/mine', async (req, res) => {
             if (total > 0 && done >= total && row.assigned_by_user_id != null && row.assigned_by_user_id !== uid) {
                 try {
                     const { rows: exist } = await pool.query(
-                        `SELECT 1 FROM public.notifications
+                        `SELECT 1 FROM notifications
                           WHERE type = 'coaching_completed' AND resource_id = $1 AND actor_user_id = $2 LIMIT 1`,
                         [String(row.id), uid]
                     );
@@ -5241,7 +5255,7 @@ app.get('/api/coaching/mine', async (req, res) => {
                             resourceId: String(row.id),
                             actorUserId: uid,
                             actorName: req.session?.display_name || req.session?.login_id || null,
-                            orgId: row.org_id ?? null,
+                            orgId: row.tenant_id ?? null,
                         });
                     }
                 } catch (e) {
