@@ -21,7 +21,7 @@ import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChe
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
 import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult, fetchGoldenIndexCoverage, resolvePipelineBaseUrl } from './qaPipelineIngest.mjs';
-import { loadRagFewshotConfig, saveRagFewshotConfig } from './ragFewshotConfig.mjs';
+import { loadRagFewshotConfig, saveRagFewshotConfig, getOrgFewshot } from './ragFewshotConfig.mjs';
 import { startIcsQaPoller, startGoldenLearnScheduler, triggerGoldenLearn, startSkillLearnScheduler, triggerSkillLearn } from './icsQaPoller.mjs';
 import { fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion, pushSkillSettings, fetchSkillGenProgress, fetchSkillMemorySummary } from './skillLearn.mjs';
 import { startMqttListener, getActiveCalls } from './mqttListener.mjs';
@@ -4663,25 +4663,19 @@ app.put('/api/rag-fewshot-config', requireAdmin, async (req, res) => {
 });
 
 async function bootstrap() {
-    // 스키마·관리자 계정·시드 데이터는 docker/init/postgres/01_init.sql 이 PostgreSQL 첫 부팅 시 단일 책임으로 import.
-    // 기존 볼륨용 idempotent 마이그레이션 — qa_calls.is_sandbox 컬럼.
-    // 운영 행과 sandbox 행을 컬럼 단위로 분리해, sandbox 정리(DELETE WHERE is_sandbox=true)가 운영 데이터를 절대 건드리지 못하게 한다.
-    await pool.query(`
-        ALTER TABLE qa_calls ADD COLUMN IF NOT EXISTS is_sandbox boolean NOT NULL DEFAULT false;
-        CREATE INDEX IF NOT EXISTS idx_qa_calls_is_sandbox ON qa_calls(is_sandbox) WHERE is_sandbox = true;
-    `);
-
+    // 통합DB: 스키마는 00-Meta-Unified-DB init 이 소유(is_sandbox 는 trustguard.qa_evaluations 컬럼).
+    //   구 `ALTER TABLE qa_calls ADD is_sandbox` 런타임 마이그레이션은 통합에선 불필요·유해 → 제거.
     // 운영 행이 0건이면 부팅을 시끄럽게 — 빈 DB 로 컨테이너만 살아 있는 사고를 콘솔에서 즉시 인지.
     try {
-        const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM qa_calls WHERE is_sandbox = false`);
+        const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM trustguard.qa_evaluations WHERE is_sandbox = false`);
         const prodCount = rows[0]?.n ?? 0;
         if (prodCount === 0) {
-            console.warn('[qa-api] ⚠ qa_calls 의 운영 행(is_sandbox=false)이 0건입니다. 신규 볼륨/시드 미적용/대량 삭제 사고 가능성 확인 필요.');
+            console.warn('[qa-api] ⚠ qa_evaluations 의 운영 평가행(is_sandbox=false)이 0건입니다. 신규 볼륨/시드 미적용/대량 삭제 사고 가능성 확인 필요.');
         } else {
-            console.log(`[qa-api] qa_calls production rows: ${prodCount}`);
+            console.log(`[qa-api] qa_evaluations production rows: ${prodCount}`);
         }
     } catch (err) {
-        console.error('[qa-api] qa_calls production-row 카운트 점검 실패:', err);
+        console.error('[qa-api] qa_evaluations production-row 카운트 점검 실패:', err);
     }
 }
 
@@ -5305,7 +5299,7 @@ app.get('/api/notifications', async (req, res) => {
         if (scope === 'current') where += ` AND read_at IS NULL`;
         params.push(limit);
         const { rows } = await pool.query(
-            `SELECT * FROM public.notifications WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length}`,
+            `SELECT * FROM notifications WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length}`,
             params
         );
         res.json(rows.map(toNotificationRow));
@@ -5320,7 +5314,7 @@ app.get('/api/notifications/unread-count', async (req, res) => {
         const uid = req.session?.user_id;
         if (uid == null) { res.json({ count: 0 }); return; }
         const { rows } = await pool.query(
-            `SELECT COUNT(*)::int AS count FROM public.notifications WHERE recipient_user_id = $1 AND read_at IS NULL`,
+            `SELECT COUNT(*)::int AS count FROM notifications WHERE recipient_user_id = $1 AND read_at IS NULL`,
             [uid]
         );
         res.json({ count: rows[0]?.count ?? 0 });
@@ -5335,7 +5329,7 @@ app.post('/api/notifications/read', async (req, res) => {
         const uid = req.session?.user_id;
         if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
         await pool.query(
-            `UPDATE public.notifications SET read_at = now() WHERE recipient_user_id = $1 AND read_at IS NULL`,
+            `UPDATE notifications SET read_at = now() WHERE recipient_user_id = $1 AND read_at IS NULL`,
             [uid]
         );
         res.json({ ok: true });
@@ -5352,7 +5346,7 @@ app.post('/api/notifications/:id/read', async (req, res) => {
         if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
         if (!Number.isFinite(id)) { res.status(400).json({ message: 'invalid id' }); return; }
         await pool.query(
-            `UPDATE public.notifications SET read_at = COALESCE(read_at, now()) WHERE id = $1 AND recipient_user_id = $2`,
+            `UPDATE notifications SET read_at = COALESCE(read_at, now()) WHERE id = $1 AND recipient_user_id = $2`,
             [id, uid]
         );
         res.json({ ok: true });
@@ -5369,7 +5363,7 @@ app.delete('/api/notifications/:id', async (req, res) => {
         if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
         if (!Number.isFinite(id)) { res.status(400).json({ message: 'invalid id' }); return; }
         const { rowCount } = await pool.query(
-            `DELETE FROM public.notifications WHERE id = $1 AND recipient_user_id = $2`,
+            `DELETE FROM notifications WHERE id = $1 AND recipient_user_id = $2`,
             [id, uid]
         );
         res.json({ ok: true, deleted: rowCount });
@@ -5384,7 +5378,7 @@ app.delete('/api/notifications', async (req, res) => {
         const uid = req.session?.user_id;
         if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
         const { rowCount } = await pool.query(
-            `DELETE FROM public.notifications WHERE recipient_user_id = $1`,
+            `DELETE FROM notifications WHERE recipient_user_id = $1`,
             [uid]
         );
         res.json({ ok: true, deleted: rowCount });
@@ -5400,7 +5394,7 @@ app.get('/api/notifications/prefs', async (req, res) => {
         const uid = req.session?.user_id;
         if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
         const { rows } = await pool.query(
-            `SELECT prefs FROM public.notification_prefs WHERE user_id = $1`, [uid]
+            `SELECT prefs FROM notification_prefs WHERE user_id = $1`, [uid]
         );
         res.json({ prefs: rows[0]?.prefs || {} });
     } catch (error) {
@@ -5416,7 +5410,7 @@ app.put('/api/notifications/prefs', async (req, res) => {
         if (uid == null) { res.status(401).json({ message: 'login required' }); return; }
         const prefs = (req.body && typeof req.body.prefs === 'object' && req.body.prefs) || {};
         await pool.query(
-            `INSERT INTO public.notification_prefs (user_id, prefs, updated_at)
+            `INSERT INTO notification_prefs (user_id, prefs, updated_at)
              VALUES ($1, $2::jsonb, now())
              ON CONFLICT (user_id) DO UPDATE SET prefs = EXCLUDED.prefs, updated_at = now()`,
             [uid, JSON.stringify(prefs)]
@@ -5450,11 +5444,12 @@ app.get('/api/me/ta-metrics', async (req, res) => {
     try {
         const me = req.session.user_id;
         const range = taRangeFromQuery(req); // A-71: 기간(from/to) — 미지정 시 전체(기존 동작)
+        // 통합DB: 콜 헤더=common.calls. proj_cd=tenant_id, "UID"=uid. 본인 응대 콜을 테넌트별로 묶어 TA 지표 조회.
         const { rows: grp } = await pool.query(
-            `SELECT proj_cd, array_agg("UID") AS uids
-               FROM qa_calls
-              WHERE agent_user_id = $1 AND "UID" IS NOT NULL AND proj_cd IS NOT NULL
-              GROUP BY proj_cd`,
+            `SELECT c.tenant_id AS proj_cd, array_agg(c.uid) AS uids
+               FROM common.calls c
+              WHERE c.agent_user_id = $1 AND c.uid IS NOT NULL
+              GROUP BY c.tenant_id`,
             [me]
         );
         let total = 0, negative = 0, banned = 0;
@@ -5481,22 +5476,29 @@ app.get('/api/me/ta-metrics', async (req, res) => {
                     rDenom += 1;
                     if (recovered) rRec += 1;
                 }
-                await pool.query(
-                    `INSERT INTO public.qa_call_emotion_recovery
-                        (proj_cd, uid, agent_user_id, segment_count, neg_seg_count, first_neg_idx,
-                         final_sentiment, had_negative, recovered, analyzed_at)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
-                     ON CONFLICT (proj_cd, uid) DO UPDATE SET
-                        agent_user_id = EXCLUDED.agent_user_id,
-                        segment_count = EXCLUDED.segment_count,
-                        neg_seg_count = EXCLUDED.neg_seg_count,
-                        first_neg_idx = EXCLUDED.first_neg_idx,
-                        final_sentiment = EXCLUDED.final_sentiment,
-                        had_negative = EXCLUDED.had_negative,
-                        recovered = EXCLUDED.recovered,
-                        analyzed_at = now()`,
-                    [g.proj_cd, sr.uid, me, segCount, negCount, firstNeg >= 0 ? firstNeg + 1 : null, finalS, hadNeg, recovered]
+                // 통합DB: eval_emotion_recovery 는 call_id 키(구 (proj_cd,uid)·agent_user_id 컬럼 없음).
+                //   (tenant_id, uid) → call_id 해석 후 콜단위 캐시 upsert. 매칭 콜 없으면 캐시 생략(회복률은 인메모리 카운트 사용).
+                const { rows: erc } = await pool.query(
+                    'SELECT call_id FROM common.calls WHERE tenant_id = $1 AND uid = $2 LIMIT 1',
+                    [g.proj_cd, sr.uid]
                 );
+                if (erc[0]) {
+                    await pool.query(
+                        `INSERT INTO eval_emotion_recovery
+                            (call_id, segment_count, neg_seg_count, first_neg_idx,
+                             final_sentiment, had_negative, recovered, source, analyzed_at)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,'ta_segments', now())
+                         ON CONFLICT (call_id) DO UPDATE SET
+                            segment_count = EXCLUDED.segment_count,
+                            neg_seg_count = EXCLUDED.neg_seg_count,
+                            first_neg_idx = EXCLUDED.first_neg_idx,
+                            final_sentiment = EXCLUDED.final_sentiment,
+                            had_negative = EXCLUDED.had_negative,
+                            recovered = EXCLUDED.recovered,
+                            analyzed_at = now()`,
+                        [erc[0].call_id, segCount, negCount, firstNeg >= 0 ? firstNeg + 1 : null, finalS, hadNeg, recovered]
+                    );
+                }
             }
         }
         // 회복률 집계는 위 루프의 인메모리 카운트 사용 — 기간 필터(A-71)·대표감정 규칙(A-72)이
@@ -5540,19 +5542,20 @@ app.get('/api/me/ta-metrics/calls', async (req, res) => {
     try {
         const me = req.session.user_id;
         const range = taRangeFromQuery(req); // A-71: 기간 필터 — 지표 카드와 동일 범위
+        // 통합DB: 콜 헤더=common.calls. proj_cd=tenant_id, "UID"=uid. 본인 응대 콜을 테넌트별로 묶어 TA 지표 조회.
         const { rows: grp } = await pool.query(
-            `SELECT proj_cd, array_agg("UID") AS uids
-               FROM qa_calls
-              WHERE agent_user_id = $1 AND "UID" IS NOT NULL AND proj_cd IS NOT NULL
-              GROUP BY proj_cd`,
+            `SELECT c.tenant_id AS proj_cd, array_agg(c.uid) AS uids
+               FROM common.calls c
+              WHERE c.agent_user_id = $1 AND c.uid IS NOT NULL
+              GROUP BY c.tenant_id`,
             [me]
         );
         // (proj_cd, UID) → qa_id("ID"). 03 tb_ta_rslt.uid=bare 지만, 콜 상세는 qa_id(ICS 전체형식)로
         //   조회하므로 행 클릭용 qa_id 를 매핑해 동봉한다. (UID='100-...' vs ID='ics:METAM:100-...')
         const { rows: idRows } = await pool.query(
-            `SELECT proj_cd, "UID" AS uid, "ID" AS qa_id
-               FROM qa_calls
-              WHERE agent_user_id = $1 AND "UID" IS NOT NULL AND proj_cd IS NOT NULL`,
+            `SELECT c.tenant_id AS proj_cd, c.uid AS uid, c.source_id AS qa_id
+               FROM common.calls c
+              WHERE c.agent_user_id = $1 AND c.uid IS NOT NULL`,
             [me]
         );
         const qaIdOf = new Map(idRows.map((r) => [`${r.proj_cd}::${r.uid}`, r.qa_id]));
@@ -5621,9 +5624,9 @@ app.get('/api/me/ta-metrics/calls', async (req, res) => {
 //                              ④ 근속(상담사 입사일 없음), ① 필수항목/업무지식(기준 미정).
 // ───────────────────────────────────────────────────────────────────────────
 function batchOrgKey(req) {
-    // 브랜드별 1행. super_admin '전체'(null)는 0 버킷에 보관.
+    // 브랜드별 1행. 통합DB: tenant_id(citext). super_admin '전체'(null)는 '__default__' 센티넬 버킷에 보관.
     const a = resolveActiveOrgId(req);
-    return a == null ? 0 : a;
+    return a == null ? '__default__' : a;
 }
 
 // GET /api/batch/config — 현재 브랜드의 저장된 조건. 없으면 config:null (프론트 기본값 사용).
@@ -5631,7 +5634,7 @@ app.get('/api/batch/config', requireAdmin, async (req, res) => {
     try {
         const orgId = batchOrgKey(req);
         const { rows } = await pool.query(
-            `SELECT config, updated_at, updated_by FROM public.qa_batch_configs WHERE org_id = $1`,
+            `SELECT config, updated_at, updated_by FROM qa_batch_configs WHERE tenant_id = $1`,
             [orgId]
         );
         res.json({
@@ -5656,9 +5659,9 @@ app.put('/api/batch/config', requireAdmin, async (req, res) => {
         const orgId = batchOrgKey(req);
         const updatedBy = req.session?.user_id ?? null;
         await pool.query(
-            `INSERT INTO public.qa_batch_configs (org_id, config, updated_at, updated_by)
+            `INSERT INTO qa_batch_configs (tenant_id, config, updated_at, updated_by)
              VALUES ($1, $2::jsonb, now(), $3)
-             ON CONFLICT (org_id) DO UPDATE SET
+             ON CONFLICT (tenant_id) DO UPDATE SET
                config = EXCLUDED.config, updated_at = now(), updated_by = EXCLUDED.updated_by`,
             [orgId, JSON.stringify(config), updatedBy]
         );
@@ -5668,7 +5671,7 @@ app.put('/api/batch/config', requireAdmin, async (req, res) => {
         await syncRagFewshotFromGolden(orgId, config).catch(() => {});
         // LLM 스킬 '적용 평가 항목'(config.skill.excluded, order_no) → 파이프라인 스킬 설정
         //   (PUT /v2/mtg-skill/{rubric}/settings, item_number) 동기화 — fire-and-forget(실패해도 저장은 성공).
-        if (orgId !== 0 && config.skill && Array.isArray(config.skill.excluded)) {
+        if (orgId !== '__default__' && config.skill && Array.isArray(config.skill.excluded)) {
             pushSkillSettings(pool, orgId, config.skill.excluded)
                 .then((r) => {
                     if (r && r.ok === false) logger.warn(`[skill-learn] 설정 동기화 실패(org=${orgId}): ${r.error || '미상'}`);
@@ -5688,16 +5691,17 @@ app.put('/api/batch/config', requireAdmin, async (req, res) => {
 //   없으면 rbrc_org{N}(색인측 getOrgFewshot 규칙과 정합). golden 미설정/org 0 이면 무동작.
 //   전 항목 제외(체크 0) → item_names 빈 배열 → getOrgFewshot null → 평가 시 RAG 전면 OFF.
 async function syncRagFewshotFromGolden(orgId, config) {
-    if (!orgId || Number(orgId) === 0) return;
+    if (!orgId || orgId === '__default__') return;
     const golden = config && config.golden;
     if (!golden || !Array.isArray(golden.excluded)) return; // 골든 섹션 없는 저장은 건드리지 않음
     const excludedSet = new Set(golden.excluded.map(Number).filter(Number.isFinite));
-    // '적용 평가 항목' 칩과 동일 소스로 order_no → 항목명(정합 보장).
+    // '적용 평가 항목' 칩과 동일 소스로 order_no → 항목명(정합 보장). 통합DB: is_sandbox=qa_evaluations, org_id→tenant_id.
     const { rows } = await pool.query(
         `SELECT er.order_no, max(er.item) AS item
-           FROM qa_call_item_score er
-           JOIN qa_calls c ON c."ID" = er."ID"
-          WHERE c.is_sandbox = false AND c.org_id = $1
+           FROM eval_item_score er
+           JOIN common.calls c ON c.call_id = er.call_id
+           JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+          WHERE e.is_sandbox = false AND c.tenant_id = $1
           GROUP BY er.order_no ORDER BY er.order_no`,
         [orgId]
     );
@@ -5705,13 +5709,9 @@ async function syncRagFewshotFromGolden(orgId, config) {
         .filter((r) => !excludedSet.has(Number(r.order_no)))
         .map((r) => String(r.item || '').trim())
         .filter(Boolean);
-    // rubric_id: 기존값 보존(org10=rbrc_asdf_org10 등 특수 유지), 없으면 rbrc_org{N}.
-    const { rows: orgRows } = await pool.query(
-        `SELECT rag_rubric_id FROM public.organizations WHERE id = $1 LIMIT 1`,
-        [orgId]
-    );
-    const existingRubric = String(orgRows[0]?.rag_rubric_id || '').trim();
-    const rubricId = existingRubric || `rbrc_org${orgId}`;
+    // rubric_id: 기존값 보존(특수 rubric_id 유지), 없으면 rbrc_org{tenant}. (통합DB: tenant_rag_config)
+    const existing = await getOrgFewshot(pool, orgId);
+    const rubricId = String(existing?.rubric_id || '').trim() || `rbrc_org${orgId}`;
     await saveRagFewshotConfig(pool, { [orgId]: { rubric_id: rubricId, item_names: includedNames } });
 }
 
@@ -5727,14 +5727,13 @@ async function notifyGoldenLearnComplete(orgId, result, { actorUserId = null, ac
         const recipients = new Set();
         if (actorUserId != null) recipients.add(Number(actorUserId));
         try {
-            // 수신자: (1) super_admin 전원(브랜드 전환기로 모든 브랜드 관리 — org_id 무관),
-            //   (2) 전역 관리자(org_id IS NULL — 이 배포처럼 관리자에 org 미지정),
-            //   (3) 해당 브랜드 관리자(org_id = 브랜드). 멀티테넌트/단일 배포 모두 커버.
+            // 통합DB: 수신자 = (1) super_admin 전원(크로스테넌트) + (2) 해당 브랜드(tenant) admin.
+            //   권한·소속은 common.memberships(role/tenant_id/status), 활성 멤버십만.
             const { rows } = await pool.query(
-                `SELECT user_id FROM public.admin_users
-                  WHERE COALESCE(is_active, 0) <> 0
-                    AND role IN ('admin', 'super_admin')
-                    AND (role = 'super_admin' OR org_id IS NULL OR org_id = $1)`,
+                `SELECT DISTINCT m.user_id FROM common.memberships m
+                  WHERE m.status = 'active'
+                    AND m.role IN ('admin', 'super_admin')
+                    AND (m.role = 'super_admin' OR m.tenant_id = $1)`,
                 [orgId]
             );
             for (const r of rows) if (r.user_id != null) recipients.add(Number(r.user_id));
@@ -5794,7 +5793,7 @@ app.post('/api/golden-learn/run', requireAdmin, async (req, res) => {
     // 즉시 피드백용 빠른 카운트(임베딩 전).
     let goldenCount = null;
     try {
-        const { rows } = await pool.query('SELECT count(*)::int AS n FROM public.qa_golden_set WHERE org_id = $1', [orgId]);
+        const { rows } = await pool.query('SELECT count(*)::int AS n FROM qa_golden_set WHERE tenant_id = $1', [orgId]);
         goldenCount = rows[0]?.n ?? null;
     } catch {
         /* 카운트 실패는 무시 — 실행에 영향 없음 */
@@ -5865,7 +5864,7 @@ app.get('/api/golden-learn/coverage', requireAdmin, async (req, res) => {
             `SELECT COUNT(*)::int AS golden_count,
                     COUNT(DISTINCT qa_id)::int AS conversation_count,
                     MAX(created_at) AS latest_golden_at
-               FROM public.qa_golden_set WHERE org_id = $1`,
+               FROM qa_golden_set WHERE tenant_id = $1`,
             [orgId]
         );
         const tot = t[0] || {};
@@ -5874,10 +5873,12 @@ app.get('/api/golden-learn/coverage', requireAdmin, async (req, res) => {
         let latestIndexedAt = null;
         let indexedConvCount = 0;
         if (cov.consultation_ids && cov.consultation_ids.length) {
+            // 통합DB: qa_golden_set.qa_id=call_id(bigint). 색인 consultation_id 는 텍스트(source_id) → common.calls 조인 매칭.
             const { rows: ir } = await pool.query(
-                `SELECT COUNT(DISTINCT qa_id)::int AS indexed_conversation_count,
-                        MAX(created_at) AS latest_indexed_at
-                   FROM public.qa_golden_set WHERE org_id = $1 AND qa_id = ANY($2::text[])`,
+                `SELECT COUNT(DISTINCT g.qa_id)::int AS indexed_conversation_count,
+                        MAX(g.created_at) AS latest_indexed_at
+                   FROM qa_golden_set g JOIN common.calls c ON c.call_id = g.qa_id
+                  WHERE g.tenant_id = $1 AND c.source_id = ANY($2::text[])`,
                 [orgId, cov.consultation_ids]
             );
             latestIndexedAt = (ir[0] && ir[0].latest_indexed_at) || null;
@@ -6168,12 +6169,14 @@ app.get('/api/batch/eval-items', requireAdmin, async (req, res) => {
         const orgId = batchOrgKey(req);
         const params = [];
         let orgClause = '';
-        if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
+        if (orgId !== '__default__') { params.push(orgId); orgClause = `AND c.tenant_id = $${params.length}`; }
+        // 통합DB: 항목=eval_item_score(call_id), 헤더=common.calls, is_sandbox=qa_evaluations.
         const { rows } = await pool.query(
-            `SELECT er.order_no, max(er.item) AS item, count(DISTINCT er."ID")::int AS calls
-               FROM qa_call_item_score er
-               JOIN qa_calls c ON c."ID" = er."ID"
-              WHERE c.is_sandbox = false ${orgClause}
+            `SELECT er.order_no, max(er.item) AS item, count(DISTINCT er.call_id)::int AS calls
+               FROM eval_item_score er
+               JOIN common.calls c ON c.call_id = er.call_id
+               JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+              WHERE e.is_sandbox = false ${orgClause}
               GROUP BY er.order_no
               ORDER BY er.order_no`,
             params
@@ -6235,16 +6238,19 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
 
         const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, confOn, uncOn, conOn, excluded, randomOn, randomPct, tjOn, tjM, tsOn, tsY, bHighRel, bHighRelPts];
         let orgClause = '';
-        if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
+        if (orgId !== '__default__') { params.push(orgId); orgClause = `AND c.tenant_id = $${params.length}`; }
 
+        // 통합DB: 헤더=common.calls, 점수/is_sandbox=qa_evaluations, 판정=eval_annotation(call_id), 입사일=테넌트별 memberships.
+        //   id=source_id(텍스트) 유지 → hashtext 무작위표본이 구 "ID" 와 동일(샘플셋 보존).
         const sql = `
             WITH scoped AS (
-                SELECT c."ID" AS id, c."TOTAL_SCORE"::numeric AS score, c.duration_sec, cj.judgments,
-                       tr.hire_date AS hire_date
-                  FROM qa_calls c
-                  LEFT JOIN qa_call_annotation cj ON cj.qa_id = c."ID"
-                  LEFT JOIN trainee_registrations tr ON tr.user_id = c.agent_user_id
-                 WHERE c.is_sandbox = false ${orgClause}
+                SELECT c.source_id AS id, e."TOTAL_SCORE"::numeric AS score, c.duration_sec, cj.judgments,
+                       mm.hire_date AS hire_date
+                  FROM common.calls c
+                  JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+                  LEFT JOIN trustguard.eval_annotation cj ON cj.call_id = c.call_id
+                  LEFT JOIN common.memberships mm ON mm.user_id = c.agent_user_id AND mm.tenant_id = c.tenant_id
+                 WHERE e.is_sandbox = false ${orgClause}
             ), in_scope AS (
                 SELECT id, score, duration_sec, judgments, hire_date FROM scoped
                  WHERE duration_sec IS NOT NULL AND duration_sec >= $1 AND duration_sec < $2
@@ -6324,7 +6330,7 @@ app.post('/api/batch/preview', requireAdmin, async (req, res) => {
 
 // ── AI 신뢰도 검증 ② 판정 프롬프트(B안) — 두 정의문 편집 + 재판정 ──────────────
 // v1: 단일 전역 판정 프롬프트(org 0). 브랜드별 프롬프트는 후속(runJudgeBackfill orgId 인자화 동반).
-const PROMPT_ORG = 0;
+const PROMPT_ORG = '__default__';   // 통합DB: 전역 판정 프롬프트 = '__default__' 센티넬(구 org 0)
 
 // 재판정 잡 상태(인프로세스 1개). 프롬프트가 전역(org 0)이라 잡도 전역 1개로 충분.
 // API 재기동 시 중단돼도 멱등(재실행이 남은 콜만 다시 처리).
@@ -6372,22 +6378,24 @@ app.put('/api/batch/prompt', requireAdmin, async (req, res) => {
         // 현재본과 이력이 한 테이블로 통합(마이그레이션 70) — 새 버전 행을 append 하면
         // 그 자체가 현재본(=org 별 최대 version)이자 이력이 된다. 별도 history INSERT 불필요.
         const { rows } = await pool.query(
-            `INSERT INTO public.qa_confidence_prompt
-                 (org_id, version, system_prompt, uncertain_def, contradiction_def,
+            `INSERT INTO qa_confidence_prompt
+                 (tenant_id, version, system_prompt, uncertain_def, contradiction_def,
                   updated_at, updated_by, updated_by_name)
              SELECT $1,
-                    COALESCE((SELECT MAX(version) FROM public.qa_confidence_prompt WHERE org_id = $1), 0) + 1,
+                    COALESCE((SELECT MAX(version) FROM qa_confidence_prompt WHERE tenant_id = $1), 0) + 1,
                     $2, $3, $4, now(), $5, $6
              RETURNING version`,
             [PROMPT_ORG, systemPrompt, storeU, storeC, updatedBy, req.session?.display_name ?? null]
         );
         const version = rows[0]?.version ?? 1;
+        // stale = 평가행이 있으나(eval_item_score) 현재 프롬프트 버전으로 판정(eval_annotation.prompt_version)되지 않은 콜.
         const { rows: sc } = await pool.query(
-            `SELECT count(*)::int AS n FROM qa_calls c
-              WHERE c.is_sandbox = false
-                AND EXISTS (SELECT 1 FROM qa_call_item_score er WHERE er."ID" = c."ID")
-                AND NOT EXISTS (SELECT 1 FROM qa_call_annotation j
-                                 WHERE j.qa_id = c."ID" AND j.prompt_version = $1)`,
+            `SELECT count(*)::int AS n
+               FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+              WHERE e.is_sandbox = false
+                AND EXISTS (SELECT 1 FROM eval_item_score er WHERE er.call_id = c.call_id)
+                AND NOT EXISTS (SELECT 1 FROM eval_annotation j
+                                 WHERE j.call_id = c.call_id AND j.prompt_version = $1)`,
             [version]
         );
         res.json({ ok: true, version, unchanged: false, stale_count: sc[0]?.n ?? 0 });
@@ -6415,8 +6423,8 @@ app.get('/api/batch/prompt/history', requireAdmin, async (req, res) => {
     try {
         const { rows } = await pool.query(
             `SELECT version, uncertain_def, contradiction_def, updated_at, updated_by, updated_by_name
-               FROM public.qa_confidence_prompt
-              WHERE org_id = $1
+               FROM qa_confidence_prompt
+              WHERE tenant_id = $1
               ORDER BY version DESC, id DESC
               LIMIT 100`,
             [PROMPT_ORG]

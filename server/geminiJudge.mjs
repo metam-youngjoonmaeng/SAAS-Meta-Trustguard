@@ -77,12 +77,13 @@ export async function resolvePrompt(pool, orgId = 0) {
  * 편집 UI 용 — 두 정의문(불확실/모순) + 메타 조회. 저장된 행이 없으면 기본값(is_default).
  * @returns {Promise<{uncertainDef:string, contradictionDef:string, version:number, isDefault:boolean, updatedAt:string|null}>}
  */
-export async function resolvePromptParts(pool, orgId = 0) {
+export async function resolvePromptParts(pool, orgId = '__default__') {
     try {
+        // 통합DB: qa_confidence_prompt.tenant_id(citext). 전역 프롬프트 = '__default__' 센티넬.
         const { rows } = await pool.query(
             `SELECT uncertain_def, contradiction_def, version, updated_at
-               FROM public.qa_confidence_prompt
-              WHERE org_id = $1 ORDER BY version DESC LIMIT 1`,
+               FROM qa_confidence_prompt
+              WHERE tenant_id = $1 ORDER BY version DESC LIMIT 1`,
             [orgId]
         );
         const r = rows[0];
