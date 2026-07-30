@@ -27,23 +27,21 @@ function env(key, def = '') {
     return String(process.env[key] ?? def).trim();
 }
 
-// PROJ_CD → org_id 매핑을 DB(organizations.proj_cd)에서 해석 — 08 과 동일하게 DB 기준.
-// ICS_QA_ORG_ID(숫자)가 명시되면 그 값을 우선(오버라이드). 둘 다 없으면 null → 적재 중단.
-async function resolveOrgId(pool, projCd, override) {
-    if (override && override > 0) return override;
-    const { rows } = await pool.query(
-        `SELECT id FROM organizations WHERE upper(proj_cd) = upper($1) LIMIT 1`,
-        [projCd]
-    );
-    return rows.length ? rows[0].id : null;
+// 통합DB: PROJ_CD == tenant_id (1:1) — organizations 조회 폐기. 브랜드 키 = tenant_id(citext, 소문자 canonical).
+//   override(ICS_QA_TENANT_ID) 명시 시 그 테넌트로 적재(구 ICS_QA_ORG_ID 숫자 오버라이드 대체). 둘 다 없으면 projCd.
+async function resolveOrgId(_pool, projCd, override) {
+    if (override) return String(override).trim().toLowerCase();
+    return String(projCd || '').trim().toLowerCase() || null;
 }
 
-/** ICS QA 적재 공통 설정(폴러·MQTT 공용) — proj/org오버라이드/idPrefix. */
+/** ICS QA 적재 공통 설정(폴러·MQTT 공용) — proj/테넌트오버라이드/idPrefix. */
 export function buildIcsQaCfg() {
     const projCd = env('ICS_QA_PROJ_CD', 'METAM');
+    // 통합DB: 브랜드 오버라이드는 tenant_id 문자열(ICS_QA_TENANT_ID). 구 ICS_QA_ORG_ID(숫자)도 문자열로 수용(하위호환).
+    const override = env('ICS_QA_TENANT_ID') || env('ICS_QA_ORG_ID') || null;
     return {
         projCd,
-        orgIdOverride: env('ICS_QA_ORG_ID') ? Number(env('ICS_QA_ORG_ID')) : null,
+        orgIdOverride: override ? String(override).trim().toLowerCase() : null,
         idPrefix: env('ICS_QA_ID_PREFIX', `ics:${projCd}:`),
     };
 }
@@ -58,7 +56,7 @@ export async function ingestCallByUid(pool, cfg, uid, ingestStandardCallFromQaPi
     const projCd = cfg.projCd;
     const orgId = await resolveOrgId(pool, projCd, cfg.orgIdOverride);
     if (!orgId) {
-        logger.error(`[ics-qa/mqtt] ${projCd}: organizations.proj_cd 매핑 브랜드 없음 — 적재 중단`);
+        logger.error(`[ics-qa/mqtt] ${projCd}: tenant_id 해석 실패 — 적재 중단`);
         return 'no_org';
     }
     const master = await getCallMaster(uid, projCd);
@@ -102,26 +100,26 @@ export async function ingestCallByUid(pool, cfg, uid, ingestStandardCallFromQaPi
     return 'done';
 }
 
-async function readWatermark(pool, projCd) {
+// 통합DB: ics_qa_poll_watermark 는 tenant_id PK(구 proj_cd/org_id 컬럼 없음). 키 = 테넌트(=orgId, 소문자).
+async function readWatermark(pool, tenantId) {
     const { rows } = await pool.query(
-        `SELECT last_call_end_date, last_uid FROM ics_qa_poll_watermark WHERE proj_cd = $1`,
-        [projCd]
+        `SELECT last_call_end_date, last_uid FROM ics_qa_poll_watermark WHERE tenant_id = $1`,
+        [tenantId]
     );
     if (!rows.length) return { endDate: null, uid: null, exists: false };
     return { endDate: rows[0].last_call_end_date, uid: rows[0].last_uid, exists: true };
 }
 
-async function writeWatermark(pool, { projCd, orgId, endDate, uid, added }) {
+async function writeWatermark(pool, { orgId, endDate, uid, added }) {
     await pool.query(
-        `INSERT INTO ics_qa_poll_watermark (proj_cd, org_id, last_call_end_date, last_uid, processed_count, updated_at)
-         VALUES ($1, $2, $3, $4, $5, now())
-         ON CONFLICT (proj_cd) DO UPDATE SET
-            org_id = EXCLUDED.org_id,
+        `INSERT INTO ics_qa_poll_watermark (tenant_id, last_call_end_date, last_uid, processed_count, updated_at)
+         VALUES ($1, $2, $3, $4, now())
+         ON CONFLICT (tenant_id) DO UPDATE SET
             last_call_end_date = EXCLUDED.last_call_end_date,
             last_uid = EXCLUDED.last_uid,
             processed_count = ics_qa_poll_watermark.processed_count + EXCLUDED.processed_count,
             updated_at = now()`,
-        [projCd, orgId, endDate, uid, added]
+        [orgId, endDate, uid, added]
     );
 }
 
@@ -134,9 +132,9 @@ async function writeWatermark(pool, { projCd, orgId, endDate, uid, added }) {
 async function readDurationGate(pool, orgId) {
     try {
         const { rows } = await pool.query(
-            `SELECT config FROM public.qa_batch_configs
-              WHERE org_id = ANY($1) ORDER BY (org_id = $2) DESC LIMIT 1`,
-            [[orgId, 0], orgId]
+            `SELECT config FROM qa_batch_configs
+              WHERE tenant_id = ANY($1) ORDER BY (tenant_id = $2) DESC LIMIT 1`,
+            [[orgId, '__default__'], orgId]
         );
         const scope = rows[0]?.config?.scope;
         if (!scope) return null;
@@ -174,9 +172,9 @@ function gateSkipReason(gate, durSec) {
 async function readSchedule(pool, orgId) {
     try {
         const { rows } = await pool.query(
-            `SELECT config FROM public.qa_batch_configs
-              WHERE org_id = ANY($1) ORDER BY (org_id = $2) DESC LIMIT 1`,
-            [[orgId, 0], orgId]
+            `SELECT config FROM qa_batch_configs
+              WHERE tenant_id = ANY($1) ORDER BY (tenant_id = $2) DESC LIMIT 1`,
+            [[orgId, '__default__'], orgId]
         );
         const scope = rows[0]?.config?.scope || {};
         return { freq: scope.freq || 'realtime', time: scope.time || '02:00' };
@@ -194,9 +192,9 @@ async function readSchedule(pool, orgId) {
 async function readGoldenSchedule(pool, orgId) {
     try {
         const { rows } = await pool.query(
-            `SELECT config FROM public.qa_batch_configs
-              WHERE org_id = ANY($1) ORDER BY (org_id = $2) DESC LIMIT 1`,
-            [[orgId, 0], orgId]
+            `SELECT config FROM qa_batch_configs
+              WHERE tenant_id = ANY($1) ORDER BY (tenant_id = $2) DESC LIMIT 1`,
+            [[orgId, '__default__'], orgId]
         );
         const scope = rows[0]?.config?.scope || {};
         return { freq: scope.goldenFreq || 'manual', time: scope.goldenTime || '02:00' };
@@ -237,9 +235,9 @@ function dueForScheduledStamp(projCd, freq, time) {
 async function readSkillSchedule(pool, orgId) {
     try {
         const { rows } = await pool.query(
-            `SELECT config FROM public.qa_batch_configs
-              WHERE org_id = ANY($1) ORDER BY (org_id = $2) DESC LIMIT 1`,
-            [[orgId, 0], orgId]
+            `SELECT config FROM qa_batch_configs
+              WHERE tenant_id = ANY($1) ORDER BY (tenant_id = $2) DESC LIMIT 1`,
+            [[orgId, '__default__'], orgId]
         );
         const scope = rows[0]?.config?.scope || {};
         return { freq: scope.skillFreq || 'manual', time: scope.skillTime || '02:00' };
@@ -367,12 +365,12 @@ export function startGoldenLearnScheduler(pool, hooks = {}) {
             // organizations JOIN — 삭제된 브랜드의 고아 설정 행(qa_batch_configs 잔존)은 자동 발화 제외.
             //   (예: org 38 hourly 잔존 → 매시 no_rubric_items 실패 알림 재발 방지)
             const { rows } = await pool.query(
-                `SELECT c.org_id FROM public.qa_batch_configs c
-                  JOIN public.organizations o ON o.id = c.org_id
-                  WHERE c.org_id <> 0 AND (c.config #>> '{scope,goldenFreq}') IN ('hourly', 'daily')`
+                `SELECT c.tenant_id FROM qa_batch_configs c
+                  JOIN common.tenants o ON o.tenant_id = c.tenant_id
+                  WHERE c.tenant_id <> '__default__' AND (c.config #>> '{scope,goldenFreq}') IN ('hourly', 'daily')`
             );
             for (const row of rows) {
-                const orgId = row.org_id;
+                const orgId = row.tenant_id;
                 try {
                     const sched = await readGoldenSchedule(pool, orgId);
                     if ((sched.freq === 'hourly' || sched.freq === 'daily') && dueForGoldenLearn(`org:${orgId}`, sched.freq, sched.time)) {
@@ -455,12 +453,12 @@ export function startSkillLearnScheduler(pool, hooks = {}) {
         try {
             // organizations JOIN — 삭제된 브랜드의 고아 설정 행은 자동 발화 제외(골든 스케줄러와 동일 가드).
             const { rows } = await pool.query(
-                `SELECT c.org_id FROM public.qa_batch_configs c
-                  JOIN public.organizations o ON o.id = c.org_id
-                  WHERE c.org_id <> 0 AND (c.config #>> '{scope,skillFreq}') IN ('hourly', 'daily')`
+                `SELECT c.tenant_id FROM qa_batch_configs c
+                  JOIN common.tenants o ON o.tenant_id = c.tenant_id
+                  WHERE c.tenant_id <> '__default__' AND (c.config #>> '{scope,skillFreq}') IN ('hourly', 'daily')`
             );
             for (const row of rows) {
-                const orgId = row.org_id;
+                const orgId = row.tenant_id;
                 try {
                     const sched = await readSkillSchedule(pool, orgId);
                     if ((sched.freq === 'hourly' || sched.freq === 'daily') && dueForSkillLearn(`org:${orgId}`, sched.freq, sched.time)) {
@@ -501,11 +499,11 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
 
     const orgId = await resolveOrgId(pool, projCd, orgIdOverride);
     if (!orgId) {
-        logger.error(`[ics-qa] ${projCd}: organizations.proj_cd 에 매핑된 브랜드 없음 — 적재 중단 (해당 브랜드에 proj_cd='${projCd}' 설정 필요)`);
+        logger.error(`[ics-qa] ${projCd}: tenant_id 해석 실패 — 적재 중단 (ICS_QA_PROJ_CD 또는 ICS_QA_TENANT_ID 확인)`);
         return;
     }
 
-    const wm = await readWatermark(pool, projCd);
+    const wm = await readWatermark(pool, orgId);
 
     // 최초 기동: 과거 전체 백필을 피하려 워터마크를 '현재 최신 완료시각'으로 시드하고 이번 틱 종료
     // → 이후부터 새로 종료되는 콜만 처리 (08 _poll_ics_completed 와 동일).
