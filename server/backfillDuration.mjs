@@ -20,10 +20,11 @@ async function main() {
     }
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c search_path=trustguard,common,public' });
 
+    // 통합DB: duration_sec/uid=common.calls. proj_cd=upper(tenant_id)(ICS mtm30 조회는 대문자 PROJ_CD).
     const { rows } = await pool.query(
-        `SELECT "ID" AS id, "UID" AS uid, proj_cd
-           FROM qa_calls
-          WHERE duration_sec IS NULL AND proj_cd IS NOT NULL AND "UID" IS NOT NULL`
+        `SELECT call_id AS id, uid, upper(tenant_id) AS proj_cd
+           FROM common.calls
+          WHERE duration_sec IS NULL AND uid IS NOT NULL`
     );
     console.log(`[backfill-dur] 대상 콜 ${rows.length}건`);
     if (!rows.length) { await pool.end(); await closeIcsPool(); return; }
@@ -40,7 +41,7 @@ async function main() {
         for (const c of calls) {
             const dur = durMap.get(String(c.uid));
             if (dur === null || dur === undefined || !Number.isFinite(dur)) { miss += 1; continue; }
-            await pool.query(`UPDATE qa_calls SET duration_sec = $2 WHERE "ID" = $1`, [c.id, Math.round(dur)]);
+            await pool.query(`UPDATE common.calls SET duration_sec = $2 WHERE call_id = $1`, [c.id, Math.round(dur)]);
             filled += 1;
         }
     }

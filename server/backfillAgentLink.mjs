@@ -21,11 +21,11 @@ async function main() {
     }
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c search_path=trustguard,common,public' });
 
-    // agent_code 미지정 + proj_cd 있는(=ICS) 콜만
+    // 통합DB: agent_code/uid=common.calls. proj_cd=upper(tenant_id)(ICS mtm30 조회는 대문자 PROJ_CD).
     const { rows } = await pool.query(
-        `SELECT "ID" AS id, "UID" AS uid, proj_cd
-           FROM qa_calls
-          WHERE agent_code IS NULL AND proj_cd IS NOT NULL AND "UID" IS NOT NULL`
+        `SELECT call_id AS id, uid, upper(tenant_id) AS proj_cd
+           FROM common.calls
+          WHERE agent_code IS NULL AND uid IS NOT NULL`
     );
     console.log(`[backfill] 대상 콜 ${rows.length}건`);
     if (!rows.length) { await pool.end(); await closeIcsPool(); return; }
@@ -44,14 +44,14 @@ async function main() {
             const a = agentMap.get(String(c.uid));
             const agentCode = a?.agent_code ?? null;
             if (!agentCode) { miss += 1; continue; }
-            // admin_users 매칭(icsSso 규칙: login_id = lower('{code}@{proj}'))
+            // 통합DB: common.users.email 직접매칭(ICS 규약 {userCd}@{projCd}.ics, citext).
             const { rows: ur } = await pool.query(
-                `SELECT user_id FROM admin_users WHERE lower(login_id) = lower($1) LIMIT 1`,
-                [`${agentCode}@${projCd}`]
+                `SELECT id AS user_id FROM common.users WHERE email = $1 LIMIT 1`,
+                [`${agentCode}@${projCd}.ics`]
             );
             const agentUserId = ur?.[0]?.user_id ?? null;
             await pool.query(
-                `UPDATE qa_calls SET agent_code = $2, agent_user_id = $3 WHERE "ID" = $1`,
+                `UPDATE common.calls SET agent_code = $2, agent_user_id = $3 WHERE call_id = $1`,
                 [c.id, agentCode, agentUserId]
             );
             if (agentUserId) linked += 1; else codeOnly += 1;

@@ -35,8 +35,9 @@ export async function endSandboxSession(pool) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        // 통합DB: is_sandbox 는 trustguard.qa_evaluations 컬럼. sandbox 콜 = 그 평가행이 is_sandbox=true 인 콜.
         const beforeRes = await client.query(
-            `SELECT COUNT(*)::int AS n FROM qa_calls WHERE is_sandbox = true`
+            `SELECT COUNT(*)::int AS n FROM trustguard.qa_evaluations WHERE is_sandbox = true`
         );
         const sandboxCount = beforeRes.rows[0]?.n ?? 0;
 
@@ -49,8 +50,12 @@ export async function endSandboxSession(pool) {
             return { ok: false, reason: 'cap_exceeded', sandboxCount };
         }
 
+        // common.calls 삭제 → qa_evaluations(is_sandbox=true) + 자식/transcript CASCADE. 운영행(is_sandbox=false)은 매칭 안 됨.
         const delCalls = await client.query(
-            `DELETE FROM qa_calls WHERE is_sandbox = true RETURNING "ID"`
+            `DELETE FROM common.calls c
+              WHERE EXISTS (SELECT 1 FROM trustguard.qa_evaluations e
+                             WHERE e.call_id = c.call_id AND e.is_sandbox = true)
+              RETURNING c.source_id AS "ID"`
         );
         const delAudit = await client.query(
             `DELETE FROM qa_audit_logs WHERE login_id = $1`,
@@ -58,7 +63,7 @@ export async function endSandboxSession(pool) {
         );
         await client.query('COMMIT');
         console.log(
-            `[sandboxSession] cleanup: qa_calls -${delCalls.rowCount} (sandbox), qa_audit_logs -${delAudit.rowCount} (test1)`
+            `[sandboxSession] cleanup: common.calls -${delCalls.rowCount} (sandbox), qa_audit_logs -${delAudit.rowCount} (test1)`
         );
         return { ok: true, deletedCalls: delCalls.rowCount, deletedAuditLogs: delAudit.rowCount };
     } catch (e) {

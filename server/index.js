@@ -935,16 +935,17 @@ app.post('/api/svc/deep-eval', async (req, res) => {
         res.status(401).json({ message: 'invalid service token' });
         return;
     }
-    const { transcript, qa_org_id, domain_id, department, role, consultation_id } = req.body || {};
+    const { transcript, qa_org_id, tenant_id, domain_id, department, role, consultation_id } = req.body || {};
     if (!Array.isArray(transcript) || !transcript.length) {
         res.status(400).json({ message: 'transcript (non-empty array) required' });
         return;
     }
     const domainId = Number(domain_id);
-    const orgId = Number(qa_org_id);
+    // 통합DB: qa_org_id(int) → tenant_id(citext). tenant_id 우선, 구 qa_org_id 문자열 폴백.
+    const orgId = String(tenant_id ?? qa_org_id ?? '').trim().toLowerCase() || null;
     const useDomain = Number.isFinite(domainId);
-    if (!useDomain && !Number.isFinite(orgId)) {
-        res.status(400).json({ message: 'domain_id 또는 qa_org_id (number) 가 필요합니다' });
+    if (!useDomain && !orgId) {
+        res.status(400).json({ message: 'domain_id 또는 tenant_id(qa_org_id) 가 필요합니다' });
         return;
     }
     const cid = String(consultation_id || `deep-${useDomain ? `d${domainId}` : orgId}-${transcript.length}`).trim();
@@ -4686,8 +4687,8 @@ async function bootstrap() {
 /* ── Tutor 시나리오 카탈로그(코칭 배정용) ───────────────────────
  * GET /api/tutor/scenarios
  * 평가항목 공유의 거울: SSOT(시나리오)=Tutor, QA 가 읽어옴.
- * 활성 org_id → Tutor `GET /svc/scenarios?qa_org_id=` 호출(X-Service-Token=EVAL_SHARE_TOKEN).
- * 매핑 키는 평가항목과 동일한 organizations.qa_org_id. 미설정/미페어링 시 빈 카탈로그.
+ * 활성 tenant_id → Tutor `GET /svc/scenarios?tenant_id=` 호출(X-Service-Token=EVAL_SHARE_TOKEN).
+ * 통합DB: 매핑 키 = tenant_id(=proj_cd 1:1, 구 qa_org_id 폐기). ★튜터(02)측도 tenant_id 수용 동반 필요(교차제품). 미페어링 시 빈 카탈로그(graceful).
  * ────────────────────────────────────────────────────────── */
 app.get('/api/tutor/scenarios', requireAdmin, async (req, res) => {
     const base = String(process.env.TUTOR_API_BASE_URL || '').trim().replace(/\/+$/, '');
@@ -4703,7 +4704,7 @@ app.get('/api/tutor/scenarios', requireAdmin, async (req, res) => {
         return;
     }
     try {
-        const url = `${base}/svc/scenarios?qa_org_id=${encodeURIComponent(orgId)}`;
+        const url = `${base}/svc/scenarios?tenant_id=${encodeURIComponent(orgId)}`;
         const r = await fetch(url, {
             headers: { 'X-Service-Token': token },
             signal: AbortSignal.timeout(10000),
