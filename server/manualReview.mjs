@@ -15,10 +15,11 @@ const num = (v, def) => (Number.isFinite(Number(v)) ? Number(v) : def);
 
 /** 브랜드 배치 설정(qa_batch_configs) — org 우선, 없으면 0(전체/기본). 없으면 null. */
 export async function readBatchConfig(pool, orgId) {
+    // 통합DB: qa_batch_configs.tenant_id(citext). org 우선, 없으면 '__default__'(전체/기본).
     const { rows } = await pool.query(
-        `SELECT config FROM public.qa_batch_configs
-          WHERE org_id = ANY($1) ORDER BY (org_id = $2) DESC LIMIT 1`,
-        [[orgId, 0], orgId]
+        `SELECT config FROM qa_batch_configs
+          WHERE tenant_id = ANY($1) ORDER BY (tenant_id = $2) DESC LIMIT 1`,
+        [[orgId, '__default__'], orgId]
     );
     return rows[0]?.config || null;
 }
@@ -62,36 +63,40 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
     if (!qOn && !bHighOn && !uncOn && !conOn && !rOn && !tjOn && !tsOn) return 0; // 활성(지원) 조건 없음
 
     const params = [minSec, maxSec, qOn, qRel, qRelPts, qAbs, bHighOn, bHigh, uncOn, conOn, excluded, rOn, rPct, tjOn, tjM, tsOn, tsY, bHighRel, bHighRelPts];
+    // 통합DB: 헤더=common.calls(c), 점수/is_sandbox/manual_review*=qa_evaluations(e), 판정=eval_annotation(cj, call_id),
+    //   입사일=테넌트별 memberships(mm). 내부 id=call_id(bigint). hashtext 표본은 source_id(=구 ID) 로 preview 와 동일.
     let orgClause = '';
-    if (orgId !== 0) { params.push(orgId); orgClause = `AND c.org_id = $${params.length}`; }
+    if (orgId !== '__default__') { params.push(orgId); orgClause = `AND c.tenant_id = $${params.length}`; }
     let idClause = '';
-    if (Array.isArray(qaIds) && qaIds.length) { params.push(qaIds); idClause = `AND c."ID" = ANY($${params.length})`; }
+    if (Array.isArray(qaIds) && qaIds.length) { params.push(qaIds); idClause = `AND c.call_id = ANY($${params.length}::bigint[])`; }
 
     const sql = `
       WITH agg AS (
-        SELECT avg(c."TOTAL_SCORE"::numeric) AS org_avg FROM qa_calls c
-         WHERE c.is_sandbox = false ${orgClause}
+        SELECT avg(e."TOTAL_SCORE"::numeric) AS org_avg
+          FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+         WHERE e.is_sandbox = false ${orgClause}
            AND c.duration_sec IS NOT NULL AND c.duration_sec >= $1 AND c.duration_sec < $2
       ), matched AS (
-        SELECT c."ID" AS id,
-          ($3 AND (($4 AND a.org_avg IS NOT NULL AND c."TOTAL_SCORE" <= a.org_avg - $5) OR (NOT $4 AND c."TOTAL_SCORE" < $6))) AS q,
-          ($7 AND (($18 AND a.org_avg IS NOT NULL AND c."TOTAL_SCORE" >= a.org_avg + $19) OR (NOT $18 AND c."TOTAL_SCORE" >= $8))) AS b,
-          ($9 AND EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(cj.judgments,'[]'::jsonb)) e
-                   WHERE NOT ((e->>'order_no')::int = ANY($11::int[])) AND (e->>'uncertain')::boolean)) AS cf_unc,
-          ($10 AND EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(cj.judgments,'[]'::jsonb)) e
-                   WHERE NOT ((e->>'order_no')::int = ANY($11::int[])) AND (e->>'contradiction')::boolean)) AS cf_con,
-          ($12 AND (((hashtext(c."ID") % 100) + 100) % 100) < $13) AS r,
-          ($14 AND tr.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND tr.hire_date::date >= (CURRENT_DATE - make_interval(months => $15))) AS te_j,
-          ($16 AND tr.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND tr.hire_date::date <= (CURRENT_DATE - make_interval(years  => $17))) AS te_s
-        FROM qa_calls c
-        LEFT JOIN qa_call_annotation cj ON cj.qa_id = c."ID"
-        LEFT JOIN trainee_registrations tr ON tr.user_id = c.agent_user_id
+        SELECT c.call_id AS id,
+          ($3 AND (($4 AND a.org_avg IS NOT NULL AND e."TOTAL_SCORE" <= a.org_avg - $5) OR (NOT $4 AND e."TOTAL_SCORE" < $6))) AS q,
+          ($7 AND (($18 AND a.org_avg IS NOT NULL AND e."TOTAL_SCORE" >= a.org_avg + $19) OR (NOT $18 AND e."TOTAL_SCORE" >= $8))) AS b,
+          ($9 AND EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(cj.judgments,'[]'::jsonb)) je
+                   WHERE NOT ((je->>'order_no')::int = ANY($11::int[])) AND (je->>'uncertain')::boolean)) AS cf_unc,
+          ($10 AND EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(cj.judgments,'[]'::jsonb)) je
+                   WHERE NOT ((je->>'order_no')::int = ANY($11::int[])) AND (je->>'contradiction')::boolean)) AS cf_con,
+          ($12 AND (((hashtext(c.source_id) % 100) + 100) % 100) < $13) AS r,
+          ($14 AND mm.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND mm.hire_date::date >= (CURRENT_DATE - make_interval(months => $15))) AS te_j,
+          ($16 AND mm.hire_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND mm.hire_date::date <= (CURRENT_DATE - make_interval(years  => $17))) AS te_s
+        FROM common.calls c
+        JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+        LEFT JOIN trustguard.eval_annotation cj ON cj.call_id = c.call_id
+        LEFT JOIN common.memberships mm ON mm.user_id = c.agent_user_id AND mm.tenant_id = c.tenant_id
         CROSS JOIN agg a
-        WHERE c.is_sandbox = false ${orgClause}
+        WHERE e.is_sandbox = false ${orgClause}
           AND c.duration_sec IS NOT NULL AND c.duration_sec >= $1 AND c.duration_sec < $2
           ${idClause}
       )
-      UPDATE qa_calls t SET
+      UPDATE trustguard.qa_evaluations t SET
         manual_review = true,
         manual_review_reasons =
             (CASE WHEN m.q      THEN jsonb_build_array('점수·표본 검증 · 평균점수 미달') ELSE '[]'::jsonb END)
@@ -103,8 +108,8 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
          || (CASE WHEN m.te_s   THEN jsonb_build_array('대상자 특정 · 장기 근속') ELSE '[]'::jsonb END),
         manual_review_at = COALESCE(t.manual_review_at, now())
       FROM matched m
-      WHERE t."ID" = m.id AND (m.q OR m.b OR m.cf_unc OR m.cf_con OR m.r OR m.te_j OR m.te_s)
-      RETURNING t."ID"`;
+      WHERE t.call_id = m.id AND (m.q OR m.b OR m.cf_unc OR m.cf_con OR m.r OR m.te_j OR m.te_s)
+      RETURNING t.call_id`;
 
     try {
         const { rowCount } = await pool.query(sql, params);
@@ -115,17 +120,17 @@ export async function applyManualReviewStamps(pool, orgId, { qaIds = null } = {}
     }
 }
 
-/** judgeConfidence 등에서 여러 콜(여러 org일 수 있음)을 org별로 묶어 도장. */
+/** judgeConfidence 등에서 여러 콜(여러 tenant일 수 있음)을 tenant별로 묶어 도장. 통합DB: qaIds=call_id(bigint). */
 export async function stampByQaIds(pool, qaIds) {
-    const ids = (qaIds || []).filter(Boolean);
+    const ids = (qaIds || []).filter((v) => v != null);
     if (!ids.length) return 0;
     const { rows } = await pool.query(
-        `SELECT DISTINCT org_id FROM qa_calls WHERE "ID" = ANY($1)`,
+        `SELECT DISTINCT tenant_id FROM common.calls WHERE call_id = ANY($1::bigint[])`,
         [ids]
     );
     let total = 0;
     for (const r of rows) {
-        total += await applyManualReviewStamps(pool, r.org_id ?? 0, { qaIds: ids });
+        total += await applyManualReviewStamps(pool, r.tenant_id ?? '__default__', { qaIds: ids });
     }
     return total;
 }

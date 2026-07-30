@@ -25,22 +25,23 @@ const { Pool } = pg;
  * @param {{limit?:number, orgId?:number, onProgress?:(p:{done:number,total:number})=>void}} opts
  * @returns {Promise<{total:number, done:number, failed:number, flagged:number, stamped:number, version:number, model:string}>}
  */
-export async function runJudgeBackfill(pool, { limit = 500, orgId = 0, onProgress } = {}) {
+export async function runJudgeBackfill(pool, { limit = 500, orgId = '__default__', onProgress } = {}) {
     if (!judgeEnabled()) throw new Error('GEMINI_API_KEY 미설정 — 판정 불가');
     const model = judgeModel();
-    // v1: 전체/기본(org 0) 프롬프트로 판정. (브랜드별 프롬프트는 후속 — orgId 인자화.)
+    // v1: 전체/기본('__default__') 프롬프트로 판정. (브랜드별 프롬프트는 후속 — orgId 인자화.)
     const { systemPrompt, version } = await resolvePrompt(pool, orgId);
 
-    // 판정 대상: 평가행이 있고(non-sandbox), 현재 프롬프트 버전으로 아직 판정 안 된 콜.
+    // 통합DB: 내부 id = common.calls.call_id(bigint). is_sandbox=qa_evaluations, 항목=eval_item_score, 판정=eval_annotation(call_id).
     const { rows: targets } = await pool.query(
-        `SELECT c."ID" AS id
-           FROM qa_calls c
-          WHERE c.is_sandbox = false
-            AND EXISTS (SELECT 1 FROM qa_call_item_score er WHERE er."ID" = c."ID")
+        `SELECT c.call_id AS id
+           FROM common.calls c
+           JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+          WHERE e.is_sandbox = false
+            AND EXISTS (SELECT 1 FROM eval_item_score er WHERE er.call_id = c.call_id)
             AND NOT EXISTS (
-                SELECT 1 FROM qa_call_annotation j
-                 WHERE j.qa_id = c."ID" AND j.prompt_version = $1)
-          ORDER BY c."CDATE" DESC
+                SELECT 1 FROM eval_annotation j
+                 WHERE j.call_id = c.call_id AND j.prompt_version = $1)
+          ORDER BY c.cdate DESC
           LIMIT $2`,
         [version, limit]
     );
@@ -53,8 +54,8 @@ export async function runJudgeBackfill(pool, { limit = 500, orgId = 0, onProgres
         const { rows: items } = await pool.query(
             `SELECT er.order_no, er.item, er.ai_eval AS score, er.reason_text,
                     er.max_score::int AS max
-               FROM qa_call_item_score er
-              WHERE er."ID" = $1
+               FROM eval_item_score er
+              WHERE er.call_id = $1
               ORDER BY er.order_no`,
             [t.id]
         );
@@ -68,10 +69,10 @@ export async function runJudgeBackfill(pool, { limit = 500, orgId = 0, onProgres
             await pool.query(
                 // 병합 테이블(마이그레이션 71) — 배치는 판정 컬럼만 SET.
                 // comments(사람이 남긴 코멘트)는 EXCLUDED 에 없으므로 절대 덮이지 않는다.
-                `INSERT INTO qa_call_annotation
-                     (qa_id, judgments, has_uncertain, has_weak, has_contradiction, prompt_version, model, judged_at)
+                `INSERT INTO eval_annotation
+                     (call_id, judgments, has_uncertain, has_weak, has_contradiction, prompt_version, model, judged_at)
                  VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7, now())
-                 ON CONFLICT (qa_id) DO UPDATE SET
+                 ON CONFLICT (call_id) DO UPDATE SET
                      judgments = EXCLUDED.judgments, has_uncertain = EXCLUDED.has_uncertain,
                      has_weak = EXCLUDED.has_weak, has_contradiction = EXCLUDED.has_contradiction,
                      prompt_version = EXCLUDED.prompt_version, model = EXCLUDED.model, judged_at = now()`,

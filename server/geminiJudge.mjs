@@ -57,11 +57,12 @@ export function judgeModel() {
  * 활성 판정 프롬프트 해석: qa_confidence_prompt 최신 version 우선, 없으면 DEFAULT_PROMPT(version 0).
  * @returns {Promise<{systemPrompt:string, version:number}>}
  */
-export async function resolvePrompt(pool, orgId = 0) {
+export async function resolvePrompt(pool, orgId = '__default__') {
     try {
+        // 통합DB: qa_confidence_prompt.tenant_id(citext). 전역 프롬프트 = '__default__' 센티넬.
         const { rows } = await pool.query(
-            `SELECT system_prompt, version FROM public.qa_confidence_prompt
-              WHERE org_id = $1 ORDER BY version DESC LIMIT 1`,
+            `SELECT system_prompt, version FROM qa_confidence_prompt
+              WHERE tenant_id = $1 ORDER BY version DESC LIMIT 1`,
             [orgId]
         );
         if (rows[0]?.system_prompt) {
