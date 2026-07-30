@@ -2167,7 +2167,9 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
     if (req.session?.login_id === SANDBOX_LOGIN_ID) {
         try {
             const { rows: targetRow } = await pool.query(
-                `SELECT is_sandbox FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
+                `SELECT e.is_sandbox
+                   FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+                  WHERE c.source_id = $1 LIMIT 1`,
                 [qaId]
             );
             if (targetRow[0] && targetRow[0].is_sandbox === false) {
@@ -2192,7 +2194,9 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
             }
             try {
                 const { rows: own } = await pool.query(
-                    `SELECT agent_user_id, review_status FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
+                    `SELECT c.agent_user_id, e.review_status
+                       FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+                      WHERE c.source_id = $1 LIMIT 1`,
                     [qaId]
                 );
                 if (!own[0]) {
@@ -2231,24 +2235,26 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
         return;
     }
     try {
-        const { rows: callRows } = await pool.query('SELECT "ID" AS qa_id FROM qa_calls WHERE "ID" = $1 LIMIT 1', [qaId]);
+        // 통합DB: :qaId=common.calls.source_id → call_id 해석. 자식(eval_item_score)은 call_id 조인.
+        const { rows: callRows } = await pool.query('SELECT call_id FROM common.calls WHERE source_id = $1 LIMIT 1', [qaId]);
         if (!callRows[0]) {
             res.status(404).json({ message: 'Not found' });
             return;
         }
+        const callId = callRows[0].call_id;
         const { rows: existingEval } = await pool.query(
-            `SELECT "ID" AS qa_id, order_no, category, item, reason_text, ai_eval, manual_eval
-             FROM qa_call_item_score
-             WHERE "ID" = $1
+            `SELECT $1::text AS qa_id, order_no, category, item, reason_text, ai_eval, manual_eval
+             FROM eval_item_score
+             WHERE call_id = $2
              ORDER BY order_no ASC`,
-            [qaId]
+            [qaId, callId]
         );
         const { rows: checklistBase } = await pool.query(
-            `SELECT "ID" AS qa_id, order_no, category, item, agent_utterance, max_score
-             FROM qa_call_item_score
-             WHERE "ID" = $1 AND max_score IS NOT NULL
+            `SELECT $1::text AS qa_id, order_no, category, item, agent_utterance, max_score
+             FROM eval_item_score
+             WHERE call_id = $2 AND max_score IS NOT NULL
              ORDER BY order_no ASC`,
-            [qaId]
+            [qaId, callId]
         );
         const aiByOrderNo = new Map(existingEval.map((r) => [Number(r.order_no), Number(r.ai_eval)]));
         const checklist = checklistBase.map((r) => ({
@@ -2318,17 +2324,17 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
             await client.query('BEGIN');
             for (const r of encoded) {
                 await client.query(
-                    `UPDATE qa_call_item_score
+                    `UPDATE eval_item_score
                      SET manual_eval = $1, manual_eval_option = $2
-                     WHERE "ID" = $3 AND order_no = $4`,
-                    [r.value, r.option, qaId, r.order_no]
+                     WHERE call_id = $3 AND order_no = $4`,
+                    [r.value, r.option, callId, r.order_no]
                 );
             }
             // 수기 환산점수가 산출될 때만 TOTAL_SCORE 갱신 — null 일 때 0 으로 덮어쓰면 안 된다.
             if (manualPct !== null) {
-                await client.query(`UPDATE qa_calls SET "TOTAL_SCORE" = $1 WHERE "ID" = $2`, [
+                await client.query(`UPDATE trustguard.qa_evaluations SET "TOTAL_SCORE" = $1 WHERE call_id = $2`, [
                     Number(manualPct),
-                    qaId,
+                    callId,
                 ]);
             }
             await client.query('COMMIT');
@@ -2338,7 +2344,7 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
         } finally {
             client.release();
         }
-        const { rows: savedRows } = await pool.query('SELECT "ID" AS qa_id FROM qa_calls WHERE "ID" = $1', [qaId]);
+        const { rows: savedRows } = await pool.query('SELECT call_id FROM common.calls WHERE source_id = $1', [qaId]);
         if (!savedRows[0]) {
             await insertQaAuditLog(pool, {
                 req,
@@ -2391,16 +2397,21 @@ app.put('/api/evaluations/:qaId', async (req, res) => {
 });
 
 app.put('/api/evaluations/:qaId/admin-comments', async (req, res) => {
-    const qaId = req.params.qaId;
+    const qaId = String(req.params.qaId || '').trim();
     const list = Array.isArray(req.body?.admin_comments) ? req.body.admin_comments : [];
     try {
+        // 통합DB: :qaId=common.calls.source_id → call_id. eval_annotation 은 call_id 키(병합 comment+confidence).
+        const { rows: c } = await pool.query('SELECT call_id FROM common.calls WHERE source_id = $1 LIMIT 1', [qaId]);
+        if (!c[0]) {
+            res.status(404).json({ message: 'Not found' });
+            return;
+        }
         await pool.query(
-            // 병합 테이블(마이그레이션 71) — 사용자는 comments 만 SET.
-            // 배치가 쓰는 judgments/has_* 는 EXCLUDED 에 없으므로 보존된다.
-            `INSERT INTO public.qa_call_annotation (qa_id, comments, comments_at)
+            // 병합 테이블 — 사용자는 comments 만 SET. 배치가 쓰는 judgments/has_* 는 EXCLUDED 에 없으므로 보존된다.
+            `INSERT INTO eval_annotation (call_id, comments, comments_at)
                  VALUES ($1, $2::jsonb, now())
-             ON CONFLICT (qa_id) DO UPDATE SET comments = EXCLUDED.comments, comments_at = now()`,
-            [qaId, JSON.stringify(list)]
+             ON CONFLICT (call_id) DO UPDATE SET comments = EXCLUDED.comments, comments_at = now()`,
+            [c[0].call_id, JSON.stringify(list)]
         );
         res.json({ ok: true, admin_comments: list });
     } catch (error) {
@@ -2410,9 +2421,10 @@ app.put('/api/evaluations/:qaId/admin-comments', async (req, res) => {
 });
 
 // 평가 콜 삭제 (관리자 전용, 벌크). body { ids:[qaId, ...] } 또는 { id:qaId } 단건 수용.
-//   qa_calls 행 삭제 시 자식 테이블(qa_call_item_score·qa_call_pentagon_result·qa_call_transcript·
-//   qa_golden_set·qa_call_review_event·qa_call_ksqi_score·qa_call_ksqi_summary·
-//   qa_call_emotion_recovery)이 FK ON DELETE CASCADE 로 함께 제거된다 — 별도 자식 DELETE 불필요.
+//   통합DB: :qaId=common.calls.source_id. common.calls 행 삭제 → qa_evaluations(ON DELETE CASCADE)
+//   → 그 자식(eval_item_score·eval_pentagon_result·eval_annotation·eval_ksqi_*·eval_review_event·qa_golden_set)
+//   + common.call_transcript·eval_emotion_recovery(common.calls 참조) 까지 CASCADE 제거 — 별도 자식 DELETE 불필요.
+//   ★교차제품 주의: common.calls 는 TA 와 공용 헤더. 현재 QA "콜 삭제"=구 qa_calls 전삭제 거동 보존(헤더까지 제거).
 //   sandbox 계정은 운영 행(is_sandbox=false) 삭제 불가 — 배치에 운영행 포함 시 전체 거부(평가/검수 PUT 가드 일관).
 //   SELECT(가드)→DELETE 를 한 트랜잭션으로 묶어 TOCTOU 방지.
 app.delete('/api/calls', requireAdmin, async (req, res) => {
@@ -2431,7 +2443,9 @@ app.delete('/api/calls', requireAdmin, async (req, res) => {
     try {
         await client.query('BEGIN');
         const { rows: targets } = await client.query(
-            `SELECT "ID" AS id, is_sandbox FROM qa_calls WHERE "ID" = ANY($1)`,
+            `SELECT c.source_id AS id, e.is_sandbox
+               FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+              WHERE c.source_id = ANY($1)`,
             [ids]
         );
         // sandbox 계정: 배치에 운영 행(is_sandbox=false) 포함 시 전체 거부.
@@ -2440,7 +2454,7 @@ app.delete('/api/calls', requireAdmin, async (req, res) => {
             res.status(403).json({ message: 'sandbox account cannot delete production calls' });
             return;
         }
-        const { rowCount } = await client.query('DELETE FROM qa_calls WHERE "ID" = ANY($1)', [ids]);
+        const { rowCount } = await client.query('DELETE FROM common.calls WHERE source_id = ANY($1)', [ids]);
         await client.query('COMMIT');
         await insertQaAuditLog(pool, {
             req,
@@ -2486,8 +2500,11 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
     // 현재 콜 상태 로드 — 전이 검증·알림 수신자(상담사)·sandbox 판정에 사용.
     let cur;
     try {
+        // 통합DB: :qaId=common.calls.source_id → call_id. review_status/is_sandbox=qa_evaluations, agent_user_id=common.calls, org_id=tenant_id.
         const { rows } = await pool.query(
-            `SELECT review_status, agent_user_id, org_id, is_sandbox FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
+            `SELECT c.call_id, e.review_status, c.agent_user_id, c.tenant_id AS org_id, e.is_sandbox
+               FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+              WHERE c.source_id = $1 LIMIT 1`,
             [qaId]
         );
         if (!rows[0]) {
@@ -2553,15 +2570,15 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                         WHERE (manual_eval_option IS NOT NULL AND btrim(manual_eval_option) <> '')
                            OR (ai_eval IS NOT NULL AND manual_eval IS NOT NULL AND manual_eval IS DISTINCT FROM ai_eval)
                     )::int AS judged
-               FROM qa_call_item_score er
-              WHERE er."ID" = $1
+               FROM eval_item_score er
+              WHERE er.call_id = $1
                 AND NOT EXISTS (
-                      SELECT 1 FROM public.eval_item_defs d
-                       WHERE d.org_id = $2 AND d.order_no = er.order_no
+                      SELECT 1 FROM eval_item_defs d
+                       WHERE d.tenant_id = $2 AND d.order_no = er.order_no
                          AND d.is_active = true AND d.deactivated_at IS NULL
                          AND lower(d.scoring_type) = 'yes_no'
                     )`,
-            [qaId, cur.org_id]
+            [cur.call_id, cur.org_id]
         );
         const total = prog[0]?.total ?? 0;
         const judged = prog[0]?.judged ?? 0;
@@ -2575,10 +2592,10 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
     async function computeDiff() {
         const { rows } = await pool.query(
             `SELECT order_no, item, counselor_eval, manual_eval
-               FROM qa_call_item_score
-              WHERE "ID" = $1 AND counselor_eval IS NOT NULL AND manual_eval IS DISTINCT FROM counselor_eval
+               FROM eval_item_score
+              WHERE call_id = $1 AND counselor_eval IS NOT NULL AND manual_eval IS DISTINCT FROM counselor_eval
               ORDER BY order_no`,
-            [qaId]
+            [cur.call_id]
         );
         return rows;
     }
@@ -2591,7 +2608,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
         if (isAgent) {
             action = 'agree'; // 상담사 점수 동의 → 확정. 승인자=마지막 반려 관리자.
             const { rows: rev } = await pool.query(
-                `SELECT actor_user_id FROM qa_call_review_event WHERE qa_id=$1 AND action IN ('reject','reject_again') ORDER BY id DESC LIMIT 1`, [qaId]
+                `SELECT actor_user_id FROM eval_review_event WHERE call_id=$1 AND action IN ('reject','reject_again') ORDER BY id DESC LIMIT 1`, [cur.call_id]
             );
             approvedBy = rev[0]?.actor_user_id ?? uid;
         } else {
@@ -2616,7 +2633,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
 
     try {
         const { rows } = await pool.query(
-            `UPDATE qa_calls
+            `UPDATE trustguard.qa_evaluations
                 SET review_status = $2,
                     review_round = review_round + CASE WHEN $4 THEN 1 ELSE 0 END,
                     review_started_at = CASE
@@ -2630,9 +2647,9 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                     approved_at = CASE WHEN $2 = 'approved' THEN COALESCE(approved_at, now()) ELSE NULL END,
                     approved_by_user_id = CASE WHEN $2 = 'approved' THEN $5::integer ELSE NULL END,
                     user_id = COALESCE($3::integer, user_id)
-              WHERE "ID" = $1
+              WHERE call_id = $1
               RETURNING review_status, review_round, review_started_at, review_completed_at, approved_at`,
-            [qaId, next, uid, bumpRound, approvedBy]
+            [cur.call_id, next, uid, bumpRound, approvedBy]
         );
         if (!rows[0]) {
             res.status(404).json({ message: 'call not found' });
@@ -2643,7 +2660,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
 
         // 검토요청 제출(→검토요청) 시 상담사 점수 스냅샷(이후 관리자 변경분 diff 기준).
         if (action === 'submit') {
-            await pool.query(`UPDATE qa_call_item_score SET counselor_eval = manual_eval WHERE "ID" = $1`, [qaId])
+            await pool.query(`UPDATE eval_item_score SET counselor_eval = manual_eval WHERE call_id = $1`, [cur.call_id])
                 .catch((e) => console.error('counselor_eval snapshot error:', e));
         }
 
@@ -2653,8 +2670,8 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                 ? JSON.stringify(diffRows.map((r) => ({ order_no: r.order_no, item: r.item, from: r.counselor_eval, to: r.manual_eval })))
                 : null;
             await pool.query(
-                `INSERT INTO qa_call_review_event (qa_id, round, actor_user_id, action, changed_items, reason) VALUES ($1,$2,$3,$4,$5::jsonb,$6)`,
-                [qaId, round, uid, action, changed, reason]
+                `INSERT INTO eval_review_event (call_id, round, actor_user_id, action, changed_items, reason) VALUES ($1,$2,$3,$4,$5::jsonb,$6)`,
+                [cur.call_id, round, uid, action, changed, reason]
             ).catch((e) => console.error('review event insert error:', e));
         }
 
@@ -2688,7 +2705,7 @@ app.put('/api/calls/:qaId/review-status', async (req, res) => {
                 });
             } else if (action === 'object') {
                 const { rows: rev } = await pool.query(
-                    `SELECT actor_user_id FROM qa_call_review_event WHERE qa_id=$1 AND action IN ('reject','reject_again') ORDER BY id DESC LIMIT 1`, [qaId]
+                    `SELECT actor_user_id FROM eval_review_event WHERE call_id=$1 AND action IN ('reject','reject_again') ORDER BY id DESC LIMIT 1`, [cur.call_id]
                 );
                 const target = rev[0]?.actor_user_id;
                 if (target != null) {
@@ -2745,14 +2762,20 @@ app.get('/api/calls/:qaId/review-events', async (req, res) => {
         return;
     }
     try {
+        // 통합DB: :qaId=common.calls.source_id → call_id. eval_review_event 는 call_id 키. 없으면 빈 배열.
+        const { rows: cc } = await pool.query('SELECT call_id FROM common.calls WHERE source_id = $1 LIMIT 1', [qaId]);
+        if (!cc[0]) {
+            res.json([]);
+            return;
+        }
         const { rows } = await pool.query(
             `SELECT e.id, e.round, e.action, e.changed_items, e.reason, e.created_at,
                     e.actor_user_id, u.name AS actor_name
-               FROM qa_call_review_event e
-               LEFT JOIN users u ON u.id = e.actor_user_id
-              WHERE e.qa_id = $1
+               FROM eval_review_event e
+               LEFT JOIN common.users u ON u.id = e.actor_user_id
+              WHERE e.call_id = $1
               ORDER BY e.id ASC`,
-            [qaId]
+            [cc[0].call_id]
         );
         res.json(rows.map((r) => ({
             id: Number(r.id),
