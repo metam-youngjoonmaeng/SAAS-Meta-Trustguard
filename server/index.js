@@ -1328,8 +1328,8 @@ async function hasKsqiTables(pool) {
     if (_ksqiTablesCache !== null) return _ksqiTablesCache;
     try {
         const { rows } = await pool.query(
-            `SELECT (to_regclass('public.qa_call_ksqi_summary') IS NOT NULL
-                 AND to_regclass('public.qa_call_ksqi_score') IS NOT NULL) AS ok`
+            `SELECT (to_regclass('trustguard.eval_ksqi_summary') IS NOT NULL
+                 AND to_regclass('trustguard.eval_ksqi_score') IS NOT NULL) AS ok`
         );
         _ksqiTablesCache = rows[0]?.ok === true;
     } catch {
@@ -1386,12 +1386,14 @@ async function loadKsqiReport(pool, qaId) {
 
 app.get('/api/calls', async (req, res) => {
     try {
-        const activeOrgId = resolveActiveOrgId(req);
-        // KSQI 점수/유무(area_a·area_b scaled + overall) — qa_call_ksqi_summary(정규화) 조인으로 추출,
-        // 테이블 부재 시 안전 폴백.
+        const activeOrgId = resolveActiveOrgId(req);   // = tenant_id(citext)
+        // 통합DB: 콜 헤더=common.calls, 평가=trustguard.qa_evaluations(call_id 조인).
+        //   외부 식별자 qa_id/id = c.source_id(구 qa_calls.ID 텍스트), 내부 조인·자식은 c.call_id(bigint).
+        //   자식: qa_call_item_score→eval_item_score, qa_call_transcript→common.call_transcript
+        //   (speaker '상담사'→'agent'), qa_call_ksqi_summary→eval_ksqi_summary. 전부 call_id 키.
         const hasKsqi = await hasKsqiTables(pool);
         const ksqiCols = hasKsqi
-            ? `(ks."ID" IS NOT NULL) AS has_ksqi,
+            ? `(ks.call_id IS NOT NULL) AS has_ksqi,
                ks.area_a_scaled::float AS ksqi_a,
                ks.area_b_scaled::float AS ksqi_b,
                ks.overall_raw::float AS ksqi_overall_raw,
@@ -1401,12 +1403,12 @@ app.get('/api/calls', async (req, res) => {
                NULL::float AS ksqi_b,
                NULL::float AS ksqi_overall_raw,
                NULL::float AS ksqi_overall_max`;
-        const ksqiJoin = hasKsqi ? `LEFT JOIN public.qa_call_ksqi_summary ks ON ks."ID" = c."ID"` : '';
+        const ksqiJoin = hasKsqi ? `LEFT JOIN eval_ksqi_summary ks ON ks.call_id = c.call_id` : '';
         const params = [];
         const conds = [];
         if (activeOrgId != null) {
             params.push(activeOrgId);
-            conds.push(`c.org_id = $${params.length}`);
+            conds.push(`c.tenant_id = $${params.length}`);
         }
         // 상담사(agent)는 본인이 응대한 콜만.
         if (req.session?.role === 'agent') {
@@ -1415,113 +1417,112 @@ app.get('/api/calls', async (req, res) => {
         }
         // '수기평가 대상만' 필터 — 배치 조건으로 도장(manual_review)된 콜만.
         if (String(req.query.manual_review || '') === 'true') {
-            conds.push(`c.manual_review = true`);
+            conds.push(`e.manual_review = true`);
         }
-        // 실제 응대(=QA평가된) 콜만 노출. 포기호/미응대(상담사 미연결)는 파이프라인이
-        // 평가 산출물을 만들지 못해 평가행/체크리스트가 전무하므로 리스트에서 제외한다.
-        conds.push(`(
-            EXISTS (SELECT 1 FROM qa_call_item_score er    WHERE er."ID" = c."ID")
-        )`);
-        // 상담사 발화가 전혀 없이 끊긴 콜(상담사 미응답/즉시 종료)은 평가 대상이 아니므로 리스트에서 제외.
-        conds.push(`EXISTS (SELECT 1 FROM qa_call_transcript q WHERE q."ID" = c."ID" AND q.speaker = '상담사')`);
+        // 실제 응대(=QA평가된) 콜만 노출. 포기호/미응대는 평가행이 없어 리스트에서 제외한다.
+        conds.push(`(EXISTS (SELECT 1 FROM eval_item_score er WHERE er.call_id = c.call_id))`);
+        // 상담사 발화가 전혀 없이 끊긴 콜은 평가 대상이 아니므로 제외.
+        conds.push(`EXISTS (SELECT 1 FROM common.call_transcript q WHERE q.call_id = c.call_id AND q.speaker = 'agent')`);
         const orgFilter = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
         const { rows: callRows } = await pool.query(
             `SELECT
-                c."ID" AS qa_id,
-                c."ID" AS id,
-                c."UID" AS uid,
-                c."CALL_SEQ" AS call_no,
-                c."CDATE" AS call_datetime,
+                c.call_id AS call_id,
+                c.source_id AS qa_id,
+                c.source_id AS id,
+                c.uid AS uid,
+                c.call_seq AS call_no,
+                c.cdate AS call_datetime,
                 c.duration_sec AS duration_sec,
                 ''::text AS team_name,
                 c.agent_code AS agent_code,
                 c.agent_user_id AS agent_user_id,
                 ''::text AS agent_id,
-                COALESCE(au.display_name, '')::text AS agent_name,
+                COALESCE(au.name, '')::text AS agent_name,
                 ''::text AS consultation_type,
-                c."AI_SCORE" AS ai_score,
-                c."TOTAL_SCORE" AS total_score,
+                e."AI_SCORE" AS ai_score,
+                e."TOTAL_SCORE" AS total_score,
                 COALESCE(o.name, '')::text AS brand,
                 ''::text AS eval_status,
                 ''::text AS customer_no,
                 ''::text AS customer_grade,
-                c.department AS department,
-                c.role AS role,
-                c.ai_analysis_target AS ai_analysis_target,
-                c.ai_analysis_reason AS ai_analysis_reason,
-                c.org_id AS org_id,
-                c.review_status AS review_status,
-                c.review_round AS review_round,
-                c.review_completed_at AS review_completed_at,
-                c.review_started_at AS review_started_at,
-                COALESCE(ru.display_name, ru.login_id, '')::text AS reviewer_name,
+                e.department AS department,
+                e.role AS role,
+                e.ai_analysis_target AS ai_analysis_target,
+                e.ai_analysis_reason AS ai_analysis_reason,
+                c.tenant_id AS org_id,
+                e.review_status AS review_status,
+                e.review_round AS review_round,
+                e.review_completed_at AS review_completed_at,
+                e.review_started_at AS review_started_at,
+                COALESCE(ru.name, COALESCE(ru.username, regexp_replace(ru.email, '\\.ics$', '')), '')::text AS reviewer_name,
                 c.io_divi AS io_divi,
-                c.manual_review AS manual_review,
-                c.manual_review_reasons AS manual_review_reasons,
+                e.manual_review AS manual_review,
+                e.manual_review_reasons AS manual_review_reasons,
                 NULL::bigint AS consumer_violations,
                 NULL::bigint AS consumer_total,
                 EXISTS(
                     SELECT 1
-                    FROM qa_call_item_score er
-                    WHERE er."ID" = c."ID"
+                    FROM eval_item_score er
+                    WHERE er.call_id = c.call_id
                     AND ABS(er.manual_eval - er.ai_eval) > 1e-9
                 ) AS has_manual_override,
                 COALESCE(gs.golden_count, 0) AS golden_count,
                 COALESCE(ev.ev_total, 0) AS ev_total,
                 COALESCE(ev.opted_count, 0) AS opted_count,
                 ${ksqiCols}
-             FROM qa_calls c
-             LEFT JOIN public.organizations o ON o.id = c.org_id
-             LEFT JOIN public.admin_users au ON au.user_id = c.agent_user_id
-             LEFT JOIN public.admin_users ru ON ru.user_id = c.user_id
+             FROM common.calls c
+             JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+             LEFT JOIN common.tenants o ON o.tenant_id = c.tenant_id
+             LEFT JOIN common.users au ON au.id = c.agent_user_id
+             LEFT JOIN common.users ru ON ru.id = e.user_id
              LEFT JOIN (
                  SELECT qa_id, COUNT(*) AS golden_count
                  FROM qa_golden_set
                  GROUP BY qa_id
-             ) gs ON gs.qa_id = c."ID"
+             ) gs ON gs.qa_id = c.call_id
              LEFT JOIN (
-                 SELECT "ID", COUNT(*) AS ev_total,
+                 SELECT call_id, COUNT(*) AS ev_total,
                         COUNT(*) FILTER (WHERE manual_eval_option IS NOT NULL) AS opted_count
-                 FROM qa_call_item_score
-                 GROUP BY "ID"
-             ) ev ON ev."ID" = c."ID"
+                 FROM eval_item_score
+                 GROUP BY call_id
+             ) ev ON ev.call_id = c.call_id
              ${ksqiJoin}
              ${orgFilter}
-             ORDER BY c."CDATE" DESC`,
+             ORDER BY c.cdate DESC`,
             params
         );
-        const qaIds = (callRows || []).map((r) => r.qa_id).filter(Boolean);
-        if (qaIds.length === 0) {
+        const callIds = (callRows || []).map((r) => r.call_id).filter((x) => x != null);
+        if (callIds.length === 0) {
             res.json([]);
             return;
         }
         const { rows: chRows } = await pool.query(
-            `SELECT "ID" AS qa_id, order_no, category, item, agent_utterance, max_score
-             FROM qa_call_item_score
-             WHERE "ID" = ANY($1::text[]) AND max_score IS NOT NULL`,
-            [qaIds]
+            `SELECT call_id, order_no, category, item, agent_utterance, max_score
+             FROM eval_item_score
+             WHERE call_id = ANY($1::bigint[]) AND max_score IS NOT NULL`,
+            [callIds]
         );
         const { rows: evRows } = await pool.query(
-            `SELECT "ID" AS qa_id, order_no, ai_eval
-             FROM qa_call_item_score
-             WHERE "ID" = ANY($1::text[])`,
-            [qaIds]
+            `SELECT call_id, order_no, ai_eval
+             FROM eval_item_score
+             WHERE call_id = ANY($1::bigint[])`,
+            [callIds]
         );
         const chByQa = new Map();
         for (const r of chRows || []) {
-            if (!chByQa.has(r.qa_id)) chByQa.set(r.qa_id, []);
-            chByQa.get(r.qa_id).push(r);
+            if (!chByQa.has(r.call_id)) chByQa.set(r.call_id, []);
+            chByQa.get(r.call_id).push(r);
         }
         const evByQa = new Map();
         for (const r of evRows || []) {
-            if (!evByQa.has(r.qa_id)) evByQa.set(r.qa_id, []);
-            evByQa.get(r.qa_id).push(r);
+            if (!evByQa.has(r.call_id)) evByQa.set(r.call_id, []);
+            evByQa.get(r.call_id).push(r);
         }
         const payload = (callRows || []).map((row) => {
-            const chRows = chByQa.get(row.qa_id) || [];
+            const chRows = chByQa.get(row.call_id) || [];
             // 사용자 생성 평가 트랙(표준 1/2/3 외)은 콜 자체 카테고리로 동적 집계 — 부서 고정 키셋 미적용.
             const keys = effectiveChecklistKeys(row.department, chRows, row.org_id);
-            const yn = buildChecklistYnKorFromDbRows(chRows, evByQa.get(row.qa_id) || [], keys);
+            const yn = buildChecklistYnKorFromDbRows(chRows, evByQa.get(row.call_id) || [], keys);
             // 평가-시점 만점 합산 — 표시 컬럼(keys) 에 해당하는 행만 집계(builder 와 동일 필터).
             // 체크리스트 없으면 null → FE DEFAULT_TOTAL_MAX 폴백.
             const keySet = new Set(keys);
