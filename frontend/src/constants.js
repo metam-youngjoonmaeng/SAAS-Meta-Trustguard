@@ -342,8 +342,12 @@ export function getBrandConfig(brandId) {
 export const LEGACY_STATIC_BRAND_IDS = new Set([1, 2, 3]);
 
 export function isDynamicChecklistBrand(brandId) {
+    if (brandId == null || brandId === '') return false;
+    // 통합DB 계약: brandId 는 tenant_id 문자열(예: 'metam'). 레거시 정적 브랜드(신한1·한화2·코오롱3, 숫자)만 정적
+    // 체크리스트를 쓰고, 그 외(통합 tenant 문자열 → Number()=NaN, 신규 숫자 id≥4)는 전부 동적(DB eval_item_defs)이다.
     const n = Number(brandId);
-    return Number.isFinite(n) && n > 0 && !LEGACY_STATIC_BRAND_IDS.has(n);
+    if (Number.isFinite(n) && LEGACY_STATIC_BRAND_IDS.has(n)) return false;
+    return true;
 }
 
 // DB eval_item_defs 행 배열 → 정적 checklistTemplate 과 동일 shape 로 매핑.
