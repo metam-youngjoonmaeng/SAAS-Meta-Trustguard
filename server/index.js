@@ -1343,18 +1343,19 @@ async function hasKsqiTables(pool) {
 // KSQI 보고서 재조립 — 2테이블(score+summary)을 기존 응답 계약({items[], area_a, area_b, overall, summary})
 // 형태로 복원. FE(KsqiEval/KsqiEvalSection) 계약 무변경. 미시행·테이블 부재 시 null 폴백(상세 로드 무영향).
 // 근거 발화는 score.evidence(jsonb)에 인라인 — 구 qa_call_ksqi_evidence 조회·Map 재조립이 사라졌다.
-async function loadKsqiReport(pool, qaId) {
+// 통합DB: 인자는 call_id(bigint). eval_ksqi_summary/score 는 call_id 로 조인.
+async function loadKsqiReport(pool, callId) {
     try {
         if (!(await hasKsqiTables(pool))) return null;
-        const { rows: sumRows } = await pool.query(`SELECT * FROM public.qa_call_ksqi_summary WHERE "ID" = $1 LIMIT 1`, [
-            qaId,
+        const { rows: sumRows } = await pool.query(`SELECT * FROM eval_ksqi_summary WHERE call_id = $1 LIMIT 1`, [
+            callId,
         ]);
         if (!sumRows[0]) return null;
         const s = sumRows[0];
         const { rows: itemRows } = await pool.query(
             `SELECT item_number, item_name, area, kind, score, max_score, na, defect, rationale, evidence
-             FROM public.qa_call_ksqi_score WHERE "ID" = $1 ORDER BY item_number`,
-            [qaId]
+             FROM eval_ksqi_score WHERE call_id = $1 ORDER BY item_number`,
+            [callId]
         );
         const areaObj = (p) => ({
             raw: s[`${p}_raw`],
@@ -1815,14 +1816,20 @@ app.get('/api/analysis/:qaId', async (req, res) => {
         return;
     }
     try {
+        // 통합DB: 콜 헤더=common.calls(source_id=구 텍스트 ID·tenant_id), 평가=trustguard.qa_evaluations(call_id).
+        //   외부 :qaId=source_id → call_id 해석 후 자식은 call_id 로 조인. org_id=tenant_id(citext).
         const { rows } = await pool.query(
-            'SELECT "ID" AS qa_id, "AI_SCORE" AS ai_score, "TOTAL_SCORE" AS total_score, department, org_id FROM qa_calls WHERE "ID" = $1 LIMIT 1',
+            `SELECT c.call_id, c.source_id AS qa_id, e."AI_SCORE" AS ai_score, e."TOTAL_SCORE" AS total_score,
+                    e.department, c.tenant_id AS org_id
+               FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+              WHERE c.source_id = $1 LIMIT 1`,
             [qaId]
         );
         if (!rows[0]) {
             res.status(404).json({ message: 'Not found' });
             return;
         }
+        const callId = rows[0].call_id;
         const dept = rows[0].department;
         // 소비자보호부 콜은 Pentagon 분석 트랙 사용 안 함 — 빈 응답.
         if (dept === '소비자보호부') {
@@ -1832,11 +1839,11 @@ app.get('/api/analysis/:qaId', async (req, res) => {
         const isHanwha = dept === '고객센터';
         const isDefault = dept === '고객지원실';
         const { rows: checklistRows } = await pool.query(
-            `SELECT c.order_no, c.category, c.item, c.max_score, c.ai_eval
-             FROM qa_call_item_score c
-             WHERE c."ID" = $1 AND c.max_score IS NOT NULL
-             ORDER BY c.order_no ASC`,
-            [qaId]
+            `SELECT er.order_no, er.category, er.item, er.max_score, er.ai_eval
+             FROM eval_item_score er
+             WHERE er.call_id = $1 AND er.max_score IS NOT NULL
+             ORDER BY er.order_no ASC`,
+            [callId]
         );
         const checklistAugmented = (checklistRows || []).map((r) => ({
             ...r,
@@ -1849,9 +1856,9 @@ app.get('/api/analysis/:qaId', async (req, res) => {
         // (buildDefaultPentagonFromChecklistRows)으로 빠지지 않는다 — 안 그러면 첫인사(인사 예절)가
         // 오프닝에 자동연동되고 운영자가 직접 지정한 pentagon_axis(예: 발화 안정성)는 무시되는 문제 발생.
         // 레거시 신한(1)/한화(2)/코오롱(3)만 기존 category·카탈로그 빌더 유지(거동 byte-identical).
-        const orgIdNum = Number(rows[0].org_id);
-        const isLegacyPentagonOrg = [1, 2, 3].includes(orgIdNum);
-        const isDynamicRubric = !isLegacyPentagonOrg;
+        // 통합DB: 레거시 숫자 표준브랜드(신한1/한화2/코오롱3)는 문자열 tenant_id 로 존재하지 않음 →
+        //   비-한화 콜은 항상 동적 루브릭(운영자 지정 pentagon_axis SSOT). org_id=tenant_id(citext).
+        const isDynamicRubric = true;
         // 동적 루브릭 콜 — 코오롱 방식(축 고정 + 항목 자동 합산)을 적용.
         //  (1) definedAxes = 운영자가 프론트(pentagon_axes 테이블)에서 정의한 축 라벨. 비면 정본 5축 폴백.
         //  (2) axisByOrderNo = eval_item_defs.pentagon_axis ({ order_no: 축 }). 항목→축 매핑.
@@ -1862,8 +1869,8 @@ app.get('/api/analysis/:qaId', async (req, res) => {
             try {
                 const { rows: axisRows } = await pool.query(
                     `SELECT DISTINCT ON (order_no) order_no, pentagon_axis
-                       FROM public.eval_item_defs
-                      WHERE org_id = $1
+                       FROM eval_item_defs
+                      WHERE tenant_id = $1
                         AND is_active = true
                         AND deactivated_at IS NULL
                         AND pentagon_axis IS NOT NULL
@@ -1884,8 +1891,8 @@ app.get('/api/analysis/:qaId', async (req, res) => {
                 // 운영자 정의 축(프론트 AxisModal CRUD) — 활성 행만. 비면 빌더가 정본 5축으로 폴백.
                 const { rows: defAxisRows } = await pool.query(
                     `SELECT label
-                       FROM public.pentagon_axes
-                      WHERE org_id = $1
+                       FROM pentagon_axes
+                      WHERE tenant_id = $1
                         AND is_active = true
                         AND deactivated_at IS NULL
                         AND effective_from <= now()
@@ -1911,10 +1918,10 @@ app.get('/api/analysis/:qaId', async (req, res) => {
                     : buildPentagonFromChecklistRows(checklistAugmented);
         const { rows: reportRowsRaw } = await pool.query(
             `SELECT item_type_no, item_type, rating, comment, summary
-             FROM qa_call_pentagon_result
-             WHERE "ID" = $1
+             FROM eval_pentagon_result
+             WHERE call_id = $1
              ORDER BY item_type_no ASC`,
-            [qaId]
+            [callId]
         );
         const persistedReportRows = (reportRowsRaw || [])
             .filter((r) => String(r.item_type || '').trim() && String(r.comment || '').trim())
@@ -1961,10 +1968,12 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
         return;
     }
     try {
+        // 통합DB: 콜 헤더=common.calls(source_id·tenant_id), 평가=trustguard.qa_evaluations(call_id). :qaId=source_id → call_id.
         const { rows: callRows } = await pool.query(
-            `SELECT "ID" AS qa_id, department, role, org_id, ai_analysis_target, ai_analysis_reason,
-                    manual_review, manual_review_reasons
-             FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
+            `SELECT c.call_id, c.source_id AS qa_id, e.department, e.role, c.tenant_id AS org_id,
+                    e.ai_analysis_target, e.ai_analysis_reason, e.manual_review, e.manual_review_reasons
+               FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+              WHERE c.source_id = $1 LIMIT 1`,
             [qaId]
         );
         if (!callRows[0]) {
@@ -1972,26 +1981,30 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
             return;
         }
         const callMeta = callRows[0];
+        const callId = callMeta.call_id;
         // 수기평가 대상 사유(상세 배지용) — ['저품질 검증 · 평균점수 미달', ...]
         const manualReviewReasons = Array.isArray(callMeta.manual_review_reasons) ? callMeta.manual_review_reasons : [];
 
-        // KSQI STT 보고서 — 정규화 3테이블(qa_call_ksqi_score/evidence/summary)에서 기존 계약 형태로 재조립.
+        // KSQI STT 보고서 — 정규화 3테이블(eval_ksqi_score/summary)에서 기존 계약 형태로 재조립.
         // 브랜드 루브릭과 별개 축이라 별도 방어 조회 — 테이블 부재/미시행 시 null 폴백(상세 로드 무영향).
-        const ksqiReport = await loadKsqiReport(pool, qaId);
+        const ksqiReport = await loadKsqiReport(pool, callId);
 
-        // 관리자 코멘트 — qa_call_annotation.comments(qa_id 단일행에 전체 배열 보관). 없으면 [].
+        // 관리자 코멘트 — eval_annotation.comments(call_id 단일행에 전체 배열 보관). 없으면 [].
         const { rows: acRows } = await pool.query(
-            'SELECT comments FROM public.qa_call_annotation WHERE qa_id = $1',
-            [qaId]
+            'SELECT comments FROM eval_annotation WHERE call_id = $1',
+            [callId]
         );
         const adminComments = Array.isArray(acRows[0]?.comments) ? acRows[0].comments : [];
 
+        // 대화 — common.call_transcript(call_id, speaker agent/customer, seq). FE 계약 유지 위해 화자 한글 복원.
         const { rows: convRaw } = await pool.query(
-            `SELECT "ID" AS qa_id, turn_no, ''::text AS ts, speaker, "text" AS text
-             FROM qa_call_transcript
-             WHERE "ID" = $1
-             ORDER BY turn_no ASC`,
-            [qaId]
+            `SELECT $1::text AS qa_id, seq AS turn_no, ''::text AS ts,
+                    CASE speaker WHEN 'agent' THEN '상담사' WHEN 'customer' THEN '고객' ELSE speaker END AS speaker,
+                    "text" AS text
+             FROM common.call_transcript
+             WHERE call_id = $2 AND channel = 'call'
+             ORDER BY seq ASC`,
+            [qaId, callId]
         );
 
         // 소비자보호부 분기 — 신한 PoC 전용 트랙(20 Y/N + 금칙어 + 12카테고리)이었으나
@@ -2018,18 +2031,18 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
 
         // 컬렉션관리부 분기 (기존 로직)
         const { rows: evaluation_rows } = await pool.query(
-            `SELECT "ID" AS qa_id, order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval
-             FROM qa_call_item_score
-             WHERE "ID" = $1
+            `SELECT $1::text AS qa_id, order_no, category, item, reason_text, ai_eval, manual_eval, manual_eval_option, counselor_eval
+             FROM eval_item_score
+             WHERE call_id = $2
              ORDER BY order_no ASC`,
-            [qaId]
+            [qaId, callId]
         );
         const { rows: checklist_rows } = await pool.query(
-            `SELECT "ID" AS qa_id, order_no, category, item, agent_utterance, max_score
-             FROM qa_call_item_score
-             WHERE "ID" = $1 AND max_score IS NOT NULL
+            `SELECT $1::text AS qa_id, order_no, category, item, agent_utterance, max_score
+             FROM eval_item_score
+             WHERE call_id = $2 AND max_score IS NOT NULL
              ORDER BY order_no ASC`,
-            [qaId]
+            [qaId, callId]
         );
 
         // 평가매칭률·당월평균·직무평균을 동적 계산.
@@ -2049,8 +2062,8 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
             try {
                 const { rows: stRows } = await pool.query(
                     `SELECT DISTINCT ON (order_no) order_no, scoring_type
-                       FROM public.eval_item_defs
-                      WHERE org_id = $1 AND is_active = true AND deactivated_at IS NULL
+                       FROM eval_item_defs
+                      WHERE tenant_id = $1 AND is_active = true AND deactivated_at IS NULL
                       ORDER BY order_no ASC, version DESC`,
                     [callMeta.org_id]
                 );
@@ -2062,21 +2075,24 @@ app.get('/api/evaluations/:qaId', async (req, res) => {
             }
         }
         const { rows: ymRows } = await pool.query(
-            `SELECT substr("CDATE", 1, 7) AS ym FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
-            [qaId]
+            `SELECT to_char(cdate, 'YYYY-MM') AS ym FROM common.calls WHERE call_id = $1 LIMIT 1`,
+            [callId]
         );
         const yearMonth = String(ymRows[0]?.ym || '');
         const callRole = String(callMeta.role || '').trim();
+        // 당월평균/직무평균 baseline — 운영 baseline 만(샘플 ingest 행 source_id 'sample-%' 제외, NULL 안전).
+        //   role 은 qa_evaluations, 날짜는 common.calls.cdate(timestamptz).
         const { rows: aggRows } = await pool.query(
             `SELECT
-                e.item AS item,
-                AVG(CASE WHEN substr(c."CDATE", 1, 7) = $1 THEN e.ai_eval END) AS monthly_avg_raw,
-                AVG(e.ai_eval) AS team_avg_raw
-             FROM qa_call_item_score e
-             JOIN qa_calls c ON c."ID" = e."ID"
-             WHERE e."ID" NOT LIKE 'sample-%'
-               AND c.role = $2
-             GROUP BY e.item`,
+                er.item AS item,
+                AVG(CASE WHEN to_char(c.cdate, 'YYYY-MM') = $1 THEN er.ai_eval END) AS monthly_avg_raw,
+                AVG(er.ai_eval) AS team_avg_raw
+             FROM eval_item_score er
+             JOIN common.calls c ON c.call_id = er.call_id
+             JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+             WHERE COALESCE(c.source_id, '') NOT LIKE 'sample-%'
+               AND e.role = $2
+             GROUP BY er.item`,
             [yearMonth, callRole]
         );
         const monthlyByItem = new Map();
