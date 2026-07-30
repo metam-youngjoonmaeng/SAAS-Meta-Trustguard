@@ -878,23 +878,26 @@ app.get('/api/svc/brand-qa-scores', async (req, res) => {
     const start = String(req.query.start || '').trim();
     const end = String(req.query.end || '').trim();
     try {
+        // 통합DB: 브랜드 매칭키 organizations.proj_cd = common.calls.tenant_id(citext, 대소문자 무시).
+        //   is_sandbox/TOTAL_SCORE=qa_evaluations, 날짜=common.calls.cdate(timestamptz), 배점합=eval_item_score.
         const params = [projCd];
-        const where = ['o.proj_cd = $1', 'c.is_sandbox = false', 'c."TOTAL_SCORE" IS NOT NULL'];
-        if (dateRe.test(start)) { params.push(start); where.push(`c."CDATE"::date >= $${params.length}::date`); }
-        if (dateRe.test(end)) { params.push(end); where.push(`c."CDATE"::date <= $${params.length}::date`); }
+        const where = ['c.tenant_id = $1', 'e.is_sandbox = false', 'e."TOTAL_SCORE" IS NOT NULL'];
+        if (dateRe.test(start)) { params.push(start); where.push(`c.cdate::date >= $${params.length}::date`); }
+        if (dateRe.test(end)) { params.push(end); where.push(`c.cdate::date <= $${params.length}::date`); }
         const { rows } = await pool.query(
-            `SELECT o.id AS org_id, o.name AS brand_name, o.proj_cd,
+            `SELECT c.tenant_id AS org_id, o.name AS brand_name, c.tenant_id AS proj_cd,
                     COUNT(*) AS call_count,
-                    ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS avg_raw,
-                    ROUND(AVG(CASE WHEN tm.total_max > 0 THEN c."TOTAL_SCORE" / tm.total_max * 100 END)::numeric, 1) AS avg_score_100
-               FROM qa_calls c
-               JOIN organizations o ON c.org_id = o.id
+                    ROUND(AVG(e."TOTAL_SCORE")::numeric, 1) AS avg_raw,
+                    ROUND(AVG(CASE WHEN tm.total_max > 0 THEN e."TOTAL_SCORE" / tm.total_max * 100 END)::numeric, 1) AS avg_score_100
+               FROM common.calls c
+               JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+               LEFT JOIN common.tenants o ON o.tenant_id = c.tenant_id
                LEFT JOIN LATERAL (
                    SELECT COALESCE(SUM(ch.max_score), 0) AS total_max
-                     FROM qa_call_item_score ch WHERE ch."ID" = c."ID"
+                     FROM eval_item_score ch WHERE ch.call_id = c.call_id
                ) tm ON true
               WHERE ${where.join(' AND ')}
-              GROUP BY o.id, o.name, o.proj_cd`,
+              GROUP BY c.tenant_id, o.name`,
             params
         );
         const row = rows[0] || null;
@@ -2831,20 +2834,23 @@ app.get('/api/golden-set', async (req, res) => {
             if (item)     { params.push(item);     conds.push(`g.item     = $${params.length}`); }
         }
         if (orgId !== null && orgId !== undefined) {
-            params.push(orgId); conds.push(`g.org_id = $${params.length}`);
+            params.push(orgId); conds.push(`g.tenant_id = $${params.length}`);
         }
         const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+        // 통합DB: qa_golden_set.qa_id = call_id(bigint, →qa_evaluations). 외부 표시 qa_id=common.calls.source_id.
+        //   검수자=qa_evaluations.user_id → common.users(login_id=username|이메일에서 .ics 제거, display_name=name).
         const { rows } = await pool.query(
-            `SELECT g.golden_id, g.qa_id, g.order_no, g.org_id,
-                    c."CDATE" AS call_datetime,
+            `SELECT g.golden_id, c.source_id AS qa_id, g.order_no, g.tenant_id AS org_id,
+                    c.cdate AS call_datetime,
                     g.category, g.item, g.reason_text, g.agent_utterance, g.score,
                     g.created_at,
-                    c.user_id      AS user_id,
-                    u.login_id     AS login_id,
-                    u.display_name AS display_name
+                    e.user_id      AS user_id,
+                    COALESCE(u.username, regexp_replace(u.email, '\\.ics$', '')) AS login_id,
+                    u.name         AS display_name
              FROM qa_golden_set g
-             LEFT JOIN qa_calls    c ON c."ID"    = g.qa_id
-             LEFT JOIN admin_users u ON u.user_id = c.user_id
+             LEFT JOIN common.calls c ON c.call_id = g.qa_id
+             LEFT JOIN trustguard.qa_evaluations e ON e.call_id = g.qa_id
+             LEFT JOIN common.users u ON u.id = e.user_id
              ${where}
              ORDER BY g.created_at DESC
              LIMIT 200`,
@@ -2864,20 +2870,27 @@ app.get('/api/golden-set/:qaId', async (req, res) => {
         return;
     }
     try {
+        // 통합DB: :qaId=source_id → call_id. qa_golden_set.qa_id=call_id.
+        const { rows: cc } = await pool.query('SELECT call_id FROM common.calls WHERE source_id = $1 LIMIT 1', [qaId]);
+        if (!cc[0]) {
+            res.json({ ok: true, entries: [] });
+            return;
+        }
         const { rows } = await pool.query(
-            `SELECT g.golden_id, g.qa_id, g.order_no, g.org_id,
-                    c."CDATE" AS call_datetime,
+            `SELECT g.golden_id, c.source_id AS qa_id, g.order_no, g.tenant_id AS org_id,
+                    c.cdate AS call_datetime,
                     g.category, g.item, g.reason_text, g.agent_utterance, g.score,
                     g.created_at,
-                    c.user_id     AS user_id,
-                    u.login_id    AS login_id,
-                    u.display_name AS display_name
+                    e.user_id     AS user_id,
+                    COALESCE(u.username, regexp_replace(u.email, '\\.ics$', '')) AS login_id,
+                    u.name        AS display_name
              FROM qa_golden_set g
-             LEFT JOIN qa_calls    c ON c."ID"     = g.qa_id
-             LEFT JOIN admin_users u ON u.user_id  = c.user_id
+             LEFT JOIN common.calls c ON c.call_id = g.qa_id
+             LEFT JOIN trustguard.qa_evaluations e ON e.call_id = g.qa_id
+             LEFT JOIN common.users u ON u.id = e.user_id
              WHERE g.qa_id = $1
              ORDER BY g.order_no ASC`,
-            [qaId]
+            [cc[0].call_id]
         );
         res.json({ ok: true, entries: rows });
     } catch (error) {
@@ -2898,7 +2911,9 @@ app.post('/api/golden-set/:qaId/:orderNo', requireAdmin, async (req, res) => {
     if (req.session?.login_id === SANDBOX_LOGIN_ID) {
         try {
             const { rows: targetRow } = await pool.query(
-                `SELECT is_sandbox FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
+                `SELECT e.is_sandbox
+                   FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+                  WHERE c.source_id = $1 LIMIT 1`,
                 [qaId]
             );
             if (targetRow[0] && targetRow[0].is_sandbox === false) {
@@ -2913,14 +2928,14 @@ app.post('/api/golden-set/:qaId/:orderNo', requireAdmin, async (req, res) => {
     }
 
     try {
-        // 스냅샷 소스: 평가행 + 체크리스트(발화) + 콜 메타
-        // 등록자는 qa_calls.user_id (검수자) 로 추적되므로 별도 컬럼 적재 불필요.
+        // 스냅샷 소스: 평가행 + 체크리스트(발화) + 콜 메타. 통합DB: :qaId=source_id → call_id.
+        //   qa_golden_set.qa_id=call_id, tenant_id=콜 테넌트. 등록자는 qa_evaluations.user_id(검수자)로 추적.
         const { rows: evalRow } = await pool.query(
-            `SELECT er."ID" AS qa_id, er.order_no, er.category, er.item, er.reason_text, er.ai_eval,
-                    er.agent_utterance, c.org_id
-             FROM qa_call_item_score er
-             LEFT JOIN qa_calls c ON c."ID" = er."ID"
-             WHERE er."ID" = $1 AND er.order_no = $2
+            `SELECT er.call_id, er.order_no, er.category, er.item, er.reason_text, er.ai_eval,
+                    er.agent_utterance, c.tenant_id AS org_id
+             FROM eval_item_score er
+             JOIN common.calls c ON c.call_id = er.call_id
+             WHERE c.source_id = $1 AND er.order_no = $2
              LIMIT 1`,
             [qaId, orderNo]
         );
@@ -2930,16 +2945,16 @@ app.post('/api/golden-set/:qaId/:orderNo', requireAdmin, async (req, res) => {
         }
         const e = evalRow[0];
 
-        // UNIQUE (qa_id, order_no) 충돌 시 충돌 행 그대로 반환 (멱등성)
+        // UNIQUE (qa_id, order_no) 충돌 시 충돌 행 그대로 반환 (멱등성). qa_id=call_id, org_id=tenant_id.
         const { rows: inserted } = await pool.query(
             `INSERT INTO qa_golden_set (
-                qa_id, order_no, org_id,
+                qa_id, order_no, tenant_id,
                 category, item, reason_text, agent_utterance, score
              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              ON CONFLICT (qa_id, order_no) DO NOTHING
              RETURNING golden_id, qa_id, order_no, score, created_at`,
             [
-                qaId, orderNo, e.org_id ?? null,
+                e.call_id, orderNo, e.org_id ?? null,
                 e.category, e.item,
                 e.reason_text ?? null, e.agent_utterance ?? null,
                 Number(e.ai_eval),
@@ -2956,7 +2971,8 @@ app.post('/api/golden-set/:qaId/:orderNo', requireAdmin, async (req, res) => {
             detail_json: JSON.stringify({ inserted: wasNew, category: e.category, item: e.item }),
             success: true,
         });
-        res.json({ ok: true, inserted: wasNew, entry: inserted[0] || null });
+        // entry.qa_id 는 call_id(bigint)로 반환되므로 FE 계약(텍스트 source_id)에 맞춰 덮어쓴다.
+        res.json({ ok: true, inserted: wasNew, entry: inserted[0] ? { ...inserted[0], qa_id: qaId } : null });
     } catch (error) {
         console.error('POST /api/golden-set/:qaId/:orderNo error:', error);
         res.status(500).json({ message: 'Failed to add to golden set.' });
@@ -2974,7 +2990,9 @@ app.delete('/api/golden-set/:qaId/:orderNo', requireAdmin, async (req, res) => {
     if (req.session?.login_id === SANDBOX_LOGIN_ID) {
         try {
             const { rows: targetRow } = await pool.query(
-                `SELECT is_sandbox FROM qa_calls WHERE "ID" = $1 LIMIT 1`,
+                `SELECT e.is_sandbox
+                   FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+                  WHERE c.source_id = $1 LIMIT 1`,
                 [qaId]
             );
             if (targetRow[0] && targetRow[0].is_sandbox === false) {
@@ -2989,10 +3007,11 @@ app.delete('/api/golden-set/:qaId/:orderNo', requireAdmin, async (req, res) => {
     }
 
     try {
-        const { rowCount } = await pool.query(
-            `DELETE FROM qa_golden_set WHERE qa_id = $1 AND order_no = $2`,
-            [qaId, orderNo]
-        );
+        // 통합DB: :qaId=source_id → call_id. qa_golden_set.qa_id=call_id.
+        const { rows: cc } = await pool.query('SELECT call_id FROM common.calls WHERE source_id = $1 LIMIT 1', [qaId]);
+        const { rowCount } = cc[0]
+            ? await pool.query(`DELETE FROM qa_golden_set WHERE qa_id = $1 AND order_no = $2`, [cc[0].call_id, orderNo])
+            : { rowCount: 0 };
         await insertQaAuditLog(pool, {
             req,
             action: AUDIT_ACTION.QA_GOLDEN_SET_REMOVE,
@@ -3022,7 +3041,8 @@ app.get('/api/skillset', async (req, res) => {
     const item = String(req.query.item || '').trim();
     const orgId = resolveActiveOrgId(req);
     try {
-        const conds = [`c.review_status = 'approved'`, `c.is_sandbox = false`, `er.manual_eval_option IN ('낮음','높음')`];
+        // 통합DB: review_status/is_sandbox/user_id=qa_evaluations(e), 헤더=common.calls(c), 검수자=common.users.
+        const conds = [`e.review_status = 'approved'`, `e.is_sandbox = false`, `er.manual_eval_option IN ('낮음','높음')`];
         const params = [];
         if (orderNo !== null) {
             params.push(orderNo); conds.push(`er.order_no = $${params.length}`);
@@ -3031,21 +3051,23 @@ app.get('/api/skillset', async (req, res) => {
             if (item)     { params.push(item);     conds.push(`er.item     = $${params.length}`); }
         }
         if (orgId !== null && orgId !== undefined) {
-            params.push(orgId); conds.push(`c.org_id = $${params.length}`);
+            params.push(orgId); conds.push(`c.tenant_id = $${params.length}`);
         }
         const where = `WHERE ${conds.join(' AND ')}`;
         const { rows } = await pool.query(
-            `SELECT er."ID" AS qa_id, er.order_no, er.category, er.item,
+            `SELECT c.source_id AS qa_id, er.order_no, er.category, er.item,
                     er.ai_eval, er.manual_eval_option AS direction, er.reason_text,
                     er.agent_utterance,
-                    c."CDATE" AS call_datetime, c.org_id,
-                    u.login_id, u.display_name
-               FROM qa_call_item_score er
-               JOIN qa_calls c ON c."ID" = er."ID"
-               LEFT JOIN admin_users u ON u.user_id = c.user_id
+                    c.cdate AS call_datetime, c.tenant_id AS org_id,
+                    COALESCE(u.username, regexp_replace(u.email, '\\.ics$', '')) AS login_id,
+                    u.name AS display_name
+               FROM eval_item_score er
+               JOIN common.calls c ON c.call_id = er.call_id
+               JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+               LEFT JOIN common.users u ON u.id = e.user_id
                ${where}
                  AND er.skill_excluded_at IS NULL
-               ORDER BY c."CDATE" DESC
+               ORDER BY c.cdate DESC
                LIMIT 200`,
             params
         );
@@ -3067,10 +3089,12 @@ app.delete('/api/skillset/:qaId/:orderNo', requireAdmin, async (req, res) => {
     try {
         // 제외는 평가행의 플래그 컬럼으로 표기(마이그레이션 70 — 구 qa_skill_excluded 흡수).
         // 원본 점수·사유는 그대로 두고 학습 신호에서만 빠진다(soft-exclude).
+        // 통합DB: :qaId=source_id → call_id. eval_item_score 는 call_id 키.
         await pool.query(
-            `UPDATE qa_call_item_score
+            `UPDATE eval_item_score
                 SET skill_excluded_at = now()
-              WHERE "ID" = $1 AND order_no = $2 AND skill_excluded_at IS NULL`,
+              WHERE call_id = (SELECT call_id FROM common.calls WHERE source_id = $1 LIMIT 1)
+                AND order_no = $2 AND skill_excluded_at IS NULL`,
             [qaId, orderNo]
         );
         res.json({ ok: true, excluded: true });
