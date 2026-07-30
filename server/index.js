@@ -6135,8 +6135,9 @@ app.get('/api/skill-log/recent', requireAdmin, (req, res) => {
     if (!Number.isFinite(withinMin) || withinMin <= 0) withinMin = 60;
     const cutoff = Date.now() - withinMin * 60 * 1000;
     let rows = SKILL_LOG.filter((e) => (e.ts || 0) >= cutoff);
-    if (req.session?.role !== 'super_admin' && req.session?.org_id != null) {
-        rows = rows.filter((e) => Number(e.org_id) === Number(req.session.org_id));
+    // 통합DB: 브랜드 격리키 = tenant_id(citext 문자열). 숫자 비교 금지(NaN===NaN=false 로 전부 필터됨).
+    if (req.session?.role !== 'super_admin' && req.session?.tenant_id != null) {
+        rows = rows.filter((e) => String(e.org_id) === String(req.session.tenant_id));
     }
     // 최신순(ts 내림차순) — 원본 링버퍼는 변형하지 않도록 복사 후 정렬.
     const entries = rows.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, limit);
@@ -6146,10 +6147,11 @@ app.get('/api/skill-log/recent', requireAdmin, (req, res) => {
 // GET /api/skill-memory — 에이전트 메모리(qa_skill_store) 항목별 요약(실시간 로그 '메모리' 행 토글).
 //   org_id 쿼리 기준 rubric_id 해석 → blob 요약(읽기 전용). 브랜드 격리: skill-log/recent 와 동일 규칙.
 app.get('/api/skill-memory', requireAdmin, async (req, res) => {
-    let orgId = Number(req.query.org_id);
-    if (req.session?.role !== 'super_admin' && req.session?.org_id != null) orgId = Number(req.session.org_id);
-    if (!Number.isFinite(orgId)) {
-        res.status(400).json({ ok: false, error: 'org_id required' });
+    // 통합DB: org_id(int) → tenant_id(citext). 쿼리파라미터 tenant_id 우선(구 org_id 폴백), 비-super는 세션 테넌트 고정.
+    let orgId = String(req.query.tenant_id ?? req.query.org_id ?? '').trim().toLowerCase() || null;
+    if (req.session?.role !== 'super_admin' && req.session?.tenant_id != null) orgId = String(req.session.tenant_id);
+    if (!orgId) {
+        res.status(400).json({ ok: false, error: 'tenant_id required' });
         return;
     }
     try {

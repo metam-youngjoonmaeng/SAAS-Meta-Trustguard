@@ -75,7 +75,7 @@ async function registerRubricForOrg(pool, orgId, rubricId, base) {
 async function adoptLegacySkillStore(pool, orgId, rubricId, base, { register = true } = {}) {
     const candidates = new Set([`rbrc_org${orgId}`, `inline-org${orgId}`]);
     try {
-        const { rows } = await pool.query('SELECT rubric_id FROM public.qa_skill_store WHERE org_id = $1', [orgId]);
+        const { rows } = await pool.query('SELECT rubric_id FROM qa_skill_store WHERE tenant_id = $1', [orgId]);
         for (const r of rows) candidates.add(safeStr(r.rubric_id).trim());
     } catch {
         /* 메모리 테이블 조회 실패 — 규칙 후보만으로 진행 */
@@ -108,11 +108,11 @@ async function adoptLegacySkillStore(pool, orgId, rubricId, base, { register = t
             // 메모리 행 키 승계 — 새 키 행이 이미 있으면(학습이 새 키로 이미 돈 경우) 보존, 옛 행 유지.
             try {
                 await pool.query(
-                    `UPDATE public.qa_skill_store
+                    `UPDATE qa_skill_store
                         SET rubric_id = $2,
                             memory = jsonb_set(memory, '{rubric_id}', to_jsonb($2::text))
                       WHERE rubric_id = $1
-                        AND NOT EXISTS (SELECT 1 FROM public.qa_skill_store m2 WHERE m2.rubric_id = $2)`,
+                        AND NOT EXISTS (SELECT 1 FROM qa_skill_store m2 WHERE m2.rubric_id = $2)`,
                     [cand, rubricId]
                 );
             } catch (e) {
@@ -167,9 +167,9 @@ function kstNowLabel() {
 async function readSkillExcludedOrders(pool, orgId) {
     try {
         const { rows } = await pool.query(
-            `SELECT config FROM public.qa_batch_configs
-              WHERE org_id = ANY($1) ORDER BY (org_id = $2) DESC LIMIT 1`,
-            [[orgId, 0], orgId]
+            `SELECT config FROM qa_batch_configs
+              WHERE tenant_id = ANY($1) ORDER BY (tenant_id = $2) DESC LIMIT 1`,
+            [[orgId, '__default__'], orgId]
         );
         const ex = rows[0]?.config?.skill?.excluded;
         return Array.isArray(ex) ? ex.map(Number).filter(Number.isFinite) : [];
@@ -187,33 +187,37 @@ async function readSkillExcludedOrders(pool, orgId) {
  */
 export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMIT } = {}) {
     const lim = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.trunc(Number(limit)) : DEFAULT_CASE_LIMIT;
+    // 통합DB: 헤더=common.calls(source_id/tenant_id/cdate), 평가=trustguard.qa_evaluations(review_status/is_sandbox), 항목=eval_item_score(call_id).
+    //   외부 케이스 식별자 qa_id=source_id, 검수사유는 eval_review_event(call_id) → source_id 로 재키.
     const { rows } = await pool.query(
-        `SELECT er."ID" AS qa_id, er.order_no, er.category, er.item,
+        `SELECT c.source_id AS qa_id, c.call_id AS call_id, er.order_no, er.category, er.item,
                 er.ai_eval, er.manual_eval_option, er.reason_text,
-                er.agent_utterance, c.org_id, c."CDATE"
-           FROM qa_call_item_score er
-           JOIN qa_calls c ON c."ID" = er."ID"
-          WHERE c.review_status = 'approved' AND c.is_sandbox = false
-            AND c.org_id = $1 AND er.manual_eval_option IN ('낮음','높음')
+                er.agent_utterance, c.tenant_id AS org_id, c.cdate AS "CDATE"
+           FROM eval_item_score er
+           JOIN common.calls c ON c.call_id = er.call_id
+           JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+          WHERE e.review_status = 'approved' AND e.is_sandbox = false
+            AND c.tenant_id = $1 AND er.manual_eval_option IN ('낮음','높음')
             AND er.skill_excluded_at IS NULL
-          ORDER BY c."CDATE" DESC LIMIT $2`,
+          ORDER BY c.cdate DESC LIMIT $2`,
         [orgId, lim]
     );
     if (!rows.length) return { rows: [], callReasons: {} };
-    // 콜단위 검수사유 — 케이스별 개별 조회 대신 qa_id 묶음 1회 조회(qa_id 별 최신 1건). 없으면 생략.
+    // 콜단위 검수사유 — call_id 묶음 1회 조회(call_id 별 최신 1건) 후 source_id 로 재키. 없으면 생략.
     const callReasons = {};
     try {
-        const qaIds = [...new Set(rows.map((r) => String(r.qa_id)))];
+        const callIds = [...new Set(rows.map((r) => r.call_id))];
         const { rows: ev } = await pool.query(
-            `SELECT DISTINCT ON (qa_id) qa_id, reason
-               FROM qa_call_review_event
-              WHERE qa_id = ANY($1::text[]) AND reason IS NOT NULL
-              ORDER BY qa_id, id DESC`,
-            [qaIds]
+            `SELECT DISTINCT ON (call_id) call_id, reason
+               FROM eval_review_event
+              WHERE call_id = ANY($1::bigint[]) AND reason IS NOT NULL
+              ORDER BY call_id, id DESC`,
+            [callIds]
         );
-        for (const e of ev) {
-            const reason = safeStr(e.reason).trim();
-            if (reason) callReasons[String(e.qa_id)] = reason;
+        const reasonByCall = new Map(ev.map((e) => [String(e.call_id), safeStr(e.reason).trim()]));
+        for (const r of rows) {
+            const reason = reasonByCall.get(String(r.call_id));
+            if (reason) callReasons[String(r.qa_id)] = reason;
         }
     } catch (e) {
         logger.warn(`[skill-learn] 콜단위 검수사유 조회 실패(생략하고 진행): ${e?.message || e}`);
@@ -236,7 +240,7 @@ export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMI
  */
 async function loadSkillMemory(pool, rubricId) {
     try {
-        const { rows } = await pool.query('SELECT memory FROM public.qa_skill_store WHERE rubric_id = $1', [rubricId]);
+        const { rows } = await pool.query('SELECT memory FROM qa_skill_store WHERE rubric_id = $1', [rubricId]);
         const mem = rows[0]?.memory;
         if (mem && typeof mem === 'object' && !Array.isArray(mem)) return mem;
     } catch (e) {
@@ -253,10 +257,10 @@ async function saveSkillMemory(pool, rubricId, orgId, memory) {
     if (!memory || typeof memory !== 'object' || Array.isArray(memory)) return false;
     try {
         await pool.query(
-            `INSERT INTO public.qa_skill_store (rubric_id, org_id, memory, updated_at)
+            `INSERT INTO qa_skill_store (rubric_id, tenant_id, memory, updated_at)
                  VALUES ($1, $2, $3::jsonb, now())
              ON CONFLICT (rubric_id) DO UPDATE
-                SET memory = EXCLUDED.memory, org_id = EXCLUDED.org_id, updated_at = now()`,
+                SET memory = EXCLUDED.memory, tenant_id = EXCLUDED.tenant_id, updated_at = now()`,
             [rubricId, orgId, JSON.stringify(memory)]
         );
         return true;
@@ -299,7 +303,7 @@ export async function fetchSkillMemorySummary(pool, orgId) {
     let mem = null;
     let updatedAt = null;
     try {
-        const { rows } = await pool.query('SELECT memory, updated_at FROM public.qa_skill_store WHERE rubric_id = $1', [rubricId]);
+        const { rows } = await pool.query('SELECT memory, updated_at FROM qa_skill_store WHERE rubric_id = $1', [rubricId]);
         mem = rows[0]?.memory ?? null;
         updatedAt = rows[0]?.updated_at ?? null;
     } catch (e) {
@@ -345,24 +349,10 @@ export async function fetchSkillMemorySummary(pool, orgId) {
  * 소유 모델은 qa_skill_store 와 동일 — DB(=이 서버의 PG)가 생존 계층, 파이프라인 파일은 작업 사본. */
 
 let _skillVersionsTableReady = null;
-function ensureSkillVersionsTable(pool) {
-    // 런타임 멱등 보장 — docker/init 은 새 볼륨에만 실행되므로 기존 환경(10.13/운영)은 여기서 생성.
-    if (!_skillVersionsTableReady) {
-        _skillVersionsTableReady = pool
-            .query(
-                `CREATE TABLE IF NOT EXISTS public.qa_skill_store (
-                     rubric_id  text PRIMARY KEY,
-                     org_id     integer REFERENCES public.organizations(id) ON DELETE CASCADE,
-                     memory     jsonb NOT NULL DEFAULT '{}',
-                     store      jsonb NOT NULL DEFAULT '{}',
-                     updated_at timestamptz NOT NULL DEFAULT now()
-                 )`
-            )
-            .catch((e) => {
-                _skillVersionsTableReady = null; // 다음 호출에서 재시도
-                throw e;
-            });
-    }
+function ensureSkillVersionsTable(_pool) {
+    // 통합DB: trustguard.qa_skill_store(tenant_id citext) 는 통합 init(20_qa.sql)이 소유·생성.
+    //   런타임 CREATE TABLE(구 org_id/public.organizations 스키마)은 통합에서 유해 → no-op.
+    if (!_skillVersionsTableReady) _skillVersionsTableReady = Promise.resolve();
     return _skillVersionsTableReady;
 }
 
@@ -370,7 +360,7 @@ function ensureSkillVersionsTable(pool) {
 async function loadSkillStoreBackup(pool, rubricId) {
     try {
         await ensureSkillVersionsTable(pool);
-        const { rows } = await pool.query('SELECT store FROM public.qa_skill_store WHERE rubric_id = $1', [rubricId]);
+        const { rows } = await pool.query('SELECT store FROM qa_skill_store WHERE rubric_id = $1', [rubricId]);
         const s = rows[0]?.store;
         if (s && typeof s === 'object' && !Array.isArray(s)) return s;
     } catch (e) {
@@ -388,10 +378,10 @@ async function persistSkillStore(pool, orgId, rubricId, base) {
         }
         await ensureSkillVersionsTable(pool);
         await pool.query(
-            `INSERT INTO public.qa_skill_store (rubric_id, org_id, store, updated_at)
+            `INSERT INTO qa_skill_store (rubric_id, tenant_id, store, updated_at)
                  VALUES ($1, $2, $3::jsonb, now())
              ON CONFLICT (rubric_id) DO UPDATE
-                SET store = EXCLUDED.store, org_id = EXCLUDED.org_id, updated_at = now()`,
+                SET store = EXCLUDED.store, tenant_id = EXCLUDED.tenant_id, updated_at = now()`,
             [rubricId, orgId, JSON.stringify({ store: dump.store, files: dump.files || {}, manifests: dump.manifests || {} })]
         );
         return true;
@@ -755,7 +745,7 @@ export async function activateSkillVersion(pool, orgId, versionId, opts = {}) {
     if (backup?.store && known) {
         try {
             await pool.query(
-                `UPDATE public.qa_skill_store
+                `UPDATE qa_skill_store
                     SET store = jsonb_set(store, '{store,active_version_id}', $2::jsonb, true), updated_at = now()
                   WHERE rubric_id = $1`,
                 [rubricId, JSON.stringify(vid)]
@@ -807,7 +797,7 @@ export async function pushSkillSettings(pool, orgId, excludedOrders, opts = {}) 
     try {
         await ensureSkillVersionsTable(pool);
         await pool.query(
-            `UPDATE public.qa_skill_store
+            `UPDATE qa_skill_store
                 SET store = jsonb_set(store, '{store,excluded_items}', $2::jsonb, true), updated_at = now()
               WHERE rubric_id = $1`,
             [rubricId, JSON.stringify(excludedItems)]
