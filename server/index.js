@@ -965,7 +965,7 @@ app.post('/api/svc/deep-eval', async (req, res) => {
             let definedAxes = null;
             try {
                 const { rows: axRows } = await pool.query(
-                    `SELECT label FROM public.domain_default_pentagon_axes
+                    `SELECT label FROM domain_default_pentagon_axes
                       WHERE domain_id = $1 AND is_active = true AND label IS NOT NULL AND btrim(label) <> ''
                       ORDER BY axis_no ASC`,
                     [domainId]
@@ -3133,7 +3133,7 @@ app.get('/api/admin/eval-items', async (req, res) => {
     }
     try {
         const params = [orgId];
-        const where = ['org_id = $1'];
+        const where = ['tenant_id = $1'];
         if (department) {
             params.push(department);
             where.push(`department = $${params.length}`);
@@ -3149,7 +3149,7 @@ app.get('/api/admin/eval-items', async (req, res) => {
             `SELECT order_no, category, item, criterion, prompt_template,
                     pentagon_axis, scoring_type, max_score, is_active,
                     department, version, effective_from, deactivated_at, updated_at
-             FROM public.eval_item_defs
+             FROM eval_item_defs
              WHERE ${where.join(' AND ')}
              ORDER BY department ASC, order_no ASC`,
             params
@@ -3176,8 +3176,8 @@ app.get('/api/admin/eval-item-versions', async (req, res) => {
                     MIN(effective_from) AS effective_from,
                     MAX(deactivated_at) FILTER (WHERE deactivated_at IS NOT NULL) AS last_deactivated_at,
                     bool_and(deactivated_at IS NULL) AS is_active
-             FROM public.eval_item_defs
-             WHERE org_id = $1
+             FROM eval_item_defs
+             WHERE tenant_id = $1
              GROUP BY department, version
              ORDER BY department ASC, version DESC`,
             [orgId]
@@ -3247,7 +3247,7 @@ async function hasKsqiItemDefsTable(pool) {
     try {
         const { rows } = await pool.query(
             `SELECT 1 FROM information_schema.tables
-             WHERE table_schema = 'public' AND table_name = 'ksqi_item_defs' LIMIT 1`
+             WHERE table_schema = 'trustguard' AND table_name = 'ksqi_item_defs' LIMIT 1`
         );
         _ksqiItemDefsTableCache = rows.length > 0;
     } catch {
@@ -3276,13 +3276,14 @@ async function fetchPipelineKsqiCatalog(timeoutMs = 30_000) {
 //   파이프라인 불통이어도 DB 항목 목록은 정상 반환). 'KSQI 관리' 탭이 사용.
 //   org_id 미지정 / 테이블·행 부재(prod 미적용): 기존 파이프라인 프록시 그대로(무회귀).
 app.get('/api/ksqi-stt/catalog', async (req, res) => {
-    const orgId = Number(req.query.org_id) || null;
+    // 통합DB: org_id(int) → tenant_id(citext). 쿼리파라미터는 tenant_id 우선, 구 org_id 문자열 폴백.
+    const orgId = String(req.query.tenant_id ?? req.query.org_id ?? '').trim().toLowerCase() || null;
     try {
         if (orgId && (await hasKsqiItemDefsTable(pool))) {
             const { rows } = await pool.query(
                 `SELECT number, name, area, category, kind, max_score, is_active
-                   FROM public.ksqi_item_defs
-                  WHERE org_id = $1
+                   FROM ksqi_item_defs
+                  WHERE tenant_id = $1
                   ORDER BY number`,
                 [orgId]
             );
@@ -3396,8 +3397,8 @@ app.put('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
         const { rows: activeRows } = await client.query(
             `SELECT id, version, category, item, criterion, prompt_template,
                     pentagon_axis, scoring_type, max_score, is_active
-               FROM public.eval_item_defs
-              WHERE org_id = $1 AND department = $2 AND order_no = $3
+               FROM eval_item_defs
+              WHERE tenant_id = $1 AND department = $2 AND order_no = $3
                 AND deactivated_at IS NULL
               ORDER BY version DESC
               LIMIT 1`,
@@ -3421,14 +3422,14 @@ app.put('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
             // 활성 행 없음 → 신규 발행 (v1 또는 부서 max+1)
             const { rows: maxRows } = await client.query(
                 `SELECT COALESCE(MAX(version), 0) AS max_version
-                   FROM public.eval_item_defs
-                  WHERE org_id = $1 AND department = $2 AND order_no = $3`,
+                   FROM eval_item_defs
+                  WHERE tenant_id = $1 AND department = $2 AND order_no = $3`,
                 [orgId, department, orderNo]
             );
             const nextVersion = (maxRows[0]?.max_version || 0) + 1;
             const { rows: insertRows } = await client.query(
-                `INSERT INTO public.eval_item_defs
-                   (org_id, department, order_no, category, item, criterion, prompt_template,
+                `INSERT INTO eval_item_defs
+                   (tenant_id, department, order_no, category, item, criterion, prompt_template,
                     pentagon_axis, scoring_type, max_score, is_active,
                     version, effective_from, updated_at)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), now())
@@ -3459,21 +3460,21 @@ app.put('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
         } else if (isMeaningChange) {
             // 의미 변경 → 활성 행 deactivate + 새 버전 발행
             await client.query(
-                `UPDATE public.eval_item_defs
+                `UPDATE eval_item_defs
                     SET deactivated_at = now()
                   WHERE id = $1`,
                 [activeRow.id]
             );
             const { rows: maxRows } = await client.query(
                 `SELECT COALESCE(MAX(version), 0) AS max_version
-                   FROM public.eval_item_defs
-                  WHERE org_id = $1 AND department = $2`,
+                   FROM eval_item_defs
+                  WHERE tenant_id = $1 AND department = $2`,
                 [orgId, department]
             );
             const nextVersion = (maxRows[0]?.max_version || 0) + 1;
             const { rows: insertRows } = await client.query(
-                `INSERT INTO public.eval_item_defs
-                   (org_id, department, order_no, category, item, criterion, prompt_template,
+                `INSERT INTO eval_item_defs
+                   (tenant_id, department, order_no, category, item, criterion, prompt_template,
                     pentagon_axis, scoring_type, max_score, is_active,
                     version, effective_from, updated_at)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), now())
@@ -3514,7 +3515,7 @@ app.put('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
         } else {
             // 텍스트 다듬기 / 배점 변경 → in-place UPDATE
             const { rows: updateRows } = await client.query(
-                `UPDATE public.eval_item_defs
+                `UPDATE eval_item_defs
                     SET category        = $1,
                         item            = $2,
                         criterion       = $3,
@@ -3579,8 +3580,8 @@ app.put('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
         // item_name / category_name 은 변경 시점의 스냅샷 — 항목 삭제 후에도 통합 이력에서 표시 가능.
         if (logChangeType) {
             await client.query(
-                `INSERT INTO public.rubric_change_log
-                   (org_id, target_kind, department, target_no, target_name, category_name,
+                `INSERT INTO rubric_change_log
+                   (tenant_id, target_kind, department, target_no, target_name, category_name,
                     version, change_type, before_json, after_json,
                     user_id, login_id, display_name)
                  VALUES ($1, 'item', $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, $12)`,
@@ -3638,8 +3639,8 @@ app.delete('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
         const { rows: activeRows } = await client.query(
             `SELECT id, department, version, category, item, criterion, prompt_template,
                     pentagon_axis, scoring_type, max_score, is_active
-               FROM public.eval_item_defs
-              WHERE org_id = $1 AND order_no = $2 AND deactivated_at IS NULL${department ? ' AND department = $3' : ''}`,
+               FROM eval_item_defs
+              WHERE tenant_id = $1 AND order_no = $2 AND deactivated_at IS NULL${department ? ' AND department = $3' : ''}`,
             department ? [orgId, orderNo, department] : [orgId, orderNo]
         );
         if (activeRows.length === 0) {
@@ -3650,9 +3651,9 @@ app.delete('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
 
         // 활성 행 비활성화 (department 지정 시 해당 부서만, 미지정 시 전 부서)
         await client.query(
-            `UPDATE public.eval_item_defs
+            `UPDATE eval_item_defs
                 SET deactivated_at = now(), is_active = false, updated_at = now()
-              WHERE org_id = $1 AND order_no = $2 AND deactivated_at IS NULL${department ? ' AND department = $3' : ''}`,
+              WHERE tenant_id = $1 AND order_no = $2 AND deactivated_at IS NULL${department ? ' AND department = $3' : ''}`,
             department ? [orgId, orderNo, department] : [orgId, orderNo]
         );
 
@@ -3665,8 +3666,8 @@ app.delete('/api/admin/eval-items/:orderNo', requireAdmin, async (req, res) => {
                 max_score: row.max_score, is_active: row.is_active, version: row.version,
             };
             await client.query(
-                `INSERT INTO public.rubric_change_log
-                   (org_id, target_kind, department, target_no, target_name, category_name,
+                `INSERT INTO rubric_change_log
+                   (tenant_id, target_kind, department, target_no, target_name, category_name,
                     version, change_type, before_json, after_json,
                     user_id, login_id, display_name)
                  VALUES ($1, 'item', $2, $3, $4, $5, $6, 'delete', $7::jsonb, NULL, $8, $9, $10)`,
@@ -3749,8 +3750,8 @@ app.post('/api/admin/eval-items', requireAdmin, async (req, res) => {
         // 같은 order_no 재발급 시에도 versioned_uk 충돌 없음.)
         const { rows: usedRows } = await client.query(
             `SELECT DISTINCT order_no
-               FROM public.eval_item_defs
-              WHERE org_id = $1 AND deactivated_at IS NULL`,
+               FROM eval_item_defs
+              WHERE tenant_id = $1 AND deactivated_at IS NULL`,
             [orgId]
         );
         const usedSet = new Set(usedRows.map((r) => Number(r.order_no)));
@@ -3761,14 +3762,14 @@ app.post('/api/admin/eval-items', requireAdmin, async (req, res) => {
         for (const dept of normalizedDepts) {
             const { rows: vRows } = await client.query(
                 `SELECT COALESCE(MAX(version), 0) AS max_version
-                   FROM public.eval_item_defs
-                  WHERE org_id = $1 AND department = $2`,
+                   FROM eval_item_defs
+                  WHERE tenant_id = $1 AND department = $2`,
                 [orgId, dept]
             );
             const nextVersion = (vRows[0]?.max_version || 0) + 1;
             const { rows: insertRows } = await client.query(
-                `INSERT INTO public.eval_item_defs
-                   (org_id, department, order_no, category, item, criterion, prompt_template,
+                `INSERT INTO eval_item_defs
+                   (tenant_id, department, order_no, category, item, criterion, prompt_template,
                     pentagon_axis, scoring_type, max_score, is_active,
                     version, effective_from, updated_at)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), now())
@@ -3796,8 +3797,8 @@ app.post('/api/admin/eval-items', requireAdmin, async (req, res) => {
                 version: nextVersion,
             };
             await client.query(
-                `INSERT INTO public.rubric_change_log
-                   (org_id, target_kind, department, target_no, target_name, category_name,
+                `INSERT INTO rubric_change_log
+                   (tenant_id, target_kind, department, target_no, target_name, category_name,
                     version, change_type, before_json, after_json,
                     user_id, login_id, display_name)
                  VALUES ($1, 'item', $2, $3, $4, $5, $6, 'create', NULL, $7::jsonb, $8, $9, $10)`,
@@ -3838,7 +3839,7 @@ app.get('/api/admin/pentagon-axes', async (req, res) => {
     const department = req.query.department ? normalizeDepartment(req.query.department) : null;
     try {
         const params = [orgId];
-        const where = ['org_id = $1', 'deactivated_at IS NULL', 'effective_from <= now()'];
+        const where = ['tenant_id = $1', 'deactivated_at IS NULL', 'effective_from <= now()'];
         if (department) {
             params.push(department);
             where.push(`department = $${params.length}`);
@@ -3846,7 +3847,7 @@ app.get('/api/admin/pentagon-axes', async (req, res) => {
         const { rows } = await pool.query(
             `SELECT axis_no, label, description, prompt_template, is_active,
                     department, version, effective_from, deactivated_at, updated_at
-             FROM public.pentagon_axes
+             FROM pentagon_axes
              WHERE ${where.join(' AND ')}
              ORDER BY department ASC, axis_no ASC`,
             params
@@ -3883,14 +3884,14 @@ app.post('/api/admin/pentagon-axes', requireAdmin, async (req, res) => {
         await client.query('BEGIN');
         const { rows: maxRows } = await client.query(
             `SELECT COALESCE(MAX(axis_no), 0) AS max_axis
-               FROM public.pentagon_axes
-              WHERE org_id = $1 AND department = $2`,
+               FROM pentagon_axes
+              WHERE tenant_id = $1 AND department = $2`,
             [orgId, department]
         );
         const nextAxisNo = (maxRows[0]?.max_axis || 0) + 1;
         const { rows: insertRows } = await client.query(
-            `INSERT INTO public.pentagon_axes
-               (org_id, department, axis_no, label, description, prompt_template,
+            `INSERT INTO pentagon_axes
+               (tenant_id, department, axis_no, label, description, prompt_template,
                 is_active, version, effective_from, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, 1, now(), now())
              RETURNING axis_no, label, description, prompt_template, is_active,
@@ -3905,8 +3906,8 @@ app.post('/api/admin/pentagon-axes', requireAdmin, async (req, res) => {
             version: 1,
         };
         await client.query(
-            `INSERT INTO public.rubric_change_log
-               (org_id, target_kind, department, target_no, target_name, version, change_type,
+            `INSERT INTO rubric_change_log
+               (tenant_id, target_kind, department, target_no, target_name, version, change_type,
                 before_json, after_json,
                 user_id, login_id, display_name)
              VALUES ($1, 'axis', $2, $3, $4, 1, 'create', NULL, $5::jsonb, $6, $7, $8)`,
@@ -3955,8 +3956,8 @@ app.put('/api/admin/pentagon-axes/:axisNo', requireAdmin, async (req, res) => {
         await client.query('BEGIN');
         const { rows: activeRows } = await client.query(
             `SELECT id, version, label, description, prompt_template, is_active
-               FROM public.pentagon_axes
-              WHERE org_id = $1 AND department = $2 AND axis_no = $3
+               FROM pentagon_axes
+              WHERE tenant_id = $1 AND department = $2 AND axis_no = $3
                 AND deactivated_at IS NULL
               ORDER BY version DESC
               LIMIT 1`,
@@ -3985,14 +3986,14 @@ app.put('/api/admin/pentagon-axes/:axisNo', requireAdmin, async (req, res) => {
             // 활성 행 없음 → 신규 발행 (eval_item_defs 와 동일 패턴)
             const { rows: vRows } = await client.query(
                 `SELECT COALESCE(MAX(version), 0) AS max_version
-                   FROM public.pentagon_axes
-                  WHERE org_id = $1 AND department = $2 AND axis_no = $3`,
+                   FROM pentagon_axes
+                  WHERE tenant_id = $1 AND department = $2 AND axis_no = $3`,
                 [orgId, department, axisNo]
             );
             const nextVersion = (vRows[0]?.max_version || 0) + 1;
             const { rows: insertRows } = await client.query(
-                `INSERT INTO public.pentagon_axes
-                   (org_id, department, axis_no, label, description, prompt_template,
+                `INSERT INTO pentagon_axes
+                   (tenant_id, department, axis_no, label, description, prompt_template,
                     is_active, version, effective_from, updated_at)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())
                  RETURNING axis_no, label, description, prompt_template, is_active,
@@ -4009,7 +4010,7 @@ app.put('/api/admin/pentagon-axes/:axisNo', requireAdmin, async (req, res) => {
             logVersion = nextVersion;
         } else {
             const { rows: updateRows } = await client.query(
-                `UPDATE public.pentagon_axes
+                `UPDATE pentagon_axes
                     SET label           = $1,
                         description     = $2,
                         prompt_template = $3,
@@ -4055,8 +4056,8 @@ app.put('/api/admin/pentagon-axes/:axisNo', requireAdmin, async (req, res) => {
 
         if (logChangeType) {
             await client.query(
-                `INSERT INTO public.rubric_change_log
-                   (org_id, target_kind, department, target_no, target_name, version, change_type,
+                `INSERT INTO rubric_change_log
+                   (tenant_id, target_kind, department, target_no, target_name, version, change_type,
                     before_json, after_json,
                     user_id, login_id, display_name)
                  VALUES ($1, 'axis', $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11)`,
@@ -4099,7 +4100,7 @@ app.get('/api/admin/eval-item-history', async (req, res) => {
     const effectiveLimit = Number.isFinite(limit) && limit > 0 && limit <= 500 ? limit : 200;
     try {
         const params = [orgId];
-        const where = ['org_id = $1'];
+        const where = ['tenant_id = $1'];
         if (department) {
             params.push(department);
             where.push(`department = $${params.length}`);
@@ -4123,7 +4124,7 @@ app.get('/api/admin/eval-item-history', async (req, res) => {
                     change_type, version, before_json, after_json,
                     user_id, login_id, display_name, changed_at,
                     CASE WHEN target_kind = 'axis' THEN 'pentagon_axis' ELSE 'eval_item' END AS source
-               FROM public.rubric_change_log
+               FROM rubric_change_log
               WHERE ${whereSql}
               ORDER BY changed_at DESC
               LIMIT ${limitParam}`,
