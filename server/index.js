@@ -16,7 +16,7 @@ import {
 } from './rubricManual.mjs';
 import { AUDIT_ACTION, insertQaAuditLog, insertLoginHistory, pruneOldAuditLogs } from './auditLog.mjs';
 import { logger, requestLogger } from './logger.mjs';
-import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChecklistKeys, LEGACY_STANDARD_ORG_IDS } from './checklistCategorySummary.mjs';
+import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChecklistKeys } from './checklistCategorySummary.mjs';
 /* SAMPLE_UPLOAD_FEATURE */ import { ingestSampleToDb, clearSamplesFromDb } from './sampleIngest.mjs';
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
@@ -702,9 +702,9 @@ function resolveActiveOrgId(req, { strict = false } = {}) {
     return req.session.tenant_id ?? null;
 }
 
-// 상담사(role='agent')는 "본인이 응대한 콜"만 볼 수 있다. qa_calls.agent_user_id = 본인 user_id.
+// 상담사(role='agent')는 "본인이 응대한 콜"만 볼 수 있다. common.calls.agent_user_id = 본인 user_id.
 // admin/super_admin 은 제한 없음(''). params 배열에 값을 push 하고 SQL 조각을 돌려준다.
-// alias = qa_calls 테이블 별칭(예: 'c').
+// alias = common.calls 테이블 별칭(예: 'c') — agent_user_id 는 콜 헤더(common.calls)에 있음.
 function agentScopeSql(req, params, alias = 'c') {
     if (req.session?.role === 'agent') {
         params.push(req.session.user_id);
@@ -714,9 +714,10 @@ function agentScopeSql(req, params, alias = 'c') {
 }
 
 // 현재 세션이 콜 1건을 볼 수 있는지(상담사는 본인 콜만). admin/super=항상 true.
+// 통합DB: :qaId = common.calls.source_id(구 qa_calls.ID 텍스트). source_id 는 'ics:<PROJ>:<uid>' 로 사실상 전역유일.
 async function canAccessCall(req, qaId) {
     if (req.session?.role !== 'agent') return true;
-    const { rows } = await pool.query('SELECT agent_user_id FROM qa_calls WHERE "ID" = $1', [qaId]);
+    const { rows } = await pool.query('SELECT agent_user_id FROM common.calls WHERE source_id = $1 LIMIT 1', [qaId]);
     if (!rows.length) return false;
     return rows[0].agent_user_id === req.session.user_id;
 }
@@ -728,7 +729,7 @@ async function createNotification(db, n) {
     // notification_prefs.prefs(JSONB): 키가 없으면 수신. 조회 실패 시에도 발송(안전 측 기본값).
     try {
         const { rows } = await db.query(
-            `SELECT (prefs ->> $2) AS v FROM public.notification_prefs WHERE user_id = $1`,
+            `SELECT (prefs ->> $2) AS v FROM notification_prefs WHERE user_id = $1`,
             [n.recipientUserId, n.type]
         );
         if (rows[0]?.v === 'false') return;
@@ -736,9 +737,10 @@ async function createNotification(db, n) {
         console.error('notification pref check failed (기본 발송):', e?.message || e);
     }
     try {
+        // 통합DB: org_id(int) → tenant_id(citext). 호출부는 tenant_id 문자열을 n.orgId 로 전달.
         await db.query(
-            `INSERT INTO public.notifications
-                (recipient_user_id, type, title, body, resource_type, resource_id, actor_user_id, actor_name, org_id)
+            `INSERT INTO notifications
+                (recipient_user_id, type, title, body, resource_type, resource_id, actor_user_id, actor_name, tenant_id)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
                 n.recipientUserId, n.type, n.title, n.body ?? null,
@@ -1551,21 +1553,25 @@ app.get('/api/calls', async (req, res) => {
 app.get('/api/agents', async (req, res) => {
     try {
         const activeOrgId = resolveActiveOrgId(req);
+        // 통합DB: 콜 헤더=common.calls(c, agent_user_id/agent_code), 평가=trustguard.qa_evaluations(e, is_sandbox/department/TOTAL_SCORE).
+        //   상담사 이름=common.users.name, 부서=테넌트별 common.memberships.department (구 admin_users 대체).
         const params = [];
-        let where = `WHERE c.is_sandbox = false AND c.agent_user_id IS NOT NULL`;
+        let where = `WHERE e.is_sandbox = false AND c.agent_user_id IS NOT NULL`;
         if (activeOrgId != null) {
             params.push(activeOrgId);
-            where += ` AND c.org_id = $${params.length}`;
+            where += ` AND c.tenant_id = $${params.length}`;
         }
         const { rows } = await pool.query(
             `SELECT c.agent_user_id AS user_id,
                     MAX(c.agent_code) AS agent_code,
-                    COALESCE(MAX(u.display_name), MAX(c.agent_code), '미지정') AS name,
-                    COALESCE(NULLIF(MAX(u.department), ''), MAX(NULLIF(c.department, '')), '미지정') AS department,
-                    ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS score,
+                    COALESCE(MAX(u.name), MAX(c.agent_code), '미지정') AS name,
+                    COALESCE(NULLIF(MAX(m.department), ''), MAX(NULLIF(e.department, '')), '미지정') AS department,
+                    ROUND(AVG(e."TOTAL_SCORE")::numeric, 1) AS score,
                     COUNT(*) AS calls
-               FROM qa_calls c
-               LEFT JOIN admin_users u ON u.user_id = c.agent_user_id
+               FROM common.calls c
+               JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+               LEFT JOIN common.users u ON u.id = c.agent_user_id
+               LEFT JOIN common.memberships m ON m.user_id = c.agent_user_id AND m.tenant_id = c.tenant_id
                ${where}
               GROUP BY c.agent_user_id
               ORDER BY score DESC NULLS LAST, calls DESC`,
@@ -1605,26 +1611,27 @@ app.get('/api/stats', async (req, res) => {
         const deptRaw = String(req.query.department || '').trim();
         const department = deptRaw && deptRaw.toLowerCase() !== 'all' ? deptRaw : null;
 
-        // ICS 원천 CDATE(텍스트)에 MySQL 제로날짜('0000-00-00 00:00:00')·빈문자열이 섞여
-        // Postgres timestamp/date 캐스트가 실패(500)한다 → 캐스트 전 NULL 로 무력화(=미날짜 콜은 기간집계 제외).
-        const CDATE_TS = `NULLIF(NULLIF(NULLIF(c."CDATE", ''), '0000-00-00 00:00:00'), '0000-00-00')::timestamp`;
-        const CDATE_DT = `NULLIF(NULLIF(NULLIF(c."CDATE", ''), '0000-00-00 00:00:00'), '0000-00-00')::date`;
+        // 통합DB: common.calls.cdate 는 timestamptz(구 qa_calls.CDATE 텍스트/MySQL 제로날짜 무력화 불필요).
+        const CDATE_TS = `c.cdate`;
+        const CDATE_DT = `c.cdate::date`;
 
-        // 공통 스코프(WHERE) 빌더 — is_sandbox 제외 + org + (상담사 본인필터) + 선택 부서.
-        // 반환: { where, params } — alias 'c'.
+        // 공통 스코프(WHERE) 빌더 — is_sandbox 제외 + tenant + (상담사 본인필터) + 선택 부서.
+        //   FROM 은 반드시 common.calls c JOIN trustguard.qa_evaluations e ON e.call_id=c.call_id (is_sandbox/department=e).
+        // 반환: { where, params } — alias 'c'(콜 헤더), 'e'(평가).
         const buildScope = ({ withDept = false } = {}) => {
             const params = [];
-            let where = `WHERE c.is_sandbox = false`;
-            if (orgId != null) { params.push(orgId); where += ` AND c.org_id = $${params.length}`; }
+            let where = `WHERE e.is_sandbox = false`;
+            if (orgId != null) { params.push(orgId); where += ` AND c.tenant_id = $${params.length}`; }
             where += agentScopeSql(req, params, 'c');
-            if (withDept && department) { params.push(department); where += ` AND c.department = $${params.length}`; }
+            if (withDept && department) { params.push(department); where += ` AND e.department = $${params.length}`; }
             return { where, params };
         };
 
         // 1) 기간 앵커 = 스코프 내 최신 콜 날짜
         const scopeAll = buildScope();
         const anchorRes = await pool.query(
-            `SELECT MAX(${CDATE_TS})::date AS anchor FROM qa_calls c ${scopeAll.where}`,
+            `SELECT MAX(${CDATE_TS})::date AS anchor
+               FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id ${scopeAll.where}`,
             scopeAll.params
         );
         const anchor = anchorRes.rows[0]?.anchor || null;
@@ -1643,30 +1650,30 @@ app.get('/api/stats', async (req, res) => {
             return sql.replace(/\$A/g, a).replace(/\$D/g, d);
         };
 
-        // 코칭대상 임계값 — 표준 org(1/2/3) 또는 전체뷰는 레거시 80점 절대값,
-        // 사용자 생성 트랙(그 외 org)은 콜별 만점(체크리스트 배점합)의 75% 미만으로 상대화.
-        const useRelativeCoaching =
-            orgId != null && Number.isFinite(Number(orgId)) && !LEGACY_STANDARD_ORG_IDS.has(Number(orgId));
+        // 코칭대상 임계값 — 통합DB: 레거시 표준 브랜드(숫자 org 1/2/3)는 문자열 tenant_id 로 존재하지 않으므로
+        //   특정 테넌트가 활성이면 항상 상대 임계값(콜별 만점 75% 미만), 전체(all)뷰만 절대 80점.
+        const useRelativeCoaching = orgId != null;
         const coachingCond = useRelativeCoaching
-            ? `(tm.total_max > 0 AND c."TOTAL_SCORE" < tm.total_max * 0.75)`
-            : `c."TOTAL_SCORE" < 80`;
+            ? `(tm.total_max > 0 AND e."TOTAL_SCORE" < tm.total_max * 0.75)`
+            : `e."TOTAL_SCORE" < 80`;
         const coachingJoin = useRelativeCoaching
             ? `LEFT JOIN LATERAL (
                    SELECT COALESCE(SUM(ch.max_score), 0) AS total_max
-                     FROM qa_call_item_score ch WHERE ch."ID" = c."ID"
+                     FROM eval_item_score ch WHERE ch.call_id = c.call_id
                ) tm ON true`
             : '';
 
         // 2) 부서 카드(현재창, 모든 부서)
         const sc2 = buildScope();
         const deptRows = (await pool.query(
-            `SELECT c.department,
-                    ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS avg,
+            `SELECT e.department,
+                    ROUND(AVG(e."TOTAL_SCORE")::numeric, 1) AS avg,
                     COUNT(*) AS count,
                     COUNT(DISTINCT COALESCE(c.agent_user_id::text, c.agent_code)) AS agent_count,
                     COUNT(*) FILTER (WHERE ${coachingCond}) AS coaching
-               FROM qa_calls c ${coachingJoin} ${sc2.where} AND ${bind(winCur, sc2.params)}
-              GROUP BY c.department
+               FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+                    ${coachingJoin} ${sc2.where} AND ${bind(winCur, sc2.params)}
+              GROUP BY e.department
               ORDER BY count DESC`,
             sc2.params
         )).rows;
@@ -1674,13 +1681,14 @@ app.get('/api/stats', async (req, res) => {
         // 3) 선택 부서(또는 전체) KPI — 현재창 + 직전창 평균(delta)
         const sc3 = buildScope({ withDept: true });
         const kpiRow = (await pool.query(
-            `SELECT ROUND(AVG(c."TOTAL_SCORE") FILTER (WHERE ${bind(winCur, sc3.params)})::numeric,1) AS avg,
+            `SELECT ROUND(AVG(e."TOTAL_SCORE") FILTER (WHERE ${bind(winCur, sc3.params)})::numeric,1) AS avg,
                     COUNT(*) FILTER (WHERE ${bind(winCur, sc3.params)}) AS count,
                     COUNT(DISTINCT COALESCE(c.agent_user_id::text, c.agent_code))
                       FILTER (WHERE ${bind(winCur, sc3.params)}) AS agent_count,
                     COUNT(*) FILTER (WHERE ${bind(winCur, sc3.params)} AND ${coachingCond}) AS coaching,
-                    ROUND(AVG(c."TOTAL_SCORE") FILTER (WHERE ${bind(winPrev, sc3.params)})::numeric,1) AS prev_avg
-               FROM qa_calls c ${coachingJoin} ${sc3.where}`,
+                    ROUND(AVG(e."TOTAL_SCORE") FILTER (WHERE ${bind(winPrev, sc3.params)})::numeric,1) AS prev_avg
+               FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+                    ${coachingJoin} ${sc3.where}`,
             sc3.params
         )).rows[0];
         const kpi = {
@@ -1699,10 +1707,12 @@ app.get('/api/stats', async (req, res) => {
         const winCur4 = bind(winCur, sc4.params);
         const items = (await pool.query(
             `WITH item_max AS (
-                 SELECT c.department, er.order_no, MAX(er.ai_eval) AS max_pts
-                   FROM qa_call_item_score er JOIN qa_calls c ON c."ID" = er."ID"
+                 SELECT e.department, er.order_no, MAX(er.ai_eval) AS max_pts
+                   FROM eval_item_score er
+                   JOIN common.calls c ON c.call_id = er.call_id
+                   JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
                    ${sc4.where}
-                  GROUP BY c.department, er.order_no
+                  GROUP BY e.department, er.order_no
              )
              SELECT MIN(er.order_no) AS order_no, er.category, er.item,
                     ROUND(AVG(er.manual_eval)::numeric, 2) AS avg_raw,
@@ -1710,9 +1720,10 @@ app.get('/api/stats', async (req, res) => {
                     CASE WHEN MAX(im.max_pts) > 0
                          THEN ROUND((AVG(er.manual_eval)/MAX(im.max_pts)*100)::numeric, 1) END AS avg,
                     COUNT(*) AS count
-               FROM qa_call_item_score er
-               JOIN qa_calls c ON c."ID" = er."ID"
-               LEFT JOIN item_max im ON im.department = c.department AND im.order_no = er.order_no
+               FROM eval_item_score er
+               JOIN common.calls c ON c.call_id = er.call_id
+               JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+               LEFT JOIN item_max im ON im.department = e.department AND im.order_no = er.order_no
                ${sc4.where} AND ${winCur4}
               GROUP BY er.category, er.item
               ORDER BY order_no`,
@@ -1736,8 +1747,9 @@ app.get('/api/stats', async (req, res) => {
                    FROM generate_series($A::date - ($D - 1), $A::date, interval '1 day') AS s(date)
                    LEFT JOIN (
                         SELECT ${CDATE_DT} AS date,
-                               ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS avg, COUNT(*) AS count
-                          FROM qa_calls c ${sc5.where} AND ${winCur}
+                               ROUND(AVG(e."TOTAL_SCORE")::numeric, 1) AS avg, COUNT(*) AS count
+                          FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+                          ${sc5.where} AND ${winCur}
                          GROUP BY ${CDATE_DT}
                    ) d ON d.date = s.date::date
                   ORDER BY 1`,
@@ -1754,12 +1766,14 @@ app.get('/api/stats', async (req, res) => {
         const sc6 = buildScope({ withDept: true });
         const ranking = (await pool.query(
             `SELECT c.agent_user_id, c.agent_code,
-                    u.display_name, u.role,
-                    ROUND(AVG(c."TOTAL_SCORE")::numeric, 1) AS avg, COUNT(*) AS count
-               FROM qa_calls c
-               LEFT JOIN admin_users u ON u.user_id = c.agent_user_id
+                    u.name AS display_name, m.role AS role,
+                    ROUND(AVG(e."TOTAL_SCORE")::numeric, 1) AS avg, COUNT(*) AS count
+               FROM common.calls c
+               JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+               LEFT JOIN common.users u ON u.id = c.agent_user_id
+               LEFT JOIN common.memberships m ON m.user_id = c.agent_user_id AND m.tenant_id = c.tenant_id
                ${sc6.where} AND ${bind(winCur, sc6.params)}
-              GROUP BY c.agent_user_id, c.agent_code, u.display_name, u.role
+              GROUP BY c.agent_user_id, c.agent_code, u.name, m.role
               ORDER BY avg DESC NULLS LAST, count DESC`,
             sc6.params
         )).rows.map((r) => {
