@@ -896,22 +896,6 @@ export async function ingestFromQaPipeline(calls, { track = 'standard' } = {}) {
     });
 }
 
-/**
- * qa-pipeline 평가 비동기 잡 시작 — 즉시 { ok, job_id } 반환.
- * 서버가 /evaluate/stream(SSE)을 소비하며 노드 진행상황을 보관, fetchQaPipelineJob 으로 폴링.
- */
-export async function startQaPipelineJob(call, { track = 'standard' } = {}) {
-    return request('/api/ingest/qa-pipeline-jobs', {
-        method: 'POST',
-        body: JSON.stringify({ track, call }),
-    });
-}
-
-/** 잡 상태 조회 — { ok, job: { status:'running'|'done'|'error', progress:{nodes_done,running_nodes,recent_done}, result, error } } */
-export async function fetchQaPipelineJob(jobId) {
-    return request(`/api/ingest/qa-pipeline-jobs/${encodeURIComponent(jobId)}`);
-}
-
 /** 활성 브랜드 org_id 해석 — super_admin 은 활성 브랜드 선택값, admin 은 본인 org_id. 없으면 null. */
 export function currentOrgId() {
     if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -928,16 +912,4 @@ export function currentOrgId() {
     } catch {
         return null;
     }
-}
-
-/* SAMPLE_UPLOAD_FEATURE — 임시 기능. 제거 시 아래 두 함수와 SampleUploadModal 컴포넌트 삭제 */
-export async function ingestSample(input, output) {
-    return request('/api/sample-ingest', {
-        method: 'POST',
-        body: JSON.stringify({ input, output }),
-    });
-}
-
-export async function clearSamples() {
-    return request('/api/sample-ingest', { method: 'DELETE' });
 }

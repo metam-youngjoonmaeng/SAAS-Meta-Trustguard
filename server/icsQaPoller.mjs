@@ -566,7 +566,7 @@ async function runOnce(pool, cfg, ingestStandardCallFromQaPipeline) {
                 agent_code: c.agent_code ?? null, // 담당 상담사 업무키(user_m.USER_CD) — 적재 시 agent_user_id 해석
                 io_divi: c.io_divi ?? null,        // 채널구분 'I'(인바운드)/'O'(아웃바운드)
                 duration_sec: durSec,              // 통화 소요시간(초) — 게이트 판정에 쓴 값 재사용
-                pipeline_target: 'ec2', // 운영 평가 백엔드 = EC2(54.235.200.151:8081), UI(SampleUpload)와 동일
+                pipeline_target: 'ec2', // 운영 평가 백엔드 = EC2(54.235.200.151:8081)
                 transcript,
             };
             const result = await ingestStandardCallFromQaPipeline(pool, call, {});

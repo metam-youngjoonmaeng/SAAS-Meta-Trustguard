@@ -17,7 +17,6 @@ import {
 import { AUDIT_ACTION, insertQaAuditLog, insertLoginHistory, pruneOldAuditLogs } from './auditLog.mjs';
 import { logger, requestLogger } from './logger.mjs';
 import { buildChecklistYnKorFromDbRows, checklistKeysForDepartment, effectiveChecklistKeys } from './checklistCategorySummary.mjs';
-/* SAMPLE_UPLOAD_FEATURE */ import { ingestSampleToDb, clearSamplesFromDb } from './sampleIngest.mjs';
 import { ingestCollectionCallToDb } from './collectionCallIngest.mjs';
 import { fetchAndIngestFromAiCanvas } from './aiCanvasIngest.mjs';
 import { ingestCallFromQaPipeline, ingestStandardCallFromQaPipeline, evaluateStandardCall, evaluateDomainCall, extractForbiddenFromResult, fetchGoldenIndexCoverage, resolvePipelineBaseUrl } from './qaPipelineIngest.mjs';
@@ -4138,57 +4137,6 @@ app.get('/api/admin/eval-item-history', async (req, res) => {
     }
 });
 
-/* SAMPLE_UPLOAD_FEATURE — 임시 기능. 제거 시 본 블록 전체 삭제 + import 라인 삭제 */
-app.post('/api/sample-ingest', async (req, res) => {
-    const input = req.body?.input;
-    const output = req.body?.output;
-    if (!input || typeof input !== 'object' || !output || typeof output !== 'object') {
-        res.status(400).json({ message: 'input/output JSON 두 개가 모두 필요합니다.' });
-        return;
-    }
-    try {
-        const result = await ingestSampleToDb(pool, input, output);
-        if (!result.ok) {
-            res.status(400).json({ message: result.message });
-            return;
-        }
-        await insertQaAuditLog(pool, {
-            req,
-            action: AUDIT_ACTION.SAMPLE_INGEST,
-            resource_type: 'qa_call',
-            resource_id: String(result.qa_id ?? result.call_seq ?? '(new)').slice(0, 256),
-            http_method: 'POST',
-            http_path: '/api/sample-ingest',
-            detail_json: JSON.stringify({ inserted: result.inserted ?? null }),
-            success: true,
-        });
-        res.json(result);
-    } catch (error) {
-        console.error('POST /api/sample-ingest error:', error);
-        res.status(500).json({ message: String(error?.message || error) });
-    }
-});
-
-app.delete('/api/sample-ingest', async (req, res) => {
-    try {
-        const result = await clearSamplesFromDb(pool);
-        await insertQaAuditLog(pool, {
-            req,
-            action: AUDIT_ACTION.SAMPLE_CLEAR,
-            resource_type: 'qa_call',
-            resource_id: 'sample-bulk',
-            http_method: 'DELETE',
-            http_path: '/api/sample-ingest',
-            detail_json: JSON.stringify({ deleted: result.deleted ?? null }),
-            success: true,
-        });
-        res.json(result);
-    } catch (error) {
-        console.error('DELETE /api/sample-ingest error:', error);
-        res.status(500).json({ message: String(error?.message || error) });
-    }
-});
-
 // AI Canvas pull 동기화 — body 의 url + api_key (또는 환경변수) 로 외부 데이터셋을 GET 한 뒤
 // 각 행의 payload(JSON 문자열) 를 풀어 컬렉션관리부 콜로 적재.
 app.post('/api/ingest/from-ai-canvas', async (req, res) => {
@@ -4330,7 +4278,7 @@ app.post('/api/ingest/from-qa-pipeline', async (req, res) => {
 
 // ── qa-pipeline 평가 비동기 잡 — SSE 노드 진행상황 중계 ──
 // POST 가 즉시 job_id 를 반환하고, 서버가 /evaluate/stream 을 소비하며 진행상황을 메모리에 보관.
-// FE(SampleUploadModal)가 GET /:jobId 를 폴링해 노드 단위 진행을 표시. 완료 시 적재 결과 포함.
+// 호출자가 GET /:jobId 를 폴링해 노드 단위 진행을 확인. 완료 시 적재 결과 포함.
 // 잡은 인메모리(컨테이너 재시작 시 소실) + 1시간 TTL 정리.
 const qaPipelineJobs = new Map();
 const QA_PIPELINE_JOB_TTL_MS = 60 * 60 * 1000;

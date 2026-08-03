@@ -2,7 +2,6 @@
  * test1 샌드박스 계정용 세션 격리 — column-scoped 모델.
  *
  * 설계: qa_calls.is_sandbox (boolean) 가 운영/sandbox 행을 컬럼 단위로 분리한다.
- *  - 샘플 업로드(sampleIngest) 는 is_sandbox=true 로 INSERT.
  *  - 외부 ingest(collectionCallIngest) 는 is_sandbox=false 로 INSERT.
  *  - test1 로그아웃 시 endSandboxSession 이 is_sandbox=true 행만 정리.
  *
