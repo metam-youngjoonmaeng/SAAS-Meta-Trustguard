@@ -246,8 +246,11 @@ function App() {
     const [brands, setBrands] = useState([]);
     const [selectedBrandId, setSelectedBrandId] = useState(() => {
         if (typeof window === 'undefined') return null;
+        // 통합DB: 활성 브랜드 = tenant_id 문자열. Number() 로 감싸면 'metam' → NaN.
+        // (컷오버 전 숫자 org_id 가 남아 있어도 문자열로 들어와 아래 목록 대조에서 걸러진다.)
         const raw = window.localStorage.getItem(QA_ACTIVE_BRAND_KEY);
-        return raw ? Number(raw) : null;
+        const v = raw ? String(raw).trim().toLowerCase() : '';
+        return v && v !== 'nan' ? v : null;
     });
     const [profileModalOpen, setProfileModalOpen] = useState(false);
     // 사이드바 접기 — 브랜드 드롭다운 옆 토글로 제어, 새로고침에도 유지(localStorage).
@@ -393,8 +396,11 @@ function App() {
             // 활성 브랜드도 본인 소속으로 고정. (잔존 QA_ACTIVE_BRAND_KEY 가 다른 브랜드를
             // 가리키면 "데이터=본인 브랜드, 평가체계 컬럼=다른 브랜드" 불일치가 나던 문제 방지.
             // 상담사는 아래 /api/admin/organizations 가 403 이라 목록 기반 보정도 불가능.)
+            // 통합DB: org_id 는 tenant_id 문자열(서버가 `c.tenant_id AS org_id` 로 내려준다).
+            // Number() 로 감싸면 'metam' → NaN 이 되어 (NaN != null 이라) 그대로 활성 브랜드로
+            // 박히고, 바로 아래 `pinned == null` 목록 보정까지 건너뛴다 → 브랜드 표시·필터 붕괴.
             const pinned = currentUser.role !== 'super_admin' && currentUser.org_id != null
-                ? Number(currentUser.org_id)
+                ? String(currentUser.org_id)
                 : null;
             let brandSettled = false; // 이 effect 에서 활성 브랜드를 새로 확정했는지 — 확정 시 콜 재조회 필요.
             if (pinned != null && pinned !== selectedBrandId) {

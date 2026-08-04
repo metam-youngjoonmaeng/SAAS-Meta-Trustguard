@@ -674,6 +674,50 @@ app.use((req, res, next) => {
     next();
 });
 
+// 활성 브랜드 헤더(X-Active-Brand-Id) 실재 검증 — 없는 tenant_id 는 헤더를 지워 무효화한다.
+//
+// ★검증 없이 통과시키면: 그 값이 그대로 격리 키가 되어 조회는 조용히 0건, 저장만
+//   tenant_id FK(common.tenants) 위반으로 거부된다 — "조회는 되는데 저장이 안 되는" 형태로
+//   원인이 화면에 드러나지 않는다(03-Meta_Summary-TA 에서 실제로 터진 유형).
+//   헤더를 지우면 resolveActiveOrgId 가 조회는 본인 브랜드로, 쓰기(strict)는 400 으로 처리한다
+//   → 호출부 31곳을 건드리지 않고 한 곳에서 막는다.
+//
+// 유효 tenant_id 는 소량·저빈도 변경이라 60초 양성 캐시. 캐시에 없으면 DB 확인 후 등재하므로
+// 새로 만든 브랜드가 잘못 거부되는 일은 없다(TTL 은 삭제된 브랜드가 남는 창만 제한).
+const ACTIVE_BRAND_CACHE_MS = 60_000;
+const _validTenantCache = new Map();   // tenant_id → 확인 시각(ms)
+
+async function isKnownTenant(tenantId) {
+    const hit = _validTenantCache.get(tenantId);
+    if (hit && Date.now() - hit < ACTIVE_BRAND_CACHE_MS) return true;
+    try {
+        const { rows } = await pool.query('SELECT 1 FROM common.tenants WHERE tenant_id = $1 LIMIT 1', [tenantId]);
+        if (rows.length > 0) {
+            _validTenantCache.set(tenantId, Date.now());
+            return true;
+        }
+        _validTenantCache.delete(tenantId);
+        return false;
+    } catch (err) {
+        // DB 일시 장애로 정상 브랜드를 거부해 화면을 망가뜨리는 쪽이 더 나쁘다 → 통과.
+        console.warn('active-brand 검증 생략(DB 오류):', String(err?.message || err));
+        return true;
+    }
+}
+
+app.use(async (req, res, next) => {
+    if (!req.path.startsWith('/api/')) return next();
+    const raw = String(req.headers['x-active-brand-id'] || '').trim().toLowerCase();
+    if (!raw || raw === 'all') return next();   // 미지정 / 전체 조회
+    if (await isKnownTenant(raw)) return next();
+    console.warn(
+        `X-Active-Brand-Id '${raw}' 는 존재하지 않는 브랜드(tenant_id) — 헤더 무시. ` +
+        '컷오버 전 숫자 org_id 가 클라이언트에 남아 있을 수 있다.'
+    );
+    delete req.headers['x-active-brand-id'];
+    next();
+});
+
 const PORT = Number(process.env.API_PORT || 3007);
 
 // 브랜드(=조직) / 도메인 CRUD

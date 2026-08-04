@@ -896,20 +896,6 @@ export async function ingestFromQaPipeline(calls, { track = 'standard' } = {}) {
     });
 }
 
-/** 활성 브랜드 org_id 해석 — super_admin 은 활성 브랜드 선택값, admin 은 본인 org_id. 없으면 null. */
-export function currentOrgId() {
-    if (typeof window === 'undefined' || !window.localStorage) return null;
-    try {
-        const raw = window.localStorage.getItem(QA_ACTOR_STORAGE_KEY);
-        const u = raw ? JSON.parse(raw) : {};
-        if (u.role === 'super_admin') {
-            const active = window.localStorage.getItem(QA_ACTIVE_BRAND_KEY);
-            const n = Number(active);
-            if (Number.isFinite(n) && n > 0) return n;
-        }
-        const own = Number(u.org_id);
-        return Number.isFinite(own) && own > 0 ? own : null;
-    } catch {
-        return null;
-    }
-}
+// currentOrgId() 제거 — 호출부 0곳(죽은 코드)인데 Number(org_id) 로 짜여 있어,
+// 통합DB 의 tenant_id 문자열('metam')에는 항상 NaN→null 을 돌려주는 함정이었다.
+// 활성 브랜드는 actorRequestHeaders() 가 X-Active-Brand-Id 로 실어 보내고 서버가 해석한다.
