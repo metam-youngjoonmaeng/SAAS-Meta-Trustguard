@@ -22,7 +22,14 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-qa_dashboard}
     volumes:
       - qa_ai_pgdata:/var/lib/postgresql/data
-      - ./docker/init/postgres:/docker-entrypoint-initdb.d:ro
+      # 통합DB 스키마(common + trustguard)로 초기화한다. 병합한 서버 코드가 통합DB 전용
+      # (common.calls ⋈ trustguard.qa_evaluations, tenant_id)이라 구 레거시 체인
+      # ./docker/init/postgres(=qa_dashboard, public.qa_call_*)로는 기동이 깨진다.
+      # ★ 이 마운트는 **빈 볼륨 첫 부팅에만** 적용된다. 기존 볼륨이 남아 있으면 무반영 —
+      #   전환하려면 볼륨을 비워야 한다(로컬 데이터 삭제):
+      #     docker compose down && docker volume rm meta-trustguard_qa_ai_pgdata && docker compose up -d
+      # 구 레거시 체인은 docker/init/postgres/ 에 그대로 보존(이력·롤백용).
+      - ./docker/init/postgres-unified:/docker-entrypoint-initdb.d:ro
     ports:
       - "127.0.0.1:5434:5432"
     healthcheck:
@@ -54,7 +61,10 @@ services:
     volumes:
       # 마이그레이션 SQL 호스트 마운트 → seeder 가 02_*.sql 이후를 idempotent 적용
       # (baseline CSV 시드(data/seed)는 폐기 — 운영 데이터 적재 완료로 미사용)
-      - ./docker/init/postgres:/seed/migrations:ro
+      # 시더도 통합 체인을 본다. 01_unified_schema.sql 은 pg_dump 산출이라 재적용 불가인데,
+      # seed-if-empty.sh 가 01_* 를 건너뛰는 기존 관례 덕에 그대로 맞아떨어진다.
+      # 00_extensions / 10~13 은 멱등이라 매 기동 재적용해도 안전(로컬 검증 완료).
+      - ./docker/init/postgres-unified:/seed/migrations:ro
     depends_on:
       qa-ai-postgres:
         condition: service_healthy
