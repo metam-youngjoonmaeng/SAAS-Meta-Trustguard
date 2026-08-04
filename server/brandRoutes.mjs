@@ -24,22 +24,34 @@ function sha256Hex(s) {
     return crypto.createHash('sha256').update(String(s)).digest('hex');
 }
 
-// organizations.ksqi_stt_enabled 컬럼 존재 여부(로컬만 존재 가능, prod 미적용 시 부재) — 1회 캐시.
-// 부재 시 SELECT/RETURNING/UPDATE 가 컬럼을 참조하면 SQL 에러로 브랜드 API 전체가 500 → 앱 마비.
-// 따라서 컬럼 유무에 따라 쿼리 조각을 분기(부재 시 ksqi_stt_enabled=false 상수)해 무회귀 보장.
-let _orgKsqiColCache = null;
-async function orgHasKsqiColumn(pool) {
-    if (_orgKsqiColCache !== null) return _orgKsqiColCache;
+// 브랜드별 KSQI 토글의 집 = trustguard.tenant_settings.ksqi_stt_enabled.
+// 통합DB에서 이 값은 공유 common.tenants 가 아니라 QA 전용표에 격리한다(tenant_rag_config 와 같은 원칙 —
+// common 은 튜터·TA 도 쓰는 표라 QA 전용 플래그를 넣지 않는다). TA 의 meta_summary_ta.tenant_settings 와 같은 자리.
+// 표 존재 여부는 1회 캐시. 부재 시 쿼리가 참조하면 SQL 에러로 브랜드 API 전체가 500 → 앱 마비이므로,
+// 유무에 따라 쿼리 조각을 분기(부재 시 ksqi_stt_enabled=false 상수)해 무회귀를 보장한다.
+let _qaSettingsTableCache = null;
+async function hasQaSettingsTable(pool) {
+    if (_qaSettingsTableCache !== null) return _qaSettingsTableCache;
     try {
         const { rows } = await pool.query(
             `SELECT 1 FROM information_schema.columns
-             WHERE table_schema = 'common' AND table_name = 'tenants' AND column_name = 'ksqi_stt_enabled' LIMIT 1`
+             WHERE table_schema = 'trustguard' AND table_name = 'tenant_settings'
+               AND column_name = 'ksqi_stt_enabled' LIMIT 1`
         );
-        _orgKsqiColCache = rows.length > 0;
+        _qaSettingsTableCache = rows.length > 0;
     } catch {
-        _orgKsqiColCache = false;
+        _qaSettingsTableCache = false;
     }
-    return _orgKsqiColCache;
+    return _qaSettingsTableCache;
+}
+
+// 브랜드 목록 쿼리에 끼울 KSQI 조각(SELECT + JOIN). 표 부재 시 상수 false 로 축약해 JOIN 을 붙이지 않는다.
+async function ksqiSqlParts(pool) {
+    if (!(await hasQaSettingsTable(pool))) return { sel: 'false AS ksqi_stt_enabled', join: '' };
+    return {
+        sel: 'COALESCE(qs.ksqi_stt_enabled, false) AS ksqi_stt_enabled',
+        join: 'LEFT JOIN trustguard.tenant_settings qs ON qs.tenant_id = o.tenant_id',
+    };
 }
 
 // 신규 사용자에게 자동 부여되는 초기 비밀번호. 반드시 INITIAL_USER_PASSWORD env 로 설정한다.
@@ -584,13 +596,14 @@ export function createBrandRouter(pool) {
         try {
             const isSuper = req.session?.role === 'super_admin';
             const ownTenant = req.session?.tenant_id ?? null;   // 구 org_id(int) → tenant_id(citext)
-            const ksqiSel = (await orgHasKsqiColumn(pool)) ? 'o.ksqi_stt_enabled' : 'false AS ksqi_stt_enabled';
+            const { sel: ksqiSel, join: ksqiJoin } = await ksqiSqlParts(pool);
             const { rows: orgRows } = isSuper
                 ? await pool.query(
                       `SELECT o.tenant_id AS id, o.name, o.short, o.color, o.active, o.domain_id, ${ksqiSel},
                               d.name AS domain_name
                        FROM tenants o
                        LEFT JOIN domains d ON d.id = o.domain_id
+                       ${ksqiJoin}
                        WHERE o.active = true
                        ORDER BY o.tenant_id ASC`
                   )
@@ -599,6 +612,7 @@ export function createBrandRouter(pool) {
                               d.name AS domain_name
                        FROM tenants o
                        LEFT JOIN domains d ON d.id = o.domain_id
+                       ${ksqiJoin}
                        WHERE o.active = true AND o.tenant_id = $1
                        ORDER BY o.tenant_id ASC`,
                       [ownTenant]
@@ -631,12 +645,13 @@ export function createBrandRouter(pool) {
     // super_admin 관리 탭 — 전체(비활성 포함)
     router.get('/admin/brands', requireSuperAdmin, async (req, res) => {
         try {
-            const ksqiSel = (await orgHasKsqiColumn(pool)) ? 'o.ksqi_stt_enabled' : 'false AS ksqi_stt_enabled';
+            const { sel: ksqiSel, join: ksqiJoin } = await ksqiSqlParts(pool);
             const { rows: orgRows } = await pool.query(
                 `SELECT o.tenant_id AS id, o.name, o.short, o.color, o.active, o.domain_id, o.created_at, ${ksqiSel},
                         d.name AS domain_name
                  FROM tenants o
                  LEFT JOIN domains d ON d.id = o.domain_id
+                 ${ksqiJoin}
                  ORDER BY o.tenant_id ASC`
             );
             const ids = orgRows.map((r) => r.id);
@@ -749,11 +764,11 @@ export function createBrandRouter(pool) {
             fields.push(`active = $${idx++}`);
             values.push(Boolean(req.body.active));
         }
-        const hasKsqiCol = await orgHasKsqiColumn(pool);
-        if (hasKsqiCol && typeof req.body?.ksqi_stt_enabled === 'boolean') {
-            fields.push(`ksqi_stt_enabled = $${idx++}`);
-            values.push(Boolean(req.body.ksqi_stt_enabled));
-        }
+        // KSQI 토글은 common.tenants 가 아니라 trustguard.tenant_settings 에 있다 → 별도 UPSERT 로 처리.
+        const hasQaSet = await hasQaSettingsTable(pool);
+        const ksqiPatch = hasQaSet && typeof req.body?.ksqi_stt_enabled === 'boolean'
+            ? Boolean(req.body.ksqi_stt_enabled)
+            : null;
         const hasDomainInBody = 'domain_id' in (req.body || {});
         let newDomainId = null;
         if (hasDomainInBody) {
@@ -761,7 +776,8 @@ export function createBrandRouter(pool) {
             fields.push(`domain_id = $${idx++}`);
             values.push(newDomainId);
         }
-        if (fields.length === 0) {
+        // 토글만 바꾸는 요청(ksqi 단독)도 정상 — common.tenants 수정 항목이 없어도 통과시킨다.
+        if (fields.length === 0 && ksqiPatch === null) {
             res.status(400).json({ message: '수정 항목이 없습니다' });
             return;
         }
@@ -780,12 +796,39 @@ export function createBrandRouter(pool) {
                 res.status(404).json({ message: '브랜드를 찾을 수 없습니다' });
                 return;
             }
-            const { rows } = await client.query(
-                `UPDATE common.tenants SET ${fields.join(', ')} WHERE tenant_id = $${idx}
-                 RETURNING tenant_id AS id, name, short, color, active, domain_id${hasKsqiCol ? ', ksqi_stt_enabled' : ''}`,
-                values
-            );
-            out = rows[0];
+            if (fields.length > 0) {
+                const { rows } = await client.query(
+                    `UPDATE common.tenants SET ${fields.join(', ')} WHERE tenant_id = $${idx}
+                     RETURNING tenant_id AS id, name, short, color, active, domain_id`,
+                    values
+                );
+                out = rows[0];
+            } else {
+                // ksqi 단독 변경 — 식별 정보는 그대로 읽어 응답 형태를 맞춘다.
+                const { rows } = await client.query(
+                    `SELECT tenant_id AS id, name, short, color, active, domain_id
+                     FROM common.tenants WHERE tenant_id = $1`,
+                    [id]
+                );
+                out = rows[0];
+            }
+            if (ksqiPatch !== null) {
+                await client.query(
+                    `INSERT INTO trustguard.tenant_settings (tenant_id, ksqi_stt_enabled, updated_at)
+                     VALUES ($1, $2, now())
+                     ON CONFLICT (tenant_id) DO UPDATE
+                        SET ksqi_stt_enabled = EXCLUDED.ksqi_stt_enabled, updated_at = now()`,
+                    [id, ksqiPatch]
+                );
+            }
+            // 응답의 토글 값 — 이번에 바꿨으면 그 값, 아니면 저장된 값(행 없으면 false).
+            if (hasQaSet) {
+                const { rows: kr } = await client.query(
+                    'SELECT ksqi_stt_enabled FROM trustguard.tenant_settings WHERE tenant_id = $1',
+                    [id]
+                );
+                out.ksqi_stt_enabled = kr[0]?.ksqi_stt_enabled === true;
+            }
             // 브랜드 수정 시에는 도메인이 바뀌어도 기존 평가항목/펜타곤 축을 보존한다(교체하지 않음).
             // 도메인 기본 평가항목/펜타곤 축 적용은 신규 브랜드 생성(POST /admin/organizations) 시에만 수행.
             await client.query('COMMIT');
