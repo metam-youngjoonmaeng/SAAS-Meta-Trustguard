@@ -63,9 +63,10 @@ export default function Settings({ role = 'agent', user, initialSection = null, 
         {
             title: '운영', show: isAdmin, items: [
                 { key: 'batch', icon: 'filter', label: 'AI 평가 배치 관리', desc: '조건별 평가 대상 필터링·스케줄', accent: 'primary' },
-                // KSQI 토글 — 선택 브랜드의 KSQI on/off(super_admin). 켜면 그 브랜드 KSQI 노드 실행 + 'KSQI 관리' 탭 노출.
-                // ⏸ KSQI 기준정의 준비 전까지 화면 비노출 (2026-07-27). 준비되면 아래 한 줄 주석 해제하면 즉시 복구.
-                // ...(isSuper ? [{ key: 'ksqi', type: 'toggle', icon: 'award', label: 'KSQI 평가', desc: '이 브랜드에 KSQI 노드 실행 + KSQI 관리 탭 노출', accent: 'primary' }] : []),
+                // KSQI 토글 — 선택 브랜드의 KSQI on/off(super_admin). 저장 위치는 trustguard.tenant_settings.
+                //   켜면 'KSQI 관리/평가' 탭이 열린다. 평가 파이프라인이 이 값을 읽어 KSQI 노드를 실행하는
+                //   연동은 미구현(qaPipelineIngest.getOrgKsqiSttEnabled 가 false 고정) — 기준정의 준비 후 붙일 단계다.
+                ...(isSuper ? [{ key: 'ksqi', type: 'toggle', icon: 'award', label: 'KSQI 평가', desc: '이 브랜드에 KSQI 관리·평가 탭 노출', accent: 'primary' }] : []),
             ],
         },
         {
