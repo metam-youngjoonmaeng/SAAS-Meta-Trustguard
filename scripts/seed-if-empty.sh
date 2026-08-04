@@ -52,22 +52,38 @@ fi
 
 FORCE_RESET="${1:-}"
 
-if [ "$FORCE_RESET" = "--reset" ]; then
-  echo "[seed] --reset: 무조건 시드 재적재"
-else
-  count=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tAc 'SELECT COUNT(*) FROM qa_calls;')
-  if [ "$count" != "0" ]; then
-    echo "[seed] qa_calls 에 이미 $count 행 존재 — 시드 건너뜀 (운영 데이터 보존)"
-    exit 0
-  fi
-  echo "[seed] qa_calls 비어 있음 — baseline 시드 적재 진행"
-fi
-
 cd /seed
+# ★ load.sql 존재 확인을 qa_calls 카운트보다 먼저 한다.
+#   baseline 시드는 폐기돼 load.sql 이 없는데, 순서가 반대면 `SELECT COUNT(*) FROM qa_calls`
+#   가 먼저 돌아 통합DB 스키마(qa_calls 없음 — common.calls⋈trustguard.qa_evaluations)에서
+#   실패하고, set -eu 때문에 시더가 매 기동 에러 종료한다(1단계 마이그레이션은 이미 끝난 뒤라
+#   기능 영향은 없지만 부팅마다 빨간 에러가 남는다).
 if [ ! -f data/seed/load.sql ]; then
   echo "[seed] data/seed/load.sql 없음 — baseline 시드 폐기됨, 적재 건너뜀 (마이그레이션만 적용)"
   exit 0
 fi
+
+if [ "$FORCE_RESET" = "--reset" ]; then
+  echo "[seed] --reset: 무조건 시드 재적재"
+else
+  # 통합DB 스키마에는 qa_calls 가 없다(콜 원장=common.calls, 평가=trustguard.qa_evaluations).
+  # ★ 한 쿼리 안의 CASE 로는 안 된다 — 플래너가 안 타는 가지의 테이블까지 파싱해
+  #   `relation "public.qa_calls" does not exist` 로 실패한다. 테이블명을 먼저 확정한 뒤 센다.
+  CALLS_TBL=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tAc \
+    "SELECT COALESCE(to_regclass('common.calls')::text, to_regclass('public.qa_calls')::text, '');")
+  if [ -n "$CALLS_TBL" ]; then
+    count=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tAc "SELECT COUNT(*) FROM $CALLS_TBL;")
+  else
+    echo "[seed] 콜 원장 테이블 없음 — 시드 건너뜀"
+    exit 0
+  fi
+  if [ "$count" != "0" ]; then
+    echo "[seed] 콜 원장에 이미 $count 행 존재 — 시드 건너뜀 (운영 데이터 보존)"
+    exit 0
+  fi
+  echo "[seed] 콜 원장 비어 있음 — baseline 시드 적재 진행"
+fi
+
 psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -f data/seed/load.sql
 
 echo "[seed] 완료"
