@@ -41,11 +41,6 @@ export function buildItemScoreRows(evaluations, checklist) {
             manual_eval: toNum(e.manual_eval),
             agent_utterance: ch ? (ch.agent_utterance ?? null) : null,
             max_score: ch ? maxPointsOf(ch) : null,
-            // 항목별 AI 신뢰도 — 평가 백엔드가 응답에 실어 보내는 원값을 그대로 보관(마이그레이션 74).
-            //   필드명 규약이 아직 확정 전이라 ai_confidence / confidence 둘 다 수용.
-            //   ★ 값이 없으면 null 로 남긴다 — 0 으로 채우면 '신뢰도 0' 과 구분이 사라진다.
-            //   ★ 스케일(0~1 vs 0~100) 환산을 여기서 하지 않는다 — 규약 확정 후 조회측에서 해석.
-            ai_confidence: toNum(e.ai_confidence ?? e.confidence),
         };
     });
 }
@@ -63,8 +58,8 @@ export function buildItemScoreRows(evaluations, checklist) {
  */
 export async function captureSticky(client, callId) {
     const { rows } = await client.query(
-        `SELECT order_no, skill_excluded_at FROM qa_call_item_score
-          WHERE "ID" = $1 AND skill_excluded_at IS NOT NULL`,
+        `SELECT order_no, skill_excluded_at FROM eval_item_score
+          WHERE call_id = $1 AND skill_excluded_at IS NOT NULL`,
         [callId]
     );
     return rows;
@@ -74,11 +69,11 @@ export async function captureSticky(client, callId) {
 export async function restoreSticky(client, callId, sticky) {
     if (!sticky || !sticky.length) return 0;
     const { rowCount } = await client.query(
-        `UPDATE qa_call_item_score s
+        `UPDATE eval_item_score s
             SET skill_excluded_at = x.skill_excluded_at
            FROM jsonb_to_recordset($2::jsonb)
                 AS x(order_no int, skill_excluded_at timestamptz)
-          WHERE s."ID" = $1 AND s.order_no = x.order_no`,
+          WHERE s.call_id = $1 AND s.order_no = x.order_no`,
         [callId, JSON.stringify(sticky)]
     );
     return rowCount;
@@ -92,34 +87,42 @@ export async function restoreSticky(client, callId, sticky) {
 export async function insertItemScoreRows(client, callId, evaluations, checklist) {
     const rows = buildItemScoreRows(evaluations, checklist);
     if (!rows.length) return 0;
+    // 통합DB: eval_item_score(call_id). reason_text 는 NOT NULL 이라 null → '' 로 보정.
     await client.query(
-        `INSERT INTO qa_call_item_score
-             ("ID", order_no, category, item, reason_text, ai_eval, manual_eval,
-              agent_utterance, max_score, ai_confidence)
-         SELECT $1, r.order_no, r.category, r.item, r.reason_text, r.ai_eval, r.manual_eval,
-                r.agent_utterance, r.max_score, r.ai_confidence
+        `INSERT INTO eval_item_score
+             (call_id, order_no, category, item, reason_text, ai_eval, manual_eval,
+              agent_utterance, max_score)
+         SELECT $1, r.order_no, r.category, r.item, COALESCE(r.reason_text, ''), r.ai_eval, r.manual_eval,
+                r.agent_utterance, r.max_score
            FROM jsonb_to_recordset($2::jsonb)
                 AS r(order_no int, category text, item text, reason_text text,
                      ai_eval float8, manual_eval float8,
-                     agent_utterance text, max_score numeric, ai_confidence numeric)`,
+                     agent_utterance text, max_score numeric)`,
         [callId, JSON.stringify(rows)]
     );
     return rows.length;
 }
 
-/** 전사(대화 턴) 다중행 INSERT 1회. 200턴 콜에서 왕복 200회 → 1회. */
+// 화자 정규화 — 구 '상담사'/'고객'(또는 이미 agent/customer) → 통합 speaker CHECK('agent'|'customer').
+function normSpeaker(s) {
+    const v = String(s ?? '').trim().toLowerCase();
+    if (v === 'customer' || v.includes('고객')) return 'customer';
+    return 'agent';
+}
+
+/** 전사(대화 턴) 다중행 INSERT 1회. 통합DB: common.call_transcript(call_id, seq, channel='call', speaker agent/customer). */
 export async function insertTranscriptRows(client, callId, conversation) {
     const turns = (conversation || []).map((t) => ({
-        turn_no: Number(t.turn_no),
-        speaker: t.speaker ?? null,
-        text: t.text ?? null,
+        seq: Number(t.turn_no),
+        speaker: normSpeaker(t.speaker),
+        text: t.text ?? '',
     }));
     if (!turns.length) return 0;
     await client.query(
-        `INSERT INTO qa_call_transcript ("ID", turn_no, speaker, "text")
-         SELECT $1, t.turn_no, t.speaker, t.text
+        `INSERT INTO common.call_transcript (call_id, seq, channel, speaker, "text")
+         SELECT $1, t.seq, 'call', t.speaker, t.text
            FROM jsonb_to_recordset($2::jsonb)
-                AS t(turn_no int, speaker text, text text)`,
+                AS t(seq int, speaker text, text text)`,
         [callId, JSON.stringify(turns)]
     );
     return turns.length;

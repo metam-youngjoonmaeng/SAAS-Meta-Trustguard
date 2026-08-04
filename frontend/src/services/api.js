@@ -264,10 +264,32 @@ export async function fetchBatchEvalItems() {
     return request('/api/batch/eval-items');
 }
 
-// ② AI 신뢰도 검증 — 신뢰도는 평가 백엔드가 응답에 실어 보내며 qa_call_item_score.ai_confidence
-//   로 적재된다. 임계값은 배치 설정(config.confidence.threshold)에 저장되므로 전용 API 가 없다.
-//   구 Gemini 판정 프롬프트 API(fetchBatchPrompt / saveBatchPrompt / rejudgeConfidence /
-//   fetchRejudgeStatus / fetchBatchPromptHistory)는 서버 라우트와 함께 제거(마이그레이션 75).
+// ② AI 신뢰도 검증 판정 프롬프트(불확실 표현·근거-점수 모순 두 정의문) 조회/저장/재판정.
+// 응답: { uncertain_def, contradiction_def, default_*, version, is_default, judge_enabled, model }.
+export async function fetchBatchPrompt() {
+    return request('/api/batch/prompt');
+}
+// 저장 시 변경되면 version 증가 → 기존 판정 stale. 응답: { version, unchanged, stale_count }.
+export async function saveBatchPrompt({ uncertain_def, contradiction_def } = {}) {
+    return request('/api/batch/prompt', {
+        method: 'PUT',
+        body: JSON.stringify({
+            uncertain_def: String(uncertain_def ?? ''),
+            contradiction_def: String(contradiction_def ?? ''),
+        }),
+    });
+}
+// 현재 프롬프트 버전으로 미판정 콜 재판정(백그라운드 시작). 진행상황은 fetchRejudgeStatus 로 폴링.
+export async function rejudgeConfidence() {
+    return request('/api/batch/rejudge', { method: 'POST' });
+}
+export async function fetchRejudgeStatus() {
+    return request('/api/batch/rejudge/status');
+}
+// 판정 프롬프트 변경 이력(버전별 스냅샷, 최신순). 응답: { items: [{ version, uncertain_def, contradiction_def, updated_at, updated_by_name }] }.
+export async function fetchBatchPromptHistory() {
+    return request('/api/batch/prompt/history');
+}
 
 export async function saveAdminComments(qaId, adminComments) {
     if (!qaId) throw new Error('qaId is required');
@@ -874,22 +896,6 @@ export async function ingestFromQaPipeline(calls, { track = 'standard' } = {}) {
     });
 }
 
-/**
- * qa-pipeline 평가 비동기 잡 시작 — 즉시 { ok, job_id } 반환.
- * 서버가 /evaluate/stream(SSE)을 소비하며 노드 진행상황을 보관, fetchQaPipelineJob 으로 폴링.
- */
-export async function startQaPipelineJob(call, { track = 'standard' } = {}) {
-    return request('/api/ingest/qa-pipeline-jobs', {
-        method: 'POST',
-        body: JSON.stringify({ track, call }),
-    });
-}
-
-/** 잡 상태 조회 — { ok, job: { status:'running'|'done'|'error', progress:{nodes_done,running_nodes,recent_done}, result, error } } */
-export async function fetchQaPipelineJob(jobId) {
-    return request(`/api/ingest/qa-pipeline-jobs/${encodeURIComponent(jobId)}`);
-}
-
 /** 활성 브랜드 org_id 해석 — super_admin 은 활성 브랜드 선택값, admin 은 본인 org_id. 없으면 null. */
 export function currentOrgId() {
     if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -907,4 +913,3 @@ export function currentOrgId() {
         return null;
     }
 }
-

@@ -763,6 +763,8 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId, ksqiMode = f
                                 <col className="w-24" />
                                 <col className="w-24" />
                                 <col className="w-24" />
+                                <col className="w-24" />
+                                <col className="w-24" />
                             </colgroup>
                             <thead>
                                 <tr>

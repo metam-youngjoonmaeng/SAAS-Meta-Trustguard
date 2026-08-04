@@ -18,12 +18,13 @@ async function main() {
         console.error('[backfill-io] ICS_DB_* 미설정 — ICS 조회 불가. 중단.');
         process.exit(1);
     }
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c search_path=trustguard,common,public' });
 
+    // 통합DB: io_divi/uid=common.calls. proj_cd=upper(tenant_id)(ICS mtm30 조회는 대문자 PROJ_CD).
     const { rows } = await pool.query(
-        `SELECT "ID" AS id, "UID" AS uid, proj_cd
-           FROM qa_calls
-          WHERE io_divi IS NULL AND proj_cd IS NOT NULL AND "UID" IS NOT NULL`
+        `SELECT call_id AS id, uid, upper(tenant_id) AS proj_cd
+           FROM common.calls
+          WHERE io_divi IS NULL AND uid IS NOT NULL`
     );
     console.log(`[backfill-io] 대상 콜 ${rows.length}건`);
     if (!rows.length) { await pool.end(); await closeIcsPool(); return; }
@@ -41,7 +42,7 @@ async function main() {
             const raw = String(ioMap.get(String(c.uid)) ?? '').trim().toUpperCase();
             const io = raw === 'I' || raw === 'O' ? raw : null;
             if (!io) { miss += 1; continue; }
-            await pool.query(`UPDATE qa_calls SET io_divi = $2 WHERE "ID" = $1`, [c.id, io]);
+            await pool.query(`UPDATE common.calls SET io_divi = $2 WHERE call_id = $1`, [c.id, io]);
             filled += 1;
         }
     }

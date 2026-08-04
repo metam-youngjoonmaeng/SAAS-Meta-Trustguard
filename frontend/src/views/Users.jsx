@@ -393,7 +393,7 @@ function UserModal({ initial, brands, isSuperAdmin, onSave, onClose, saving }) {
                         <div className="col-span-2">
                             <Fld label="소속 브랜드">
                                 <select value={draft.org_id ?? ''} onChange={(e) => {
-                                        const nextOrg = e.target.value === '' ? null : Number(e.target.value);
+                                        const nextOrg = e.target.value === '' ? null : e.target.value; // 통합DB: brandId=tenant_id 문자열(Number() 금지)
                                         setDraft((d) => {
                                             const opts = getBrandConfig(nextOrg).departments || [];
                                             // 브랜드 변경 시, 새 브랜드에 없는 부서는 비움(타 브랜드 부서 유입 방지).
@@ -531,7 +531,7 @@ function BulkEditModal({ targets, currentUserId, brands, onSave, onClose, saving
                             value={draft.org_id ?? ''}
                             disabled={!enable.org_id}
                             onChange={(e) => {
-                                const nextOrg = e.target.value === '' ? null : Number(e.target.value);
+                                const nextOrg = e.target.value === '' ? null : e.target.value; // 통합DB: brandId=tenant_id 문자열(Number() 금지)
                                 setDraft((d) => {
                                     const opts = getBrandConfig(nextOrg).departments || [];
                                     return { ...d, org_id: nextOrg, department: opts.includes(d.department) ? d.department : '' };
@@ -717,7 +717,7 @@ function MembershipsModal({ user, brands, onClose, onChanged }) {
         if (!orgId || busy) return;
         setBusy(true); setErr('');
         try {
-            await addUserMembership(user.user_id, { org_id: Number(orgId), role, department: dept || null });
+            await addUserMembership(user.user_id, { org_id: orgId, role, department: dept || null }); // 통합DB: org_id=tenant_id 문자열
             setOrgId(''); setDept(''); setRole('agent');
             load(); onChanged && onChanged();
         } catch (e) { setErr(e?.message || '소속 추가에 실패했습니다.'); }
@@ -787,7 +787,7 @@ function MembershipsModal({ user, brands, onClose, onChanged }) {
                                     </select>
                                     <select value={dept} onChange={(e) => setDept(e.target.value)} disabled={!orgId} className={FLD_INPUT}>
                                         <option value="">부서(선택)</option>
-                                        {deptOptionsFor(Number(orgId), dept).map((d) => <option key={d} value={d}>{d}</option>)}
+                                        {deptOptionsFor(orgId, dept).map((d) => <option key={d} value={d}>{d}</option>)}
                                     </select>
                                 </div>
                                 <button type="button" onClick={add} disabled={busy || !orgId} className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-[13px] font-semibold hover:opacity-90 disabled:opacity-50">

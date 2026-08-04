@@ -1031,24 +1031,24 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
 }
 
 /**
- * call.org_id(숫자) 우선, 없으면 call.brand_name → organizations.name 조회.
- * 표준 트랙은 브랜드 귀속 필수 — 둘 다 없거나 조회 실패 시 에러.
- * @returns {Promise<number>} 해석된 org id
+ * 통합DB: call.org_id(=tenant_id 문자열) 우선, 없으면 call.brand_name → common.tenants.name 조회.
+ * 표준 트랙은 브랜드(테넌트) 귀속 필수 — 둘 다 없거나 조회 실패 시 에러.
+ * @returns {Promise<string>} 해석된 tenant_id(citext, 소문자)
  */
 async function resolveStandardOrgId(pool, call) {
-    const direct = asNumber(call?.org_id);
-    if (direct !== null && direct > 0) return Math.trunc(direct);
+    const direct = safeStr(call?.org_id).trim().toLowerCase();
+    if (direct) return direct;
 
     const brandName = safeStr(call?.brand_name).trim();
     if (!brandName) {
-        throw new Error('표준 트랙은 call.org_id(숫자) 또는 call.brand_name 이 필요합니다.');
+        throw new Error('표준 트랙은 call.org_id(tenant_id) 또는 call.brand_name 이 필요합니다.');
     }
-    const { rows } = await pool.query('SELECT id FROM public.organizations WHERE name = $1 LIMIT 1', [brandName]);
-    const found = asNumber(rows?.[0]?.id);
-    if (found === null) {
-        throw new Error(`브랜드 '${brandName}' 가 organizations 에 없습니다. 먼저 브랜드를 등록하세요.`);
+    const { rows } = await pool.query('SELECT tenant_id FROM common.tenants WHERE name = $1 LIMIT 1', [brandName]);
+    const found = safeStr(rows?.[0]?.tenant_id).trim();
+    if (!found) {
+        throw new Error(`브랜드 '${brandName}' 가 common.tenants 에 없습니다. 먼저 브랜드를 등록하세요.`);
     }
-    return Math.trunc(found);
+    return found;
 }
 
 /**
@@ -1102,9 +1102,10 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
     if (!department) {
         try {
             const { rows } = await pool.query(
-                `SELECT department FROM qa_calls
-                  WHERE org_id = $1 AND department IS NOT NULL AND department <> ''
-                  GROUP BY department ORDER BY COUNT(*) DESC, department ASC LIMIT 1`,
+                `SELECT e.department
+                   FROM common.calls c JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+                  WHERE c.tenant_id = $1 AND e.department IS NOT NULL AND e.department <> ''
+                  GROUP BY e.department ORDER BY COUNT(*) DESC, e.department ASC LIMIT 1`,
                 [orgId]
             );
             department = safeStr(rows?.[0]?.department).trim();
@@ -1117,7 +1118,7 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
     // ICS 등 외부 소스 매핑 키(08 Organization.proj_cd 와 동형) — 없으면 null.
     const projCd = safeStr(call?.proj_cd).trim() || null;
 
-    // 담당 상담사 해석: agent_code(ICS user_m.USER_CD) → admin_users(login_id='{code}@{proj}' 소문자, icsSso 규칙).
+    // 담당 상담사 해석: agent_code(ICS user_m.USER_CD) → common.users(로그인아이디 '{code}@{proj}' = 이메일에서 .ics 제거, icsSso 규칙).
     // 매칭 계정이 아직 없으면 agent_user_id=NULL(미지정) — agent_code 는 보관해 추후 SSO 로그인 시 연결/추적.
     const agentCode = safeStr(call?.agent_code).trim() || null;
     // 채널구분 'I'(인바운드)/'O'(아웃바운드) — ICS tb_stt_master.IO_DIVI. 그 외 값/없음은 NULL.
@@ -1130,9 +1131,11 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
     let agentUserId = null;
     if (agentCode && projCd) {
         try {
+            // 통합DB: ICS 계정 이메일 규약 = {userCd}@{projCd}.ics (Stage1 icsSso). email(citext)로 직접 매칭.
+            //   (username 은 일부 계정만 세팅돼 신뢰 불가 — 이메일이 ICS 신원 SSOT.)
             const { rows } = await pool.query(
-                `SELECT user_id FROM admin_users WHERE lower(login_id) = lower($1) LIMIT 1`,
-                [`${agentCode}@${projCd}`]
+                `SELECT id AS user_id FROM common.users WHERE email = $1 LIMIT 1`,
+                [`${agentCode}@${projCd}.ics`]
             );
             agentUserId = rows?.[0]?.user_id ?? null;
         } catch {
@@ -1155,43 +1158,55 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         nextTurn = Math.max(nextTurn, turnNo) + 1;
     }
 
+    // 통합DB write-split: id(=call.qa_id/consultation_id 텍스트)=source_id, 자연키=(tenant_id, uid).
+    //   ① common.calls upsert(tenant_id/uid/source_id/헤더컬럼) RETURNING call_id
+    //   ② qa_evaluations upsert(call_id/AI_SCORE/TOTAL_SCORE/department/role/is_sandbox)
+    //   ③ 자식(eval_pentagon_result·eval_item_score·common.call_transcript) call_id 삭제·재적재.
+    //   proj_cd 는 common.calls 에 별도 컬럼 없음(tenant_id 가 곧 proj_cd) → source_id/uid 로만 보존.
+    let callId = null;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await client.query(`DELETE FROM qa_call_pentagon_result WHERE "ID" = $1`, [id]);
-        // 재적재는 채점 결과를 덮어쓰지만 '스킬 학습 제외' 지정(사람의 결정)은 보존한다.
-        const _sticky = await captureSticky(client, id);
-        await client.query(`DELETE FROM qa_call_item_score WHERE "ID" = $1`, [id]);
-        await client.query(`DELETE FROM qa_call_transcript WHERE "ID" = $1`, [id]);
+        const { rows: cc } = await client.query(
+            `INSERT INTO common.calls
+                 (tenant_id, uid, source_id, call_seq, cdate, io_divi, duration_sec, agent_code, agent_user_id, channel)
+             VALUES ($1,$2,$3,$4, NULLIF(NULLIF($5::text,'0000-00-00 00:00:00'),'0000-00-00')::timestamptz, $6,$7,$8,$9,'call')
+             ON CONFLICT (tenant_id, uid) DO UPDATE SET
+               source_id = EXCLUDED.source_id,
+               call_seq = EXCLUDED.call_seq,
+               cdate = EXCLUDED.cdate,
+               io_divi = COALESCE(EXCLUDED.io_divi, common.calls.io_divi),
+               duration_sec = COALESCE(EXCLUDED.duration_sec, common.calls.duration_sec),
+               agent_code = EXCLUDED.agent_code,
+               agent_user_id = EXCLUDED.agent_user_id,
+               updated_at = now()
+             RETURNING call_id`,
+            [orgId, uid, id, callSeq, cdate, ioDivi, durationSec, agentCode, agentUserId]
+        );
+        callId = cc[0].call_id;
         await client.query(
-            `INSERT INTO qa_calls
-                 ("ID","CALL_SEQ","CDATE","UID","AI_SCORE","TOTAL_SCORE",
-                  department, role, org_id, proj_cd, agent_code, agent_user_id, io_divi, duration_sec,
-                  ai_analysis_target, ai_analysis_reason)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NULL,NULL)
-             ON CONFLICT ("ID") DO UPDATE SET
-               "CALL_SEQ" = EXCLUDED."CALL_SEQ",
-               "CDATE" = EXCLUDED."CDATE",
-               "UID" = EXCLUDED."UID",
+            `INSERT INTO trustguard.qa_evaluations
+                 (call_id, "AI_SCORE", "TOTAL_SCORE", department, role, ai_analysis_target, ai_analysis_reason, is_sandbox)
+             VALUES ($1,$2,$3,$4,$5,NULL,NULL,false)
+             ON CONFLICT (call_id) DO UPDATE SET
                "AI_SCORE" = EXCLUDED."AI_SCORE",
                "TOTAL_SCORE" = EXCLUDED."TOTAL_SCORE",
                department = EXCLUDED.department,
                role = EXCLUDED.role,
-               org_id = EXCLUDED.org_id,
-               proj_cd = EXCLUDED.proj_cd,
-               agent_code = EXCLUDED.agent_code,
-               agent_user_id = EXCLUDED.agent_user_id,
-               io_divi = COALESCE(EXCLUDED.io_divi, qa_calls.io_divi),
-               duration_sec = COALESCE(EXCLUDED.duration_sec, qa_calls.duration_sec),
                ai_analysis_target = NULL,
-               ai_analysis_reason = NULL`,
-            [id, callSeq, cdate, uid, score, score, department, role, orgId, projCd, agentCode, agentUserId, ioDivi, durationSec]
+               ai_analysis_reason = NULL,
+               is_sandbox = false`,
+            [callId, score, score, department, role]
         );
-        // 전사 + 항목별 평가 적재 — 각각 다중행 INSERT 1회 (구: 행마다 개별 쿼리).
-        // 항목 점수와 근거 발화는 qa_call_item_score 한 테이블로 병합 적재된다(마이그레이션 67).
-        await insertTranscriptRows(client, id, conversation);
-        await insertItemScoreRows(client, id, mapped.evaluations, mapped.checklist);
-        await restoreSticky(client, id, _sticky);
+        await client.query(`DELETE FROM eval_pentagon_result WHERE call_id = $1`, [callId]);
+        // 재적재는 채점 결과를 덮어쓰지만 '스킬 학습 제외' 지정(사람의 결정)은 보존한다.
+        const _sticky = await captureSticky(client, callId);
+        await client.query(`DELETE FROM eval_item_score WHERE call_id = $1`, [callId]);
+        await client.query(`DELETE FROM common.call_transcript WHERE call_id = $1`, [callId]);
+        // 전사 + 항목별 평가 적재 — 각각 다중행 INSERT 1회. 항목 점수·근거는 eval_item_score 한 테이블 병합.
+        await insertTranscriptRows(client, callId, conversation);
+        await insertItemScoreRows(client, callId, mapped.evaluations, mapped.checklist);
+        await restoreSticky(client, callId, _sticky);
 
         // 펜타곤 축별 정성평가 적재 — 백엔드(pure pure_pentagon)가 생성한 축별 {rating,analysis,summary}
         // 를 qa_call_pentagon_result 에 기록 → 분석 라우트(GET /api/analysis)가 점수밴드 보일러플레이트
@@ -1210,9 +1225,9 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
             const comment = safeStr(ax.analysis).trim() || summary || '';
             if (!comment) continue;
             await client.query(
-                `INSERT INTO qa_call_pentagon_result ("ID", item_type_no, item_type, rating, comment, summary)
+                `INSERT INTO eval_pentagon_result (call_id, item_type_no, item_type, rating, comment, summary)
                  VALUES ($1,$2,$3,$4,$5,$6)`,
-                [id, Math.trunc(axisNo), itemType, rating, comment, summary]
+                [callId, Math.trunc(axisNo), itemType, rating, comment, summary]
             );
         }
         await client.query('COMMIT');
@@ -1233,8 +1248,8 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         const kc = await pool.connect();
         try {
             await kc.query('BEGIN');
-            await kc.query('DELETE FROM qa_call_ksqi_score WHERE "ID" = $1', [id]);
-            await kc.query('DELETE FROM qa_call_ksqi_summary WHERE "ID" = $1', [id]);
+            await kc.query('DELETE FROM eval_ksqi_score WHERE call_id = $1', [callId]);
+            await kc.query('DELETE FROM eval_ksqi_summary WHERE call_id = $1', [callId]);
             const num = (v) => (v == null || Number.isNaN(Number(v)) ? null : Number(v));
             const items = Array.isArray(kr.items) ? kr.items : [];
             for (const it of items) {
@@ -1245,20 +1260,16 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
                     speaker: safeStr(e?.speaker),
                     quote: safeStr(e?.quote),
                 }));
-                // kind(판정 방식)는 적재하지 않는다 — 원본은 채점 파이프라인
-                // v2/nodes/ksqi_stt/rules.py 의 규칙별 kind 이고, MTG 컬럼은 그 사본이었다.
-                // 사본이 원본과 어긋나 혼선만 낳았다(코드는 llm/auto · DB 코멘트는 llm/stt/rule ·
-                // 실제 데이터는 468행 전부 llm). 소비처도 없었다 — 상세 화면(KsqiEvalSection)은
-                // 이 필드를 읽지 않는다. 마이그레이션 78 에서 컬럼 제거(2026-07-29).
                 await kc.query(
-                    `INSERT INTO qa_call_ksqi_score ("ID", item_number, item_name, area, score, max_score, na, defect, rationale, evidence)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
-                     ON CONFLICT ("ID", item_number) DO NOTHING`,
+                    `INSERT INTO eval_ksqi_score (call_id, item_number, item_name, area, kind, score, max_score, na, defect, rationale, evidence)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+                     ON CONFLICT (call_id, item_number) DO NOTHING`,
                     [
-                        id,
+                        callId,
                         itemNo,
                         safeStr(it?.item_name),
                         safeStr(it?.area),
+                        safeStr(it?.kind) || 'llm',
                         num(it?.score),
                         num(it?.max_score),
                         it?.na === true,
@@ -1268,24 +1279,24 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
                     ]
                 );
             }
-            // 환산(scaled)·등급(grade)·우수(excellent)는 적재하지 않는다 — raw/max 에서 순수
-            // 계산으로 재현되는 파생값이라 저장하면 같은 사실이 두 곳에 남는다(2026-07-29 합의).
-            //   scaled = round(raw / max * 100, 1) · excellent = scaled >= 임계(A 92 · B 80)
-            //   grade  = excellent ? '우수' : '미달'
-            // 조회 시 index.js 의 ksqi 재조립(areaObj)이 계산해 기존 응답 계약을 그대로 유지하므로
-            // 프론트(KsqiEvalSection)는 무변경. 엔진 응답에는 여전히 3필드가 실려 오지만 무시한다.
             await kc.query(
-                `INSERT INTO qa_call_ksqi_summary ("ID",
-                    area_a_raw, area_a_max,
-                    area_b_raw, area_b_max,
+                `INSERT INTO eval_ksqi_summary (call_id,
+                    area_a_raw, area_a_max, area_a_scaled, area_a_grade, area_a_excellent,
+                    area_b_raw, area_b_max, area_b_scaled, area_b_grade, area_b_excellent,
                     overall_raw, overall_max, summary)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
                 [
-                    id,
+                    callId,
                     num(kr.area_a?.raw),
                     num(kr.area_a?.max),
+                    num(kr.area_a?.scaled),
+                    kr.area_a?.grade ?? null,
+                    typeof kr.area_a?.excellent === 'boolean' ? kr.area_a.excellent : null,
                     num(kr.area_b?.raw),
                     num(kr.area_b?.max),
+                    num(kr.area_b?.scaled),
+                    kr.area_b?.grade ?? null,
+                    typeof kr.area_b?.excellent === 'boolean' ? kr.area_b.excellent : null,
                     num(kr.overall?.raw),
                     num(kr.overall?.max),
                     safeStr(kr.summary),
@@ -1300,13 +1311,7 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         } finally {
             kc.release();
         }
-        // 전환기 이중 기록 — 기존 qa_calls.ksqi_report(jsonb) 병행 유지. 읽기 경로는 이미 3테이블로
-        // 전환되어 롤백 대비 용도만 남음. 안정화 확인 후 이 블록과 컬럼 제거 예정.
-        try {
-            await pool.query(`UPDATE qa_calls SET ksqi_report = $2 WHERE "ID" = $1`, [id, JSON.stringify(kr)]);
-        } catch (e) {
-            console.warn(`[ingest] ksqi_report(전환기 jsonb) 적재 스킵 (ID=${id}, 컬럼 부재 가능): ${e.message}`);
-        }
+        // 통합DB: 구 qa_calls.ksqi_report(전환기 jsonb 이중기록) 제거 — eval_ksqi_summary/score 가 SSOT.
     }
 
     return {
@@ -1322,21 +1327,12 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
 }
 
 /**
- * org 의 KSQI-STT 실행 토글(organizations.ksqi_stt_enabled) 조회 — 미설정/조회 실패는
- * 안전 기본값 false(신규 모듈 미실행, 기존 브랜드 무회귀). getOrgFewshot 과 동일한 org 단건 조회 패턴.
+ * 통합DB: 구 organizations.ksqi_stt_enabled(브랜드별 KSQI-STT 토글)은 공유 common.tenants 에 컬럼 없음.
+ *   KSQI 는 현재 전역 숨김/비활성(ksqi_stt_enabled 기본 false) → 안전 기본값 false 고정.
+ *   (KSQI 제품화 시 trustguard 전용 브랜드설정 테이블로 재이관 예정 — tenant_rag_config 패턴 참고.)
  */
-async function getOrgKsqiSttEnabled(pool, orgId) {
-    if (orgId === null || orgId === undefined) return false;
-    try {
-        const { rows } = await pool.query(
-            `SELECT ksqi_stt_enabled FROM public.organizations WHERE id = $1 LIMIT 1`,
-            [orgId],
-        );
-        return rows[0]?.ksqi_stt_enabled === true;
-    } catch (err) {
-        console.error('getOrgKsqiSttEnabled error:', err);
-        return false;
-    }
+async function getOrgKsqiSttEnabled(_pool, _orgId) {
+    return false;
 }
 
 /**
@@ -1744,30 +1740,35 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
         console.warn(`[golden-learn] rubric 등록 실패(무시 — ingest 응답에서 확인): ${(e && e.message) || e}`);
     }
 
-    // ③ 골든 추출 + 전사 결합
+    // ③ 골든 추출 + 전사 결합 — 통합DB: qa_golden_set.qa_id=call_id(bigint), 외부 consultation_id=common.calls.source_id(텍스트).
     const { rows: gs } = await pool.query(
-        `SELECT qa_id, order_no, category, item, reason_text, agent_utterance, score
-           FROM public.qa_golden_set WHERE org_id = $1 ORDER BY qa_id, order_no`,
+        `SELECT g.qa_id AS call_id, c.source_id AS consultation_id, g.order_no, g.category, g.item, g.reason_text, g.agent_utterance, g.score
+           FROM qa_golden_set g
+           LEFT JOIN common.calls c ON c.call_id = g.qa_id
+          WHERE g.tenant_id = $1 ORDER BY g.qa_id, g.order_no`,
         [orgId]
     );
     if (!gs.length) {
         return { ok: true, triggered: false, reason: 'no_golden_rows', org_id: orgId, rubric_id: rubricId, golden_count: 0 };
     }
+    // 전사 — call_id 별 1회 조회. 화자는 RAG 예시 가독성 위해 한글 라벨 복원('agent'/'customer'→'상담사'/'고객').
     const tmap = {};
-    for (const qid of [...new Set(gs.map((g) => g.qa_id))]) {
+    for (const cid of [...new Set(gs.map((g) => g.call_id))]) {
         const { rows: c } = await pool.query(
-            `SELECT speaker, "text" FROM public.qa_call_transcript WHERE "ID" = $1 ORDER BY turn_no`,
-            [qid]
+            `SELECT CASE speaker WHEN 'agent' THEN '상담사' WHEN 'customer' THEN '고객' ELSE speaker END AS speaker,
+                    "text"
+               FROM common.call_transcript WHERE call_id = $1 AND channel = 'call' ORDER BY seq`,
+            [cid]
         );
-        tmap[qid] = c.map((r) => `${r.speaker}: ${r.text}`).join('\n');
+        tmap[cid] = c.map((r) => `${r.speaker}: ${r.text}`).join('\n');
     }
     const examples = gs
         .map((g) => ({
-            consultation_id: g.qa_id,
+            consultation_id: g.consultation_id,
             item_number: orderToItemNum[g.order_no],
             item_name: g.item,
             category: g.category,
-            transcript_body: tmap[g.qa_id] || '',
+            transcript_body: tmap[g.call_id] || '',
             note_section: g.reason_text,
             stt_excerpt: g.agent_utterance,
             score: Number(g.score),

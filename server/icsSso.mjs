@@ -80,10 +80,16 @@ export function normalizeIcsDate(v) {
 // USER_M 계정 1건 + AUTH_TYPE='S' 역할 한글명(AUTH_NM) 목록 조회. 미존재 시 null.
 async function fetchIcsUser(projCd, userCd) {
     const pool = getIcsPool();
+    // USER_NM 은 mtm30 에서 AES 암호화(HEX) 저장 → 복호화 뷰 v_user_dec 를 (PROJ_CD, USER_CD)
+    // 로 조인해 평문 실명(USER_NM_DEC)을 함께 가져온다. 뷰는 SECURITY DEFINER 로 복호화하므로
+    // ics_ro 는 뷰 SELECT 만으로 평문 취득(키·함수 미노출). PROJ_CD 로 조인해야 브랜드 간 USER_CD 중복 시 안 섞임.
     const [urows] = await pool.query(
-        `SELECT USER_ID, USER_CD, PROJ_CD, USER_PS, USER_STATUS,
-                USER_NM, EMAIL, TEAM_CD, STATION, JOIN_DATE, RETIRE_DATE, DUP_LOGIN_YN
-           FROM USER_M WHERE PROJ_CD = ? AND USER_CD = ?`,
+        `SELECT u.USER_ID, u.USER_CD, u.PROJ_CD, u.USER_PS, u.USER_STATUS,
+                v.USER_NM AS USER_NM_DEC, u.EMAIL, u.TEAM_CD,
+                u.STATION, u.JOIN_DATE, u.RETIRE_DATE, u.DUP_LOGIN_YN
+           FROM USER_M u
+           LEFT JOIN v_user_dec v ON v.PROJ_CD = u.PROJ_CD AND v.USER_CD = u.USER_CD
+          WHERE u.PROJ_CD = ? AND u.USER_CD = ?`,
         [projCd, userCd]
     );
     if (!urows || urows.length === 0) return null;
@@ -103,8 +109,8 @@ async function fetchIcsUser(projCd, userCd) {
         proj_cd: u.PROJ_CD,
         user_status: u.USER_STATUS,
         auth_nms: (arows || []).map((r) => r.auth_nm).filter(Boolean),
-        // 인사 필드(우리 trainee_registrations 로 동기화)
-        user_nm: u.USER_NM || null,
+        // 표시명 = ICS 실명(v_user_dec 복호화). 빈값이면 null → 호출부에서 코드 폴백.
+        user_nm: u.USER_NM_DEC != null && String(u.USER_NM_DEC).trim() !== '' ? String(u.USER_NM_DEC).trim() : null,
         email: u.EMAIL || null,
         team_cd: u.TEAM_CD || null,
         extension: u.STATION != null && String(u.STATION).trim() !== '' ? String(u.STATION).trim() : null,
@@ -164,67 +170,71 @@ export function createIcsSsoRouter(pool, { createSession }) {
 
         const role = mapRole(icsUser.auth_nms);
         const loginId = `${userCd}@${projCd}`.toLowerCase();
-        // ICS USER_NM/EMAIL 은 암호화 저장(복호화 키 없음) → 표시명은 userCd 유지.
-        const displayName = userCd;
-        const defaultOrgId = Number(process.env.ICS_SSO_DEFAULT_ORG_ID || 0) || null;
+        // 표시명 = ICS 실명(v_user_dec 복호화 USER_NM). 없으면 코드(userCd) 폴백.
+        // SSO(ICS 병합) 모드는 ICS 가 이름 원천 → 로그인마다 실명으로 동기화(사용자관리 수동편집 비활성 원칙).
+        const displayName = icsUser.user_nm || userCd;
+        // 통합DB 신원 규약: 이메일 = {userCd}@{projCd}.ics (신원키), 테넌트 = projCd 소문자(=proj_cd 1:1).
+        const email = `${loginId}.ics`;
+        const emailHash = crypto.createHash('sha256').update(email).digest('hex');
+        const tenantId = projCd.toLowerCase();
         // ICS 사용자는 SSO 전용 — 직접 로그인 불가하도록 랜덤(매칭 불가) 해시.
         const randomHash = crypto.randomBytes(32).toString('hex');
 
-        const returningCols =
-            'user_id, login_id, display_name, role, org_id, department';
         let row;
         try {
-            // admin_users 는 twin 스키마에서 INSTEAD OF 트리거 뷰(users+trainee_registrations 로 라우팅).
-            // 뷰에는 unique 제약이 없어 ON CONFLICT 불가 → 수동 upsert: 먼저 UPDATE, 매칭 없으면 INSERT.
-            const upd = await pool.query(
-                `UPDATE public.admin_users SET
-                    display_name = $2,
-                    role = $3,
-                    is_active = 1,
-                    org_id = COALESCE(org_id, $4),
-                    updated_at = now()
-                 WHERE login_id = $1
-                 RETURNING ${returningCols}`,
-                [loginId, displayName, role, defaultOrgId]
+            // 1) common.users upsert (이메일 신원키). ICS 가 이름 원천 → name 동기화. password_hash 는 신규 시 랜덤.
+            const uRes = await pool.query(
+                `INSERT INTO common.users (email, email_hash, name, password_hash)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
+                 RETURNING id`,
+                [email, emailHash, displayName, randomHash]
             );
-            if (upd.rows[0]) {
-                row = upd.rows[0];
-            } else {
-                const ins = await pool.query(
-                    `INSERT INTO public.admin_users
-                        (login_id, password_hash, display_name, role, is_active, org_id, created_at, updated_at)
-                     VALUES ($1, $2, $3, $4, 1, $5, now(), now())
-                     RETURNING ${returningCols}`,
-                    [loginId, randomHash, displayName, role, defaultOrgId]
+            const userId = uRes.rows[0].id;
+
+            // 2) 테넌트 존재 시에만 멤버십 부여(FK 보호). 아직 이관 안 된 projCd 는 사용자만 발급.
+            const tRes = await pool.query('SELECT 1 FROM common.tenants WHERE tenant_id = $1', [tenantId]);
+            const tenantExists = tRes.rowCount > 0;
+            if (tenantExists) {
+                // common.memberships upsert (user×tenant 유일). ICS 인사필드 동기화. department 는 ICS 미제공 → 기본 유지.
+                await pool.query(
+                    `INSERT INTO common.memberships
+                        (user_id, tenant_id, role, department, hire_date, leave_date, extension, dup_login_yn, status)
+                     VALUES ($1, $2, $3::common.userrole, '고객지원실', $4, $5, $6, $7, 'active')
+                     ON CONFLICT (user_id, tenant_id) DO UPDATE SET
+                        role = EXCLUDED.role, hire_date = EXCLUDED.hire_date, leave_date = EXCLUDED.leave_date,
+                        extension = EXCLUDED.extension, dup_login_yn = EXCLUDED.dup_login_yn, status = 'active'`,
+                    [userId, tenantId, role, icsUser.hire_date, icsUser.leave_date, icsUser.extension, icsUser.dup_login_yn]
                 );
-                row = ins.rows[0];
+            } else {
+                console.warn(`[ics-sso] tenant '${tenantId}' 미프로비저닝 — 멤버십 생략(사용자만 발급)`);
             }
+
+            const mRes = tenantExists
+                ? await pool.query('SELECT id, department FROM common.memberships WHERE user_id = $1 AND tenant_id = $2', [userId, tenantId])
+                : { rows: [] };
+            row = {
+                user_id: userId,
+                login_id: loginId,
+                display_name: displayName,
+                role,
+                tenant_id: tenantExists ? tenantId : null,
+                membership_id: mRes.rows[0]?.id ?? null,
+                department: mRes.rows[0]?.department ?? null,
+                email,
+            };
         } catch (e) {
-            console.error('[ics-sso] admin_users JIT upsert 실패:', e?.message || e);
+            console.error('[ics-sso] 통합 users/memberships 프로비저닝 실패:', e?.message || e);
             res.status(500).json({ message: 'ICS 사용자 프로비저닝 실패' });
             return;
-        }
-
-        // 인사 필드(입사·퇴사·내선·중복로그인) ICS → 우리 테이블 동기화. 뷰 UPDATE 트리거가 trainee_registrations 로 라우팅.
-        // (INSERT 트리거는 인사 필드를 다루지 않으므로 upsert 직후 별도 UPDATE 로 일원화.)
-        try {
-            await pool.query(
-                `UPDATE public.admin_users
-                    SET hire_date = $2, leave_date = $3, extension = $4, dup_login_yn = $5, updated_at = now()
-                  WHERE login_id = $1`,
-                [loginId, icsUser.hire_date, icsUser.leave_date, icsUser.extension, icsUser.dup_login_yn]
-            );
-        } catch (e) {
-            console.error('[ics-sso] 인사 필드 동기화 실패(무시):', e?.message || e);
         }
 
         const sessionToken = createSession(row);
         await insertLoginHistory(pool, {
             req,
-            actor: { user_id: row.user_id, login_id: row.login_id, display_name: row.display_name, role: row.role },
-            org_id: row.org_id,
+            actor: { user_id: row.user_id, login_id: row.login_id, display_name: row.display_name, role: row.role, email: row.email },
+            membership_id: row.membership_id,
             event: 'login_success',
-            reason: 'ics_sso',
         });
         res.json({
             ok: true,
@@ -233,7 +243,7 @@ export function createIcsSsoRouter(pool, { createSession }) {
                 login_id: row.login_id,
                 display_name: row.display_name,
                 role: row.role,
-                org_id: row.org_id ?? null,
+                tenant_id: row.tenant_id ?? null,
                 department: row.department ?? null,
                 auth_source: 'ics', // 프론트: ICS 임베드 세션 표시(로그아웃 숨김 + 직접접속 분리)
                 session_token: sessionToken,

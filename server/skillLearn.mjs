@@ -7,8 +7,6 @@
  *      + 루브릭 파일스토어 사전 등록(POST /v2/rubrics, 멱등·실패 무시)
  *   ③ 정정 케이스 수집(qa_call_item_score ⋈ qa_calls — 승인콜·비샌드박스,
  *      manual_eval_option ∈ '낮음'|'높음') + 콜단위 검수사유(qa_call_review_event 최신 1건, 일괄 조회)
- *      + 콜 전사(qa_call_transcript 일괄 조회 → transcript_body, TRANSCRIPT_CAP 앞뒤 보존 절단).
- *      전사 없이 근거 발화만 주면 "앞뒤 맥락 때문에 그 발화가 정당했다" 류 정정을 LLM 이 못 가린다.
  *   ④ POST {base}/v2/mtg-skill/{rubric_id}/generate (auto_activate) — 버전 생성·저장·활성화는
  *      qa-pipeline 담당(MTG 는 프록시·수집만)
  *
@@ -29,11 +27,6 @@ const RUBRIC_REGISTER_TIMEOUT_MS = 30_000; // 루브릭 사전 등록(멱등) �
 const EVIDENCE_CAP = 1000; // 근거 발화(agent_utterance) 상한
 const CALL_REASON_CAP = 500; // 콜단위 검수사유 상한
 const DEFAULT_CASE_LIMIT = 200; // 케이스 수집 기본 상한(최신순)
-// 콜 전사(transcript_body) 상한. 근거 발화만으로는 "앞뒤 맥락 때문에 그 발화가 정당했다" 류의
-//   정정을 LLM 이 판단할 수 없어 전사를 동봉한다(골든 색인의 transcript_body 와 같은 취지).
-//   초과분은 앞·뒤를 함께 남긴다 — QA 항목이 첫인사(앞)와 끝인사(뒤) 양쪽에 걸려 있어
-//   머리만 자르면 종료 구간 항목의 근거가 통째로 사라진다.
-const TRANSCRIPT_CAP = 6000;
 
 function safeStr(value) {
     return value === null || value === undefined ? '' : String(value);
@@ -42,25 +35,6 @@ function safeStr(value) {
 function asNumber(value) {
     const n = Number(value);
     return Number.isFinite(n) ? n : null;
-}
-
-/**
- * 전사 상한 적용 — 초과 시 앞·뒤를 절반씩 남기고 가운데를 생략 표시로 접는다.
- * 머리만 자르면(slice) 종료 구간(끝인사·마무리 안내) 항목의 근거가 사라지므로 양끝을 보존한다.
- * 턴 경계(\n)에서 자르기 때문에 발화가 중간에 잘려 화자가 뒤섞이지 않는다.
- */
-function capTranscript(text) {
-    const s = safeStr(text);
-    if (s.length <= TRANSCRIPT_CAP) return s;
-    const half = Math.floor(TRANSCRIPT_CAP / 2);
-    const head = s.slice(0, half);
-    const tail = s.slice(-half);
-    // 잘린 조각 안의 불완전한 턴 제거 — head 는 마지막 개행까지, tail 은 첫 개행 이후만.
-    const headCut = head.slice(0, Math.max(head.lastIndexOf('\n'), 0) || head.length);
-    const tailIdx = tail.indexOf('\n');
-    const tailCut = tailIdx >= 0 ? tail.slice(tailIdx + 1) : tail;
-    const omitted = s.length - headCut.length - tailCut.length;
-    return `${headCut}\n… (중략 ${omitted}자) …\n${tailCut}`;
 }
 
 /** 스킬 학습 base URL — 골든 학습(ingestGoldenSetToRag)과 동일하게 EC2 타깃 기본. */
@@ -101,7 +75,7 @@ async function registerRubricForOrg(pool, orgId, rubricId, base) {
 async function adoptLegacySkillStore(pool, orgId, rubricId, base, { register = true } = {}) {
     const candidates = new Set([`rbrc_org${orgId}`, `inline-org${orgId}`]);
     try {
-        const { rows } = await pool.query('SELECT rubric_id FROM public.qa_skill_store WHERE org_id = $1', [orgId]);
+        const { rows } = await pool.query('SELECT rubric_id FROM qa_skill_store WHERE tenant_id = $1', [orgId]);
         for (const r of rows) candidates.add(safeStr(r.rubric_id).trim());
     } catch {
         /* 메모리 테이블 조회 실패 — 규칙 후보만으로 진행 */
@@ -134,11 +108,11 @@ async function adoptLegacySkillStore(pool, orgId, rubricId, base, { register = t
             // 메모리 행 키 승계 — 새 키 행이 이미 있으면(학습이 새 키로 이미 돈 경우) 보존, 옛 행 유지.
             try {
                 await pool.query(
-                    `UPDATE public.qa_skill_store
+                    `UPDATE qa_skill_store
                         SET rubric_id = $2,
                             memory = jsonb_set(memory, '{rubric_id}', to_jsonb($2::text))
                       WHERE rubric_id = $1
-                        AND NOT EXISTS (SELECT 1 FROM public.qa_skill_store m2 WHERE m2.rubric_id = $2)`,
+                        AND NOT EXISTS (SELECT 1 FROM qa_skill_store m2 WHERE m2.rubric_id = $2)`,
                     [cand, rubricId]
                 );
             } catch (e) {
@@ -193,9 +167,9 @@ function kstNowLabel() {
 async function readSkillExcludedOrders(pool, orgId) {
     try {
         const { rows } = await pool.query(
-            `SELECT config FROM public.qa_batch_configs
-              WHERE org_id = ANY($1) ORDER BY (org_id = $2) DESC LIMIT 1`,
-            [[orgId, 0], orgId]
+            `SELECT config FROM qa_batch_configs
+              WHERE tenant_id = ANY($1) ORDER BY (tenant_id = $2) DESC LIMIT 1`,
+            [[orgId, '__default__'], orgId]
         );
         const ex = rows[0]?.config?.skill?.excluded;
         return Array.isArray(ex) ? ex.map(Number).filter(Number.isFinite) : [];
@@ -213,63 +187,42 @@ async function readSkillExcludedOrders(pool, orgId) {
  */
 export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMIT } = {}) {
     const lim = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.trunc(Number(limit)) : DEFAULT_CASE_LIMIT;
+    // 통합DB: 헤더=common.calls(source_id/tenant_id/cdate), 평가=trustguard.qa_evaluations(review_status/is_sandbox), 항목=eval_item_score(call_id).
+    //   외부 케이스 식별자 qa_id=source_id, 검수사유는 eval_review_event(call_id) → source_id 로 재키.
     const { rows } = await pool.query(
-        `SELECT er."ID" AS qa_id, er.order_no, er.category, er.item,
+        `SELECT c.source_id AS qa_id, c.call_id AS call_id, er.order_no, er.category, er.item,
                 er.ai_eval, er.manual_eval_option, er.reason_text,
-                er.agent_utterance, c.org_id, c."CDATE"
-           FROM qa_call_item_score er
-           JOIN qa_calls c ON c."ID" = er."ID"
-          WHERE c.review_status = 'approved'
-            AND c.org_id = $1 AND er.manual_eval_option IN ('낮음','높음')
+                er.agent_utterance, c.tenant_id AS org_id, c.cdate AS "CDATE"
+           FROM eval_item_score er
+           JOIN common.calls c ON c.call_id = er.call_id
+           JOIN trustguard.qa_evaluations e ON e.call_id = c.call_id
+          WHERE e.review_status = 'approved' AND e.is_sandbox = false
+            AND c.tenant_id = $1 AND er.manual_eval_option IN ('낮음','높음')
             AND er.skill_excluded_at IS NULL
-          ORDER BY c."CDATE" DESC LIMIT $2`,
+          ORDER BY c.cdate DESC LIMIT $2`,
         [orgId, lim]
     );
-    if (!rows.length) return { rows: [], callReasons: {}, transcripts: {} };
-    const qaIds = [...new Set(rows.map((r) => String(r.qa_id)))];
-
-    // 콜단위 검수사유 — 케이스별 개별 조회 대신 qa_id 묶음 1회 조회(qa_id 별 최신 1건). 없으면 생략.
+    if (!rows.length) return { rows: [], callReasons: {} };
+    // 콜단위 검수사유 — call_id 묶음 1회 조회(call_id 별 최신 1건) 후 source_id 로 재키. 없으면 생략.
     const callReasons = {};
     try {
+        const callIds = [...new Set(rows.map((r) => r.call_id))];
         const { rows: ev } = await pool.query(
-            `SELECT DISTINCT ON (qa_id) qa_id, reason
-               FROM qa_call_review_event
-              WHERE qa_id = ANY($1::text[]) AND reason IS NOT NULL
-              ORDER BY qa_id, id DESC`,
-            [qaIds]
+            `SELECT DISTINCT ON (call_id) call_id, reason
+               FROM eval_review_event
+              WHERE call_id = ANY($1::bigint[]) AND reason IS NOT NULL
+              ORDER BY call_id, id DESC`,
+            [callIds]
         );
-        for (const e of ev) {
-            const reason = safeStr(e.reason).trim();
-            if (reason) callReasons[String(e.qa_id)] = reason;
+        const reasonByCall = new Map(ev.map((e) => [String(e.call_id), safeStr(e.reason).trim()]));
+        for (const r of rows) {
+            const reason = reasonByCall.get(String(r.call_id));
+            if (reason) callReasons[String(r.qa_id)] = reason;
         }
     } catch (e) {
         logger.warn(`[skill-learn] 콜단위 검수사유 조회 실패(생략하고 진행): ${e?.message || e}`);
     }
-
-    // 콜 전사 — 케이스가 참조하는 콜 전량을 ANY($1) 단일 조회로 가져온다.
-    //   골든 색인(ingestGoldenSetToRag)은 콜별 개별 SELECT(N+1)지만, 여기는 케이스 상한이 200건이라
-    //   참조 콜도 유한해 한 번에 끝낸다. 조회 실패는 생략하고 진행 — 전사가 없어도 학습은 돈다.
-    const transcripts = {};
-    try {
-        const { rows: tr } = await pool.query(
-            `SELECT "ID" AS qa_id, speaker, "text" AS text
-               FROM public.qa_call_transcript
-              WHERE "ID" = ANY($1::text[])
-              ORDER BY "ID", turn_no`,
-            [qaIds]
-        );
-        const byCall = new Map();
-        for (const t of tr) {
-            const k = String(t.qa_id);
-            if (!byCall.has(k)) byCall.set(k, []);
-            byCall.get(k).push(`${safeStr(t.speaker)}: ${safeStr(t.text)}`);
-        }
-        for (const [k, lines] of byCall) transcripts[k] = capTranscript(lines.join('\n'));
-    } catch (e) {
-        logger.warn(`[skill-learn] 콜 전사 조회 실패(생략하고 진행): ${e?.message || e}`);
-    }
-
-    return { rows, callReasons, transcripts };
+    return { rows, callReasons };
 }
 
 /**
@@ -287,7 +240,7 @@ export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMI
  */
 async function loadSkillMemory(pool, rubricId) {
     try {
-        const { rows } = await pool.query('SELECT memory FROM public.qa_skill_store WHERE rubric_id = $1', [rubricId]);
+        const { rows } = await pool.query('SELECT memory FROM qa_skill_store WHERE rubric_id = $1', [rubricId]);
         const mem = rows[0]?.memory;
         if (mem && typeof mem === 'object' && !Array.isArray(mem)) return mem;
     } catch (e) {
@@ -304,10 +257,10 @@ async function saveSkillMemory(pool, rubricId, orgId, memory) {
     if (!memory || typeof memory !== 'object' || Array.isArray(memory)) return false;
     try {
         await pool.query(
-            `INSERT INTO public.qa_skill_store (rubric_id, org_id, memory, updated_at)
+            `INSERT INTO qa_skill_store (rubric_id, tenant_id, memory, updated_at)
                  VALUES ($1, $2, $3::jsonb, now())
              ON CONFLICT (rubric_id) DO UPDATE
-                SET memory = EXCLUDED.memory, org_id = EXCLUDED.org_id, updated_at = now()`,
+                SET memory = EXCLUDED.memory, tenant_id = EXCLUDED.tenant_id, updated_at = now()`,
             [rubricId, orgId, JSON.stringify(memory)]
         );
         return true;
@@ -350,7 +303,7 @@ export async function fetchSkillMemorySummary(pool, orgId) {
     let mem = null;
     let updatedAt = null;
     try {
-        const { rows } = await pool.query('SELECT memory, updated_at FROM public.qa_skill_store WHERE rubric_id = $1', [rubricId]);
+        const { rows } = await pool.query('SELECT memory, updated_at FROM qa_skill_store WHERE rubric_id = $1', [rubricId]);
         mem = rows[0]?.memory ?? null;
         updatedAt = rows[0]?.updated_at ?? null;
     } catch (e) {
@@ -396,24 +349,10 @@ export async function fetchSkillMemorySummary(pool, orgId) {
  * 소유 모델은 qa_skill_store 와 동일 — DB(=이 서버의 PG)가 생존 계층, 파이프라인 파일은 작업 사본. */
 
 let _skillVersionsTableReady = null;
-function ensureSkillVersionsTable(pool) {
-    // 런타임 멱등 보장 — docker/init 은 새 볼륨에만 실행되므로 기존 환경(10.13/운영)은 여기서 생성.
-    if (!_skillVersionsTableReady) {
-        _skillVersionsTableReady = pool
-            .query(
-                `CREATE TABLE IF NOT EXISTS public.qa_skill_store (
-                     rubric_id  text PRIMARY KEY,
-                     org_id     integer REFERENCES public.organizations(id) ON DELETE CASCADE,
-                     memory     jsonb NOT NULL DEFAULT '{}',
-                     store      jsonb NOT NULL DEFAULT '{}',
-                     updated_at timestamptz NOT NULL DEFAULT now()
-                 )`
-            )
-            .catch((e) => {
-                _skillVersionsTableReady = null; // 다음 호출에서 재시도
-                throw e;
-            });
-    }
+function ensureSkillVersionsTable(_pool) {
+    // 통합DB: trustguard.qa_skill_store(tenant_id citext) 는 통합 init(20_qa.sql)이 소유·생성.
+    //   런타임 CREATE TABLE(구 org_id/public.organizations 스키마)은 통합에서 유해 → no-op.
+    if (!_skillVersionsTableReady) _skillVersionsTableReady = Promise.resolve();
     return _skillVersionsTableReady;
 }
 
@@ -421,7 +360,7 @@ function ensureSkillVersionsTable(pool) {
 async function loadSkillStoreBackup(pool, rubricId) {
     try {
         await ensureSkillVersionsTable(pool);
-        const { rows } = await pool.query('SELECT store FROM public.qa_skill_store WHERE rubric_id = $1', [rubricId]);
+        const { rows } = await pool.query('SELECT store FROM qa_skill_store WHERE rubric_id = $1', [rubricId]);
         const s = rows[0]?.store;
         if (s && typeof s === 'object' && !Array.isArray(s)) return s;
     } catch (e) {
@@ -439,10 +378,10 @@ async function persistSkillStore(pool, orgId, rubricId, base) {
         }
         await ensureSkillVersionsTable(pool);
         await pool.query(
-            `INSERT INTO public.qa_skill_store (rubric_id, org_id, store, updated_at)
+            `INSERT INTO qa_skill_store (rubric_id, tenant_id, store, updated_at)
                  VALUES ($1, $2, $3::jsonb, now())
              ON CONFLICT (rubric_id) DO UPDATE
-                SET store = EXCLUDED.store, org_id = EXCLUDED.org_id, updated_at = now()`,
+                SET store = EXCLUDED.store, tenant_id = EXCLUDED.tenant_id, updated_at = now()`,
             [rubricId, orgId, JSON.stringify({ store: dump.store, files: dump.files || {}, manifests: dump.manifests || {} })]
         );
         return true;
@@ -559,7 +498,7 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
 
     // ③ 정정 케이스 수집 — order_no→item_number 매핑 불가(비활성/미존재 항목) 행은 제외.
     emit({ stage: 'collect' });
-    const { rows, callReasons, transcripts } = await collectSkillCases(pool, orgId, { limit: opts.limit });
+    const { rows, callReasons } = await collectSkillCases(pool, orgId, { limit: opts.limit });
     const cases = rows
         .map((r) => {
             const orderNo = asNumber(r.order_no);
@@ -575,10 +514,6 @@ export async function runSkillLearn(pool, orgId, opts = {}) {
                 ai_reason: safeStr(r.reason_text),
                 evidence: safeStr(r.agent_utterance).slice(0, EVIDENCE_CAP),
             };
-            // 콜 전사 — 근거 발화 한 대목만으로는 앞뒤 맥락 판단이 안 되므로 동봉.
-            //   없는 콜(전사 미적재)은 필드를 아예 빼서 백엔드가 '(없음)' 으로 처리하게 한다.
-            const transcript = transcripts[String(r.qa_id)];
-            if (transcript) c.transcript_body = transcript;
             const callReason = callReasons[String(r.qa_id)];
             if (callReason) c.call_reason = callReason.slice(0, CALL_REASON_CAP);
             const dt = fmtDateTime(r.CDATE);
@@ -810,7 +745,7 @@ export async function activateSkillVersion(pool, orgId, versionId, opts = {}) {
     if (backup?.store && known) {
         try {
             await pool.query(
-                `UPDATE public.qa_skill_store
+                `UPDATE qa_skill_store
                     SET store = jsonb_set(store, '{store,active_version_id}', $2::jsonb, true), updated_at = now()
                   WHERE rubric_id = $1`,
                 [rubricId, JSON.stringify(vid)]
@@ -862,7 +797,7 @@ export async function pushSkillSettings(pool, orgId, excludedOrders, opts = {}) 
     try {
         await ensureSkillVersionsTable(pool);
         await pool.query(
-            `UPDATE public.qa_skill_store
+            `UPDATE qa_skill_store
                 SET store = jsonb_set(store, '{store,excluded_items}', $2::jsonb, true), updated_at = now()
               WHERE rubric_id = $1`,
             [rubricId, JSON.stringify(excludedItems)]

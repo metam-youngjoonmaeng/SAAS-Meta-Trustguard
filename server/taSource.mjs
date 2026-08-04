@@ -88,7 +88,7 @@ export async function fetchTaMetricsByUids(projCd, uids, range = null) {
                   AND jsonb_array_length(to_jsonb(banned_hits)) > 0
             )::int AS banned
          FROM public.tb_ta_rslt
-         WHERE proj_cd = $1 AND uid = ANY($2::text[])${cond}`,
+         WHERE upper(proj_cd) = upper($1) AND uid = ANY($2::text[])${cond}`,
         params
     );
     const r = rows[0] || {};
@@ -108,7 +108,7 @@ export async function fetchSegmentSentimentsByUids(projCd, uids, range = null) {
     const cond = rangeSql(params, range);
     const { rows } = await getPool().query(
         `SELECT uid, cdate, channel_type, sentiment_cls, segments FROM public.tb_ta_rslt
-          WHERE proj_cd = $1 AND uid = ANY($2::text[]) AND segments IS NOT NULL${cond}`,
+          WHERE upper(proj_cd) = upper($1) AND uid = ANY($2::text[]) AND segments IS NOT NULL${cond}`,
         params
     );
     const out = [];
@@ -144,7 +144,7 @@ export async function fetchNegativeCallsByUids(projCd, uids, range = null) {
     const { rows } = await getPool().query(
         `SELECT uid, cdate, channel_type, sentiment_cls
            FROM public.tb_ta_rslt
-          WHERE proj_cd = $1 AND uid = ANY($2::text[]) AND sentiment_cls = '부정'${cond}
+          WHERE upper(proj_cd) = upper($1) AND uid = ANY($2::text[]) AND sentiment_cls = '부정'${cond}
           ORDER BY cdate DESC NULLS LAST`,
         params
     );
@@ -163,7 +163,7 @@ export async function fetchForbiddenCallsByUids(projCd, uids, range = null) {
     const { rows } = await getPool().query(
         `SELECT uid, cdate, channel_type, banned_hits
            FROM public.tb_ta_rslt
-          WHERE proj_cd = $1 AND uid = ANY($2::text[])
+          WHERE upper(proj_cd) = upper($1) AND uid = ANY($2::text[])
             AND banned_hits IS NOT NULL
             AND jsonb_typeof(to_jsonb(banned_hits)) = 'array'
             AND jsonb_array_length(to_jsonb(banned_hits)) > 0${cond}

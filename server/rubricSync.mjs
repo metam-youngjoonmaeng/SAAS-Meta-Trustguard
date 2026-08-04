@@ -11,50 +11,8 @@
  */
 
 const SYNC_DEPARTMENT = '기본';
-
-// 루브릭 귀속 메타(tenant_id / name)는 상수가 아니라 **브랜드·도메인별로 산출**한다.
-// 2026-08-03 이전에는 RUBRIC_TENANT_ID='kolon' / RUBRIC_NAME='코오롱 표준 (dev프론트)' 로
-// 하드코딩돼 전 브랜드(은행·이커머스·METAM…)의 루브릭이 코오롱 귀속으로 나갔다. 영향:
-//   - name  : 백엔드 pure_llm/prompt.py `_SYSTEM_PROMPT` 의 "평가표: {{RUBRIC_NAME}}" 에
-//             그대로 주입 → 은행 브랜드 평가인데 LLM 이 "코오롱 표준" 평가표로 안내받음.
-//   - tenant: pure_llm/fewshot.py ② 표준 골든셋 폴백 테넌트 + 루브릭 파일스토어
-//             list_rubrics 필터 + reference_data_store 디렉토리 귀속.
-// 격리 키는 ASCII 슬러그 고정(`org{N}` / `domain{N}`) — 테넌트가 파일시스템 경로와 AOSS
-// term 필터로 쓰이고, 기존 특수 트랙 마커('ecommerce'/'bank'/'kiwoom')와 충돌하면 안 된다.
-const ORG_TENANT_PREFIX = 'org';
-const DOMAIN_TENANT_PREFIX = 'domain';
-
-/**
- * 브랜드(org) 귀속 메타. 조회 실패·이름 미설정은 번호 폴백 — 평가는 계속 진행한다
- * (여기서 예외를 던지면 buildRubricFromDefs 호출부가 표준 트랙으로 폴백해버린다).
- */
-async function resolveOrgIdentity(pool, orgId) {
-    const tenantId = `${ORG_TENANT_PREFIX}${orgId}`;
-    try {
-        const { rows } = await pool.query(
-            'SELECT name FROM public.organizations WHERE id = $1 LIMIT 1',
-            [orgId]
-        );
-        const name = safeStr(rows[0] && rows[0].name).trim();
-        return { tenantId, name: name || `브랜드 ${orgId}` };
-    } catch {
-        return { tenantId, name: `브랜드 ${orgId}` };
-    }
-}
-
-/** 도메인(업종) 귀속 메타. 브랜드와 동일 규칙. */
-async function resolveDomainIdentity(pool, domainId) {
-    const tenantId = `${DOMAIN_TENANT_PREFIX}${domainId}`;
-    try {
-        const { rows } = await pool.query('SELECT name FROM public.domains WHERE id = $1 LIMIT 1', [
-            domainId,
-        ]);
-        const name = safeStr(rows[0] && rows[0].name).trim();
-        return { tenantId, name: name ? `${name} 도메인 기본` : `도메인 ${domainId} 기본` };
-    } catch {
-        return { tenantId, name: `도메인 ${domainId} 기본` };
-    }
-}
+const RUBRIC_TENANT_ID = 'kolon';
+const RUBRIC_NAME = '코오롱 표준 (dev프론트)';
 
 const RUBRIC_EXCLUDED_ORDER_NOS = new Set([3, 15, 16]);
 const KOLON_LEGACY_ITEM_NAMES = new Map([
@@ -209,8 +167,8 @@ function sanitizePromptTemplate(value) {
 export async function buildRubricFromDefs(pool, orgId) {
     const { rows } = await pool.query(
         `SELECT order_no, category, item, criterion, prompt_template, max_score, scoring_type, pentagon_axis
-           FROM public.eval_item_defs
-          WHERE org_id = $1
+           FROM eval_item_defs
+          WHERE tenant_id = $1
             AND department = $2
             AND deactivated_at IS NULL
             AND is_active = true
@@ -325,8 +283,8 @@ export async function buildRubricFromDefs(pool, orgId) {
     try {
         const { rows: axisRows } = await pool.query(
             `SELECT axis_no, label, description, prompt_template
-               FROM public.pentagon_axes
-              WHERE org_id = $1
+               FROM pentagon_axes
+              WHERE tenant_id = $1
                 AND department = $2
                 AND deactivated_at IS NULL
                 AND is_active = true
@@ -351,13 +309,10 @@ export async function buildRubricFromDefs(pool, orgId) {
         pentagon = null; // 펜타곤 축 조회 실패 → 펜타곤 없이 진행(무회귀)
     }
 
-    // 귀속 메타 — 브랜드별(격리 키 + LLM 프롬프트 노출 이름). 조회 실패는 번호 폴백(평가 계속).
-    const identity = await resolveOrgIdentity(pool, orgId);
-
     return {
         rubric: {
-            tenant_id: identity.tenantId,
-            name: identity.name,
+            tenant_id: RUBRIC_TENANT_ID,
+            name: RUBRIC_NAME,
             items,
             // 가·감점(정규 점수 외) + 등급 밴드 — 백엔드 report 가 deduction_triggers 연동해
             // 점수 적용 + grade_bands 로 권위 등급 산출. 코오롱 표준 트랙은 rubric_inline 미사용이라 무영향.
@@ -384,7 +339,7 @@ export async function buildRubricFromDefs(pool, orgId) {
 export async function buildRubricFromDomainDefaults(pool, domainId) {
     const { rows } = await pool.query(
         `SELECT order_no, category, item, criterion, prompt_template, max_score, scoring_type, pentagon_axis
-           FROM public.domain_default_eval_items
+           FROM domain_default_eval_items
           WHERE domain_id = $1
             AND is_active = true
           ORDER BY order_no ASC, id ASC`,
@@ -448,13 +403,10 @@ export async function buildRubricFromDomainDefaults(pool, domainId) {
         });
     }
 
-    // 귀속 메타 — 도메인별(격리 키 + LLM 프롬프트 노출 이름). 조회 실패는 번호 폴백(평가 계속).
-    const identity = await resolveDomainIdentity(pool, domainId);
-
     return {
         rubric: {
-            tenant_id: identity.tenantId,
-            name: identity.name,
+            tenant_id: RUBRIC_TENANT_ID,
+            name: RUBRIC_NAME,
             items,
             special_global: CUSTOM_SPECIAL_GLOBAL,
             special_enabled: true,

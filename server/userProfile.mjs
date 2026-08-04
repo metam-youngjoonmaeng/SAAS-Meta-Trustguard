@@ -26,28 +26,37 @@ export function buildMeResponse(row, sessionToken) {
         login_id: row.login_id,
         display_name: row.display_name,
         role: row.role,
-        org_id: row.org_id ?? null,
-        org_name: row.org_name ?? null,
+        tenant_id: row.tenant_id ?? null,
+        tenant_name: row.tenant_name ?? null,
         department: row.department ?? null,
         email: row.email ?? null,
         ...(sessionToken ? { session_token: sessionToken } : {}),
     };
 }
 
+// /me 조회 — common.users + 활성 멤버십(우선순위: last_active → 최소 id) + tenants.
+const ME_SELECT = `
+    SELECT u.id AS user_id,
+           COALESCE(u.username, regexp_replace(u.email, '\\.ics$', '')) AS login_id,
+           u.name AS display_name, u.email,
+           m.role::text AS role, m.tenant_id, m.department, tn.name AS tenant_name
+      FROM common.users u
+      LEFT JOIN LATERAL (
+          SELECT mm.id, mm.role, mm.tenant_id, mm.department
+            FROM common.memberships mm
+           WHERE mm.user_id = u.id AND mm.status = 'active'
+           ORDER BY (mm.id = u.last_active_membership_id) DESC NULLS LAST, mm.id ASC
+           LIMIT 1
+      ) m ON true
+      LEFT JOIN common.tenants tn ON tn.tenant_id = m.tenant_id
+     WHERE u.id = $1`;
+
 export function createUserProfileRouter(pool) {
     const router = express.Router();
 
     router.get('/me', async (req, res) => {
         try {
-            const { rows } = await pool.query(
-                `SELECT au.user_id, au.login_id, au.display_name, au.role, au.is_active,
-                        au.org_id, au.department, au.email,
-                        o.name AS org_name
-                 FROM public.admin_users au
-                 LEFT JOIN public.organizations o ON o.id = au.org_id
-                 WHERE au.user_id = $1`,
-                [req.session.user_id]
-            );
+            const { rows } = await pool.query(ME_SELECT, [req.session.user_id]);
             if (!rows[0]) {
                 res.status(404).json({ message: '계정을 찾을 수 없습니다' });
                 return;
@@ -86,7 +95,8 @@ export function createUserProfileRouter(pool) {
 
         try {
             const { rows: cur } = await pool.query(
-                `SELECT user_id, login_id, password_hash FROM public.admin_users WHERE user_id = $1`,
+                `SELECT id AS user_id, COALESCE(username, regexp_replace(email, '\\.ics$', '')) AS login_id, password_hash
+                   FROM common.users WHERE id = $1`,
                 [userId]
             );
             const me = cur[0];
@@ -120,20 +130,17 @@ export function createUserProfileRouter(pool) {
             const values = [];
             let idx = 1;
             if (newName !== null) {
-                fields.push(`display_name = $${idx++}`);
+                fields.push(`name = $${idx++}`);   // common.users.name (구 admin_users.display_name)
                 values.push(newName);
             }
             if (newPassword !== null) {
                 fields.push(`password_hash = $${idx++}`);
                 values.push(sha256Hex(newPassword));
             }
-            fields.push(`updated_at = now()`);
             values.push(userId);
-            const { rows: updated } = await pool.query(
-                `UPDATE public.admin_users SET ${fields.join(', ')} WHERE user_id = $${idx}
-                 RETURNING user_id, login_id, display_name, role, org_id, department`,
-                values
-            );
+            await pool.query(`UPDATE common.users SET ${fields.join(', ')} WHERE id = $${idx}`, values);
+            // 응답은 /me 와 동일 형태로 재조회(역할/테넌트/부서는 멤버십에서).
+            const { rows: updated } = await pool.query(ME_SELECT, [userId]);
 
             // 세션 캐시도 display_name 만 동기화 (role/org_id 등은 본 라우트에서 손대지 않음).
             if (req.session && newName !== null) {
