@@ -2,6 +2,7 @@ import React from 'react';
 import { Clock, Home, ChevronRight } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import OrgSwitcher from './OrgSwitcher';
+/* SAMPLE_UPLOAD_FEATURE */ import SampleUploadModal from './SampleUploadModal';
 
 // 원본: 01-AI-Tutor-dev/frontend/components/nav.tsx
 // 사이즈/위치 동일: h-60px, 좌측 패딩 22px, 로고 h-22px, 워드마크 fontFamily=Moneygraphy Rounded, fontSize 14.5
@@ -76,7 +77,7 @@ function buildCrumbs(activeTab, role, detailOrigin, onNavTab, settingsSection) {
     return label ? [{ label }] : [];
 }
 
-const Nav = ({ onHomeClick, onLogout, remainingMs, isDev, user, activeTab, detailOrigin, settingsSection, onNavTab }) => {
+const Nav = ({ onHomeClick, onLogout, remainingMs, isDev, user, activeTab, detailOrigin, settingsSection, onNavTab, onSampleUploaded }) => {
     const crumbs = buildCrumbs(activeTab, user?.role, detailOrigin, onNavTab, settingsSection);
     return (
         <nav className="app-nav">
@@ -128,6 +129,10 @@ const Nav = ({ onHomeClick, onLogout, remainingMs, isDev, user, activeTab, detai
                         </nav>
                     )}
                     <div className="app-nav-right">
+                        {/* SAMPLE_UPLOAD_FEATURE — 평가 리스트(평가 업로드)에서만 노출 */}
+                        {user && activeTab === 'dashboard' && (
+                            <SampleUploadModal onUploaded={onSampleUploaded} />
+                        )}
                         {user && <OrgSwitcher />}
                         {user && <NotificationBell />}
                         {remainingMs != null && (

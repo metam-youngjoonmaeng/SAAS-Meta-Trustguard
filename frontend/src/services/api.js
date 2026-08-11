@@ -899,3 +899,37 @@ export async function ingestFromQaPipeline(calls, { track = 'standard' } = {}) {
 // currentOrgId() 제거 — 호출부 0곳(죽은 코드)인데 Number(org_id) 로 짜여 있어,
 // 통합DB 의 tenant_id 문자열('metam')에는 항상 NaN→null 을 돌려주는 함정이었다.
 // 활성 브랜드는 actorRequestHeaders() 가 X-Active-Brand-Id 로 실어 보내고 서버가 해석한다.
+
+/* SAMPLE_UPLOAD_FEATURE — 평가 업로드 모달(SampleUploadModal)이 소비. */
+
+/**
+ * qa-pipeline 평가 비동기 잡 시작 — 즉시 { ok, job_id } 반환.
+ * 서버가 /evaluate/stream(SSE)을 소비하며 노드 진행상황을 보관, fetchQaPipelineJob 으로 폴링.
+ */
+export async function startQaPipelineJob(call, { track = 'standard' } = {}) {
+    return request('/api/ingest/qa-pipeline-jobs', {
+        method: 'POST',
+        body: JSON.stringify({ track, call }),
+    });
+}
+
+/** 잡 상태 조회 — { ok, job: { status:'running'|'done'|'error', progress:{nodes_done,running_nodes,recent_done}, result, error } } */
+export async function fetchQaPipelineJob(jobId) {
+    return request(`/api/ingest/qa-pipeline-jobs/${encodeURIComponent(jobId)}`);
+}
+
+/** 현재 활성 브랜드(tenant) id — super_admin 은 활성 브랜드 선택값(QA_ACTIVE_BRAND_KEY),
+ *  없으면 로그인 actor 캐시의 org_id. 통합DB: tenant_id 는 문자열('metam' 등)이라 그대로
+ *  문자열로 반환한다 (Number() 캐스팅 시 문자열 tenant 가 항상 NaN → 제거된 currentOrgId() 의 함정). */
+export function activeTenantId() {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    try {
+        const active = window.localStorage.getItem(QA_ACTIVE_BRAND_KEY);
+        if (active) return String(active).trim() || null;
+        const raw = window.localStorage.getItem(QA_ACTOR_STORAGE_KEY);
+        const orgId = raw ? JSON.parse(raw)?.org_id : null;
+        return orgId != null ? String(orgId) : null;
+    } catch {
+        return null;
+    }
+}

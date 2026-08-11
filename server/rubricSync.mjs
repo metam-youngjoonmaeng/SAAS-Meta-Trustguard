@@ -123,10 +123,15 @@ function parseAllowedStepsFromPrompt(promptTemplate, maxScore) {
     if (!text) return null;
     const line = text.split('\n').find((ln) => ln.includes('점수 단계'));
     if (!line) return null;
-    const nums = (line.match(/\d+/g) || []).map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n) && n >= 0);
+    // ★ 음수 단계 허용 — 감점 전용 항목(예: 키움 '점수 단계: 0 / -5')은 최상위가 0, 최저가 음수다.
+    //   `\d+` + `n >= 0` 이던 원형은 '-5' 를 5 로 읽어 [5,0] 을 만들고, 이어서 steps[0]!==만점(0)
+    //   으로 null 이 되어 카탈로그 폴백 [5,3,0] 으로 귀결 → 감점 항목이 5점 가점 항목으로 뒤바뀌었다.
+    const nums = (line.match(/-?\d+/g) || []).map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n));
     let steps = Array.from(new Set(nums)).sort((a, b) => b - a);
     if (steps.length < 2) return null;
-    if (steps[steps.length - 1] !== 0) steps.push(0);
+    // 0 이 없을 때만 보강. 원형의 `last !== 0` 은 음수 집합에서 [0,-5] → [0,-5,0] 을 만든다.
+    // (전부 비음수인 기존 데이터에서는 두 조건이 동일 — 무회귀.)
+    if (!steps.includes(0)) steps.push(0);
     const ms = Math.round(Number(maxScore));
     if (!Number.isFinite(ms) || steps[0] !== ms) return null;
     return steps.length >= 2 ? steps : null;
@@ -143,17 +148,19 @@ function parseStepsFromPromptLoose(promptTemplate) {
     // ① '점수 단계:' 줄 우선 (가장 명확한 형식)
     const stepLine = text.split('\n').find((ln) => ln.includes('점수 단계'));
     if (stepLine) {
-        nums = (stepLine.match(/\d+/g) || []).map((n) => parseInt(n, 10));
+        // ★ 음수 단계 허용 (감점 전용 항목: '점수 단계: 0 / -5'). 실측상 이 줄의 구분자는 전 항목 ' / '
+        //   이고 숫자 사이 하이픈은 0건이라 `-?\d+` 가 구분자를 음수로 오독할 여지가 없다.
+        nums = (stepLine.match(/-?\d+/g) || []).map((n) => parseInt(n, 10));
     } else {
         // ② 폴백 — 'N점:' / '- **N점**:' 형태 배점 항목 줄에서 점수 추출.
         //   ('N점 만점' 같은 만점 표기 줄은 제외 — 배점 단계가 아니라 총점 안내이므로)
         for (const ln of text.split('\n')) {
             if (ln.includes('만점')) continue;
-            const m = ln.match(/(\d+)\s*점\s*\*{0,2}\s*[:：]/);
+            const m = ln.match(/(-?\d+)\s*점\s*\*{0,2}\s*[:：]/);
             if (m) nums.push(parseInt(m[1], 10));
         }
     }
-    nums = nums.filter((n) => Number.isFinite(n) && n >= 0);
+    nums = nums.filter((n) => Number.isFinite(n));
     const steps = Array.from(new Set(nums)).sort((a, b) => b - a);
     return steps.length >= 2 ? steps : null;
 }

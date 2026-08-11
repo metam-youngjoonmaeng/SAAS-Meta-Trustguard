@@ -77,6 +77,22 @@ function categoryCell(raw, categoryKey, categoryMaxPoints) {
     return { text: String(earned), ratio: earned / maxPts };
 }
 
+/** 콜 목록에 실제로 채점돼 있는 카테고리 합집합 (등장 순서 보존).
+ *  백엔드 effectiveChecklistKeys 가 콜별로 그 콜의 카테고리로 checklist_yn_kor 를 만들므로,
+ *  브랜드가 섞인 목록에서도 이 합집합이 유일하게 옳은 컬럼 집합이다. */
+function categoriesOfCalls(rows) {
+    const out = [];
+    const seen = new Set();
+    for (const c of rows || []) {
+        const yn = c?.checklist_yn_kor;
+        if (!yn || typeof yn !== 'object') continue;
+        for (const k of Object.keys(yn)) {
+            if (k && !seen.has(k)) { seen.add(k); out.push(k); }
+        }
+    }
+    return out;
+}
+
 const DASHBOARD_DEPT_STORAGE_KEY = 'qa_dashboard_active_department';
 
 // 평가 리스트 한 페이지 건수 — 10건까지 한 화면, 초과분은 하단 숫자 네비게이션.
@@ -103,6 +119,11 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId, ksqiMode = f
     const ROLE_OPTIONS_BY_DEPT = brandConfig.roleOptionsByDept;
     // 레거시(신한1/한화2/코오롱3)=정적 체크리스트, 신규 브랜드(id≥4)=DB 기반 동적.
     const dynamic = isDynamicChecklistBrand(activeBrandId);
+    // 활성 브랜드가 '전체'(super_admin 전용) — 특정 브랜드의 항목 정의를 컬럼으로 쓸 수 없다.
+    // isDynamicChecklistBrand(null)=false 라 그대로 두면 미등록 브랜드용 폴백(DEFAULT_CHECKLIST_KEYS,
+    // '인사 예절'…)이 컬럼이 되는데 그 이름은 DB(eval_item_defs·eval_item_score) 어디에도 없어
+    // 전 행이 '-' 로 뜬다. 채점은 정상인데 조회만 깨져 보이는 오진의 원인이었다.
+    const allBrands = activeBrandId === null || activeBrandId === undefined || activeBrandId === '';
     // 기본 브랜드: 만점(분모)을 EvalItems 탭 편집 DB(eval_item_defs '기본')에서 라이브 조회.
     // 신한/한화 등은 enabled=false → 정적 checklistTemplate 폴백.
     const { categoryMaxPoints: CATEGORY_MAX_POINTS, effectiveTemplate, totalMax: rubricTotalMax } = useDefaultRubricMax({
@@ -365,21 +386,12 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId, ksqiMode = f
     //   - 최신 버전(기본): 현재 활성 항목만(effectiveTemplate) → 삭제(소프트삭제) 항목 제외, 콜 0건 신규 항목도 표시.
     //   - 옛 버전: 그 버전에 매칭되는 콜에 실제 채점된 카테고리만(과거 결과 보존 — 버전 전환으로 열람).
     //   - 전체('all'): 활성 + 전 기간 콜 카테고리 합집합(정말 다 볼 때만).
+    //   - '전체' 브랜드: 브랜드마다 루브릭이 달라 공통 항목 정의가 없다 → 실제 채점된 카테고리 합집합.
     const CHECKLIST_KEYS = useMemo(() => {
+        if (allBrands) return categoriesOfCalls(calls);
         if (!dynamic) return brandConfig.checklistKeys;
         const activeCats = [...new Set((effectiveTemplate || []).map((t) => t.category).filter(Boolean))];
-        const catsOf = (rows) => {
-            const out = [];
-            const seen = new Set();
-            for (const c of rows) {
-                const yn = c?.checklist_yn_kor;
-                if (!yn || typeof yn !== 'object') continue;
-                for (const k of Object.keys(yn)) {
-                    if (k && !seen.has(k)) { seen.add(k); out.push(k); }
-                }
-            }
-            return out;
-        };
+        const catsOf = categoriesOfCalls;
         const eff = versionFilterInfo.effectiveVersion;
         if (eff === '') {
             // 전체 — 활성 + 전 기간 콜 합집합
@@ -392,7 +404,7 @@ const Dashboard = ({ calls, isLoading, onOpenDetail, activeBrandId, ksqiMode = f
         // 옛 버전 — 그 버전에 매칭되는 콜의 카테고리(날짜 등 타 필터와 무관, 버전 기준).
         const versionCalls = calls.filter((c) => matchCallToVersion(parseCallDate(c.call_datetime)) === eff);
         return catsOf(versionCalls);
-    }, [dynamic, brandConfig, effectiveTemplate, calls, versionFilterInfo.effectiveVersion, latestVersion, matchCallToVersion]);
+    }, [allBrands, dynamic, brandConfig, effectiveTemplate, calls, versionFilterInfo.effectiveVersion, latestVersion, matchCallToVersion]);
 
     return (
         <div className="w-full">

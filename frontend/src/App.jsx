@@ -621,6 +621,7 @@ function App() {
                 detailOrigin={detailOrigin}
                 settingsSection={settingsSection}
                 onNavTab={handleSidebarTabClick}
+                onSampleUploaded={refreshCalls}
             />
             <div className="app-shell-body">
                 <Sidebar

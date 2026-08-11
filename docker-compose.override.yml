@@ -1,0 +1,12 @@
+# 로컬 전용 override (커밋 금지) — 평가를 무조건 로컬 백엔드(host.docker.internal:8081)로 강제.
+# asdf 설명력 루브릭 few-shot 로컬 실험용. 운영 복귀 시 이 파일 삭제.
+services:
+  qa-ai-api:
+    environment:
+      QA_PIPELINE_FORCE_LOCAL: "1"
+  # 로컬 전용 — RAG 개발 UI(실시간 로그 RAG·사전 탭, 평가항목 Test-RAG 배지/토글) 노출.
+  # NEXT_PUBLIC_ 이라 빌드 시점 인라인 → 변경 시 dashboard 재빌드 필요.
+  qa-ai-dashboard:
+    build:
+      args:
+        NEXT_PUBLIC_SHOW_RAG: "1"

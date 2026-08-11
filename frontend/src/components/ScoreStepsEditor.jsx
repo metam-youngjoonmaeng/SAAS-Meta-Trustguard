@@ -5,7 +5,9 @@ import { Plus, X, Sparkles, Undo2 } from 'lucide-react';
 // 저장은 기존 텍스트 포맷("점수 단계: 10 / 5 / 3" + "- 10점: …" 불릿)으로 합쳐 prompt_template 에 보관
 //   → 엔진(parseStepsFromPromptLoose)이 그대로 채점 척도를 파싱(무회귀). 브랜드·도메인 편집기 공용.
 
-const BULLET_RE = /^\s*-\s*([\d.]+)\s*점\s*[:：]\s*(.*)$/;
+// ★ 음수 단계 허용 — 감점 전용 항목의 불릿은 '- -5점: …' 이다. `([\d.]+)` 이던 원형은 앞의
+//   `-\s*` 가 불릿 하이픈을 먹은 뒤 숫자를 찾지 못해 그 행을 **통째로 버렸다**(편집 후 저장 시 소실).
+const BULLET_RE = /^\s*-\s*(-?[\d.]+)\s*점\s*[:：]\s*(.*)$/;
 
 // prompt_template(텍스트) → 점수 단계 행 배열 [{score, desc}]
 export function parseSteps(promptTemplate) {
@@ -22,7 +24,11 @@ export function parseSteps(promptTemplate) {
     if (hdr) {
         return hdr[1]
             .split('/')
-            .map((s) => ({ score: s.replace(/[^\d.]/g, '').trim(), desc: '' }))
+            // ★ 음수 부호 보존 — `replace(/[^\d.]/g,'')` 이던 원형은 '-5' 를 '5' 로 바꿔 감점을 가점으로 만들었다.
+            .map((s) => {
+                const m = String(s).match(/-?[\d.]+/);
+                return { score: m ? m[0] : '', desc: '' };
+            })
             .filter((s) => s.score);
     }
     return [];

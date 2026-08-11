@@ -91,8 +91,13 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         dynamicList: dynamic,
         activeBrandId, // 브랜드 전환 시 재조회 → 항목/분모 즉시 갱신(stale 방지).
     });
+    // 활성 브랜드가 '전체'(super_admin) — 브랜드마다 루브릭이 달라 기준 템플릿이 없다.
+    // 빈 배열을 주면 아래 orphan 복원 로직이 저장 행(category/item/평가-시점 만점)만으로 표를 만든다.
+    // 그대로 두면 미등록 브랜드 폴백(DEFAULT_CHECKLIST_TEMPLATE)이 기준이 되어 order_no 만 겹치는
+    // 다른 브랜드 항목명에 이 콜 점수가 붙는다(예: CJ 콜이 '첫인사/끝인사…' 로 표시).
+    const allBrands = activeBrandId === null || activeBrandId === undefined || activeBrandId === '';
     // 표시용 체크리스트: 신규 브랜드는 DB 기반(effectiveTemplate), 레거시는 정적 템플릿.
-    const checklistTemplate = dynamic ? (effectiveTemplate || []) : brandConfig.checklistTemplate;
+    const checklistTemplate = allBrands ? [] : (dynamic ? (effectiveTemplate || []) : brandConfig.checklistTemplate);
     // Pentagon 축은 브랜드 설정의 정적 5축 고정 (동적 N축 미사용).
     const PENTAGON_KEYS = brandConfig.radarKeys;
     const PENTAGON_LABELS = brandConfig.radarLabels;
