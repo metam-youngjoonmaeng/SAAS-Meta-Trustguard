@@ -2,7 +2,13 @@
  * 실행 중 창을 닫아도 평가는 계속 진행되며, 완료/실패 시 토스트로 알림. */
 import React, { useEffect, useRef, useState } from 'react';
 import { Upload, X, AlertCircle, CheckCircle2, FileJson, Sparkles, Loader2 } from 'lucide-react';
-import { startQaPipelineJob, fetchQaPipelineJob, activeTenantId, fetchOrganizations } from '../services/api';
+import {
+    startQaPipelineJob,
+    fetchQaPipelineJob,
+    activeTenantId,
+    fetchOrganizations,
+    fetchLlmBackends,
+} from '../services/api';
 
 /** 파이프라인 노드명 → 진행 표시용 한글 라벨 (미등록 노드는 접두 규칙 → 원어 폴백) */
 const NODE_LABELS = {
@@ -146,6 +152,80 @@ export default function SampleUploadModal({ onUploaded }) {
     const [orgNames, setOrgNames] = useState({});
     // 평가 백엔드 대상 — 서버 기본값과 동일(local). 운영 EC2 로 돌리려면 'ec2'.
     const pipelineTarget = 'local';
+    // ★ 2026-08-25 LLM 백엔드 — OpenAI(기본) / vLLM(자체 호스팅). 값은 call 에 실려
+    //   서버 buildEvaluatePayload → 파이프라인 body.llm_backend 로 전달된다.
+    //   빈 문자열 = "서버가 정한다"(미동봉). 사내 주소라 localStorage 보관에 문제 없다.
+    //
+    // ★ 2026-08-27 Azure OpenAI 추가. **엔드포인트·API 키는 이 화면에서 다루지 않는다** —
+    //   파이프라인 서버 env(AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY)가 유일한 출처다.
+    //   여기서 고르는 것은 백엔드와 **배포명**(=모델 선택에 해당)뿐이라 localStorage 보관에
+    //   문제가 없다. 키를 프론트 입력으로 바꾸려면 server/qaPipelineIngest.mjs 의 azureCfg
+    //   주석(감사로그 경로 주의)을 먼저 확인할 것.
+    const [llmBackend, setLlmBackend] = useState('');
+    const [vllmBaseUrl, setVllmBaseUrl] = useState('');
+    const [vllmModel, setVllmModel] = useState('');
+    const [azureDeployment, setAzureDeployment] = useState('');
+    // 백엔드 가용성 — 서버가 파이프라인 /v2/llm/backends 를 중계. 조회 실패는 'unknown' 으로
+    // 두고 선택을 막지 않는다(가용성 조회가 평가 실행의 전제조건이 되면 안 된다).
+    const [backendInfo, setBackendInfo] = useState({ state: 'loading', backends: {}, lock: null });
+    useEffect(() => {
+        try {
+            const raw = window.localStorage.getItem('mtg_llm_backend_cfg');
+            if (!raw) return;
+            const p = JSON.parse(raw);
+            if (p.backend) setLlmBackend(String(p.backend));
+            if (p.baseUrl) setVllmBaseUrl(String(p.baseUrl));
+            if (p.model) setVllmModel(String(p.model));
+            if (p.azureDeployment) setAzureDeployment(String(p.azureDeployment));
+        } catch {
+            /* 손상된 값은 무시 */
+        }
+    }, []);
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(
+                'mtg_llm_backend_cfg',
+                JSON.stringify({
+                    backend: llmBackend,
+                    baseUrl: vllmBaseUrl,
+                    model: vllmModel,
+                    azureDeployment,
+                })
+            );
+        } catch {
+            /* 저장 실패 무시 */
+        }
+    }, [llmBackend, vllmBaseUrl, vllmModel, azureDeployment]);
+    useEffect(() => {
+        let alive = true;
+        fetchLlmBackends()
+            .then((r) => {
+                if (!alive) return;
+                setBackendInfo(
+                    r?.ok
+                        ? { state: 'ok', backends: r.backends || {}, lock: r.lock || null }
+                        : { state: 'unknown', backends: {}, lock: null }
+                );
+            })
+            .catch(() => {
+                if (alive) setBackendInfo({ state: 'unknown', backends: {}, lock: null });
+            });
+        return () => {
+            alive = false;
+        };
+    }, []);
+    // 'no' 만 선택 차단 — 'unknown'(조회 실패/진행 중)은 막지 않는다.
+    const backendAvail = (name) => {
+        if (backendInfo.state !== 'ok') return 'unknown';
+        return backendInfo.backends?.[name]?.available === true ? 'yes' : 'no';
+    };
+    const azureAvail = backendAvail('azure');
+    const azureServerDeployment = backendInfo.backends?.azure?.default_deployment || '';
+    // localStorage 에 azure 가 남아 있는데 서버 설정이 빠진 경우 — 선택을 되돌린다.
+    // (막힌 option 을 value 로 들고 있으면 화면엔 선택돼 보이는데 실행은 실패한다.)
+    useEffect(() => {
+        if (llmBackend === 'azure' && azureAvail === 'no') setLlmBackend('');
+    }, [llmBackend, azureAvail]);
     // 진행 중 평가 — 창을 닫아도 유지 (컴포넌트는 버튼과 함께 상시 마운트)
     const [running, setRunning] = useState(null); // { qa_id, startedAt }
     const [elapsedSec, setElapsedSec] = useState(0);
@@ -268,6 +348,21 @@ export default function SampleUploadModal({ onUploaded }) {
             transcript,
             conversation: parseTranscriptToTurns(transcript),
         };
+        // ★ 2026-08-25 LLM 백엔드 — 빈 값이면 아예 안 실어 서버/파이프라인 기본값을 쓴다.
+        if (llmBackend) {
+            call.llm_backend = llmBackend;
+            if (llmBackend === 'vllm') {
+                const vl = {};
+                if (vllmBaseUrl.trim()) vl.base_url = vllmBaseUrl.trim();
+                if (vllmModel.trim()) vl.model = vllmModel.trim();
+                if (Object.keys(vl).length > 0) call.vllm = vl;
+            }
+            // ★ 2026-08-27 Azure — 배포명만 싣는다(크리덴셜 없음). 비우면 파이프라인의
+            //   AZURE_OPENAI_DEPLOYMENT 를 쓴다.
+            if (llmBackend === 'azure' && azureDeployment.trim()) {
+                call.azure = { deployment: azureDeployment.trim() };
+            }
+        }
         if (parsedInput.cdate || parsedInput.call_datetime) {
             call.cdate = String(parsedInput.cdate || parsedInput.call_datetime);
         }
@@ -401,6 +496,105 @@ export default function SampleUploadModal({ onUploaded }) {
                                     활성 브랜드의 AI 평가항목 기준으로 평가·적재됩니다 (운영 데이터). 실행 후 창을 닫아도
                                     평가는 계속 진행되며, 완료되면 알림으로 알려드립니다.
                                 </span>
+                            </div>
+
+                            {/* ★ 2026-08-25 LLM 백엔드 선택 — OpenAI(기본) / vLLM(자체 호스팅).
+                                '서버 기본' 이면 call 에 아무것도 안 실어 파이프라인 설정을 그대로 따른다. */}
+                            <div className="bg-[var(--background-soft)] border border-[var(--border)] rounded-lg px-3 py-2.5 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <label className="text-[11px] font-bold text-[var(--ink-500)] uppercase tracking-wider">
+                                        LLM 백엔드
+                                    </label>
+                                    <select
+                                        value={llmBackend}
+                                        onChange={(e) => setLlmBackend(e.target.value)}
+                                        disabled={!!running}
+                                        className="text-xs border border-[var(--border)] rounded-md px-2 py-1 bg-[var(--background)] text-[var(--ink-900)] disabled:opacity-50"
+                                    >
+                                        <option value="">서버 기본</option>
+                                        <option value="openai">OpenAI</option>
+                                        <option value="vllm">vLLM (로컬)</option>
+                                        {/* ★ 2026-08-27 Azure — 서버 env(AZURE_OPENAI_*) 미설정이면
+                                            고를 수 없게 막는다. 그 상태로 실행하면 파이프라인이
+                                            bedrock 으로 폴백하고 Bedrock 은 IAM 거부라 평가가
+                                            통째로 실패한다(사유도 AccessDenied 로만 보인다). */}
+                                        <option value="azure" disabled={azureAvail === 'no'}>
+                                            Azure OpenAI
+                                            {azureAvail === 'no' ? ' — 서버 미설정' : ''}
+                                        </option>
+                                    </select>
+                                    <span className="text-[11px] text-[var(--ink-500)]">
+                                        {llmBackend === 'vllm'
+                                            ? '사내 vLLM 서버로 평가합니다.'
+                                            : llmBackend === 'openai'
+                                              ? 'OpenAI API 로 평가합니다.'
+                                              : llmBackend === 'azure'
+                                                ? 'Azure OpenAI 배포로 평가합니다.'
+                                                : '파이프라인 서버 설정을 따릅니다.'}
+                                    </span>
+                                </div>
+                                {llmBackend === 'vllm' ? (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <input
+                                            type="url"
+                                            value={vllmBaseUrl}
+                                            onChange={(e) => setVllmBaseUrl(e.target.value)}
+                                            disabled={!!running}
+                                            placeholder="http://10.13.6.237:8000/v1"
+                                            title="비우면 파이프라인의 QA_VLLM_BASE_URL 을 사용합니다."
+                                            spellCheck={false}
+                                            autoComplete="off"
+                                            className="flex-1 min-w-[240px] text-xs border border-[var(--border)] rounded-md px-2 py-1 bg-[var(--background)] text-[var(--ink-900)] disabled:opacity-50"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={vllmModel}
+                                            onChange={(e) => setVllmModel(e.target.value)}
+                                            disabled={!!running}
+                                            placeholder="모델명 (비우면 자동탐지)"
+                                            title="비우면 파이프라인이 /v1/models 첫 항목을 사용합니다."
+                                            spellCheck={false}
+                                            autoComplete="off"
+                                            className="flex-1 min-w-[180px] text-xs border border-[var(--border)] rounded-md px-2 py-1 bg-[var(--background)] text-[var(--ink-900)] disabled:opacity-50"
+                                        />
+                                    </div>
+                                ) : null}
+                                {/* ★ 2026-08-27 Azure — 배포명만 받는다. 엔드포인트·API 키는
+                                    파이프라인 서버 env 전용이라 이 화면에 입력칸이 없다. */}
+                                {llmBackend === 'azure' ? (
+                                    <div className="space-y-1.5">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={azureDeployment}
+                                                onChange={(e) => setAzureDeployment(e.target.value)}
+                                                disabled={!!running}
+                                                placeholder={
+                                                    azureServerDeployment
+                                                        ? `배포명 (비우면 ${azureServerDeployment})`
+                                                        : '배포명 (비우면 서버 기본 배포)'
+                                                }
+                                                title="Azure 포털의 배포(deployment) 이름. 모델명이 아니라 배포명입니다. 비우면 파이프라인의 AZURE_OPENAI_DEPLOYMENT 를 사용합니다."
+                                                spellCheck={false}
+                                                autoComplete="off"
+                                                className="flex-1 min-w-[240px] text-xs border border-[var(--border)] rounded-md px-2 py-1 bg-[var(--background)] text-[var(--ink-900)] disabled:opacity-50"
+                                            />
+                                        </div>
+                                        <p className="text-[11px] text-[var(--ink-500)]">
+                                            엔드포인트·API 키는 파이프라인 서버 설정(AZURE_OPENAI_*)을 사용합니다 — 이
+                                            화면에서 입력하지 않습니다.
+                                            {azureAvail === 'unknown'
+                                                ? ' 서버 설정 상태를 확인하지 못했습니다.'
+                                                : ''}
+                                        </p>
+                                    </div>
+                                ) : null}
+                                {azureAvail === 'no' && llmBackend !== 'azure' ? (
+                                    <p className="text-[11px] text-[var(--ink-500)]">
+                                        Azure OpenAI 는 파이프라인 서버에 엔드포인트·API 키·배포명이 설정되면 선택할 수
+                                        있습니다.
+                                    </p>
+                                ) : null}
                             </div>
 
                             {parseError ? (

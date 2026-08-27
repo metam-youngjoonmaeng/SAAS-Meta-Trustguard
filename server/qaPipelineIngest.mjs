@@ -109,6 +109,24 @@ function asNumber(value) {
 }
 
 /**
+ * 항목 점수 전용 파서 — '채점 안 됨'(null)과 '0점'을 구분한다.
+ *
+ * ★ 2026-08-26 버그: 파이프라인은 인프라 실패 항목을 `score: null` 로 보내
+ *   (`v2/pure_llm/evaluator.py` · `v2/agents/custom_rubric/runner.py` — 분자·분모 양쪽 제외 규약)
+ *   호출부가 `if (score === null) → 행 생략` 으로 받도록 설계돼 있었다. 그런데 `asNumber` 는
+ *   **`Number(null) === 0`** 이라 null 을 0 으로 바꿔 그 가드를 통째로 무력화했다.
+ *   결과: LLM 응답 누락 항목이 '0점'으로 굳어 그 항목 배점만큼 총점이 깎였다
+ *   (실측 CJ #6 설명력 −7 → 콜 총점 97 → 90).
+ *   `asNumber` 자체는 손대지 않는다 — `max_score` 판정(감점전용 항목 식별: `dm !== 0`)이
+ *   null→0 폴백에 의존하고 있어 전역 변경은 그쪽 동작을 바꾼다.
+ */
+function asScore(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
+    return asNumber(value);
+}
+
+/**
  * /evaluate 응답에서 item_number → 평가 dict 인덱스 구축.
  * 1순위 report.item_scores[], 없으면 report.evaluation.categories[].items[] 평탄화.
  * 동일 item_number 중복 시 먼저 본 행 유지(1순위 소스 우선).
@@ -402,12 +420,59 @@ function buildEvaluatePayload(call) {
         call?.disable_skills !== undefined
             ? Boolean(call.disable_skills)
             : safeStr(process.env.QA_PIPELINE_DISABLE_SKILLS).trim().toLowerCase() !== 'false';
+    // ★ 2026-08-25 LLM 백엔드 선택 — OpenAI(기본) / vLLM(자체 호스팅, 사내 10.13.6.237).
+    //   ★ 2026-08-27 Azure OpenAI 추가.
+    //   call.llm_backend → env QA_PIPELINE_LLM_BACKEND → 미동봉(=파이프라인 서버 기본값) 순.
+    //   ※ 미동봉이 곧 "서버가 정한다" 이므로 빈 값을 억지로 'openai' 로 채우지 않는다 —
+    //     채우면 파이프라인의 LLM_BACKEND 변경이 대시보드발 평가에만 안 먹는 비대칭이 생긴다.
+    //   ※ 파이프라인은 모델 잠금(QA_LLM_MODEL_LOCK)이 켜져 있어도 잠금 예외 목록
+    //     (nodes/llm.py::_lock_exempt_backends)에 든 백엔드는 통과시킨다. 목록은
+    //     env QA_LLM_LOCK_EXEMPT_BACKENDS 로 정하며 파이프라인 .env 에 `vllm,azure` 로
+    //     설정돼 있다(2026-08-27). **bedrock 은 목록에 없다** — IAM 명시 거부 상태라
+    //     넣으면 평가가 전멸한다.
+    const llmBackend =
+        safeStr(call?.llm_backend).trim().toLowerCase() ||
+        safeStr(process.env.QA_PIPELINE_LLM_BACKEND).trim().toLowerCase();
+    // vLLM 접속 정보 — backend 가 vllm 일 때만 의미가 있다. 미동봉이면 파이프라인이
+    // 자기 QA_VLLM_* env 로 떨어진다. 크리덴셜이 아니라 사내 주소라 로깅 위험이 없다.
+    const vllmBaseUrl =
+        safeStr(call?.vllm?.base_url).trim() || safeStr(process.env.QA_PIPELINE_VLLM_BASE_URL).trim();
+    const vllmModel = safeStr(call?.vllm?.model).trim() || safeStr(process.env.QA_PIPELINE_VLLM_MODEL).trim();
+    const vllmCfg = {};
+    if (vllmBaseUrl) vllmCfg.base_url = vllmBaseUrl;
+    if (vllmModel) vllmCfg.model = vllmModel;
+    // ★ 2026-08-27 Azure OpenAI 접속 정보 — backend 가 azure 일 때만 의미가 있다.
+    //
+    //   **API 키·엔드포인트는 여기로 오지 않는다.** 파이프라인 서버 env(AZURE_OPENAI_ENDPOINT /
+    //   AZURE_OPENAI_API_KEY)가 유일한 출처다. 파이프라인은 요청 body 의 `azure.api_key` 도
+    //   받을 수 있지만(nodes/azure_llm.py::set_request_azure_creds), MTG 경로에서는 의도적으로
+    //   보내지 않는다 — 이유:
+    //     · MTG 는 다수 운영자가 쓰는 대시보드다. 키를 브라우저에 두면 사용자 수만큼 사본이 생긴다.
+    //     · 이 payload 는 /api/ingest/qa-pipeline-jobs 로 들어온 call 객체에서 조립된다.
+    //       같은 라우터의 다른 경로(brandRoutes 등)는 감사로그에 req.body 를 통째로 적재한다 —
+    //       키가 body 에 있으면 라우트 하나만 잘못 손대도 DB 에 평문으로 남는다.
+    //     · 배포명은 크리덴셜이 아니므로 요청 단위 선택을 허용한다(모델 선택에 해당).
+    //   키를 프론트에서 받고 싶어지면 여기 azureCfg 에 api_key/endpoint 를 더하면 되지만,
+    //   위 감사로그 경로를 먼저 확인할 것.
+    //
+    //   배포명: call.azure.deployment → env QA_PIPELINE_AZURE_DEPLOYMENT → 미동봉(=파이프라인
+    //   AZURE_OPENAI_DEPLOYMENT). 'auto' 는 파이프라인이 '서버 기본 배포' 신호로 해석한다.
+    const azureDeployment =
+        safeStr(call?.azure?.deployment).trim() || safeStr(process.env.QA_PIPELINE_AZURE_DEPLOYMENT).trim();
+    const azureApiVersion = safeStr(call?.azure?.api_version).trim();
+    const azureCfg = {};
+    if (azureDeployment) azureCfg.deployment = azureDeployment;
+    if (azureApiVersion) azureCfg.api_version = azureApiVersion;
+
     return {
         transcript: call?.transcript,
         consultation_id: consultationId,
         persona_mode: personaMode,
         disable_rag: disableRag,
         disable_skills: disableSkills,
+        ...(llmBackend ? { llm_backend: llmBackend } : {}),
+        ...(llmBackend === 'vllm' && Object.keys(vllmCfg).length > 0 ? { vllm: vllmCfg } : {}),
+        ...(llmBackend === 'azure' && Object.keys(azureCfg).length > 0 ? { azure: azureCfg } : {}),
         metadata: {
             source: 'qa_dashboard',
             qa_id: safeStr(call?.qa_id ?? call?.id).trim() || undefined,
@@ -710,11 +775,20 @@ const NO_OCCURRENCE_MARKERS = ['미발생', '해당없음', '해당 없음', '�
 const SYSTEM_QUOTE_MARKERS = ['근거 인용 미제출', 'LLM 평가 실패', 'evidence 추출 불가'];
 
 /**
- * 단일 항목 평가 dict 에서 evidence 의 상담사 발화를 (개수 제한 없이) 모두 모아 개행 join.
- *   - 상담사 마커 우선, 고객 마커 제외, 마커 없으면 첫 발화 1건 fallback.
+ * 단일 항목 평가 dict 에서 evidence 발화를 (개수 제한 없이) 모두 모아 개행 join.
+ *   - 상담사 발화 + **고객 발화 모두 포함**, evidence 원래 순서 유지.
  *   - 감점이 없고 judgment 가 미발생/해당없음류면 발화 표시 생략.
  *   - (system) placeholder(근거 인용 미제출 등)는 발화가 아니므로 생략.
  *   - 중복 제거. 프론트 하이라이트는 발화별 부분일치 매칭이라 개행 join 호환.
+ *
+ * ★ 2026-08-25 — 종전에는 `CUSTOMER_MARKERS` 에 걸리는 발화를 `continue` 로 **버렸다**.
+ *   그래서 감점 근거가 고객 반응에 있는 경우(재질문 → 고객 "아까 말씀드렸잖아요")
+ *   상담사 질문만 남고 정작 근거가 되는 고객 발화가 화면에서 사라졌다. 사용자 지시로
+ *   고객 발화도 포함한다.
+ *   순서는 상담사/고객으로 묶지 않고 **evidence 원순서**를 그대로 둔다 — 위 예처럼
+ *   문답 한 쌍일 때 시간 순서가 곧 근거의 의미이고, 화자별로 재배열하면 그 맥락이 깨진다.
+ *   (프론트 하이라이트는 발화 단위 부분일치라 순서에 영향받지 않는다.)
+ *   컬럼명 `agent_utterance` 는 스키마 변경 없이 그대로 둔다.
  */
 function agentQuoteOf(ev) {
     const judgment = safeStr(ev?.judgment);
@@ -723,23 +797,17 @@ function agentQuoteOf(ev) {
     }
     const picked = [];
     const seen = new Set();
-    let fallback = '';
     for (const q of safeList(ev?.evidence)) {
         if (!q || typeof q !== 'object') continue;
         const quote = safeStr(q.quote).trim();
         if (!quote || seen.has(quote)) continue;
         const speaker = safeStr(q.speaker).toLowerCase();
         if (speaker.includes('system') || SYSTEM_QUOTE_MARKERS.some((m) => quote.includes(m))) continue;
-        if (CUSTOMER_MARKERS.some((m) => speaker.includes(m))) continue;
-        if (AGENT_MARKERS.some((m) => speaker.includes(m))) {
-            seen.add(quote);
-            picked.push(quote);
-        } else if (!fallback) {
-            fallback = quote;
-        }
+        // 화자 무관(상담사·고객·마커 없음) 전부 채택 — system placeholder 만 위에서 걸렀다.
+        seen.add(quote);
+        picked.push(quote);
     }
-    if (picked.length) return picked.join('\n');
-    return fallback;
+    return picked.join('\n');
 }
 
 /**
@@ -792,7 +860,7 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
             warnings.push(`order ${orderNo}: item_number #${orderNo} 응답에 없음 → 행 생략`);
             continue;
         }
-        const score = asNumber(ev.score);
+        const score = asScore(ev.score);
         if (score === null) {
             nullCount += 1;
             if (safeStr(ev?.flag).trim() !== 'no_criteria') nonCriteriaNull = true;
@@ -841,7 +909,7 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
                 warnings.push(`additive order ${ono}: 응답에 없음 → 행 생략`);
                 continue;
             }
-            const score = asNumber(ev.score);
+            const score = asScore(ev.score);
             if (score === null) {
                 warnings.push(`additive order ${ono}: score=null/skipped → 행 생략`);
                 continue;
@@ -959,7 +1027,7 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
             warnings.push(`루브릭 index ${index}: rowMeta 매핑 없음 → 행 생략`);
             continue;
         }
-        const score = asNumber(ev.score);
+        const score = asScore(ev.score);
         if (score === null) {
             nullCount += 1;
             if (safeStr(ev?.flag).trim() !== 'no_criteria') nonCriteriaNull = true;
@@ -978,6 +1046,21 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
             const m = asNumber(ev.max_score);
             return m !== null && m > 0 ? m : 5;
         })();
+        // ★ 감점 항목(만점 0 · 음수 단계) 식별 — 키움 #5 고객정보확인 · #9 고객배려 및 호응 ·
+        //   #10 소비자보호 고지의무는 원문 평가표가 0점/-5점 구조라 defs 만점과 채점 스케일이 모두 0 이다.
+        //   위 itemMax 폴백이 이 경우 5 를 돌려주므로 그대로 두면
+        //     ① 분모에 5×3=15 가 붙어 콜 만점이 100 → 115 로 부풀고
+        //     ② 체크리스트 행의 '배점 5' 가 eval_item_score.max_score=5 로 굳어 감점 -5 가
+        //        '5점 만점에 0점' 으로 클램프 표기된다(parseStoredEarned 하한 0).
+        //   Y/N 항목과 동일하게 분자에만 반영하고 분모에서 제외한다(체크리스트 행 미생성 →
+        //   eval_item_score.max_score=NULL). 감점 점수는 evaluations 로 그대로 적재된다.
+        //   만점이 양수인 기존 브랜드(레거시·ecom·bank·코오롱)는 declaredMax>0 이라 무영향.
+        const isDeductionItem = (() => {
+            const dm = asNumber(slot.max_score);
+            if (dm !== 0) return false;
+            const m = asNumber(ev.max_score);
+            return m === null || m <= 0;
+        })();
         const aiEval = round1(score);
         // Y/N(컴플라이언스 체크) 항목은 콜 총점(ai_score)·만점 합산에서 제외 — 점수 무관 순수 모니터링
         // (기획 docs/YN_EVAL_ITEM_PLAN §4.2). 평가 행(evaluations)만 기록 →
@@ -987,7 +1070,11 @@ export function mapEvaluateResponseRubric(resp, rowMeta) {
         //   금지어 행이 있으면 합계가 /105 로 표기됨 (0713 RCA: 분모 제외는 행 부재만 가능).
         //   총점(ai_score)은 이미 Y/N 제외라 체크리스트 생략이 점수 무영향.
         const isYesNo = safeStr(slot.scoring_type).trim().toLowerCase() === 'yes_no';
-        if (!isYesNo) {
+        if (!isYesNo && isDeductionItem) {
+            // 감점 항목 — 분자만 가산(음수 그대로). 분모·체크리스트 제외.
+            rawTotal += aiEval;
+            sumEarned += aiEval;
+        } else if (!isYesNo) {
             rawTotal += aiEval;
             sumEarned += aiEval;
             sumMax += itemMax;

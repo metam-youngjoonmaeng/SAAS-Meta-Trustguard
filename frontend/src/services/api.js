@@ -90,16 +90,24 @@ export async function fetchMyMemberships() {
 
 // 활성 조직 전환. 서버 세션 org/role 교체 + 프론트 actor 캐시(role/org)도 동기화.
 // (호출부는 성공 후 window.location.reload() 로 전 화면을 새 org 로 재조회하는 것을 권장.)
-export async function switchOrg(traineeId) {
+// ★ 2026-08-25 통합DB 필드명 정정. 서버 라우트는 body 를 `membership_id ?? trainee_id` 순으로
+//   읽고 응답은 { membership_id, tenant_id, tenant_name, role, department } 를 돌려준다.
+//   종전 코드는 `res.org_id` 를 읽어 **항상 undefined** 였다 → actor 캐시 org 가 null 로 덮이고
+//   super_admin 활성 브랜드(QA_ACTIVE_BRAND_KEY)가 영영 갱신되지 않아, 전환해도 이전 브랜드
+//   스코프로 조회됐다. 구 필드는 폴백으로 남긴다(구 서버 응답 호환).
+//   ※ actor 캐시의 **로컬 키 이름은 `org_id` 를 유지한다** — activeTenantId() 가 그 키를 읽는다.
+//      바꿀 것은 키가 아니라 값의 출처다.
+export async function switchOrg(membershipId) {
     const res = await request('/api/auth/switch-org', {
         method: 'POST',
-        body: JSON.stringify({ trainee_id: traineeId }),
+        body: JSON.stringify({ membership_id: membershipId, trainee_id: membershipId }),
     });
+    const tenantId = res?.tenant_id ?? res?.org_id ?? null;
     try {
-        syncStoredActor({ org_id: res.org_id ?? null, role: res.role });
+        syncStoredActor({ org_id: tenantId, role: res.role });
         // super_admin 은 org 스코프가 X-Active-Brand-Id 헤더 기반 → 전환한 org 로 활성 브랜드도 맞춤.
-        if (res.role === 'super_admin' && typeof window !== 'undefined' && window.localStorage && res.org_id != null) {
-            window.localStorage.setItem(QA_ACTIVE_BRAND_KEY, String(res.org_id));
+        if (res.role === 'super_admin' && typeof window !== 'undefined' && window.localStorage && tenantId != null) {
+            window.localStorage.setItem(QA_ACTIVE_BRAND_KEY, String(tenantId));
         }
     } catch { /* 캐시 동기화 실패는 무시(리로드로 서버기준 복구) */ }
     return res;
@@ -470,6 +478,28 @@ export async function deleteEvalItemDef(orderNo, department) {
     return request(`/api/admin/eval-items/${encodeURIComponent(orderNo)}${qs}`, {
         method: 'DELETE',
     });
+}
+
+/* ── KMS 업무 데이터 ─────────────────────────────────────────────
+ * 업무별 필수 확인정보·필수 안내. 활성 브랜드 스코프(헤더 X-Active-Brand-Id).
+ * 저장은 전량 치환 — 서버가 업무명(task) 기준 중복 제거 후 qa_batch_configs.config.kms 에 적재.
+ * ─────────────────────────────────────────────────────────── */
+
+export async function fetchKmsItems() {
+    return request('/api/admin/kms-items');
+}
+
+// 부분 저장 — { items } · { marked_items } · { docs } 중 넘긴 채널만 교체(나머지는 서버가 보존).
+export async function saveKmsConfig(patch) {
+    return request('/api/admin/kms-items', {
+        method: 'PUT',
+        body: JSON.stringify(patch || {}),
+    });
+}
+
+// 등록 문서 → RAG 색인(임베딩) 요청. 파이프라인 색인 엔드포인트가 없으면 502 + 사유 반환.
+export async function buildKmsIndex() {
+    return request('/api/admin/kms-index', { method: 'POST' });
 }
 
 /* ── Pentagon 축 ─────────────────────────────────────────────── */
@@ -916,6 +946,17 @@ export async function startQaPipelineJob(call, { track = 'standard' } = {}) {
 /** 잡 상태 조회 — { ok, job: { status:'running'|'done'|'error', progress:{nodes_done,running_nodes,recent_done}, result, error } } */
 export async function fetchQaPipelineJob(jobId) {
     return request(`/api/ingest/qa-pipeline-jobs/${encodeURIComponent(jobId)}`);
+}
+
+/**
+ * LLM 백엔드 가용성 조회 (2026-08-27) — 서버가 파이프라인 /v2/llm/backends 를 중계.
+ *
+ * 반환: { ok, default, lock:{locked,backend,model,exempt_backends}, backends:{openai|azure|vllm|bedrock:{available,...}} }
+ * 파이프라인 불통이면 { ok:false, message, backends:{} } — 호출부는 '알 수 없음' 으로 degrade 하고
+ * 선택을 막지 않는다. 크리덴셜은 응답에 포함되지 않는다(존재 여부 bool 만).
+ */
+export async function fetchLlmBackends() {
+    return request('/api/llm/backends');
 }
 
 /** 현재 활성 브랜드(tenant) id — super_admin 은 활성 브랜드 선택값(QA_ACTIVE_BRAND_KEY),

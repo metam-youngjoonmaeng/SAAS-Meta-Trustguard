@@ -9,6 +9,7 @@ import {
     fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, deleteEvalItemDef, fetchEvalItemHistory,
     fetchPentagonAxes, savePentagonAxis, createPentagonAxis,
     fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion,
+    fetchKmsItems, saveKmsConfig,
 } from '../services/api';
 import {
     Plus,
@@ -153,6 +154,51 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
         });
     }, [axes, pentagonAxesByNo]);
 
+    // ── KMS 지정 상태 (배지 표시 + 모달의 'KMS 항목' 체크박스) ────────────────
+    // 소유는 [KMS] 탭(qa_batch_configs.config.kms). 여기서는 표시 + 항목 저장 시 동기화만 한다.
+    const [kmsMarks, setKmsMarks] = useState([]);
+    const [kmsDocCount, setKmsDocCount] = useState({});   // { order_no: 문서 건수 }
+
+    const reloadKms = useCallback(async () => {
+        try {
+            const res = await fetchKmsItems();
+            setKmsMarks(Array.isArray(res?.marked_items) ? res.marked_items : []);
+            const cnt = {};
+            (Array.isArray(res?.docs) ? res.docs : []).forEach((d) => {
+                (d.linked_items || []).forEach((no) => {
+                    cnt[no] = (cnt[no] || 0) + 1;
+                });
+            });
+            setKmsDocCount(cnt);
+        } catch {
+            // KMS 조회 실패는 평가항목 관리 본기능과 무관 — 배지만 생략한다(무회귀).
+            setKmsMarks([]);
+            setKmsDocCount({});
+        }
+    }, []);
+
+    useEffect(() => {
+        reloadKms();
+    }, [reloadKms, activeBrandId]);
+
+    // 항목 모달에서 KMS 여부를 바꿨을 때 — marked_items 만 전송(items/docs 는 서버가 보존).
+    const applyKmsMark = useCallback(
+        async (orderNo, marked) => {
+            const no = Number(orderNo);
+            if (!Number.isInteger(no) || no <= 0) return;
+            const next = marked
+                ? [...new Set([...kmsMarks, no])].sort((a, b) => a - b)
+                : kmsMarks.filter((n) => n !== no);
+            setKmsMarks(next);   // 낙관적 반영 — 실패 시 아래 reload 로 되돌아온다
+            try {
+                await saveKmsConfig({ marked_items: next });
+            } catch {
+                reloadKms();
+            }
+        },
+        [kmsMarks, reloadKms]
+    );
+
     const selectedItem = selection.kind === 'item' ? items[selection.idx] : null;
     const selectedAxis = selection.kind === 'axis'
         ? { label: effectiveAxes[selection.idx], idx: selection.idx, dbAxis: pentagonAxesByNo[selection.idx + 1] || null }
@@ -204,6 +250,8 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                                         label={it.item}
                                         selected={on}
                                         inactive={it.is_active === false}
+                                        kms={kmsMarks.includes(Number(it.order_no))}
+                                        kmsDocs={kmsDocCount[Number(it.order_no)] || 0}
                                         onSelect={() => setSelection({ kind: 'item', idx })}
                                     />
                                 );
@@ -277,6 +325,8 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                     mode="new"
                     axes={effectiveAxes}
                     departments={departments}
+                    kmsMarked={false}
+                    onKmsSave={applyKmsMark}
                     onSaved={() => { reloadDefs(); }}
                     onRubricSync={handleRubricSync}
                     onClose={() => setModal(null)}
@@ -289,6 +339,8 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                     existingDef={evalDefsByOrderNo[modal.item.order_no]}
                     axes={effectiveAxes}
                     departments={departments}
+                    kmsMarked={kmsMarks.includes(Number(modal.item.order_no))}
+                    onKmsSave={applyKmsMark}
                     onSaved={(def) => { if (def) upsertEvalDef(def); else reloadDefs(); }}
                     onRubricSync={handleRubricSync}
                     onClose={() => setModal(null)}
@@ -384,7 +436,7 @@ function AddBox({ label, onClick }) {
 /* ── 좌측 리스트 행 ───────────────────────────────────────────── */
 
 function ItemRow({
-    orderNo, category, label, selected, onSelect, inactive = false,
+    orderNo, category, label, selected, onSelect, inactive = false, kms = false, kmsDocs = 0,
 }) {
     // 행 클릭 = 선택(우측 미리보기)만 — 행 내 화살표 편집 버튼은 중복 경로라 제거(2026-07-08 QA 피드백).
     return (
@@ -408,6 +460,16 @@ function ItemRow({
                     }`}>
                         {label}
                     </span>
+                    {/* KMS 지정 항목 — 소유는 [KMS] 탭. 문서 건수는 연결된 근거 문서 수. */}
+                    {kms && (
+                        <span
+                            title={kmsDocs > 0 ? `KMS 항목 · 근거 문서 ${kmsDocs}건` : 'KMS 항목 · 등록된 근거 문서 없음'}
+                            className="shrink-0 flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-[var(--primary)] text-white"
+                        >
+                            KMS
+                            {kmsDocs > 0 && <span className="tabular-nums opacity-90">{kmsDocs}</span>}
+                        </span>
+                    )}
                 </div>
             </div>
         </div>
@@ -1064,8 +1126,11 @@ export function DiffText({ value, other, mode }) {
 
 /* ── 체크리스트 항목 모달 (신규 / 편집) ───────────────────────── */
 
-function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, onRubricSync, onClose }) {
+function ItemModal({ mode, item, existingDef, axes, departments = [], kmsMarked = false, onKmsSave, onSaved, onRubricSync, onClose }) {
     const isEdit = mode === 'edit';
+    // KMS 항목 여부 — eval_item_defs 컬럼이 아니라 [KMS] 탭 설정(config.kms.marked_items)에 저장된다.
+    // 저장 성공 후 order_no 가 확정되면(신규는 응답의 order_no) 별 요청으로 동기화한다.
+    const [isKms, setIsKms] = useState(!!kmsMarked);
     // 편집 모드 초기값: DB existingDef 가 우선, 없으면 brandConfig 기반 (item.validation_time 등).
     const [category, setCategory] = useState(existingDef?.category ?? item?.category ?? '');
     const [name, setName] = useState(existingDef?.item ?? item?.item ?? '');
@@ -1262,6 +1327,23 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                     </FormGroup>
                 )}
 
+                {/* KMS 여부 — 지정하면 목록에 KMS 배지가 뜨고 [KMS] 탭에서 근거 문서를 붙일 수 있다.
+                    평가항목 테이블 컬럼이 아니라 브랜드 KMS 설정에 저장된다(스키마 불변). */}
+                <FormGroup label="KMS 항목">
+                    <div className="flex gap-2">
+                        <button type="button" onClick={() => setIsKms(true)} className={pillBtn(isKms)}>
+                            KMS 항목
+                        </button>
+                        <button type="button" onClick={() => setIsKms(false)} className={pillBtn(!isKms)}>
+                            일반 항목
+                        </button>
+                    </div>
+                    <p className="mt-1.5 text-[11.5px] text-[var(--ink-500)] leading-relaxed">
+                        KMS 항목으로 지정하면 목록에 배지가 표시되고, <strong>[KMS] 탭</strong>에서 이 항목의 판정 근거
+                        문서를 등록·색인할 수 있습니다.
+                    </p>
+                </FormGroup>
+
                 {saveError && (
                     <div className="text-[12px] text-[var(--destructive)]">{saveError}</div>
                 )}
@@ -1313,6 +1395,8 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                             });
                             onSaved?.(res?.item);
                             onRubricSync?.(res?.rubric_sync);
+                            // KMS 여부 동기화 — 바뀐 경우에만. 실패해도 항목 저장은 이미 성공이므로 막지 않는다.
+                            if (isKms !== !!kmsMarked) await onKmsSave?.(item.order_no, isKms);
                         } else {
                             const res = await createEvalItemDef({
                                 category: category.trim(),
@@ -1327,6 +1411,12 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], onSaved, o
                             });
                             onSaved?.(null); // 신규 — order_no 가 바뀌므로 전체 reload 요청
                             onRubricSync?.(res?.rubric_sync);
+                            // 신규는 서버가 배정한 order_no(응답 order_no)로 KMS 지정을 건다.
+                            //   응답에 없으면 삽입된 첫 행에서 회수 — 둘 다 없으면 조용히 건너뛴다(오지정 방지).
+                            if (isKms) {
+                                const newNo = res?.order_no ?? res?.items?.[0]?.order_no ?? null;
+                                if (newNo != null) await onKmsSave?.(newNo, true);
+                            }
                         }
                         onClose();
                     } catch (err) {
