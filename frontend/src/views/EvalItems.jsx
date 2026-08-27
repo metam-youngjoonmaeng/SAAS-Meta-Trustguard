@@ -9,7 +9,7 @@ import {
     fetchEvalItemDefs, saveEvalItemDef, createEvalItemDef, deleteEvalItemDef, fetchEvalItemHistory,
     fetchPentagonAxes, savePentagonAxis, createPentagonAxis,
     fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion,
-    fetchKmsItems, saveKmsConfig,
+    fetchKmsItems, saveKmsConfig, buildKmsIndex,
 } from '../services/api';
 import {
     Plus,
@@ -154,26 +154,37 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
         });
     }, [axes, pentagonAxesByNo]);
 
-    // ── KMS 지정 상태 (배지 표시 + 모달의 'KMS 항목' 체크박스) ────────────────
-    // 소유는 [KMS] 탭(qa_batch_configs.config.kms). 여기서는 표시 + 항목 저장 시 동기화만 한다.
+    // ── KMS (지정 + 근거 문서 + RAG 색인) ──────────────────────────────────────
+    // 영속은 qa_batch_configs.config.kms(marked_items/docs) — eval_item_defs 컬럼이 아니다.
+    // 별 화면을 두지 않고 이 화면에서 관리한다: 목록 배지 · 항목 모달 토글 · 우측 KMS 섹션.
+    // KMS 조작은 항목 저장 흐름과 분리해 **즉시 저장**한다(부분 저장이라 형제 채널 보존됨).
     const [kmsMarks, setKmsMarks] = useState([]);
-    const [kmsDocCount, setKmsDocCount] = useState({});   // { order_no: 문서 건수 }
+    const [kmsDocs, setKmsDocs] = useState([]);
+    const [kmsIndexedAt, setKmsIndexedAt] = useState(null);
+    const [kmsBusy, setKmsBusy] = useState(false);
+    const [kmsMsg, setKmsMsg] = useState(null);          // { kind:'ok'|'err', text }
+
+    const kmsDocCount = useMemo(() => {
+        const cnt = {};
+        kmsDocs.forEach((d) => {
+            (d.linked_items || []).forEach((no) => {
+                cnt[no] = (cnt[no] || 0) + 1;
+            });
+        });
+        return cnt;
+    }, [kmsDocs]);
 
     const reloadKms = useCallback(async () => {
         try {
             const res = await fetchKmsItems();
             setKmsMarks(Array.isArray(res?.marked_items) ? res.marked_items : []);
-            const cnt = {};
-            (Array.isArray(res?.docs) ? res.docs : []).forEach((d) => {
-                (d.linked_items || []).forEach((no) => {
-                    cnt[no] = (cnt[no] || 0) + 1;
-                });
-            });
-            setKmsDocCount(cnt);
+            setKmsDocs(Array.isArray(res?.docs) ? res.docs : []);
+            setKmsIndexedAt(res?.indexed_at ?? null);
         } catch {
-            // KMS 조회 실패는 평가항목 관리 본기능과 무관 — 배지만 생략한다(무회귀).
+            // KMS 조회 실패는 평가항목 관리 본기능과 무관 — KMS UI 만 비운다(무회귀).
             setKmsMarks([]);
-            setKmsDocCount({});
+            setKmsDocs([]);
+            setKmsIndexedAt(null);
         }
     }, []);
 
@@ -181,7 +192,7 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
         reloadKms();
     }, [reloadKms, activeBrandId]);
 
-    // 항목 모달에서 KMS 여부를 바꿨을 때 — marked_items 만 전송(items/docs 는 서버가 보존).
+    // KMS 지정 토글 — marked_items 만 전송(items/docs 는 서버가 보존).
     const applyKmsMark = useCallback(
         async (orderNo, marked) => {
             const no = Number(orderNo);
@@ -189,15 +200,50 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
             const next = marked
                 ? [...new Set([...kmsMarks, no])].sort((a, b) => a - b)
                 : kmsMarks.filter((n) => n !== no);
-            setKmsMarks(next);   // 낙관적 반영 — 실패 시 아래 reload 로 되돌아온다
+            setKmsMarks(next);   // 낙관적 반영 — 실패 시 reload 로 되돌아온다
             try {
                 await saveKmsConfig({ marked_items: next });
-            } catch {
+            } catch (e) {
+                setKmsMsg({ kind: 'err', text: `KMS 지정 저장 실패 — ${e?.message || e}` });
                 reloadKms();
             }
         },
         [kmsMarks, reloadKms]
     );
+
+    // 근거 문서 저장/삭제 — docs 전량 치환(서버가 제목 중복·본문 상한 정규화).
+    const applyKmsDocs = useCallback(
+        async (nextDocs, okText) => {
+            setKmsBusy(true);
+            setKmsMsg(null);
+            try {
+                const res = await saveKmsConfig({ docs: nextDocs });
+                setKmsDocs(Array.isArray(res?.docs) ? res.docs : nextDocs);
+                if (okText) setKmsMsg({ kind: 'ok', text: okText });
+                return true;
+            } catch (e) {
+                setKmsMsg({ kind: 'err', text: `문서 저장 실패 — ${e?.message || e}` });
+                return false;
+            } finally {
+                setKmsBusy(false);
+            }
+        },
+        []
+    );
+
+    const runKmsIndex = useCallback(async () => {
+        setKmsBusy(true);
+        setKmsMsg(null);
+        try {
+            const res = await buildKmsIndex();
+            setKmsIndexedAt(res?.indexed_at ?? null);
+            setKmsMsg({ kind: 'ok', text: `RAG 색인 완료 — 문서 ${res?.docs ?? 0}건` });
+        } catch (e) {
+            setKmsMsg({ kind: 'err', text: `RAG 색인 실패 — ${e?.message || e}` });
+        } finally {
+            setKmsBusy(false);
+        }
+    }, []);
 
     const selectedItem = selection.kind === 'item' ? items[selection.idx] : null;
     const selectedAxis = selection.kind === 'axis'
@@ -304,6 +350,18 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                         activeBrandId={activeBrandId}
                         def={evalDefsByOrderNo[selectedItem.order_no]}
                         onEdit={() => setModal({ type: 'edit-item', item: selectedItem })}
+                        kmsMarked={kmsMarks.includes(Number(selectedItem.order_no))}
+                        kmsDocs={kmsDocs
+                            .map((d, i) => ({ idx: i, doc: d }))
+                            .filter(({ doc }) => (doc.linked_items || []).includes(Number(selectedItem.order_no)))}
+                        kmsBusy={kmsBusy}
+                        kmsMsg={kmsMsg}
+                        kmsIndexedAt={kmsIndexedAt}
+                        onKmsToggle={(on) => applyKmsMark(selectedItem.order_no, on)}
+                        onKmsMsgClose={() => setKmsMsg(null)}
+                        onKmsDocNew={() => setModal({ type: 'kms-doc', idx: null, orderNo: Number(selectedItem.order_no) })}
+                        onKmsDocEdit={(idx) => setModal({ type: 'kms-doc', idx, orderNo: Number(selectedItem.order_no) })}
+                        onKmsIndex={runKmsIndex}
                     />
                 ) : selectedAxis ? (
                     <AxisPreview
@@ -343,6 +401,30 @@ const EvalItems = ({ activeBrandId, topOffset = 0 }) => {
                     onKmsSave={applyKmsMark}
                     onSaved={(def) => { if (def) upsertEvalDef(def); else reloadDefs(); }}
                     onRubricSync={handleRubricSync}
+                    onClose={() => setModal(null)}
+                />
+            )}
+            {modal?.type === 'kms-doc' && (
+                <KmsDocModal
+                    doc={modal.idx != null ? kmsDocs[modal.idx] : null}
+                    orderNo={modal.orderNo}
+                    allItems={items}
+                    busy={kmsBusy}
+                    onSave={async (next) => {
+                        const arr = [...kmsDocs];
+                        if (modal.idx != null) arr[modal.idx] = next;
+                        else arr.push(next);
+                        const ok = await applyKmsDocs(arr, modal.idx != null ? '문서를 저장했습니다.' : '문서를 추가했습니다.');
+                        if (ok) setModal(null);
+                    }}
+                    onDelete={async () => {
+                        if (modal.idx == null) {
+                            setModal(null);
+                            return;
+                        }
+                        const ok = await applyKmsDocs(kmsDocs.filter((_, i) => i !== modal.idx), '문서를 삭제했습니다.');
+                        if (ok) setModal(null);
+                    }}
                     onClose={() => setModal(null)}
                 />
             )}
@@ -495,7 +577,11 @@ function AxisRow({ axisNo, label, selected, onSelect }) {
 
 /* ── 우측 미리보기 ────────────────────────────────────────────── */
 
-function ItemPreview({ item, def, onEdit }) {
+function ItemPreview({
+    item, def, onEdit,
+    kmsMarked = false, kmsDocs = [], kmsBusy = false, kmsMsg = null, kmsIndexedAt = null,
+    onKmsToggle, onKmsMsgClose, onKmsDocNew, onKmsDocEdit, onKmsIndex,
+}) {
     const maxPoints = parsePoints(item.validation_time);
 
     return (
@@ -548,6 +634,116 @@ function ItemPreview({ item, def, onEdit }) {
 예: ${def?.max_score ?? maxPoints}점(완전 충족) / 부분 점수(일부 충족) / 0점(미충족) — 각 단계의 조건과 감점·만점 사유를 구체적으로.
 
 ※ 출력 형식(JSON)·점수 산술 규칙·자기 검증·공통 정책은 백엔드가 자동 부착합니다.`}</pre>
+                        </div>
+
+                        {/* ── KMS — 이 항목의 판정 근거 문서 ──────────────────────────
+                            지정·문서·색인 모두 여기서 처리한다(별 화면 없음).
+                            KMS 조작은 즉시 저장된다 — 항목 [편집하기] 저장과 별개 경로. */}
+                        <div className="flex flex-col shrink-0 border-t border-[var(--muted)] pt-4">
+                            <div className="flex items-center gap-2 flex-wrap mb-2">
+                                <div className="text-[10.5px] font-bold text-[var(--ink-500)] tracking-[0.06em] uppercase">
+                                    KMS 근거 문서
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => onKmsToggle?.(!kmsMarked)}
+                                    disabled={kmsBusy}
+                                    title="KMS 항목으로 지정하면 목록에 배지가 표시되고 근거 문서를 붙일 수 있습니다"
+                                    className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
+                                        kmsMarked
+                                            ? 'bg-[var(--primary)] border-[var(--primary)] text-white'
+                                            : 'bg-white border-[var(--border-strong)] text-[var(--ink-500)] hover:text-[var(--ink-900)]'
+                                    } ${kmsBusy ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                                >
+                                    {kmsMarked ? 'KMS 항목' : 'KMS 아님'}
+                                </button>
+                                <span className="text-[11px] text-[var(--ink-500)] tabular-nums">
+                                    문서 {kmsDocs.length}건
+                                    {kmsIndexedAt ? ` · 마지막 색인 ${String(kmsIndexedAt).slice(0, 16).replace('T', ' ')}` : ' · 색인 이력 없음'}
+                                </span>
+                                <div className="ml-auto flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={onKmsDocNew}
+                                        disabled={kmsBusy}
+                                        className="h-[28px] px-3 rounded-lg border border-dashed border-[var(--border-strong)] bg-white text-[11.5px] font-semibold text-[var(--ink-500)] hover:border-[var(--primary)] hover:text-[var(--primary)] inline-flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                                    >
+                                        <Plus size={12} strokeWidth={2.5} />문서 추가
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={onKmsIndex}
+                                        disabled={kmsBusy || kmsDocs.length === 0}
+                                        title={kmsDocs.length === 0 ? '색인할 문서가 없습니다' : '등록 문서를 임베딩해 RAG 검색 대상으로 만듭니다'}
+                                        className="h-[28px] px-3 rounded-lg border border-[var(--border-strong)] bg-white text-[11.5px] font-semibold text-[var(--ink-700)] hover:bg-[var(--background-soft)] inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {kmsBusy ? '처리 중…' : 'RAG 색인'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {kmsMsg && (
+                                <div
+                                    className={`mb-2 flex items-start gap-2 px-3 py-2 rounded-lg border text-[12px] ${
+                                        kmsMsg.kind === 'err'
+                                            ? 'border-[#FDA29B] bg-[#FEF3F2] text-[#B42318]'
+                                            : 'border-[var(--border)] bg-[var(--background-soft)] text-[var(--ink-700)]'
+                                    }`}
+                                >
+                                    {kmsMsg.kind === 'err' ? <AlertTriangle size={13} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={13} className="mt-0.5 shrink-0" />}
+                                    <span className="flex-1 leading-relaxed">{kmsMsg.text}</span>
+                                    <button type="button" onClick={onKmsMsgClose} aria-label="닫기" className="opacity-60 hover:opacity-100">
+                                        <X size={12} />
+                                    </button>
+                                </div>
+                            )}
+
+                            {!kmsMarked && kmsDocs.length === 0 && (
+                                <p className="text-[12.5px] text-[var(--ink-500)] leading-relaxed">
+                                    이 항목은 KMS 항목이 아닙니다. 업무 절차·매뉴얼처럼 <strong>외부 문서를 근거로 판정해야 하는 항목</strong>이면
+                                    KMS 로 지정하고 문서를 등록하세요.
+                                </p>
+                            )}
+
+                            {(kmsMarked || kmsDocs.length > 0) && kmsDocs.length === 0 && (
+                                <p className="text-[12.5px] text-[var(--ink-500)] leading-relaxed">
+                                    등록된 근거 문서가 없습니다. [문서 추가] 로 업무 절차·안내 문구 원문을 넣으면 이 항목에 연결됩니다.
+                                </p>
+                            )}
+
+                            {kmsDocs.length > 0 && (
+                                <div className="flex flex-col gap-1">
+                                    {kmsDocs.map(({ idx, doc }) => (
+                                        <button
+                                            key={`kd-${idx}`}
+                                            type="button"
+                                            onClick={() => onKmsDocEdit?.(idx)}
+                                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--border)] bg-white hover:bg-[var(--background-soft)] text-left cursor-pointer"
+                                        >
+                                            <span className="flex-1 text-[12.5px] font-semibold text-[var(--ink-900)] truncate">
+                                                {doc.title}
+                                            </span>
+                                            {doc.active === false && (
+                                                <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--ink-500)]">
+                                                    색인 제외
+                                                </span>
+                                            )}
+                                            {(doc.tags || []).slice(0, 3).map((t, i) => (
+                                                <span
+                                                    key={`kt-${idx}-${i}`}
+                                                    className="shrink-0 text-[10.5px] px-1.5 py-0.5 rounded bg-[var(--primary-soft-flat)] text-[var(--ink-700)]"
+                                                >
+                                                    {t}
+                                                </span>
+                                            ))}
+                                            <span className="shrink-0 text-[10.5px] text-[var(--ink-500)] tabular-nums">
+                                                {String(doc.body || '').length.toLocaleString()}자
+                                            </span>
+                                            <ChevronRight size={13} className="shrink-0 text-[var(--ink-300)]" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                 </div>
             </div>
@@ -1586,6 +1782,146 @@ function AxisModal({ mode, axisNo, nextAxisNo, label, dbAxis, onSaved, onClose }
 }
 
 /* ── 공용 모달 셸/푸터 ────────────────────────────────────────── */
+
+/* ── KMS 근거 문서 모달 ────────────────────────────────────────
+ * 저장 위치는 qa_batch_configs.config.kms.docs (평가항목 테이블 아님).
+ * 연결 항목(linked_items)은 최소 1개 — 진입한 항목을 기본으로 채운다.
+ * 저장/삭제는 부모가 docs 전량 치환으로 즉시 반영한다.
+ * ────────────────────────────────────────────────────────── */
+function KmsDocModal({ doc, orderNo, allItems = [], busy, onSave, onDelete, onClose }) {
+    const isEdit = !!doc;
+    const [title, setTitle] = useState(doc?.title ?? '');
+    const [body, setBody] = useState(doc?.body ?? '');
+    const [tags, setTags] = useState((doc?.tags || []).join(', '));
+    const [active, setActive] = useState(doc?.active !== false);
+    const [linked, setLinked] = useState(() => {
+        const base = Array.isArray(doc?.linked_items) ? doc.linked_items : [];
+        return base.length ? base : orderNo != null ? [Number(orderNo)] : [];
+    });
+    const [err, setErr] = useState(null);
+
+    const toggleLink = (no) =>
+        setLinked((prev) => (prev.includes(no) ? prev.filter((n) => n !== no) : [...prev, no].sort((a, b) => a - b)));
+
+    return (
+        <ModalShell title={isEdit ? 'KMS 근거 문서 편집' : 'KMS 근거 문서 추가'} onClose={onClose} widthClass="max-w-[680px]">
+            <div className="px-6 py-5 space-y-4">
+                <FormGroup label="문서 제목" required>
+                    <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="예) IDPW 초기화 처리 절차"
+                        className="form-input-pretty"
+                    />
+                </FormGroup>
+
+                <FormGroup label="본문" required>
+                    <textarea
+                        rows={12}
+                        value={body}
+                        onChange={(e) => setBody(e.target.value)}
+                        placeholder="업무 처리 절차·안내 문구·예외 조건 등 판정 근거가 되는 원문을 붙여넣습니다."
+                        className="form-textarea-pretty font-mono text-[12px]"
+                    />
+                    <p className="mt-1 text-[11.5px] text-[var(--ink-500)] tabular-nums">
+                        {body.length.toLocaleString()}자 · 색인 시 이 본문이 chunk 로 쪼개집니다 (문서당 20,000자 상한)
+                    </p>
+                </FormGroup>
+
+                <FormGroup label="태그">
+                    <input
+                        type="text"
+                        value={tags}
+                        onChange={(e) => setTags(e.target.value)}
+                        placeholder="본인확인, 필수안내, 임시비밀번호"
+                        className="form-input-pretty"
+                    />
+                    <p className="mt-1 text-[11.5px] text-[var(--ink-500)]">검색 보조용 · 콤마 또는 가운뎃점(·)으로 구분</p>
+                </FormGroup>
+
+                <FormGroup label="연결 평가항목" required>
+                    <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+                        {allItems.map((it) => {
+                            const no = Number(it.order_no);
+                            const on = linked.includes(no);
+                            return (
+                                <label
+                                    key={`kdl-${no}`}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                                        on
+                                            ? 'border-[var(--primary)] bg-[var(--primary-soft-flat)]'
+                                            : 'border-[var(--border)] hover:bg-[var(--background-soft)]'
+                                    }`}
+                                >
+                                    <input type="checkbox" checked={on} onChange={() => toggleLink(no)} />
+                                    <span className="text-[10px] font-bold text-[var(--ink-500)] tabular-nums">
+                                        #{String(no).padStart(2, '0')}
+                                    </span>
+                                    <span className="text-[12.5px] text-[var(--ink-900)] truncate">{it.item}</span>
+                                </label>
+                            );
+                        })}
+                    </div>
+                </FormGroup>
+
+                <FormGroup label="색인 포함">
+                    <div className="flex gap-2">
+                        <button type="button" onClick={() => setActive(true)} className={pillBtn(active)}>
+                            포함
+                        </button>
+                        <button type="button" onClick={() => setActive(false)} className={pillBtn(!active)}>
+                            제외
+                        </button>
+                    </div>
+                </FormGroup>
+
+                {err && <div className="text-[12px] text-[var(--destructive)]">{err}</div>}
+            </div>
+
+            <ModalFooter
+                onCancel={onClose}
+                primaryLabel={busy ? '저장 중…' : '저장'}
+                onPrimary={() => {
+                    if (!title.trim()) {
+                        setErr('문서 제목을 입력하세요.');
+                        return;
+                    }
+                    if (!body.trim()) {
+                        setErr('본문을 입력하세요. 본문이 없으면 색인 대상이 없습니다.');
+                        return;
+                    }
+                    if (!linked.length) {
+                        setErr('연결 평가항목을 1개 이상 선택하세요. 연결이 없으면 어떤 판정에도 쓰이지 않습니다.');
+                        return;
+                    }
+                    setErr(null);
+                    onSave?.({
+                        title: title.trim(),
+                        body,
+                        tags: tags
+                            .split(/[\n,·]/)
+                            .map((t) => t.trim())
+                            .filter(Boolean),
+                        linked_items: linked,
+                        active,
+                    });
+                }}
+                extraLeft={
+                    isEdit ? (
+                        <button
+                            type="button"
+                            onClick={onDelete}
+                            className="h-[38px] px-4 rounded-xl border border-[var(--border)] bg-white text-[13px] font-semibold text-[var(--destructive)] hover:bg-[#FEF3F2] inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                            <Trash2 size={12} />문서 삭제
+                        </button>
+                    ) : null
+                }
+            />
+        </ModalShell>
+    );
+}
 
 function ModalShell({ title, onClose, widthClass = 'max-w-md', children }) {
     // document.body 로 포털 — 상위 레이아웃(transform/overflow 등)에 갇히지 않고 전체 화면을 덮는다.
