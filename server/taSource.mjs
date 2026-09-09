@@ -16,10 +16,8 @@
 
 import pg from 'pg';
 import { logger } from './logger.mjs';
+import { env } from './util/common.mjs';
 
-function env(key, def = '') {
-    return String(process.env[key] ?? def).trim();
-}
 
 /** TA 결과 DB 접속정보가 채워져야 활성. 미설정 시 전체 no-op. */
 export function taEnabled() {

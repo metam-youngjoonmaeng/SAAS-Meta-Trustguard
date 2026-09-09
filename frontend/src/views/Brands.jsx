@@ -648,6 +648,7 @@ const Brands = ({ onBrandsChanged } = {}) => {
                                         <td className="px-4 py-3 text-[12.5px] text-[var(--ink-500)] tabular-nums">
                                             {b.created_at
                                                 ? new Date(b.created_at).toLocaleDateString('ko-KR', {
+                                                      timeZone: 'Asia/Seoul',
                                                       year: 'numeric',
                                                       month: 'short',
                                                       day: 'numeric',

@@ -26,7 +26,7 @@ const toNum = (v) => {
  * @param {Array} evaluations 평가행 (점수·사유) — 항목 전체
  * @param {Array} checklist   체크리스트행 (근거 발화·만점) — Y/N 항목 제외분
  */
-export function buildItemScoreRows(evaluations, checklist) {
+function buildItemScoreRows(evaluations, checklist) {
     const chByOrder = new Map(
         (checklist || []).map((c) => [Number(c.order_no), c])
     );

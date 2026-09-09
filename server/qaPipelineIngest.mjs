@@ -32,13 +32,22 @@ import {
     insertTranscriptRows,
     restoreSticky,
 } from './itemScoreIngest.mjs';
+import { round1, safeStr, asNumber } from './util/common.mjs';
+import { RUBRIC_ITEM_BASE, RUBRIC_REGISTER_TIMEOUT_MS } from './util/rubricConst.mjs';
+import { LEGACY_STANDARD_ORG_IDS } from './checklistCategorySummary.mjs';
 
 const DEFAULT_BASE_URL = 'http://localhost:8081';
 // EC2 원격 백엔드 (V3 qa-pipeline, 8081 직접 접근) — call.pipeline_target==='ec2' 시 사용.
 const DEFAULT_EC2_BASE_URL = 'http://54.235.200.151:8081';
 // 컨테이너에서 호스트의 로컬 파이프라인 접근 주소 — force-local 시 기본 타깃.
 const DEFAULT_LOCAL_FORCE_URL = 'http://host.docker.internal:8081';
-const EVALUATE_TIMEOUT_MS = 600_000; // 600초
+
+// ─── 파이프라인 HTTP 타임아웃 — **용도별**. 임의 통일 금지 ───────────────────────
+// 평가는 항목당 LLM 콜이 붙어 실측 수백 초다. 조회 타임아웃(15초)으로 통일하면 정상 평가가
+// 중간에 끊긴다. 반대로 조회에 600초를 주면 파이프라인이 죽었을 때 라우트가 10분간 매달린다.
+const EVALUATE_TIMEOUT_MS = 600_000; // /evaluate · /evaluate/stream (장시간 — LLM 다건)
+const QUERY_TIMEOUT_MS = 15_000; // 단순 조회(/v2/mtg-rag/{r}/coverage)
+const GOLDEN_INDEX_TIMEOUT_MS_DEFAULT = 600_000; // 골든 색인 청크(요약 LLM + 임베딩 Titan)
 
 /** 평가 백엔드 base URL 해석 — opts.baseUrl > call.pipeline_target('ec2') > env > 로컬 기본값 */
 export function resolvePipelineBaseUrl(call, opts = {}) {
@@ -61,6 +70,63 @@ export function resolvePipelineBaseUrl(call, opts = {}) {
 /** call.pipeline_target === 'ec2' 여부 (대소문자 무시) */
 function isEc2Target(call) {
     return String(call?.pipeline_target ?? '').trim().toLowerCase() === 'ec2';
+}
+
+/**
+ * base URL 단일 경로 — resolvePipelineBaseUrl + 후행 슬래시 정규화.
+ * 이 모듈의 파이프라인 호출은 전부 이 함수로만 base 를 얻는다(원격 차단 로직은 위 함수가 소유).
+ */
+function pipelineBase(call, opts = {}) {
+    return resolvePipelineBaseUrl(call, opts).replace(/\/+$/, '');
+}
+
+/**
+ * 파이프라인 HTTP 호출 단일 헬퍼 — URL·메서드·헤더·타임아웃 조립을 한 곳으로.
+ *
+ * **Response 를 그대로 돌려준다.** 호출부 5곳의 에러 계약이 서로 다르기 때문이다
+ * (throw / console.warn 후 무시 / {error} 객체 반환 / status+body 집계 / SSE 본문 스트리밍).
+ * 헬퍼가 상태코드를 판정해 예외로 바꾸면 그 계약이 통째로 바뀐다 — res.ok·res.status·res.body
+ * 판정과 예외 메시지는 호출부에 그대로 남긴다.
+ *
+ * 타임아웃: 호출부가 용도별 상수로 **명시**한다(기본값 없음 — 빠뜨리면 즉시 드러나게).
+ *   · `signal` 을 넘기면 그걸 쓴다 — SSE 는 응답 본문 스트리밍 구간까지 타임아웃이 살아 있어야
+ *     하고 스트림 종료 시 타이머를 걷어야 하므로 호출부가 AbortController 를 소유한다.
+ *   · 그 외는 `AbortSignal.timeout` — 요청부터 본문 파싱까지 한 데드라인으로 덮는다(unref 타이머).
+ *
+ * `accept` 에 기본값을 두지 않는 이유: 종전 5개 호출지점 중 3개(/v2/rubrics · examples ·
+ * coverage)는 Accept 헤더를 아예 보내지 않았다. 기본값을 채우면 와이어가 달라진다 —
+ * 수렴은 코드 형태만 바꾸고 요청 바이트는 건드리지 않는다.
+ */
+async function pipelineFetch(url, { method = 'GET', json, accept, timeoutMs, signal } = {}) {
+    const headers = {};
+    if (accept) headers.Accept = accept;
+    if (json !== undefined) headers['Content-Type'] = 'application/json';
+    return fetch(url, {
+        method,
+        headers,
+        ...(json !== undefined ? { body: JSON.stringify(json) } : {}),
+        signal: signal || AbortSignal.timeout(timeoutMs),
+    });
+}
+
+/**
+ * 격리키(스킬 스토어 / fewshot 검색 / MTG RAG 인덱스) 조립 규칙 — **이 모듈의 단일 정의**.
+ *   getOrgFewshot(tenant_rag_config) 결과의 rubric_id → 없으면 합성 `inline-org{N}`.
+ * `skillLearn.mjs::resolveSkillRubricId` 와 같은 규칙이다(그쪽은 export 되지 않아 import 불가).
+ * 골든 색인(ingestGoldenSetToRag)·커버리지(fetchGoldenIndexCoverage)·평가 동봉(store_key)이
+ * 같은 값을 봐야 색인 키와 검색 키가 어긋나지 않는다 — 그래서 세 곳이 이 함수 하나만 본다.
+ */
+function isolationKeyOf(fx, orgId) {
+    return fx && fx.rubric_id ? fx.rubric_id : `inline-org${orgId}`;
+}
+
+/** 위 규칙 + DB 조회. 조회 실패는 합성키 폴백(평가·색인을 멈추지 않는다). */
+async function resolveIsolationKey(pool, orgId) {
+    try {
+        return isolationKeyOf(await getOrgFewshot(pool, orgId), orgId);
+    } catch {
+        return isolationKeyOf(null, orgId);
+    }
 }
 
 // 대시보드 order_no → 파이프라인 item_number 목록 (dashboard_output.py:72-82)
@@ -91,22 +157,12 @@ const ORDER_DERIVE_TOLERANCE = 3; // after_overrides vs derive 총점 괴리 임
 const CUSTOMER_MARKERS = ['고객', 'customer', 'client', 'caller'];
 const AGENT_MARKERS = ['상담', 'agent', 'tm', '직원', 'counsel'];
 
-function round1(value) {
-    return Math.round((Number(value) || 0) * 10) / 10;
-}
 
-function safeStr(value) {
-    return value === null || value === undefined ? '' : String(value);
-}
 
 function safeList(value) {
     return Array.isArray(value) ? value : [];
 }
 
-function asNumber(value) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
-}
 
 /**
  * 항목 점수 전용 파서 — '채점 안 됨'(null)과 '0점'을 구분한다.
@@ -297,7 +353,7 @@ function buildReasonText(present) {
  * /evaluate 응답 → collectionCallIngest 입력 body 로 변환.
  * @returns {{ body: object, warnings: string[], deriveTotal: number, source: string }}
  */
-export function mapEvaluateResponse(resp, call) {
+function mapEvaluateResponse(resp, call) {
     const warnings = [];
     const role = safeStr(call?.role || 'PDS1').trim() || 'PDS1';
     const jobMax = JOB_MAX_SCORES[role] || JOB_MAX_SCORES.PDS1;
@@ -410,7 +466,7 @@ function buildEvaluatePayload(call) {
     // rubric_id 가 있으면 metadata 에 추가 — 서버가 custom_rubric 트랙(5000번대 항목 + kms 노드)으로 분기.
     const rubricId = safeStr(call?.rubric_id).trim();
     // RAG/스킬 오버레이 토글 — 대시보드발 평가는 경량 모드라 기본 둘 다 비활성(true).
-    // RAG 검색(Haiku 쿼리 요약 + Titan 임베딩 + AOSS)이 평가당 수십 초를 점유하던 병목 제거.
+    // RAG 검색(LLM 쿼리 요약 + Titan 임베딩 + AOSS)이 평가당 수십 초를 점유하던 병목 제거.
     // call.disable_rag/disable_skills 또는 env QA_PIPELINE_DISABLE_RAG/DISABLE_SKILLS='false' 로 재활성.
     const disableRag =
         call?.disable_rag !== undefined
@@ -428,8 +484,7 @@ function buildEvaluatePayload(call) {
     //   ※ 파이프라인은 모델 잠금(QA_LLM_MODEL_LOCK)이 켜져 있어도 잠금 예외 목록
     //     (nodes/llm.py::_lock_exempt_backends)에 든 백엔드는 통과시킨다. 목록은
     //     env QA_LLM_LOCK_EXEMPT_BACKENDS 로 정하며 파이프라인 .env 에 `vllm,azure` 로
-    //     설정돼 있다(2026-08-27). **bedrock 은 목록에 없다** — IAM 명시 거부 상태라
-    //     넣으면 평가가 전멸한다.
+    //     설정돼 있다(2026-08-27). bedrock 백엔드는 2026-09-02 파이프라인에서 제거됐다.
     const llmBackend =
         safeStr(call?.llm_backend).trim().toLowerCase() ||
         safeStr(process.env.QA_PIPELINE_LLM_BACKEND).trim().toLowerCase();
@@ -463,6 +518,19 @@ function buildEvaluatePayload(call) {
     const azureCfg = {};
     if (azureDeployment) azureCfg.deployment = azureDeployment;
     if (azureApiVersion) azureCfg.api_version = azureApiVersion;
+    // ★ 2026-09-07 OpenAI 모델 선택 — 기본은 파이프라인 env(OPENAI_MODEL=gpt-5.6-luna).
+    //   프론트에서 고른 값만 실어 보낸다. 비우면 미동봉 = "서버가 정한다" = luna.
+    //
+    //   크리덴셜이 아니라 모델명이므로 요청 단위 선택을 허용한다(azure 배포명과 동일 판단).
+    //   **API 키는 여기로 오지 않는다** — 파이프라인 env(OPENAI_API_KEY)가 유일한 출처다.
+    //   위 azureCfg 주석의 감사로그 경로(req.body 통째 적재) 이유가 그대로 적용된다.
+    //
+    //   ※ 값 검증은 파이프라인 ingress 가 허용목록(openai_llm.SELECTABLE_MODELS)으로 한다.
+    //     이 통로는 파이프라인의 모델 잠금을 지나므로 목록 외 값은 그쪽에서 버려진다.
+    const openaiModel =
+        safeStr(call?.openai?.model).trim() || safeStr(process.env.QA_PIPELINE_OPENAI_MODEL).trim();
+    const openaiCfg = {};
+    if (openaiModel) openaiCfg.model = openaiModel;
 
     return {
         transcript: call?.transcript,
@@ -473,6 +541,12 @@ function buildEvaluatePayload(call) {
         ...(llmBackend ? { llm_backend: llmBackend } : {}),
         ...(llmBackend === 'vllm' && Object.keys(vllmCfg).length > 0 ? { vllm: vllmCfg } : {}),
         ...(llmBackend === 'azure' && Object.keys(azureCfg).length > 0 ? { azure: azureCfg } : {}),
+        // ★ 2026-09-07 — backend 가 openai 이거나 **미지정**(서버 기본이 openai)일 때만 싣는다.
+        //   vllm/azure 를 고른 상태에서 보내면 그 백엔드와 무관한 모델명이 payload 에 남아
+        //   나중에 로그를 읽는 사람이 "openai 로 돌았다" 고 오독한다.
+        ...(!['vllm', 'azure'].includes(llmBackend) && Object.keys(openaiCfg).length > 0
+            ? { openai: openaiCfg }
+            : {}),
         metadata: {
             source: 'qa_dashboard',
             qa_id: safeStr(call?.qa_id ?? call?.id).trim() || undefined,
@@ -483,6 +557,10 @@ function buildEvaluatePayload(call) {
             // build_graph_v2_pure 선택(coverage/KMS/persona/pentagon 미수행). 미동봉이면 기존 풀 그래프.
             eval_mode: safeStr(call?.eval_mode).trim() || undefined,
             rubric_id: rubricId || undefined,
+            // 격리키 명시 — 스킬 스토어 / 루브릭 fewshot 검색 / MTG RAG 인덱스가 공유하는 키.
+            // 산출·무회귀 근거는 evaluateStandardCall 의 store_key 블록 주석 참조(그 함수만 세팅).
+            // 미동봉이면 파이프라인이 metadata.rubric_id → 합성 inline-org{N} 순으로 폴백(종전 거동).
+            store_key: safeStr(call?.store_key).trim() || undefined,
             // 루브릭 few-shot 항목 게이트 — "이 항목 이름들만" RAG few-shot 허용(브랜드 한정 실험).
             // 백엔드 rubric_fewshot_gate 가 state.metadata 에서 읽어 custom_rubric 경로① 게이트.
             // 미동봉이면 백엔드 게이트 비활성(전 항목 통과, 기존 거동). 항목 이름 기반=재번호 안전.
@@ -527,28 +605,27 @@ function buildEvaluatePayload(call) {
             // 항상 명시적 boolean(다른 옵션 필드와 달리 undefined 로 생략하지 않음) — 백엔드가
             // state["ksqi_stt_enabled"] 게이트로 그대로 읽어 신규 모듈 실행 여부를 결정.
             ksqi_stt_enabled: call?.ksqi_stt_enabled === true,
+            // KMS 적용 범위 — 화면의 KMS 지정 항목(order_no)을 파이프라인 항목번호로 바꾼 목록.
+            // 산출은 resolveKmsItemNumbers, 소비는 v2/pure_llm/kms_scope.kms_items_of.
+            //   미동봉      = 범위 미전달 → 파이프라인 env 폴백(QA_PURE_KMS_RAG 등)
+            //   []          = 체크 0건 → KMS 끔. **빈 배열도 그대로 보낸다** — 생략하면
+            //                 체크를 다 풀어도 env 폴백으로 계속 돌아 "안 꺼진다" 가 된다.
+            //   [5005, …]   = 그 항목만 KMS 로 취급(귀속 칩 항목번호도 이 목록에서 나온다)
+            kms_items: Array.isArray(call?.kms_items) ? call.kms_items : undefined,
         },
     };
 }
 
-export async function callQaPipeline(call, { baseUrl } = {}) {
-    const base = resolvePipelineBaseUrl(call, { baseUrl }).replace(/\/+$/, '');
-    const url = `${base}/evaluate`;
+async function callQaPipeline(call, { baseUrl } = {}) {
+    const url = `${pipelineBase(call, { baseUrl })}/evaluate`;
     const payload = buildEvaluatePayload(call);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), EVALUATE_TIMEOUT_MS);
-    let res;
-    try {
-        res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-            body: JSON.stringify(payload),
-            signal: controller.signal,
-        });
-    } finally {
-        clearTimeout(timer);
-    }
+    const res = await pipelineFetch(url, {
+        method: 'POST',
+        json: payload,
+        accept: 'application/json',
+        timeoutMs: EVALUATE_TIMEOUT_MS,
+    });
 
     if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -579,18 +656,19 @@ function parseSseEventBlock(rawBlock) {
  * payload 는 callQaPipeline 과 동일. 'status' 이벤트({node,status,elapsed})마다 onProgress 호출,
  * 'result' 이벤트(= /evaluate JSON 응답 전체)를 최종 반환. 'error' 이벤트/HTTP 오류는 throw.
  */
-export async function callQaPipelineStream(call, { baseUrl } = {}, onProgress = null) {
-    const base = resolvePipelineBaseUrl(call, { baseUrl }).replace(/\/+$/, '');
-    const url = `${base}/evaluate/stream`;
+async function callQaPipelineStream(call, { baseUrl } = {}, onProgress = null) {
+    const url = `${pipelineBase(call, { baseUrl })}/evaluate/stream`;
     const payload = buildEvaluatePayload(call);
 
+    // 타임아웃을 여기서 소유하는 이유: 데드라인이 응답 본문(SSE) 소비 구간까지 살아 있어야 하고,
+    // 스트림이 정상 종료되면 타이머를 걷어야 한다(pipelineFetch 의 signal 파라미터 주석 참조).
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), EVALUATE_TIMEOUT_MS);
     try {
-        const res = await fetch(url, {
+        const res = await pipelineFetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-            body: JSON.stringify(payload),
+            json: payload,
+            accept: 'text/event-stream',
             signal: controller.signal,
         });
         if (!res.ok || !res.body) {
@@ -726,14 +804,6 @@ const STANDARD_SKIP_ORDERS = new Set([3]);
 // order_no → 카탈로그 슬롯(category/item/max) 역참조 — 루브릭 트랙 환원 시 사용.
 const STANDARD_CATALOG_BY_ORDER = new Map(STANDARD_ITEM_CATALOG.map((slot) => [slot.order_no, slot]));
 
-// 코오롱 표준 3-페르소나 엔진은 레거시 브랜드(신한1/한화2/코오롱3)에만 적용.
-// 신규 브랜드(id≥4)는 항목이 코오롱 카탈로그와 우연히 일치해도(예: '첫인사' 단일 항목) 표준
-// 트랙으로 빠지지 않고 항상 full custom(rubric_inline) 전송 → qa-pipeline custom_rubric 트랙.
-const LEGACY_STANDARD_ORG_IDS = new Set([1, 2, 3]);
-// 코오롱 = 레거시 풀 파이프라인(3-페르소나/KMS/coverage/debate/pentagon)을 유지하는 유일한 브랜드.
-// 그 외(신한·한화·이커머스·은행·test·asdf·METAM 등) 전부 신규 순수 LLM 모듈(eval_mode=pure).
-// (사용자 결정 2026-06-26: "코오롱만 제외하고 전부 신규 모듈")
-const KOLON_LEGACY_ORG_ID = 3;
 
 /**
  * 루브릭 항목(rubric.items[i])이 코오롱 표준 카탈로그 슬롯과 일치하는지 — order_no 가 카탈로그에
@@ -834,7 +904,7 @@ function reasonTextOf(ev) {
  *   #3 / score null / 응답 미존재 항목은 생략 + warnings. 백분율은 존재 행 기준.
  * @returns {{ checklist, evaluations, ai_score, warnings, source }}
  */
-export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMeta = null) {
+function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMeta = null) {
     const warnings = [];
     const { byItem, source } = indexEvaluations(resp);
     if (byItem.size === 0) {
@@ -969,8 +1039,6 @@ export function mapEvaluateResponseStandard(resp, maxByOrder = null, additiveMet
     };
 }
 
-// 루브릭 트랙 항목 번호 기준값 — eval_item_number = RUBRIC_ITEM_BASE + index.
-const RUBRIC_ITEM_BASE = 5000;
 
 /**
  * 루브릭 트랙 /evaluate 응답 → 테넌트 평가항목 행 변환.
@@ -987,7 +1055,7 @@ const RUBRIC_ITEM_BASE = 5000;
  * @param {Array<{order_no:number, category:string, item:string, max_score:number}>} rowMeta 루브릭 index → 테넌트 항목 메타
  * @returns {{ checklist, evaluations, ai_score, raw_total, max_total, warnings, source }|null}
  */
-export function mapEvaluateResponseRubric(resp, rowMeta) {
+function mapEvaluateResponseRubric(resp, rowMeta) {
     const warnings = [];
     const { byItem, source } = indexEvaluations(resp);
 
@@ -1289,6 +1357,18 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
         // 재적재는 채점 결과를 덮어쓰지만 '스킬 학습 제외' 지정(사람의 결정)은 보존한다.
         const _sticky = await captureSticky(client, callId);
         await client.query(`DELETE FROM eval_item_score WHERE call_id = $1`, [callId]);
+        // KMS 필수사항 체크(kiwoom_coverage) 원문 적재 — 평가 결과 [KMS] 탭 데이터 소스.
+        //   블록 부재(커버리지 게이트 OFF · 타 브랜드)면 아무것도 하지 않는다 → 무회귀.
+        //   재평가 시 전량 교체(콜 1건 = 1행). 60_qa_kms_results.sql 참조.
+        if (mapped?.kiwoom_coverage && typeof mapped.kiwoom_coverage === 'object') {
+            await client.query(
+                `INSERT INTO trustguard.qa_kms_results (call_id, payload, updated_at)
+                      VALUES ($1, $2::jsonb, now())
+                 ON CONFLICT (call_id) DO UPDATE
+                    SET payload = EXCLUDED.payload, updated_at = now()`,
+                [callId, JSON.stringify(mapped.kiwoom_coverage)]
+            );
+        }
         await client.query(`DELETE FROM common.call_transcript WHERE call_id = $1`, [callId]);
         // 전사 + 항목별 평가 적재 — 각각 다중행 INSERT 1회. 항목 점수·근거는 eval_item_score 한 테이블 병합.
         await insertTranscriptRows(client, callId, conversation);
@@ -1329,7 +1409,11 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
     // 일반 평가와 동형의 2테이블에 저장: qa_call_ksqi_score(항목 점수·사유 + 근거 evidence jsonb)
     // + qa_call_ksqi_summary(영역 A/B·전체 집계). 재적재는 DELETE 후 INSERT 로 멱등.
     // 테이블 부재/실패는 조용히 스킵해 브랜드 적재에 영향 주지 않는다(보조 모듈 = 메인 무영향 원칙).
-    // 스키마는 docker/init/postgres/65_qa_ksqi_rows.sql (기존 jsonb 백필 포함).
+    // 스키마는 docker/init/postgres-unified/01_unified_schema.sql (trustguard.eval_ksqi_score/summary).
+    // ★ 2026-09-02 — `kind` 컬럼은 13_drop_ksqi_kind.sql 로 제거됐다(판정 방식 SSOT = 파이프라인 rules.py).
+    //   그 마이그레이션 헤더가 "코드 → DDL 순서" 를 요구했는데 INSERT 가 kind 를 계속 넣어
+    //   `column "kind" of relation "eval_ksqi_score" does not exist` 로 **KSQI 적재가 전량 조용히 스킵**됐다
+    //   (토글 ON·파이프라인 12항목 산출 정상인데 상세 ksqi_report=null·목록 has_ksqi=false). kind 를 뺀다.
     if (mapped?.ksqi_report) {
         const kr = mapped.ksqi_report;
         const kc = await pool.connect();
@@ -1348,15 +1432,14 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
                     quote: safeStr(e?.quote),
                 }));
                 await kc.query(
-                    `INSERT INTO eval_ksqi_score (call_id, item_number, item_name, area, kind, score, max_score, na, defect, rationale, evidence)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+                    `INSERT INTO eval_ksqi_score (call_id, item_number, item_name, area, score, max_score, na, defect, rationale, evidence)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
                      ON CONFLICT (call_id, item_number) DO NOTHING`,
                     [
                         callId,
                         itemNo,
                         safeStr(it?.item_name),
                         safeStr(it?.area),
-                        safeStr(it?.kind) || 'llm',
                         num(it?.score),
                         num(it?.max_score),
                         it?.na === true,
@@ -1414,12 +1497,44 @@ export async function ingestStandardCallToDb(pool, call, mapped) {
 }
 
 /**
- * 통합DB: 구 organizations.ksqi_stt_enabled(브랜드별 KSQI-STT 토글)은 공유 common.tenants 에 컬럼 없음.
- *   KSQI 는 현재 전역 숨김/비활성(ksqi_stt_enabled 기본 false) → 안전 기본값 false 고정.
- *   (KSQI 제품화 시 trustguard 전용 브랜드설정 테이블로 재이관 예정 — tenant_rag_config 패턴 참고.)
+ * 브랜드별 KSQI-STT 토글 = trustguard.tenant_settings.ksqi_stt_enabled (brandRoutes.mjs 와 같은 자리).
+ *
+ * ★ 2026-09-02 결함 수정 — 종전엔 이 함수가 **무조건 false** 를 돌려주는 스텁이었다(통합DB 전환기 잔재).
+ *   시스템 설정의 KSQI 토글(Settings.jsx → PATCH /admin/organizations → tenant_settings)은 정상 저장되고
+ *   'KSQI 평가' 탭도 그 값으로 열리는데, 평가 요청엔 항상 `ksqi_stt_enabled:false` 가 실려 파이프라인이
+ *   KSQI-STT 를 돌리지 않았다 → resp.ksqi_stt_report 부재 → eval_ksqi_summary 0행 → KSQI 목록(has_ksqi) 영구 공백.
+ *   표/컬럼 부재 DB(구 스키마)에서는 종전과 같이 false (무회귀).
  */
-async function getOrgKsqiSttEnabled(_pool, _orgId) {
-    return false;
+let _ksqiToggleColumnCache = null;
+async function getOrgKsqiSttEnabled(pool, orgId) {
+    const tenantId = String(orgId ?? '').trim().toLowerCase();
+    if (!tenantId || !pool) return false;
+    try {
+        if (_ksqiToggleColumnCache === null) {
+            const { rows } = await pool.query(
+                `SELECT 1 FROM information_schema.columns
+                 WHERE table_schema = 'trustguard' AND table_name = 'tenant_settings'
+                   AND column_name = 'ksqi_stt_enabled' LIMIT 1`
+            );
+            _ksqiToggleColumnCache = rows.length > 0;
+        }
+        // ★ 2026-09-02 — 표 부재 DB(로컬·54.235)는 brandRoutes 와 같은 폴백 자리
+        //   trustguard.qa_batch_configs.config.ksqi_stt_enabled 를 읽는다(종전 "false 고정" 이 토글 무효의 원인).
+        const { rows } = _ksqiToggleColumnCache
+            ? await pool.query(
+                  'SELECT ksqi_stt_enabled AS v FROM trustguard.tenant_settings WHERE tenant_id = $1 LIMIT 1',
+                  [tenantId]
+              )
+            : await pool.query(
+                  `SELECT (config ->> 'ksqi_stt_enabled')::boolean AS v
+                     FROM trustguard.qa_batch_configs WHERE tenant_id = $1 LIMIT 1`,
+                  [tenantId]
+              );
+        return rows[0]?.v === true;
+    } catch (e) {
+        console.warn(`[ingest] ksqi_stt_enabled 조회 실패 (tenant=${tenantId}) — false 로 진행: ${e.message}`);
+        return false;
+    }
 }
 
 /**
@@ -1431,6 +1546,44 @@ async function getOrgKsqiSttEnabled(_pool, _orgId) {
  *   /evaluate 응답의 kms 블록은 무시(dev프론트 미저장, 백엔드 KMS 노드는 유지).
  * @returns {Promise<{ok, qa_id, ai_score, total_score, role, department, org_id, turns, elapsed_sec, warnings, source}>}
  */
+/**
+ * KMS 지정 평가항목 → 파이프라인 항목번호 목록.
+ *
+ * 사용자 지시(2026-08-31): **"kms에 체크한 항목만 돌게 하는거라고"**. 화면(평가항목 관리 >
+ * KMS 지정, `qa_batch_configs.config.kms.marked_items`)이 이미 갖고 있는 값을 파이프라인에
+ * 그대로 넘긴다 — 종전에는 파이프라인이 서버 전역 env(`QA_PURE_KMS_RAG`,
+ * `QA_PURE_KNOWLEDGE_ITEMS`)로만 돌아 브랜드별 지정과 어긋났다.
+ *
+ * 변환: `marked_items` 는 대시보드 order_no, 파이프라인은 `RUBRIC_ITEM_BASE + index`.
+ *   index 는 rowMeta(=buildRubricFromDefs 산출) 에서의 위치다 — order_no 를 그대로 더하면
+ *   비활성·삭제 항목이 있는 브랜드에서 어긋난다(order_no 는 연속을 보장하지 않는다).
+ *
+ * @returns {Promise<number[]|null>} 항목번호 배열(지정 0건이면 빈 배열) · 조회 실패 시 null.
+ *   **null 과 빈 배열은 뜻이 다르다** — null = 미전달(파이프라인 env 폴백),
+ *   [] = "체크 0건" 명시 OFF. 조회 실패에 [] 를 돌려주면 DB 한 번 삐끗한 것이 KMS 전면
+ *   비활성으로 조용히 번진다. 계약 전문은 `v2/pure_llm/kms_scope.py` docstring.
+ */
+async function resolveKmsItemNumbers(pool, orgId, rowMeta) {
+    try {
+        const { rows } = await pool.query(
+            `SELECT config -> 'kms' -> 'marked_items' AS marks
+               FROM qa_batch_configs WHERE tenant_id = $1`,
+            [orgId]
+        );
+        const marks = rows[0]?.marks;
+        if (!Array.isArray(marks) || marks.length === 0) return [];
+        const wanted = new Set(marks.map((n) => Number(n)).filter((n) => Number.isInteger(n)));
+        const meta = Array.isArray(rowMeta) ? rowMeta : [];
+        const out = [];
+        meta.forEach((m, i) => {
+            if (wanted.has(Number(m?.order_no))) out.push(RUBRIC_ITEM_BASE + i);
+        });
+        return out;
+    } catch {
+        return null; // 조회 실패 → 미동봉(무회귀). 위 @returns 주석의 사유 참조.
+    }
+}
+
 /**
  * 엔진 호출 + 매핑만 수행(DB 미저장). 표준 트랙/커스텀 루브릭 분기 포함.
  * ingestStandardCallFromQaPipeline 와 외부 서비스(튜터 딥평가)가 공유하는 순수 평가 단계.
@@ -1580,6 +1733,9 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                 // 두고 이 식을 그대로 두면 org3 일 때 _pure=false → eval_mode 미동봉 → 백엔드 full-custom
                 // flip(코오롱 의도 반대). 두 곳을 함께 고쳐야 코오롱이 진짜 pure 로 간다.
                 const _pure = true;
+                // KMS 적용 범위 — 화면의 KMS 지정 항목만 돌게 한다(사용자 지시 2026-08-31).
+                // null(조회 실패)이면 키를 빼서 파이프라인 env 폴백을 그대로 둔다.
+                const _kmsItems = await resolveKmsItemNumbers(pool, orgId, rowMeta);
                 // disable_rag 단일 진실원천: pure 트랙은 _rfx 유무로 항상 명시(_rfx 없으면 true).
                 // 백엔드 _disable_rag 식이 pure 일 때 rubric_fewshot_item_names 토글 추론에 의존하므로,
                 // _rfx 가 null 로 떨어지면 RAG 가 조용히 꺼지는 회귀를 페이로드에 의도를 박아 차단.
@@ -1588,6 +1744,7 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                     ...call,
                     org_id: orgId,
                     rubric_inline: rubric,
+                    ...(_kmsItems ? { kms_items: _kmsItems } : {}),
                     ...(_pure ? { eval_mode: 'pure', disable_rag: !_rfx } : {}),
                     ...(_rfx
                         ? {
@@ -1597,6 +1754,41 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
                           }
                         : {}),
                 };
+
+                // ★ 2026-08-28 6단계 — 격리키(store_key)를 MTG 가 **명시**해 동봉한다.
+                //
+                // 왜: metadata.rubric_id 하나가 여섯 용도를 겸한다 — ①트랙 마커 ②full-custom flip
+                //   신호 ③파일 스토어 로드키 ④fewshot 검색키 ⑤MTG RAG 격리키 ⑥스킬 스토어 격리키.
+                //   buildRubricFromDefs 반환 객체에는 rubric_id 키가 없어(rubricSync.mjs 반환부)
+                //   ④⑤⑥ 은 파이프라인이 rubric_inline 정규화 때 만드는 합성키를 본다
+                //   (v2/pure_llm/evaluator.py: `inline-org{metadata.org_id}`). 그래서
+                //   tenant_rag_config 를 켜고 끄면 격리키가 rbrc_xxx ↔ inline-org{N} 로 통째로
+                //   바뀌어 스킬·골든이 동시에 침묵한다. 수신부는 이미 store_key 를 최우선으로 본다
+                //   (rubric_fewshot_gate.resolve_search_rubric_id ①,
+                //    mtg_skill/apply.py::_resolve_isolation_key) → MTG 가 명시하면 그 결합이 끊긴다.
+                //
+                // 값: 격리키 조립 규칙 단일 정의(isolationKeyOf)를 그대로 쓴다 — 골든 색인·
+                //   커버리지도 같은 함수를 보고, skillLearn.resolveSkillRubricId 와 같은 규칙이다.
+                //   조회는 이미 스코프에 있는 _rfx(동일 pool·orgId 의 getOrgFewshot 결과)를 재사용
+                //   (DB 재조회 없음).
+                //
+                // ★ 무회귀 자기검증 — 파이프라인이 폴백으로 계산할 값(_fallbackKey)과 다르면
+                //   **보내지 않는다.** 이 단계의 목적은 "같은 값을 MTG 가 명시"까지이고, 키를
+                //   바꾸는 것이 아니다. 다른 값을 보내면 스킬·골든이 서로 다른 키를 뒤져 조용히
+                //   침묵한다(최악 사고). 불일치는 외부 호출자가 call.rubric_id 를 직접 실어
+                //   보내면서 tenant_rag_config 는 비어 있는 조합에서 발생 가능하다.
+                const _storeKey = safeStr(isolationKeyOf(_rfx, orgId)).trim();
+                // buildEvaluatePayload 가 실제로 내보낼 metadata.rubric_id (없으면 '').
+                const _emittedRubricId = safeStr(rubricCall?.rubric_id).trim();
+                // 파이프라인 폴백: metadata.rubric_id → 없으면 rubric_inline 정규화 합성키.
+                const _fallbackKey = _emittedRubricId || `inline-org${safeStr(orgId) || 'na'}`;
+                if (_storeKey && _storeKey === _fallbackKey) {
+                    rubricCall = { ...rubricCall, store_key: _storeKey };
+                } else {
+                    warnings.push(
+                        `store_key 미동봉(격리키 불일치 방지): mtg='${_storeKey}' vs pipeline_fallback='${_fallbackKey}'`
+                    );
+                }
             }
         } else {
             warnings.push(`루브릭 항목 0건(org=${orgId}) — 표준 트랙 진행`);
@@ -1611,9 +1803,22 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
     // 백엔드는 동봉본을 파일 스토어보다 최우선 주입(무상태 평가) — rubric_inline 과 동일 원칙.
     // 활성 버전 부재/조회 실패 시 null → 미동봉(백엔드 파일 스토어 거동, 무회귀).
     const _skillInline = await getActiveSkillOverlays(pool, rubricCall?.org_id ?? call?.org_id);
-    if (_skillInline?.overlays && Object.keys(_skillInline.overlays).length) {
+    const _hasSkillOverlays = !!(_skillInline?.overlays && Object.keys(_skillInline.overlays).length);
+    if (_hasSkillOverlays) {
         rubricCall = { ...rubricCall, skill_overlays: _skillInline.overlays };
     }
+    // ★ 2026-08-28 — disable_skills 를 여기서 **명시**한다 (4단계).
+    //
+    // 왜 필요했나: `call.disable_skills` 를 세팅하는 생산자가 한 곳도 없고 MTG .env 에
+    //   QA_PIPELINE_* 키가 하나도 없어서, buildEvaluatePayload:419-422 의 폴백이
+    //   `safeStr(undefined) !== 'false'` → **항상 true** 였다. 그 결과 바로 위에서 DB 에서
+    //   조립해 실어 보내는 skill_overlays 가 백엔드 maybe_skill_overlay 의 첫 게이트
+    //   (is_skills_disabled)에서 전부 폐기됐다 — MTG 스킬셋 기능 전체가 무발화 상태였다.
+    //
+    // 정책: **overlay 가 실제로 있으면 켜고, 없으면 끈다.** 바로 위 disable_rag 가
+    //   `!_rfx`(설정 유무)로 결정되는 것과 대칭이다. 동봉할 것이 없을 때 굳이 켜서
+    //   백엔드 파일 스토어 스킬이 끼어들 여지를 만들지 않는다.
+    rubricCall = { ...rubricCall, disable_skills: !_hasSkillOverlays };
 
     // KSQI-STT 실행 토글 — 해당 org 의 ksqi_stt_enabled 를 metadata 로 동봉(True 시 백엔드가
     // 신규 KSQI-STT 모듈 실행). skill_overlays 와 동일한 org_id 해석(rubricCall 우선 → call 폴백).
@@ -1663,6 +1868,45 @@ export async function evaluateStandardCall(pool, call, opts = {}) {
     // 가 qa_calls.ksqi_report(로컬 임시 jsonb, prod 스키마는 담당자 추가 예정)에 저장. KSQI 비활성
     // 브랜드는 resp.ksqi_stt_report 부재 → null(무회귀).
     mapped.ksqi_report = resp && typeof resp === 'object' ? resp.ksqi_stt_report || null : null;
+    // KMS 필수사항 체크(QA-PAIR) — 응답 최상위 `kiwoom_coverage`. 평가 결과 [KMS] 탭
+    // (frontend/src/components/Detail/KmsMandatoryPanel.jsx)이 그대로 소비하는 블록으로,
+    // 인텐트별 필수항목 O/X/△/- · 종합 충족률 · 업무 트리거 · 적대검증 렌즈가 전부 여기 있다.
+    // 파이프라인 pure 트랙에서는 `QA_PURE_KIWOOM_COVERAGE=1` 게이트를 통과한 콜만 실린다
+    // (v2/pure_llm/coverage_branch.py). 그 외 브랜드/콜은 부재 → null(무회귀).
+    //
+    // 적재 = `trustguard.qa_kms_results` (call_id PK · payload jsonb). 사용자 승인 2026-08-31
+    // ("처리해놔라") 로 신설 — `docker/init/postgres/60_qa_kms_results.sql`. 쓰기는
+    // ingestStandardCallToDb 트랜잭션 안 upsert 1건, 읽기는 GET /api/evaluations/:qaId 의 select 1건.
+    mapped.kiwoom_coverage =
+        resp && typeof resp === 'object' ? resp.kiwoom_coverage || null : null;
+
+    // 귀속 항목번호(check.binding = 5000+index) → **화면이 쓸 항목명·order_no** 주석.
+    //   파이프라인은 자기 항목번호만 알고 대시보드 order_no·항목명을 모른다. 반대로 프론트는
+    //   index↔order_no 대응(rowMeta)을 갖고 있지 않다 — 그 대응은 이 함수에만 있다. 그래서
+    //   전사 칩이 `#5005` 같은 내부 번호를 노출하거나 아무것도 못 그리는 문제가 생긴다.
+    //   여기서 한 번 붙여 두면 화면은 문자열만 읽으면 된다(V3 KmsMandatoryCard 의 bindingInfo 대응).
+    if (mapped.kiwoom_coverage && Array.isArray(rowMeta) && rowMeta.length) {
+        try {
+            const label = new Map(); // 항목번호 → {order_no, name}
+            rowMeta.forEach((m, i) => {
+                label.set(RUBRIC_ITEM_BASE + i, {
+                    order_no: asNumber(m?.order_no),
+                    name: safeStr(m?.item).trim(),
+                });
+            });
+            const evals = mapped.kiwoom_coverage?.mandatory?.evaluations_by_intent;
+            for (const ev of Object.values(evals && typeof evals === 'object' ? evals : {})) {
+                for (const c of Array.isArray(ev?.checks) ? ev.checks : []) {
+                    const hit = label.get(Number(c?.binding));
+                    if (!hit) continue;
+                    c.binding_order_no = hit.order_no;
+                    c.binding_label = hit.name;
+                }
+            }
+        } catch {
+            /* 주석 실패는 표시 품질 문제일 뿐 — 판정 결과는 그대로 둔다 */
+        }
+    }
 
     // 파이프라인 크래시 vs 포기호 구분: 평가 산출물이 0건인데 응답에 error 필드가 있으면
     // 이는 '포기호/미응대'가 아니라 평가 자체의 실패다(예: report_generator_v2 의 ItemResult
@@ -1756,6 +2000,9 @@ export async function ingestStandardCallFromQaPipeline(pool, call, opts = {}) {
         elapsed_sec: elapsedSec,
         raw_total: mapped.raw_total ?? null,
         max_total: mapped.max_total ?? null,
+        // KMS 필수사항 체크 원문 — DB 적재 경로가 아직 없어(위 mapped.kiwoom_coverage 주석 참조)
+        // 호출부가 응답으로 확인·검증할 수 있게 통과시킨다. 라우트는 요약만 details 에 싣는다.
+        kiwoom_coverage: mapped.kiwoom_coverage ?? null,
     };
 }
 
@@ -1781,16 +2028,10 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
     const dryRun = !!opts.dryRun;
     // 골든 학습은 call 컨텍스트가 없어 EC2 타깃을 기본으로 명시 — 평가(index.js pipeline_target:'ec2')와
     // 동일 백엔드로 색인해야 검색 시 정합. 로컬 실험은 QA_PIPELINE_FORCE_LOCAL=1 이 이 분기보다 우선.
-    const base = resolvePipelineBaseUrl({ pipeline_target: 'ec2' }, opts).replace(/\/+$/, '');
+    const base = pipelineBase({ pipeline_target: 'ec2' }, opts);
 
     // ① rubric_id (평가 시점 검색 키와 동일 규칙 — 색인↔검색 정합)
-    let rubricId;
-    try {
-        const fx = await getOrgFewshot(pool, orgId);
-        rubricId = fx && fx.rubric_id ? fx.rubric_id : `inline-org${orgId}`;
-    } catch {
-        rubricId = `inline-org${orgId}`;
-    }
+    const rubricId = await resolveIsolationKey(pool, orgId);
 
     // ② 루브릭 빌드 + order_no→item_number 맵
     const { rubric, rowMeta } = await buildRubricFromDefs(pool, orgId);
@@ -1817,11 +2058,10 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
 
     // 루브릭 파일스토어 등록(load_rubric 게이트 충족 — 멱등, rubric_id 강제).
     try {
-        await fetch(`${base}/v2/rubrics`, {
+        await pipelineFetch(`${base}/v2/rubrics`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...rubric, rubric_id: rubricId, name: rubric.name || `org${orgId}` }),
-            signal: AbortSignal.timeout(30000),
+            json: { ...rubric, rubric_id: rubricId, name: rubric.name || `org${orgId}` },
+            timeoutMs: RUBRIC_REGISTER_TIMEOUT_MS,
         });
     } catch (e) {
         console.warn(`[golden-learn] rubric 등록 실패(무시 — ingest 응답에서 확인): ${(e && e.message) || e}`);
@@ -1877,13 +2117,15 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
     //   건씩 순차 POST 하고, 각 청크 후 opts.onProgress({processed,total,saved,skipped,failed})로 진척을 올려
     //   프론트 진행바가 실시간 반영되게 한다. 단일 POST 대비 라운드트립만 늘 뿐(임베딩은 어차피 건별) 부담 미미.
     //   ★ 청크 크기 = 색인 병렬도. 백엔드 ingest_examples 는 청크(examples) 내부를 body.concurrency 만큼
-    //   요약(Haiku)+임베딩(Titan) 병렬 처리하므로, 청크가 작으면(과거 5) 그만큼만 병렬 → 병렬도 낭비.
-    //   기본 100 — 상한 4중 검증 완료: 코드 세마포어 배치 미적용(per-loop) · Haiku/Titan boto3 클라이언트
-    //   pool=500 · AWS 쿼터(Haiku 10k RPM/5M TPM, Titan 6k RPM/300k TPM) 대비 100건 버스트는 수% 수준 ·
+    //   요약(LLM)+임베딩(Titan) 병렬 처리하므로, 청크가 작으면(과거 5) 그만큼만 병렬 → 병렬도 낭비.
+    //   기본 100 — 상한 4중 검증 완료: 코드 세마포어 배치 미적용(per-loop) · LLM/Titan 클라이언트
+    //   pool=500 · 쿼터(LLM · Titan 6k RPM/300k TPM) 대비 100건 버스트는 수% 수준 ·
     //   양 클라이언트 retries(adaptive/standard ×4) 내장으로 순간 스로틀 자동 백오프. 벽시계는 가장 느린
     //   요약 1건(~10~20s) ≪ 청크 타임아웃 600s. 진행바는 청크당 1회 갱신(대형 셋에서만 중간 진척 표시).
     //   전사가 매우 길어 요청 body 가 과대해지면 GOLDEN_LEARN_CHUNK 로 낮춰 조절.
-    const timeoutMs = Number(process.env.GOLDEN_LEARN_TIMEOUT_MS || '600000') || 600000;
+    const timeoutMs =
+        Number(process.env.GOLDEN_LEARN_TIMEOUT_MS || String(GOLDEN_INDEX_TIMEOUT_MS_DEFAULT)) ||
+        GOLDEN_INDEX_TIMEOUT_MS_DEFAULT;
     const chunkSize = Math.max(1, Number(process.env.GOLDEN_LEARN_CHUNK || '100') || 100);
     const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
     const total = examples.length;
@@ -1895,11 +2137,10 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
     if (onProgress) onProgress({ processed: 0, total, ...agg });
     for (let i = 0; i < total; i += chunkSize) {
         const chunk = examples.slice(i, i + chunkSize);
-        const resp = await fetch(`${base}/v2/mtg-rag/${encodeURIComponent(rubricId)}/examples`, {
+        const resp = await pipelineFetch(`${base}/v2/mtg-rag/${encodeURIComponent(rubricId)}/examples`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ org_id: orgId, dry_run: dryRun, examples: chunk, concurrency: chunk.length, ...(allowedItems ? { allowed_items: allowedItems } : {}) }),
-            signal: AbortSignal.timeout(timeoutMs),
+            json: { org_id: orgId, dry_run: dryRun, examples: chunk, concurrency: chunk.length, ...(allowedItems ? { allowed_items: allowedItems } : {}) },
+            timeoutMs,
         });
         lastStatus = resp.status;
         let j = {};
@@ -1941,17 +2182,11 @@ export async function ingestGoldenSetToRag(pool, orgId, opts = {}) {
 //   rubric_id 는 색인 시(ingestGoldenSetToRag)와 동일 규칙(getOrgFewshot → inline-org{N})으로 맞춰 정합.
 export async function fetchGoldenIndexCoverage(pool, orgId, opts = {}) {
     // 색인(ingestGoldenSetToRag)과 동일 백엔드를 봐야 "미학습 N건" 카운트가 정확 — EC2 타깃 기본.
-    const base = resolvePipelineBaseUrl({ pipeline_target: 'ec2' }, opts).replace(/\/+$/, '');
-    let rubricId;
+    const base = pipelineBase({ pipeline_target: 'ec2' }, opts);
+    const rubricId = await resolveIsolationKey(pool, orgId);
     try {
-        const fx = await getOrgFewshot(pool, orgId);
-        rubricId = fx && fx.rubric_id ? fx.rubric_id : `inline-org${orgId}`;
-    } catch {
-        rubricId = `inline-org${orgId}`;
-    }
-    try {
-        const resp = await fetch(`${base}/v2/mtg-rag/${encodeURIComponent(rubricId)}/coverage`, {
-            signal: AbortSignal.timeout(15000),
+        const resp = await pipelineFetch(`${base}/v2/mtg-rag/${encodeURIComponent(rubricId)}/coverage`, {
+            timeoutMs: QUERY_TIMEOUT_MS,
         });
         const j = await resp.json().catch(() => ({}));
         return {

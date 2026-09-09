@@ -4,7 +4,7 @@
 import { maxPointsOf, parseStoredEarned } from './rubricManual.mjs';
 
 // 신한카드 — 컬렉션관리부 9항목을 4 대분류로 묶어 노출.
-export const CHECKLIST_KEYS = [
+const CHECKLIST_KEYS = [
     '친절도',
     '맞춤 응대 스킬',
     '업무 정확도',
@@ -12,7 +12,7 @@ export const CHECKLIST_KEYS = [
 ];
 
 // 한화손해보험 — 8항목, category == item 1:1.
-export const HANWHA_CHECKLIST_KEYS = [
+const HANWHA_CHECKLIST_KEYS = [
     '전화수신/종료태도', '첫인사', '끝인사', '문의내용 파악/경청',
     '사과/대기/감사표현', '정확한 업무처리', '정보보호', '상담태도',
 ];
@@ -20,7 +20,7 @@ export const HANWHA_CHECKLIST_KEYS = [
 // 기본 평가체계 (지역정보개발원 등 BRAND_CONFIG 미등록 브랜드용) — 01-QA_Dashboard 18항목 8 카테고리.
 // SSOT: src/constants.js DEFAULT_CHECKLIST_KEYS / server/defaultEvalItems.mjs DEFAULT_EVAL_ITEMS.
 // 업무 정확도(#15/#16)는 qa-pipeline KMS 충족률 모델로 대체되어 점수 미산출 → 컬럼 제외.
-export const DEFAULT_CHECKLIST_KEYS = [
+const DEFAULT_CHECKLIST_KEYS = [
     '인사 예절', '경청 및 소통', '언어 표현', '니즈 파악',
     '설명력 및 전달력', '적극성', '개인정보 보호',
 ];
@@ -36,7 +36,7 @@ export const LEGACY_STANDARD_ORG_IDS = new Set(
 );
 
 // 콜의 department 로 적절한 대시보드 컬럼 키 선택. 미매칭 시 신한 4 카테고리(레거시 호환).
-export function checklistKeysForDepartment(department) {
+function checklistKeysForDepartment(department) {
     if (department === '고객센터') return HANWHA_CHECKLIST_KEYS;
     if (department === '고객지원실') return DEFAULT_CHECKLIST_KEYS;
     return CHECKLIST_KEYS;
@@ -90,7 +90,7 @@ export function buildChecklistYnKorFromDbRows(checklistRows, evaluationRows, key
     return buildChecklistYnKorFromChecklistRows(augmented, keys);
 }
 
-export function buildChecklistYnKorFromChecklistRows(checklistRows, keys = CHECKLIST_KEYS) {
+function buildChecklistYnKorFromChecklistRows(checklistRows, keys = CHECKLIST_KEYS) {
     const out = {};
     if (!Array.isArray(checklistRows) || checklistRows.length === 0) return out;
     for (const key of keys) {
@@ -99,14 +99,21 @@ export function buildChecklistYnKorFromChecklistRows(checklistRows, keys = CHECK
         let totalEarned = 0;
         for (const row of rows) {
             const m = maxPointsOf(row);
-            if (m === null) continue;   // 만점 없음 = 분모 제외
+            if (m === null) {
+                // 만점 없음 = 분모 제외. 단 감점 전용 항목(키움 #7004/#7008/#7009 등, 만점 NULL·획득점 −5)은
+                // 분모에는 안 잡히더라도 획득점에는 반영해야 카테고리 합이 총점과 맞는다.
+                // (0902 실측: 업무처리능력 55/60 표시 vs 총점 87 — −5 가 빠져 카테고리 합 92 로 어긋남)
+                const n = parseFloat(String(row.result ?? '').trim());
+                if (Number.isFinite(n) && n < 0) totalEarned += n;
+                continue;
+            }
             totalMax += m;
             const earned = parseStoredEarned(row.result, m, row.item);
             totalEarned += earned === null ? 0 : earned;
         }
         const mi = Math.round(totalMax);
         let ei = Math.round(totalEarned);
-        if (mi <= 0) out[key] = '0/0';
+        if (mi <= 0) out[key] = ei < 0 ? `${ei}/0` : '0/0';   // 감점 전용 카테고리 = "-5/0" 로 감점 노출
         else {
             ei = Math.max(0, Math.min(mi, ei));
             out[key] = `${ei}/${mi}`;
@@ -115,15 +122,3 @@ export function buildChecklistYnKorFromChecklistRows(checklistRows, keys = CHECK
     return out;
 }
 
-/** DB checklist_yn_kor 가 비었거나 일부 키만 있을 때 checklist_rows 로 보강 */
-export function mergeChecklistYnKor(storedObj, checklistRows) {
-    const derived = buildChecklistYnKorFromChecklistRows(checklistRows);
-    const stored = storedObj && typeof storedObj === 'object' && !Array.isArray(storedObj) ? storedObj : {};
-    const kor = {};
-    for (const key of CHECKLIST_KEYS) {
-        const v = stored[key];
-        if (v != null && String(v).trim() !== '') kor[key] = String(v).trim();
-        else if (derived[key] != null) kor[key] = derived[key];
-    }
-    return kor;
-}

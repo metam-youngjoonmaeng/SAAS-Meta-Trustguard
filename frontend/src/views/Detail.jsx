@@ -10,11 +10,14 @@ import {
     updateReviewStatus,
     saveManualEvaluationPatches,
     fetchReviewEvents,
+    fetchKmsItems,
 } from '../services/api';
 import RadarChart from '../components/Detail/RadarChart';
 import ConsumerEvalTable from '../components/Detail/ConsumerEvalTable';
 import ConsumerAnalysisPanel from '../components/Detail/ConsumerAnalysisPanel';
 import ManualJudgmentCell from '../components/Detail/ManualJudgmentCell';
+import KmsResultPanel from '../components/Detail/KmsResultPanel';
+import KmsMandatoryPanel, { KmsTranscriptSection } from '../components/Detail/KmsMandatoryPanel';
 import ReviewActionBar from '../components/Detail/ReviewActionBar';
 import ReviewStatusBadge, {
     REVIEW_STATUS,
@@ -25,6 +28,7 @@ import useDefaultRubricMax from '../hooks/useDefaultRubricMax';
 import { formatDateTime, formatDuration, formatTime } from '../utils/formatters';
 import {
     formatEarnedOverMax,
+    isDeductionOnlyRow,
     maxPointsOf,
     parseMaxPointsFromValidationTime,
     parseStoredEarned,
@@ -69,6 +73,11 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     const [manualJudgments, setManualJudgments] = useState({});
     // 서버에서 받아온 (이 콜에 대한) 골든셋 행 목록 — order_no 만 사용해 시드에 머지.
     const [goldenEntries, setGoldenEntries] = useState([]);
+    // KMS 설정(지정 항목·업무 데이터·근거 문서) — 좌측 카드의 [KMS] 탭 데이터 소스.
+    //   GET /api/admin/kms-items 는 requireAdmin 이라 상담사 계정은 403 → 빈 값 유지 =
+    //   탭 자체가 안 뜬다(권한 없는 사람에게 KMS 원문을 노출하지 않는 쪽이 맞다).
+    const [kmsConfig, setKmsConfig] = useState({ items: [], marked_items: [], docs: [] });
+    const [leftTab, setLeftTab] = useState('checklist'); // 'checklist' | 'kms'
     const [consumerRows, setConsumerRows] = useState([]);
     const [consumerSaveUi, setConsumerSaveUi] = useState({ status: 'idle', message: '' });
     const consumerDebounceRef = useRef(null);
@@ -187,6 +196,25 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         fetchReviewEvents(qaId).then((rows) => setReviewEvents(Array.isArray(rows) ? rows : [])).catch(() => {});
     }, [qaId]);
     useEffect(() => { reloadReviewEvents(); }, [reloadReviewEvents]);
+
+    // KMS 설정 로드 — 활성 브랜드 스코프(헤더). 실패(403 상담사 · 미설정 브랜드)는
+    // 조용히 빈 값 — KMS 탭이 안 뜰 뿐 체크리스트는 영향 없다.
+    useEffect(() => {
+        let alive = true;
+        fetchKmsItems()
+            .then((res) => {
+                if (!alive) return;
+                setKmsConfig({
+                    items: Array.isArray(res?.items) ? res.items : [],
+                    marked_items: Array.isArray(res?.marked_items) ? res.marked_items : [],
+                    docs: Array.isArray(res?.docs) ? res.docs : [],
+                });
+            })
+            .catch(() => {
+                if (alive) setKmsConfig({ items: [], marked_items: [], docs: [] });
+            });
+        return () => { alive = false; };
+    }, [activeBrandId]);
 
     const handleReviewStatusChange = useCallback(
         async (nextStatus, { force = false, alertOnError = false, reason } = {}) => {
@@ -393,25 +421,33 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
             return contains || rows.find((r) => r.category === category) || rows[0];
         };
 
-        // base.order_no SSOT 매칭. 미스 시에만 기존 fuzzy(findBestRow) 폴백 — 무회귀.
-        const resolveEvalRow = (base) => {
+        // base.order_no SSOT 매칭. fuzzy(findBestRow) 는 **order_no 자체가 없는 템플릿**에만 쓴다.
+        //
+        // ★ 2026-08-31 RCA — order_no 가 있는데 그 번호의 행이 없을 때 fuzzy 로 넘어가면
+        //   `findBestRow` 의 최후 폴백(`rows.find(r => r.category === category) || rows[0]`)이
+        //   **같은 구분의 아무 행**을 집어 온다. 실측: 키움 #5 고객정보확인(만점 0 → 서버가
+        //   checklist_rows 에 안 실어 보낸다)이 같은 구분 '업무처리능력' 의 첫 행인
+        //   #6 정확성 행을 물어 와 `order_no=6` 을 상속했다. 결과로
+        //     · KMS 지정(marked=[6]) 필터에 고객정보확인까지 걸려 탭이 "KMS 2"
+        //     · 화면에 「#6 고객정보확인」 — 사용자 지적 "kms쪽에 왜 고객정보확인이 들어가있냐"
+        //   번호가 명시된 항목은 해당 번호의 행이 없으면 **행 없음(null)** 이 정답이다.
+        //   (evaluation_rows 쪽 동일 폴백은 2026-06-23 RCA 로 이미 지적된 계열의 버그다.)
+        const byOrderOrNull = (base, map) => {
             const ordRaw = base?.order_no;
             if (ordRaw !== undefined && ordRaw !== null && ordRaw !== '') {
                 const ord = Number(ordRaw);
-                if (Number.isFinite(ord) && evaluationByOrderNo.has(ord)) {
-                    return evaluationByOrderNo.get(ord);
-                }
+                if (Number.isFinite(ord)) return map.has(ord) ? map.get(ord) : null;
             }
+            return undefined; // order_no 없음 → 호출부가 fuzzy 폴백
+        };
+        const resolveEvalRow = (base) => {
+            const hit = byOrderOrNull(base, evaluationByOrderNo);
+            if (hit !== undefined) return hit;
             return findBestRow(evaluationByCategory.get(base.category), base.category, base.item);
         };
         const resolveChecklistRow = (base) => {
-            const ordRaw = base?.order_no;
-            if (ordRaw !== undefined && ordRaw !== null && ordRaw !== '') {
-                const ord = Number(ordRaw);
-                if (Number.isFinite(ord) && checklistByOrderNo.has(ord)) {
-                    return checklistByOrderNo.get(ord);
-                }
-            }
+            const hit = byOrderOrNull(base, checklistByOrderNo);
+            if (hit !== undefined) return hit;
             return findBestRow(checklistByCategory.get(base.category), base.category, base.item);
         };
 
@@ -449,6 +485,9 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                 category: row.category || '',
                 item: row.item || '',
                 max_score: maxScore ?? null,
+                // ★ 감점전용(만점 명시 0) 표시 — maxPointsOf 가 0 을 null 로 돌려주므로
+                //   아래 5점 폴백에 삼켜지는 것을 막기 위해 별도 보존.
+                deduction_only: isDeductionOnlyRow(row),
             });
         };
         // 저장 행이 만점(max_score)을 보유 → 우선 수집, 이어서 evaluation_rows.
@@ -460,7 +499,12 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
             .map((o) => ({
                 ...o,
                 // 만점 미상(저장 행에 만점 없음) → 5점 기본 폴백.
-                max_score: Number.isFinite(o.max_score) && o.max_score > 0 ? o.max_score : 5,
+                // ★ 감점전용 항목은 만점이 0 이므로 폴백 대상이 아니다 — 0 을 그대로 둔다.
+                max_score: o.deduction_only
+                    ? 0
+                    : Number.isFinite(o.max_score) && o.max_score > 0
+                      ? o.max_score
+                      : 5,
             }));
         const displayTemplate = [...checklistTemplate, ...orphanTemplate];
 
@@ -485,10 +529,22 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
             // base 는 정적 템플릿(validation_time '배점 10') 또는 부활 항목(max_score 숫자) 둘 다
             // 올 수 있어 maxPointsOf 로 흡수한다. 둘 다 없을 때만 5점 폴백(기존 동작 유지).
             const baseMaxPts = maxPointsOf(base);
-            const maxPts =
-                Number.isFinite(dbMaxPts) && dbMaxPts > 0
-                    ? dbMaxPts
-                    : (baseMaxPts ?? parseMaxPointsFromValidationTime(base.validation_time));
+            // ★ 감점전용 항목(만점 명시 0) — 배점이 없고 0(무감점)/음수(감점)만 판정한다.
+            //   저장 행(evalRow) 또는 정의(base) 어느 쪽에서든 0 이 명시되면 감점전용으로 본다.
+            //   이 분기가 없으면 dbMaxPts·baseMaxPts 가 0 을 흡수하지 못해
+            //   validation_time·정적템플릿 값으로 폴백하고 `0 / 5`·`0 / 20` 처럼 척도를 잘못 알린다.
+            //   ★ `dbMaxPts` 는 useDefaultRubricMax 가 `max <= 0` 을 맵에서 제외하므로 감점전용에서는
+            //     undefined 다. 따라서 0 의 실제 전달 경로는 `base.max_score`(constants.js
+            //     buildChecklistTemplateFromDefs 가 보존) — 아래 3중 검사로 어느 경로든 포착.
+            const dedOnly =
+                (Number.isFinite(dbMaxPts) && Number(dbMaxPts) === 0) ||
+                isDeductionOnlyRow(evalRow) ||
+                isDeductionOnlyRow(base);
+            const maxPts = dedOnly
+                ? 0
+                : Number.isFinite(dbMaxPts) && dbMaxPts > 0
+                  ? dbMaxPts
+                  : (baseMaxPts ?? parseMaxPointsFromValidationTime(base.validation_time));
             const aiEvalRaw = evalRow.ai_eval;
             let earnedAi = null;
             if (aiEvalRaw !== null && aiEvalRaw !== undefined && aiEvalRaw !== '') {
@@ -496,12 +552,16 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                 // 채점 척도(프롬프트 점수단계) ↔ 표시 분모(만점 폼) 분리: 분자가 분모를 초과해도
                 // 그대로 표시(예: 50/1). 상한 클램프(Math.min) 제거, 하한 0 만 유지.
                 // 레거시·ecom·bank 는 score<=maxPts 라 동작 불변(무회귀).
-                if (Number.isFinite(n)) earnedAi = Math.max(0, n);
+                // ★ 감점전용은 하한 0 클램프 제외 — 클램프 시 −5 감점이 0 으로 보여 감점이 사라진다.
+                if (Number.isFinite(n)) earnedAi = dedOnly ? n : Math.max(0, n);
             }
             const aiEvalLabel = earnedAi === null ? '-' : formatEarnedOverMax(earnedAi, maxPts);
             const manRaw = evalRow.manual_eval_option ?? evalRow.manual_eval;
             const manStr = manRaw === null || manRaw === undefined ? '' : String(manRaw).trim();
-            const earnedMan = manStr === '' ? null : parseStoredEarned(manStr, maxPts, base.item);
+            const earnedMan =
+                manStr === ''
+                    ? null
+                    : parseStoredEarned(manStr, maxPts, base.item, { allowNegative: dedOnly });
             const manualEvalLabel =
                 manStr === '평가제외'
                     ? '평가제외'
@@ -536,6 +596,53 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
     const scoredRows = useMemo(
         () => checklistRows.filter((r) => r.scoring_type !== 'yes_no'),
         [checklistRows]
+    );
+
+    // KMS 지정 항목의 채점 결과 — 좌측 카드 [KMS] 탭. 지정(marked_items)과 채점 결과가
+    // **둘 다** 있어야 탭이 뜬다. 지정만 있고 이 콜에서 채점이 안 된 항목은 보여줄 게 없다.
+    const kmsRows = useMemo(() => {
+        const marked = new Set((kmsConfig.marked_items || []).map(Number));
+        if (!marked.size) return [];
+        return checklistRows.filter((r) => marked.has(Number(r.order_no)));
+    }, [checklistRows, kmsConfig.marked_items]);
+
+    // [상세 체크리스트] 탭 표시 행 — **KMS 지정 항목은 제외**한다.
+    //   사용자 지시(2026-08-31): "정확성이 kms인데 상세 체크리스트탭에도 들어가있는데 이것도 수정필요".
+    //   같은 항목이 두 탭에 중복 노출되면 어느 쪽이 정본인지 알 수 없다 — KMS 지정 항목은
+    //   판정 근거(RAG·필수항목 O/X)가 KMS 탭에만 있으므로 그쪽이 정본이다.
+    //   ⚠ 총점·검수진행률은 그대로 `checklistRows`(전량)를 쓴다 — 표시에서 뺀다고 배점이 빠지면
+    //     합계가 달라진다. 여기서 만드는 것은 **표시용 부분집합**뿐이다.
+    const checklistTabRows = useMemo(() => {
+        const marked = new Set((kmsConfig.marked_items || []).map(Number));
+        if (!marked.size) return checklistRows;
+        return checklistRows.filter((r) => !marked.has(Number(r.order_no)));
+    }, [checklistRows, kmsConfig.marked_items]);
+
+    // 지정 항목이 사라지면(브랜드 전환 등) 체크리스트 탭으로 되돌린다 — 빈 탭 잔류 방지.
+    useEffect(() => {
+        if (!kmsRows.length) setLeftTab('checklist');
+    }, [kmsRows.length]);
+
+    // KMS 필수사항 체크(QA-PAIR) 원본 — 파이프라인 응답 최상위 `kiwoom_coverage`.
+    //   서버가 아직 이 블록을 적재하지 않으면 null → 탭은 근거문서 목록으로 폴백한다.
+    //   `kms` 는 구 kms_evaluation 채널(코오롱 표준 트랙) — 같은 카드가 소비 가능해 함께 본다.
+    const kmsCoverage = useMemo(
+        () => evaluation?.kiwoom_coverage || evaluation?.coverage || evaluation?.kms || null,
+        [evaluation]
+    );
+
+    // KMS 패널이 쓰는 최소 필드로 정규화 — 체크리스트 행 스키마(earned_ai/rubric_max_pts)와
+    // 패널 계약(ai_eval/max_score)을 여기서 맞춘다.
+    const kmsPanelRows = useMemo(
+        () =>
+            kmsRows.map((r) => ({
+                order_no: r.order_no,
+                item: r.item,
+                ai_eval: r.scoring_type === 'yes_no' ? (r.earned_ai > 0 ? 'Y' : 'N') : r.ai_eval_label,
+                max_score: r.rubric_max_pts ?? r.max_score,
+                reason_text: r.reason_text,
+            })),
+        [kmsRows]
     );
 
     // 점수 헤더 표기 — 고객지원실은 원점수 "X / N점", 그 외는 기존 "X점 / 100점".
@@ -782,6 +889,23 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
         );
     }
 
+    // KMS 탭 전용 우측 카드 — 「STT 전사」를 **전사 (turn 순서) + 판정·트리거 칩**으로 대체한다.
+    //   사용자 지시(2026-08-31): "STT 전사 이부분을 아예 전사 (turn 순서) … 이거로 바꿀 수 있나
+    //   kms 탭 누르면?". 판정 근거(트리거·✓/✗)를 전사 위에서 바로 읽게 하는 것이 목적이므로
+    //   KMS 탭에서는 평문 전사보다 이 화면이 정본이다. 커버리지가 없는 콜은 종전 sttPanel 유지.
+    const kmsTranscriptPanel = (
+        <KmsTranscriptSection
+            variant="panel"
+            coverage={kmsCoverage}
+            conversation={evaluation?.conversation}
+            onClose={() => setRightView('analysis')}
+            onTurn={(turn, quote) => {
+                const t = evaluation?.conversation?.find((c) => Number(c.turn_no) === Number(turn));
+                setHighlightText(quote || t?.text || '');
+            }}
+        />
+    );
+
     const sttPanel = (
         <div className="bg-white rounded-[14px] border border-[var(--border)] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col lg:h-[884px] overflow-hidden animate-in slide-in-from-right-4 duration-500">
             <div className="px-5 py-3.5 border-b border-[var(--muted)] bg-[var(--background-soft)] flex justify-between items-center">
@@ -974,7 +1098,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                         {/* Right Column — 분석대상/금칙어/12 카테고리 ↔ STT 전사 토글 */}
                         <div className="lg:w-1/3 lg:h-[884px]">
                             {rightView === 'stt' ? (
-                                sttPanel
+                                leftTab === 'kms' && kmsCoverage ? kmsTranscriptPanel : sttPanel
                             ) : (
                                 <ConsumerAnalysisPanel
                                     meta={{ ai_analysis_target: evaluation?.ai_analysis_target }}
@@ -998,7 +1122,39 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                 <div className="flex justify-between items-center">
                                     <div className="flex items-center gap-2.5 min-w-0">
                                         <ListCheck size={16} className="text-[var(--ink-700)] shrink-0" />
-                                        <h3 className="text-[14px] font-semibold text-[var(--ink-900)] tracking-tight shrink-0">상세 체크리스트</h3>
+                                        {kmsRows.length > 0 ? (
+                                            // KMS 지정 항목이 채점된 콜에서만 탭이 생긴다. 지정이 없으면
+                                            // 종전처럼 제목 한 줄(탭 UI 미노출) — 무회귀.
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                {[
+                                                    { key: 'checklist', label: '상세 체크리스트' },
+                                                    { key: 'kms', label: `KMS ${kmsRows.length}` },
+                                                ].map((t) => (
+                                                    <button
+                                                        key={t.key}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setLeftTab(t.key);
+                                                            // KMS 탭 = 판정 근거를 전사에서 읽는 화면.
+                                                            // 우측을 곧바로 칩 전사로 전환한다(사용자 지시).
+                                                            if (t.key === 'kms' && kmsCoverage) {
+                                                                setHighlightText('');
+                                                                setRightView('stt');
+                                                            }
+                                                        }}
+                                                        className={`px-2.5 py-1 rounded-lg text-[13px] font-semibold tracking-tight transition-colors ${
+                                                            leftTab === t.key
+                                                                ? 'bg-white text-[var(--ink-900)] border border-[var(--border)] shadow-[0_1px_2px_rgba(16,24,40,0.04)]'
+                                                                : 'text-[var(--ink-500)] hover:text-[var(--ink-700)] border border-transparent'
+                                                        }`}
+                                                    >
+                                                        {t.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <h3 className="text-[14px] font-semibold text-[var(--ink-900)] tracking-tight shrink-0">상세 체크리스트</h3>
+                                        )}
                                         {goldSetCount > 0 && (
                                             <span
                                                 className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap"
@@ -1039,6 +1195,37 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                 )}
                             </div>
 
+                            {leftTab === 'kms' ? (
+                                // 커버리지(KMS 필수사항 체크)가 오면 V3 와 동일한 O/X/△ 판정 화면,
+                                // 없으면 종전 근거문서 목록으로 폴백 — 옛 콜(커버리지 산출 전)도 빈
+                                // 화면이 되지 않게 한다.
+                                kmsCoverage ? (
+                                    <KmsMandatoryPanel
+                                        coverage={kmsCoverage}
+                                        rows={kmsPanelRows}
+                                        // 전사 칩 소스 — 파이프라인 transcript_turns 가 없으면 이걸 쓴다.
+                                        conversation={evaluation?.conversation}
+                                        marked={new Set((kmsConfig.marked_items || []).map(Number))}
+                                        onTurn={(turn, quote) => {
+                                            const t = evaluation?.conversation?.find(
+                                                (c) => Number(c.turn_no) === Number(turn)
+                                            );
+                                            setHighlightText(quote || t?.text || '');
+                                            setRightView('stt');
+                                        }}
+                                    />
+                                ) : (
+                                <KmsResultPanel
+                                    rows={kmsRows}
+                                    items={kmsConfig.items}
+                                    docs={kmsConfig.docs}
+                                    onUtterance={(q) => {
+                                        setHighlightText(q);
+                                        setRightView('stt');
+                                    }}
+                                />
+                                )
+                            ) : (
                             <div className="flex-1 min-h-0 p-0 overflow-auto">
                                 <table className="w-full h-full min-w-[1040px] text-center">
                                     <thead>
@@ -1059,19 +1246,19 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                             // 전체 개수로 합치면 order_no 재정렬로 같은 카테고리가
                                             // 떨어진 위치에 다시 나타날 때 rowSpan 이 어긋난다.
                                             const isFirstInRun = (i) =>
-                                                i === 0 || checklistRows[i - 1].category !== checklistRows[i].category;
+                                                i === 0 || checklistTabRows[i - 1].category !== checklistTabRows[i].category;
                                             const runLength = (i) => {
                                                 let len = 1;
                                                 while (
-                                                    i + len < checklistRows.length &&
-                                                    checklistRows[i + len].category === checklistRows[i].category
+                                                    i + len < checklistTabRows.length &&
+                                                    checklistTabRows[i + len].category === checklistTabRows[i].category
                                                 ) {
                                                     len += 1;
                                                 }
                                                 return len;
                                             };
 
-                                            return checklistRows.map((r, i) => {
+                                            return checklistTabRows.map((r, i) => {
                                                 const showCategory = isFirstInRun(i);
 
                                                 return (
@@ -1159,6 +1346,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                     </tbody>
                                 </table>
                             </div>
+                            )}
                         </div>
                     </div>
 
@@ -1333,7 +1521,7 @@ const Detail = ({ qaId, onBack, calls, onEvaluationsSaved, activeBrandId, role }
                                 </div>
                             </div>
                             :
-                            sttPanel
+                            (leftTab === 'kms' && kmsCoverage ? kmsTranscriptPanel : sttPanel)
                         }
                     </div>
                 </div>

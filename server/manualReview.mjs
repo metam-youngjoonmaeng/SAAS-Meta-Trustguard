@@ -14,7 +14,7 @@ import { logger } from './logger.mjs';
 const num = (v, def) => (Number.isFinite(Number(v)) ? Number(v) : def);
 
 /** 브랜드 배치 설정(qa_batch_configs) — org 우선, 없으면 0(전체/기본). 없으면 null. */
-export async function readBatchConfig(pool, orgId) {
+async function readBatchConfig(pool, orgId) {
     // 통합DB: qa_batch_configs.tenant_id(citext). org 우선, 없으면 '__default__'(전체/기본).
     const { rows } = await pool.query(
         `SELECT config FROM qa_batch_configs

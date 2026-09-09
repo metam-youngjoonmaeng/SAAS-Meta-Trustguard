@@ -85,6 +85,7 @@ function fmtTime(iso) {
     if (!iso) return '—';
     const d = new Date(iso);
     return d.toLocaleString('ko-KR', {
+        timeZone: 'Asia/Seoul',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
@@ -676,6 +677,7 @@ function fmtRagTime(ts) {
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return '—';
     return d.toLocaleString('ko-KR', {
+        timeZone: 'Asia/Seoul',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
@@ -762,10 +764,10 @@ function RagSimilarityChips({ hit }) {
         chips.push(
             <span
                 key="rerank"
-                title={`${isCohere ? 'Cohere Rerank 3.5' : 'LLM(Haiku 4.5) reranker'} · 0~10 스케일(raw=${Number(rr).toFixed(4)})`}
+                title={`${isCohere ? 'Cohere Rerank 3.5' : 'LLM reranker(서버 기본 모델)'} · 0~10 스케일(raw=${Number(rr).toFixed(4)})`}
                 style={{ fontSize: 9.5, fontWeight: 700, background: isCohere ? 'var(--success-soft)' : 'var(--primary-soft-flat)', color: isCohere ? 'var(--success)' : 'var(--primary)', padding: '1px 7px', borderRadius: 999 }}
             >
-                {isCohere ? '🪶 Cohere' : '🤖 Haiku'} rerank {(Number(rr) * 10).toFixed(1)}/10
+                {isCohere ? '🪶 Cohere' : '🤖 LLM'} rerank {(Number(rr) * 10).toFixed(1)}/10
             </span>,
         );
     }

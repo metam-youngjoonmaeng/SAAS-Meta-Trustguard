@@ -265,6 +265,21 @@ function App() {
         });
     }, []);
 
+    // 콜 목록 요청 순서 보정 (2026-09-02) — 로그인 직후 "브랜드 미확정" 요청(X-Active-Brand-Id 없음
+    // → super_admin 은 전 브랜드 목록, 느림)과 브랜드 확정 후 요청이 동시에 나가면 느린 전 브랜드
+    // 응답이 뒤에 도착해 화면을 덮었다(키움 선택 상태에 BANK-*·668xxx 혼입, 새로고침하면 정상).
+    // 요청마다 번호를 매기고, 마지막 요청이 아니거나 요청 시점 브랜드 ≠ 응답 시점 브랜드면 버린다.
+    const callsReqSeq = useRef(0);
+    const loadCallsGuarded = useCallback(async () => {
+        const seq = ++callsReqSeq.current;
+        const brandAtRequest = window.localStorage.getItem(QA_ACTIVE_BRAND_KEY) ?? '';
+        const data = await fetchCalls();
+        const brandNow = window.localStorage.getItem(QA_ACTIVE_BRAND_KEY) ?? '';
+        if (seq !== callsReqSeq.current || brandAtRequest !== brandNow) return false; // stale 응답 폐기
+        setCalls(data);
+        return true;
+    }, []);
+
     const clearSession = async () => {
         // 서버에 로그아웃 통보 (test1 샌드박스 계정인 경우 세션 변경분 휘발 처리).
         // 로컬 actor 정보는 클리어 전에 미리 읽어 둔다.
@@ -295,8 +310,7 @@ function App() {
         window.localStorage.removeItem(QA_ACTIVE_BRAND_KEY);
         // 샌드박스 복원 후 calls 목록을 갱신해서 UI를 baseline 상태로 리셋.
         try {
-            const data = await fetchCalls();
-            setCalls(data);
+            await loadCallsGuarded();
         } catch (err) {
             console.error('로그아웃 후 데이터 갱신 오류:', err);
         }
@@ -305,8 +319,7 @@ function App() {
     useEffect(() => {
         async function loadCalls() {
             try {
-                const data = await fetchCalls();
-                setCalls(data);
+                await loadCallsGuarded();
             } catch (error) {
                 console.error("데이터 로딩 오류:", error);
             } finally {
@@ -362,7 +375,7 @@ function App() {
                         setSelectedBrandId(user.org_id);
                         window.localStorage.setItem(QA_ACTIVE_BRAND_KEY, String(user.org_id));
                     }
-                    try { setCalls(await fetchCalls()); } catch { /* noop */ }
+                    try { await loadCallsGuarded(); } catch { /* noop */ }
                 } catch (err) {
                     console.error('ICS SSO 실패:', err);
                     clearIcsEmbed();
@@ -498,12 +511,11 @@ function App() {
 
     const refreshCalls = useCallback(async () => {
         try {
-            const data = await fetchCalls();
-            setCalls(data);
+            await loadCallsGuarded();
         } catch (error) {
             console.error('통화 목록 새로고침 오류:', error);
         }
-    }, []);
+    }, [loadCallsGuarded]);
 
     // 브랜드 추가/수정/활성토글 직후 사이드바 선택기·관리 목록이 새로고침 없이 반영되도록
     // App 의 canonical brands state 를 재로드 (Brands.jsx 로컬 state 와 분리돼 있던 문제 보정).
@@ -540,7 +552,10 @@ function App() {
                 }
             }
             // 신규 session_token 으로 calls 즉시 재조회 — 마운트 useEffect 는 비로그인 401 로 끝나 있음.
-            await refreshCalls();
+            // 단 활성 브랜드가 아직 없으면(super_admin·홈 브랜드 없음 — 로그아웃이 키를 지운 뒤) 여기서
+            // 조회하지 않는다: 헤더 없는 요청은 전 브랜드 목록(느림)을 돌려주고, 곧 브랜드 목록 effect 가
+            // 첫 브랜드로 확정하면서 재조회한다. (혼입 원인 ①: 불필요한 전 브랜드 요청 자체를 없앤다)
+            if (window.localStorage.getItem(QA_ACTIVE_BRAND_KEY)) await refreshCalls();
             return true;
         } catch (error) {
             console.error('로그인 실패:', error);

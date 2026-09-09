@@ -5,22 +5,19 @@
 // 비밀번호 정책: 영문·숫자·특수문자[@$!%*#?&] 1자 이상씩 + 8~20자.
 // (프로필 이미지 업로드 기능은 폐지 — 사용자 식별은 display_name 텍스트만 사용)
 
-import crypto from 'crypto';
 import express from 'express';
 import { AUDIT_ACTION, insertQaAuditLog } from './auditLog.mjs';
+import { sha256Hex } from './util/common.mjs';
 
-export const PASSWORD_POLICY_HINT = '영문, 숫자, 특수문자[ @$!%*#?& ] 포함 8~20자';
+const PASSWORD_POLICY_HINT = '영문, 숫자, 특수문자[ @$!%*#?& ] 포함 8~20자';
 const PASSWORD_POLICY_RE = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,20}$/;
 
-function sha256Hex(s) {
-    return crypto.createHash('sha256').update(String(s)).digest('hex');
-}
 
-export function isPasswordPolicyOk(pw) {
+function isPasswordPolicyOk(pw) {
     return typeof pw === 'string' && PASSWORD_POLICY_RE.test(pw);
 }
 
-export function buildMeResponse(row, sessionToken) {
+function buildMeResponse(row, sessionToken) {
     return {
         user_id: row.user_id,
         login_id: row.login_id,

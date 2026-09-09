@@ -18,24 +18,16 @@ import { resolvePipelineBaseUrl } from './qaPipelineIngest.mjs';
 import { buildRubricFromDefs } from './rubricSync.mjs';
 import { getOrgFewshot } from './ragFewshotConfig.mjs';
 import { logger } from './logger.mjs';
+import { safeStr, asNumber } from './util/common.mjs';
+import { RUBRIC_ITEM_BASE, RUBRIC_REGISTER_TIMEOUT_MS } from './util/rubricConst.mjs';
 
-// 루브릭 트랙 항목 번호 기준값 — eval_item_number = RUBRIC_ITEM_BASE + index (qaPipelineIngest 와 동일).
-const RUBRIC_ITEM_BASE = 5000;
 const GENERATE_TIMEOUT_MS = 600_000; // overlay 생성(LLM 다건) 타임아웃
 const PROXY_TIMEOUT_MS = 15_000; // 버전 조회/활성화/설정 프록시 타임아웃
-const RUBRIC_REGISTER_TIMEOUT_MS = 30_000; // 루브릭 사전 등록(멱등) 타임아웃
 const EVIDENCE_CAP = 1000; // 근거 발화(agent_utterance) 상한
 const CALL_REASON_CAP = 500; // 콜단위 검수사유 상한
 const DEFAULT_CASE_LIMIT = 200; // 케이스 수집 기본 상한(최신순)
 
-function safeStr(value) {
-    return value === null || value === undefined ? '' : String(value);
-}
 
-function asNumber(value) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
-}
 
 /** 스킬 학습 base URL — 골든 학습(ingestGoldenSetToRag)과 동일하게 EC2 타깃 기본. */
 function resolveSkillBaseUrl(opts = {}) {
@@ -67,9 +59,26 @@ async function registerRubricForOrg(pool, orgId, rubricId, base) {
 
 /**
  * 격리키 변경 자동 이관(auto-heal) — RAG few-shot 설정 저장/해제로 rubric_id 해석이 바뀌면
- * (예: inline-org42 → rbrc_org42) 기존 스킬 버전이 옛 키 아래 미아가 된다. 현재 키에 버전이
- * 없을 때 옛 후보 키(qa_skill_store 의 이 org 행 + 규칙상 두 형태)를 뒤져 버전이 있으면
- * 파이프라인 adopt 로 스토어를 통째 이관하고 qa_skill_store 행 키도 승계한다.
+ * (예: inline-org42 → rbrc_org42) 기존 스킬 버전이 옛 키 아래 미아가 된다. 옛 후보 키
+ * (규칙상 두 형태 `rbrc_org{N}`·`inline-org{N}` + qa_skill_store 의 이 org 행 키)를 뒤져
+ * 버전이 있으면 파이프라인 adopt 로 스토어를 통째 이관하고 qa_skill_store 행 키도 승계한다.
+ *
+ * ★ 발동 조건 정정(2026-08-28) — 종전 주석은 "현재 키에 버전이 없을 때" 뒤진다고 적혀 있었으나
+ *   코드에 그 전제가 없다. `{rubricId}/versions` 를 조회하지 않으므로, runSkillLearn 이 돌 때마다
+ *   (수동 POST /api/skill-learn/run · skillFreq 스케줄러 무관) 후보 키에 버전이 1건이라도 있으면
+ *   현재 키가 이미 자기 버전을 갖고 있든 없든 adopt 를 시도한다. 병합/거절 판단은 MTG 밖
+ *   (파이프라인 /adopt)에 있다 — 그래서 아래 이관 성공·거절 양쪽에 WARN 을 남긴다.
+ *
+ * ★ 6단계(평가·학습 요청에 store_key 명시) 완료 후 제거 대상.
+ *   근거: 이 함수의 존재 이유는 rubric_id 가 "루브릭 식별자" 와 "스킬 스토어 격리키" 를 겸하는
+ *   계약 결함 하나뿐이다. resolveSkillRubricId 가 getOrgFewshot(rag_rubric_id) 유무에 따라
+ *   rbrc_org{N} ↔ inline-org{N} 사이에서 답을 바꾸고, 그 흔들림이 곧 격리키 변경이 되어 버전·
+ *   메모리가 미아가 된다. 격리키를 store_key 로 분리해 명시하면 해석이 흔들릴 여지가 사라져
+ *   이관 자체가 불필요해진다. 그때 이 함수 + registerRubricForOrg + 후보키 규칙을 함께 삭제.
+ *
+ * 현재 유일 호출부는 runSkillLearn(register:false) 이라 register:true 기본 분기와 그 안의
+ * registerRubricForOrg 는 지금 도달 불가다(6단계 정리 시 함께 제거).
+ *
  * @returns {Promise<boolean>} 이관 발생 여부
  */
 async function adoptLegacySkillStore(pool, orgId, rubricId, base, { register = true } = {}) {
@@ -118,11 +127,25 @@ async function adoptLegacySkillStore(pool, orgId, rubricId, base, { register = t
             } catch (e) {
                 logger.warn(`[skill-learn] 메모리 키 이관 실패(버전 이관은 유효): ${e?.message || e}`);
             }
-            logger.info(
-                `[skill-learn] 스킬 스토어 격리키 이관 — org ${orgId}: ${cand} → ${rubricId} (버전 ${mig.version_count ?? '?'}개)`
+            // ★ WARN 레벨 — 격리키가 바뀐 사실은 운영자가 반드시 알아야 한다. 이관 후 버전·메모리·
+            //   overlay 조회가 전부 새 키 기준으로 옮겨가므로(getActiveSkillOverlays·fetchSkillVersions
+            //   모두 resolveSkillRubricId 결과를 쓴다), 조용히 넘기면 "버전이 사라졌다/바뀌었다" 로만
+            //   보인다. INFO 는 요청 로그(requestLogger 가 전 요청을 info 로 적재)에 묻히고 보존이
+            //   3일뿐이라 사후 추적이 안 된다.
+            logger.warn(
+                `[skill-learn] ★ 스킬 스토어 격리키 이관 — org ${orgId}: ${cand} → ${rubricId}` +
+                    ` (버전 ${mig.version_count ?? '?'}개). 이후 버전·메모리·overlay 조회는 모두 새 키 기준.` +
+                    ` 원인은 RAG few-shot 설정(rag_rubric_id) 변경 — 의도한 변경이 아니면 설정을 되돌릴 것.`
             );
             return true;
         }
+        // 후보 키에 버전이 있는데 adopt 가 거절됨 — 옛 키의 버전이 미아로 남는다. 종전에는 조용히
+        // 다음 후보로 넘어가 운영자가 미아 상태를 알 방법이 없었다.
+        logger.warn(
+            `[skill-learn] 격리키 이관 거절 — org ${orgId}: ${cand} → ${rubricId}` +
+                ` (파이프라인 adopt 응답: ${safeStr(mig?.error).trim() || 'ok 아님/사유 없음'}).` +
+                ` ${cand} 의 버전 ${alt.versions.length}개가 미아로 남음.`
+        );
     }
     return false;
 }
@@ -185,7 +208,7 @@ async function readSkillExcludedOrders(pool, orgId) {
  * (같은 order_no) LEFT JOIN, 콜단위 검수사유는 qa_call_review_event 최신 1건(qa_id 묶음 일괄 조회).
  * @returns {Promise<{rows:Array, callReasons:Object}>}
  */
-export async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMIT } = {}) {
+async function collectSkillCases(pool, orgId, { limit = DEFAULT_CASE_LIMIT } = {}) {
     const lim = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.trunc(Number(limit)) : DEFAULT_CASE_LIMIT;
     // 통합DB: 헤더=common.calls(source_id/tenant_id/cdate), 평가=trustguard.qa_evaluations(review_status/is_sandbox), 항목=eval_item_score(call_id).
     //   외부 케이스 식별자 qa_id=source_id, 검수사유는 eval_review_event(call_id) → source_id 로 재키.
@@ -407,12 +430,6 @@ async function pushSkillStoreBackup(pool, rubricId, base) {
     return r?.ok === true;
 }
 
-/** 파이프라인 버전 0건 & PG 보관본 존재 → store-restore 자가 복원. 복원했으면 true. */
-async function restoreSkillStoreIfEmpty(pool, rubricId, base) {
-    const cur = await pipelineJson(`${base}/v2/mtg-skill/${encodeURIComponent(rubricId)}/versions`);
-    if (Array.isArray(cur?.versions) && cur.versions.length) return false;
-    return pushSkillStoreBackup(pool, rubricId, base);
-}
 
 /**
  * 활성 스킬 overlay 맵 — MTG DB 보관본(qa_skill_store)에서 직접 산출(파이프라인 무조회).

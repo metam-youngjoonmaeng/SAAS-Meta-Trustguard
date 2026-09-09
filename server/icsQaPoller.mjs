@@ -22,10 +22,8 @@ import { applyManualReviewStamps } from './manualReview.mjs';
 import { logger } from './logger.mjs';
 import { ingestGoldenSetToRag } from './qaPipelineIngest.mjs';
 import { runSkillLearn } from './skillLearn.mjs';
+import { env } from './util/common.mjs';
 
-function env(key, def = '') {
-    return String(process.env[key] ?? def).trim();
-}
 
 // 통합DB: PROJ_CD == tenant_id (1:1) — organizations 조회 폐기. 브랜드 키 = tenant_id(citext, 소문자 canonical).
 //   override(ICS_QA_TENANT_ID) 명시 시 그 테넌트로 적재(구 ICS_QA_ORG_ID 숫자 오버라이드 대체). 둘 다 없으면 projCd.
@@ -247,48 +245,85 @@ async function readSkillSchedule(pool, orgId) {
     }
 }
 
-// 골든셋 학습 배치 — 전용 스케줄러(startGoldenLearnScheduler)가 브랜드별 마커맵으로 같은 구간 1회만 발화.
-const _lastGoldenKey = new Map(); // 'org:'+orgId → 마지막 골든셋 학습 실행 구간키
-function dueForGoldenLearn(markerKey, freq, time) {
+// ── 학습 배치 스케줄 마커 (골든 · 스킬 공용) ────────────────────────────────
+// 같은 구간(버킷)에 1회만 발화하기 위한 마커.
+//
+// ★ 0831 — 인메모리 맵만 쓰던 종전 구조는 **재기동마다 마커가 리셋**됐다. daily 02:00 판정이
+//   "02:00 을 지났으면 due" 라서, 02:00 이후 아무 때나 기동하면 부트 틱에서 그 즉시 정기 발화가
+//   다시 일어난다. 로컬 실측 — 재기동 3회가 그대로 '골든셋 학습' 알림 3회(관리자 4명 × 4건)로
+//   쌓였고, 파이프라인이 내려가 있던 구간에선 '학습 실패' 알림 45건이 같은 경위로 누적됐다.
+//   → 마지막 발화 버킷키를 qa_batch_configs.config.batch_runtime 에 **영속**하고, 인메모리 맵은
+//     앞단 캐시로만 둔다. 스키마 변경 없음(config jsonb 안 형제 키, 최상위 병합으로 scope/kms/
+//     golden 보존). updated_at/updated_by 는 갱신하지 않는다 — 런타임 마커일 뿐 설정 변경이 아니다.
+//   판정 시점(발화 직전 확정)은 종전 인메모리 거동 그대로다. 실행 실패 시 같은 버킷 재시도는
+//   여전히 안 한다(다음 버킷에 재개) — 종전과 동일.
+const _lastGoldenKey = new Map(); // 'org:'+orgId → 마지막 골든셋 학습 실행 구간키(캐시)
+const _lastSkillKey = new Map(); // 'org:'+orgId → 마지막 스킬 학습 실행 구간키(캐시)
+
+/** 현재 시각이 속한 발화 버킷키(KST). 아직 실행 시각 전이거나 manual 이면 null. */
+function learnBucketKey(freq, time) {
     const kst = new Date(Date.now() + 9 * 3600 * 1000);
     const dateKey = kst.toISOString().slice(0, 10);
     const hour = kst.getUTCHours();
     const min = kst.getUTCMinutes();
-    let key;
-    if (freq === 'hourly') {
-        key = `${dateKey} ${String(hour).padStart(2, '0')}`;
-    } else if (freq === 'daily') {
+    if (freq === 'hourly') return `${dateKey} ${String(hour).padStart(2, '0')}`;
+    if (freq === 'daily') {
         const [th, tm] = String(time || '02:00').split(':').map((n) => Number(n) || 0);
-        if (hour < th || (hour === th && min < tm)) return false;
-        key = dateKey;
-    } else {
-        return false; // manual 은 정기 패스 대상 아님
+        if (hour < th || (hour === th && min < tm)) return null;
+        return dateKey;
     }
-    if (_lastGoldenKey.get(markerKey) === key) return false;
-    _lastGoldenKey.set(markerKey, key);
-    return true;
+    return null; // manual 은 정기 패스 대상 아님
 }
 
-// LLM 스킬 학습 배치 — 골든과 분리된 전용 마커맵(같은 구간 1회만 발화, 판정 로직은 골든 미러).
-const _lastSkillKey = new Map(); // 'org:'+orgId → 마지막 스킬 학습 실행 구간키
-function dueForSkillLearn(markerKey, freq, time) {
-    const kst = new Date(Date.now() + 9 * 3600 * 1000);
-    const dateKey = kst.toISOString().slice(0, 10);
-    const hour = kst.getUTCHours();
-    const min = kst.getUTCMinutes();
-    let key;
-    if (freq === 'hourly') {
-        key = `${dateKey} ${String(hour).padStart(2, '0')}`;
-    } else if (freq === 'daily') {
-        const [th, tm] = String(time || '02:00').split(':').map((n) => Number(n) || 0);
-        if (hour < th || (hour === th && min < tm)) return false;
-        key = dateKey;
-    } else {
-        return false; // manual 은 정기 패스 대상 아님
+/** 영속 마커 조회. 실패 시 null — 종전(인메모리 전용) 거동으로 폴백해 학습을 막지 않는다. */
+async function readLearnMarker(pool, orgId, field) {
+    try {
+        const { rows } = await pool.query(
+            `SELECT config #>> ARRAY['batch_runtime', $2::text] AS k FROM qa_batch_configs WHERE tenant_id = $1`,
+            [orgId, field]
+        );
+        return rows[0]?.k ?? null;
+    } catch (e) {
+        logger.warn(`[learn-marker] 조회 실패(org=${orgId} ${field}): ${e?.message || e}`);
+        return null;
     }
-    if (_lastSkillKey.get(markerKey) === key) return false;
-    _lastSkillKey.set(markerKey, key);
-    return true;
+}
+
+/** 영속 마커 기록. config 최상위 병합 + batch_runtime 내부 병합이라 형제 키·형제 마커 보존. */
+async function writeLearnMarker(pool, orgId, field, key) {
+    try {
+        await pool.query(
+            `INSERT INTO qa_batch_configs (tenant_id, config)
+                  VALUES ($1, jsonb_build_object('batch_runtime', jsonb_build_object($2::text, $3::text)))
+             ON CONFLICT (tenant_id) DO UPDATE
+                SET config = COALESCE(qa_batch_configs.config, '{}'::jsonb)
+                           || jsonb_build_object('batch_runtime',
+                                COALESCE(qa_batch_configs.config -> 'batch_runtime', '{}'::jsonb)
+                                || jsonb_build_object($2::text, $3::text))`,
+            [orgId, field, key]
+        );
+    } catch (e) {
+        logger.warn(`[learn-marker] 기록 실패(org=${orgId} ${field}=${key}): ${e?.message || e}`);
+    }
+}
+
+/**
+ * 이번 틱에 발화해야 하는지 판정. 발화 대상이면 버킷키를 반환하고 마커를 확정(메모리+DB), 아니면 null.
+ * @param {Map<string,string>} mem 인메모리 캐시(_lastGoldenKey | _lastSkillKey)
+ * @param {'goldenLastKey'|'skillLastKey'} field 영속 마커 필드명
+ */
+async function dueForLearn(pool, orgId, mem, field, freq, time) {
+    const key = learnBucketKey(freq, time);
+    if (!key) return null;
+    const mk = `org:${orgId}`;
+    if (mem.get(mk) === key) return null; // 같은 프로세스 내 중복 발화 차단
+    if ((await readLearnMarker(pool, orgId, field)) === key) {
+        mem.set(mk, key); // 재기동 직후 — 이 버킷은 이미 발화됐다
+        return null;
+    }
+    mem.set(mk, key);
+    await writeLearnMarker(pool, orgId, field, key);
+    return key;
 }
 
 /**
@@ -346,8 +381,8 @@ const GOLDEN_LEARN_INTERVAL_MS = 60000;
  * → 충족 org 만 triggerGoldenLearn 발화. 브랜드별로 따로따로 발화하며, ICS 접속(ICS_DB_*) 유무와
  * 무관하게 모든 배포에서 동작. goldenFreq 가 명시되지 않은 브랜드(기본 manual)는 자동 발화 안 함.
  * 한 org 실패가 전체를 멈추지 않게 org 별 try/catch. 부트 직후 1회 즉시 + 이후 주기 실행.
- * 재기동 시 인메모리 마커(_lastGoldenKey) 리셋으로 같은 버킷 재발화 가능하나, 색인
- * (ingestGoldenSetToRag) 이 skip_existing 멱등이라 중복 색인은 무해.
+ * 발화 여부는 dueForLearn(영속 마커) 판정 — 재기동해도 같은 버킷은 다시 발화하지 않는다.
+ * (종전엔 인메모리 마커라 기동할 때마다 재발화 → 알림 스팸. 0831 수정)
  *
  * hooks(선택) — 자동 발화를 대시보드에 실시간 노출하기 위한 UI 콜백(스케줄러는 UI 무지):
  *   onRunStart(orgId, sched)  발화 직전 — index.js 가 goldenLearnStatus=running 로 세팅.
@@ -373,7 +408,11 @@ export function startGoldenLearnScheduler(pool, hooks = {}) {
                 const orgId = row.tenant_id;
                 try {
                     const sched = await readGoldenSchedule(pool, orgId);
-                    if ((sched.freq === 'hourly' || sched.freq === 'daily') && dueForGoldenLearn(`org:${orgId}`, sched.freq, sched.time)) {
+                    const dueKey =
+                        sched.freq === 'hourly' || sched.freq === 'daily'
+                            ? await dueForLearn(pool, orgId, _lastGoldenKey, 'goldenLastKey', sched.freq, sched.time)
+                            : null;
+                    if (dueKey) {
                         const label = sched.freq === 'daily' ? `매일 ${sched.time}` : '매시간';
                         logger.info(`[golden-learn] org=${orgId}: [${label}] 정기 학습 트리거 발화`);
                         try { hooks.onRunStart?.(orgId, sched); } catch { /* UI 훅 실패는 학습에 무영향 */ }
@@ -435,8 +474,8 @@ const SKILL_LEARN_INTERVAL_MS = 60000;
  * 브랜드(org_id<>0)를 조회하고, 브랜드별 freq/time(readSkillSchedule)으로 dueForSkillLearn 판정
  * → 충족 org 만 triggerSkillLearn 발화. skillFreq 미설정 브랜드(기본 manual)는 자동 발화 안 함.
  * 한 org 실패가 전체를 멈추지 않게 org 별 try/catch. 부트 직후 1회 즉시 + 이후 주기 실행.
- * 재기동 시 인메모리 마커(_lastSkillKey) 리셋으로 같은 버킷 재발화 가능하나, 생성은 새 버전
- * 추가일 뿐(활성 버전 교체) 평가 정합을 깨지 않는다.
+ * 발화 여부는 dueForLearn(영속 마커) 판정 — 재기동해도 같은 버킷은 다시 발화하지 않는다.
+ * (종전엔 인메모리 마커라 기동마다 재발화 → 불필요한 스킬 버전이 매번 추가됐다. 0831 수정)
  *
  * hooks(선택) — 자동 발화를 대시보드에 노출하기 위한 UI 콜백(골든 hooks 패턴 미러):
  *   onRunStart(orgId, sched)  발화 직전 — index.js 가 skillLearnStatus=running + 로그 적재.
@@ -461,7 +500,11 @@ export function startSkillLearnScheduler(pool, hooks = {}) {
                 const orgId = row.tenant_id;
                 try {
                     const sched = await readSkillSchedule(pool, orgId);
-                    if ((sched.freq === 'hourly' || sched.freq === 'daily') && dueForSkillLearn(`org:${orgId}`, sched.freq, sched.time)) {
+                    const dueKey =
+                        sched.freq === 'hourly' || sched.freq === 'daily'
+                            ? await dueForLearn(pool, orgId, _lastSkillKey, 'skillLastKey', sched.freq, sched.time)
+                            : null;
+                    if (dueKey) {
                         const label = sched.freq === 'daily' ? `매일 ${sched.time}` : '매시간';
                         logger.info(`[skill-learn] org=${orgId}: [${label}] 정기 학습 트리거 발화`);
                         try { hooks.onRunStart?.(orgId, sched); } catch { /* UI 훅 실패는 학습에 무영향 */ }

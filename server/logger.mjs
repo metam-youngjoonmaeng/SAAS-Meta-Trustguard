@@ -33,8 +33,8 @@ const FILE_FORMAT = winston.format.printf(({ timestamp, level, message, module }
     return `${timestamp} | ${lvl} | ${mod} - ${message}`;
 });
 
-export const LOG_FILENAME_PATTERN = 'app-%DATE%.log';
-export const LOG_RETENTION_DAYS = 3;
+const LOG_FILENAME_PATTERN = 'app-%DATE%.log';
+const LOG_RETENTION_DAYS = 3;
 
 const fileTransport = new winston.transports.DailyRotateFile({
     dirname: LOG_DIR,
@@ -72,9 +72,6 @@ export function todayLogPath() {
     return path.join(LOG_DIR, `app-${yyyy}-${mm}-${dd}.log`);
 }
 
-export function logDir() {
-    return LOG_DIR;
-}
 
 // express 요청 로깅 미들웨어 — 상태 코드·소요 시간·경로.
 export function requestLogger() {

@@ -19,10 +19,8 @@
 
 import mysql from 'mysql2/promise';
 import { logger } from './logger.mjs';
+import { env } from './util/common.mjs';
 
-function env(key, def = '') {
-    return String(process.env[key] ?? def).trim();
-}
 
 /** ICS DB 접속정보(HOST)가 채워져야 활성. 미설정 시 전체 no-op. (icsSso.icsEnabled 와 동일 기준) */
 export function icsEnabled() {

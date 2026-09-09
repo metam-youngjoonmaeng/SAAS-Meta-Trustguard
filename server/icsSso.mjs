@@ -15,6 +15,7 @@ import crypto from 'crypto';
 import express from 'express';
 import mysql from 'mysql2/promise';
 import { insertLoginHistory } from './auditLog.mjs';
+import { icsEnabled } from './icsSource.mjs';
 
 // AUTH_NM(한글 역할명) → 로컬 role 매핑. S-코드는 테넌트마다 달라 한글명 기준(공백 제거 매칭).
 const AUTH_NM_TO_ROLE = {
@@ -28,9 +29,6 @@ const ALLOWED_STATUS = new Set(['NORMAL']); // 그 외(PWD_LOCK, 탈퇴 등)는 
 
 let _icsPool = null;
 
-export function icsEnabled() {
-    return Boolean(String(process.env.ICS_DB_HOST || '').trim());
-}
 
 // mtm30 읽기전용 풀 (지연 생성, 작은 풀).
 function getIcsPool() {
@@ -61,7 +59,7 @@ function mapRole(authNms) {
 }
 
 // ICS 날짜(JOIN_DATE/RETIRE_DATE) → 'YYYY-MM-DD' 정규화. 빈값/0 → null.
-export function normalizeIcsDate(v) {
+function normalizeIcsDate(v) {
     if (v == null) return null;
     if (v instanceof Date) {
         if (Number.isNaN(v.getTime())) return null;

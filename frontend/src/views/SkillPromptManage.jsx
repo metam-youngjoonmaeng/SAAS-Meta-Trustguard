@@ -10,14 +10,13 @@ import {
     fetchSkillVersions, fetchSkillVersionDetail, activateSkillVersion,
     fetchSkillLearnStatus,
 } from '../services/api';
+import { formatDateTime } from '../utils/formatters';
 
-// 'YYYY-MM-DD HH:MM:SS'(브라우저 로컬=KST). null/불량 시 '—'.
+// 'YYYY-MM-DD HH:MM:SS'(항상 KST 고정 — utils/formatters). null/불량 시 '—'.
 function fmtDateTime(ts) {
     if (!ts) return '—';
-    const d = new Date(ts);
-    if (Number.isNaN(d.getTime())) return String(ts);
-    const p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    const out = formatDateTime(ts);
+    return out === '-' ? '—' : out;
 }
 
 // 방향 배지 — 낮음(AI 과소평가)=파랑 / 높음(AI 과대평가)=주황.

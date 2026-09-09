@@ -106,7 +106,7 @@ async function main() {
         process.exit(1);
     }
     const limit = Number(process.argv[2]) > 0 ? Number(process.argv[2]) : 500;
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c search_path=trustguard,common,public' });
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c search_path=trustguard,common,public -c timezone=Asia/Seoul' });
     try {
         const r = await runJudgeBackfill(pool, { limit });
         console.log(`[judge-bf] 완료 — 판정 ${r.done}, 실패 ${r.failed}, 신뢰도이슈 ${r.flagged}, 도장 ${r.stamped}건`);

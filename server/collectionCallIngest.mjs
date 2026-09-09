@@ -13,6 +13,7 @@ import {
     insertTranscriptRows,
     restoreSticky,
 } from './itemScoreIngest.mjs';
+import { round1 } from './util/common.mjs';
 
 const COLLECTION_DEPARTMENT = '컬렉션관리부';
 
@@ -46,9 +47,6 @@ const RADAR_AXES = [
     { item_type_no: 5, item_type: '사후 처리',       orderNos: [9] },
 ];
 
-function round1(value) {
-    return Math.round((Number(value) || 0) * 10) / 10;
-}
 
 function ratingFromScore(score) {
     if (score >= 90) return '우수';
@@ -71,7 +69,7 @@ function summaryFromScore(score) {
     return '인사·본인확인·경청·공감 응대·업무 정확도·사후 처리 전반에 걸쳐 우선 개선이 필요합니다.';
 }
 
-export function transformCollectionPayload(body) {
+function transformCollectionPayload(body) {
     const callIn = body?.call;
     if (!callIn || typeof callIn !== 'object') {
         return { ok: false, message: 'call 객체가 필요합니다.' };

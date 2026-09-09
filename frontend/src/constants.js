@@ -63,12 +63,6 @@ export const COLLECTION_TOTAL_BY_ROLE = {
     인바운드: 90,
 };
 
-export function collectionMaxPointsForRole(orderNo, role) {
-    const row = COLLECTION_POINTS_BY_ROLE[Number(orderNo)];
-    if (!row) return 0;
-    return Number(row[role] ?? 0);
-}
-
 // ─── Pentagon 5축 (컬렉션관리부 전용) ─────────────────────────────
 // 컬렉션관리부 9개 평가항목 → 5축 매핑. 자세한 정의는 docs/EVALUATION_ITEMS.md (Pentagon 5축 설계 절) 참조.
 //   ① 인사·본인확인       ← order_no 1,2,3 (친절도)
@@ -363,6 +357,11 @@ export function buildChecklistTemplateFromDefs(defs) {
             category: d.category || '',
             item: d.item || '',
             validation_time: `배점 ${d.scoring_type === 'yes_no' ? 1 : (d.max_score ?? 5)}`,
+            // ★ 만점 숫자 보존 — `validation_time` 문자열만 남기면 감점전용 항목(max_score 0)의 0 이
+            //   소실된다. `parseMaxPointsFromValidationTime('배점 0')` 은 n>0 조건 탈락으로 5 를
+            //   돌려주므로 척도가 `0 / 5` 로 잘못 표기된다. 소비자는 `isDeductionOnlyRow` 로 판별.
+            max_score: d.scoring_type === 'yes_no' ? 1 : (d.max_score ?? null),
+            scoring_type: d.scoring_type || 'numeric',
             is_active: d.is_active ?? true,
         }));
 }

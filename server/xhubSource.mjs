@@ -11,10 +11,8 @@
 
 import mysql from 'mysql2/promise';
 import { logger } from './logger.mjs';
+import { env } from './util/common.mjs';
 
-function env(key, def = '') {
-    return String(process.env[key] ?? def).trim();
-}
 
 /** IPCC_DB_HOST 설정 시 활성. 미설정 시 전체 no-op. */
 export function ipccEnabled() {

@@ -5,7 +5,7 @@
  * 만점이 다양해서 항목별 hard-coded tier 대신 만점 기반 동적 tier 를 사용.
  */
 
-export function parseMaxPointsFromValidationTime(vt) {
+function parseMaxPointsFromValidationTime(vt) {
     const s = String(vt || '').trim();
     if (!s.startsWith('배점')) return 5;
     const n = parseFloat(s.replace('배점', '').trim());
@@ -46,7 +46,7 @@ export const MANUAL_JUDGMENT_LABELS = ['낮음', '동일', '높음'];
  * 만점에 따라 동적으로 [만점, ~70%, ~40%, '평가제외'] tier 를 생성.
  * 9개 항목 v2 직무별 만점(3/4/5/10/15/16/20) 모두 커버.
  */
-export function allowedManualEvalValues(_item, maxPts) {
+function allowedManualEvalValues(_item, maxPts) {
     const m = Math.round(Number(maxPts) || 0);
     if (m <= 0) return ['평가제외'];
     if (m >= 20) return ['20', '16', '12', '8', '평가제외'];

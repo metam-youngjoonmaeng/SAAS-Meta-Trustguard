@@ -1,31 +1,11 @@
-// 신규 브랜드 생성 시 eval_item_defs 에 기본 시드되는 18 항목.
-// 원본: 01-QA_Dashboard/src/constants.js 의 CHECKLIST_TEMPLATE (STT 상담 품질 평가표).
+// 신규 브랜드 생성 시 eval_item_defs 시드 — 최소 시드('첫인사' 1항목) · 도메인 템플릿 시드 · KSQI 항목 · 펜타곤 축.
 // criterion / prompt_template 는 NULL — UI 에서 운영자가 추후 작성.
 // ★통합DB: org_id(int) → tenant_id(citext). 테이블은 search_path(trustguard,common,public)로 해석.
-
-export const DEFAULT_EVAL_ITEMS = [
-    { order_no: 1,  category: '인사 예절',         item: '첫인사' },
-    { order_no: 2,  category: '인사 예절',         item: '끝인사' },
-    { order_no: 3,  category: '경청 및 소통',      item: '경청 (말겹침/말자름)' },
-    { order_no: 4,  category: '경청 및 소통',      item: '호응 및 공감' },
-    { order_no: 5,  category: '경청 및 소통',      item: '대기 멘트' },
-    { order_no: 6,  category: '언어 표현',         item: '정중한 표현' },
-    { order_no: 7,  category: '언어 표현',         item: '쿠션어 활용' },
-    { order_no: 8,  category: '니즈 파악',         item: '문의 파악 및 재확인(복창)' },
-    { order_no: 9,  category: '니즈 파악',         item: '고객정보 확인' },
-    { order_no: 10, category: '설명력 및 전달력',  item: '설명의 명확성' },
-    { order_no: 11, category: '설명력 및 전달력',  item: '두괄식 답변' },
-    { order_no: 12, category: '적극성',            item: '문제 해결 의지' },
-    { order_no: 13, category: '적극성',            item: '부연 설명 및 추가 안내' },
-    { order_no: 14, category: '적극성',            item: '사후 안내' },
-    { order_no: 15, category: '업무 정확도',       item: '정확한 안내' },
-    { order_no: 16, category: '업무 정확도',       item: '필수 안내 이행' },
-    { order_no: 17, category: '개인정보 보호',     item: '정보 확인 절차' },
-    { order_no: 18, category: '개인정보 보호',     item: '정보 보호 준수' },
-];
+// ※ 2026-09-03 정리: 표준 18항목 상수(DEFAULT_EVAL_ITEMS)와 그 시더(seedDefaultEvalItems)는 어디서도 호출되지 않아
+//    제거했다(참조 그래프 실측 0). 표준 18항목의 정본은 DB(eval_item_defs) 와 프론트 constants 다.
 
 // 신규 브랜드 최소 시드 — '첫인사' 1항목만. 표준 18항목 자동 상속 차단.
-export const MINIMAL_EVAL_ITEMS = [
+const MINIMAL_EVAL_ITEMS = [
     { order_no: 1, category: '인사 예절', item: '첫인사' },
 ];
 
@@ -57,10 +37,6 @@ async function seedEvalItems(client, tenantId, items) {
     return items.length;
 }
 
-// 표준 18항목 시드 (기존 호출 호환 — 현재 신규 생성 경로에서는 미사용).
-export async function seedDefaultEvalItems(client, tenantId) {
-    return seedEvalItems(client, tenantId, DEFAULT_EVAL_ITEMS);
-}
 
 // 신규 브랜드 시드 — 첫인사 1항목.
 export async function seedMinimalEvalItems(client, tenantId) {
@@ -140,9 +116,9 @@ export async function seedKsqiItemDefs(client, tenantId) {
         );
         if (rows.length === 0) return 0;
         const { rowCount } = await client.query(
-            `INSERT INTO ksqi_item_defs (tenant_id, number, name, area, category, kind, max_score)
-             SELECT $1, d.number, d.name, d.area, d.category, d.kind, d.max_score
-               FROM (SELECT DISTINCT ON (number) number, name, area, category, kind, max_score
+            `INSERT INTO ksqi_item_defs (tenant_id, number, name, area, category, max_score)
+             SELECT $1, d.number, d.name, d.area, d.category, d.max_score
+               FROM (SELECT DISTINCT ON (number) number, name, area, category, max_score
                        FROM ksqi_item_defs
                       ORDER BY number, tenant_id) d
                  ON CONFLICT (tenant_id, number) DO NOTHING`,

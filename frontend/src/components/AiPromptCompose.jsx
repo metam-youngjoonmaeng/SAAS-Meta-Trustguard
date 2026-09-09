@@ -4,7 +4,7 @@ import { Sparkles, X, RefreshCw, AlertTriangle, Check, Info } from 'lucide-react
 import { composeEvalPrompt } from '../services/api';
 
 // AI 프롬프트 다듬기 — 평가항목 편집 모달(EvalItems/DomainEvalPage 공용) 항목 평가 설명용.
-//   버튼 → 서버 /api/admin/eval-items/compose-prompt (파이프라인 Haiku 프록시) → 검토 모달.
+//   버튼 → 서버 /api/admin/eval-items/compose-prompt (파이프라인 LLM 프록시) → 검토 모달.
 //   검토 모달에서 생성본 직접 수정 + 단계 조건 행별 채택 후 [적용] — 폼 state 에만 반영,
 //   DB 저장은 편집 모달의 기존 저장 버튼(이중 안전장치, 자동 저장 없음).
 //

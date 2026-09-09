@@ -1,4 +1,5 @@
 // 조직(소속) 전환 셀렉터 — 다중 소속(02/03 동일) 사용자용.
+// 서버(/api/auth/memberships)는 tenant_id/tenant_name/membership_id 를 돌려준다 — 0902 정합(종전 org_name/trainee_id 로 읽어 '조직 undefined').
 // 소속이 2개 이상일 때만 노출. 선택 시 서버 활성 멤버십 전환 후 새로고침(전 화면 새 org 재조회).
 import React, { useEffect, useRef, useState } from 'react';
 import { Building2, Check, ChevronDown, Loader2 } from 'lucide-react';
@@ -36,7 +37,7 @@ export default function OrgSwitcher() {
         if (m.current) { setOpen(false); return; }
         setBusy(true);
         try {
-            await switchOrg(m.trainee_id);
+            await switchOrg(m.membership_id ?? m.trainee_id);
             window.location.reload();  // 서버 세션이 새 org/role → 전 화면을 새 org 로 재조회
         } catch {
             setBusy(false);
@@ -53,7 +54,7 @@ export default function OrgSwitcher() {
                 title="소속 조직 전환"
             >
                 <Building2 size={15} className="text-[var(--ink-500)] shrink-0" />
-                <span className="text-[13px] font-semibold truncate">{current?.org_name || '조직'}</span>
+                <span className="text-[13px] font-semibold truncate">{current?.tenant_name || current?.org_name || '조직'}</span>
                 <ChevronDown size={14} className="text-[var(--ink-400)] shrink-0" />
             </button>
 
@@ -63,7 +64,7 @@ export default function OrgSwitcher() {
                     <div className="max-h-[280px] overflow-y-auto py-1">
                         {items.map((m) => (
                             <button
-                                key={m.trainee_id}
+                                key={m.membership_id ?? m.trainee_id}
                                 type="button"
                                 onClick={() => pick(m)}
                                 disabled={busy}
@@ -71,7 +72,7 @@ export default function OrgSwitcher() {
                             >
                                 <Building2 size={14} className="text-[var(--ink-500)] shrink-0" />
                                 <span className="flex-1 min-w-0">
-                                    <span className="block text-[13px] font-semibold text-[var(--ink-900)] truncate">{m.org_name || `조직 ${m.org_id}`}</span>
+                                    <span className="block text-[13px] font-semibold text-[var(--ink-900)] truncate">{m.tenant_name || m.org_name || `조직 ${m.tenant_id ?? m.org_id ?? ''}`}</span>
                                     <span className="block text-[11px] text-[var(--ink-500)]">{ROLE_LABEL[m.role] || m.role}{m.department ? ` · ${m.department}` : ''}</span>
                                 </span>
                                 {m.current

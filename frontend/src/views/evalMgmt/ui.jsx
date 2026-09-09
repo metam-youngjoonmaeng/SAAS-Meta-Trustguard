@@ -145,33 +145,6 @@ export function Gauge({ value, max = 100, label = '종합 점수', size = 140 })
 }
 
 // ─────────────────────────────────────────────────────
-// Sparkline
-// ─────────────────────────────────────────────────────
-export function Spark({ data, color = 'var(--primary)', height = 56, fill = true }) {
-    const w = 200;
-    const h = height;
-    const max = Math.max(...data);
-    const min = Math.min(...data);
-    const range = max - min || 1;
-    const step = w / (data.length - 1);
-    const pts = data.map((v, i) => `${i * step},${h - 8 - ((v - min) / range) * (h - 16)}`);
-    const path = `M ${pts.join(' L ')}`;
-    const area = `${path} L ${w},${h} L 0,${h} Z`;
-    return (
-        <svg className="spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-            <defs>
-                <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={color} stopOpacity="0.2" />
-                    <stop offset="100%" stopColor={color} stopOpacity="0" />
-                </linearGradient>
-            </defs>
-            {fill && <path d={area} fill="url(#sparkFill)" />}
-            <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-    );
-}
-
-// ─────────────────────────────────────────────────────
 // Score breakdown bars
 // ─────────────────────────────────────────────────────
 export function ScoreBreakdown({ scores, dimensions }) {
@@ -307,19 +280,6 @@ export function Avatar({ id, name, size = 'sm' }) {
 }
 
 // ─────────────────────────────────────────────────────
-// Heatmap
-// ─────────────────────────────────────────────────────
-export function Heatmap({ data }) {
-    return (
-        <div className="heat">
-            {data.map((v, i) => (
-                <div key={i} className={`heat-cell lv${v}`} title={v > 0 ? `${v}건` : '없음'}></div>
-            ))}
-        </div>
-    );
-}
-
-// ─────────────────────────────────────────────────────
 // Page header
 // ─────────────────────────────────────────────────────
 export function PageHead({ eyebrow, title, sub, children }) {
@@ -340,25 +300,13 @@ export function PageHead({ eyebrow, title, sub, children }) {
 }
 
 // ─────────────────────────────────────────────────────
-// Tabs / Seg
+// Tabs
 // ─────────────────────────────────────────────────────
 export function Tabs({ items, value, onChange }) {
     return (
         <div className="tabs">
             {items.map((it) => (
                 <button key={it.key} className={`tab ${value === it.key ? 'active' : ''}`} onClick={() => onChange(it.key)}>
-                    {it.label}
-                </button>
-            ))}
-        </div>
-    );
-}
-
-export function Seg({ items, value, onChange }) {
-    return (
-        <div className="seg">
-            {items.map((it) => (
-                <button key={it.key} className={`seg-btn ${value === it.key ? 'active' : ''}`} onClick={() => onChange(it.key)}>
                     {it.label}
                 </button>
             ))}

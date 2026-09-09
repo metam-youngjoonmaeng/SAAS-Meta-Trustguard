@@ -1,7 +1,6 @@
 import React from 'react';
 import { Clock, Home, ChevronRight } from 'lucide-react';
 import NotificationBell from './NotificationBell';
-import OrgSwitcher from './OrgSwitcher';
 /* SAMPLE_UPLOAD_FEATURE */ import SampleUploadModal from './SampleUploadModal';
 
 // 원본: 01-AI-Tutor-dev/frontend/components/nav.tsx
@@ -133,7 +132,7 @@ const Nav = ({ onHomeClick, onLogout, remainingMs, isDev, user, activeTab, detai
                         {user && activeTab === 'dashboard' && (
                             <SampleUploadModal onUploaded={onSampleUploaded} />
                         )}
-                        {user && <OrgSwitcher />}
+                        {/* 소속 조직 전환(OrgSwitcher) 은 0902 사용자 지시로 비노출 — 브랜드 전환은 사이드바 BrandSelector 로 통일 */}
                         {user && <NotificationBell />}
                         {remainingMs != null && (
                             <div className="app-nav-timer">

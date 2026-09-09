@@ -836,8 +836,6 @@
 /* model badge */
 .tg-eval .model-badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; background: var(--muted); font-size: 11px; font-weight: 600; color: var(--ink-700); font-family: var(--font-mono); }
 .tg-eval .model-badge .dot { width: 5px; height: 5px; border-radius: 50%; }
-.tg-eval .model-badge.sonnet .dot { background: #c87f3f; }
-.tg-eval .model-badge.haiku .dot { background: var(--cat-tech); }
 .tg-eval .model-badge.gpt .dot { background: var(--cat-service); }
 .tg-eval .model-badge.gemini .dot { background: var(--cat-delivery); }
 /* ─────────────── Motion ─────────────── */
@@ -913,8 +911,19 @@
 @media (max-width: 720px) { .tg-eval .settings-hub-grid { grid-template-columns: 1fr; } }
 
 /* KSQI 토글 카드 + 스위치 */
-.tg-eval .settings-toggle-card { display: flex; align-items: center; gap: 14px; min-height: 78px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+.tg-eval .settings-toggle-card { display: flex; align-items: center; gap: 14px; min-height: 78px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 14px; background: #fff; flex-wrap: wrap; }
 .tg-eval .settings-toggle-card .settings-tile-icon.accent-primary-icon { background: var(--primary-soft); color: var(--primary); }
+/* ★ 2026-09-07 라벨 세로 붕괴 수정.
+   .settings-hub-grid 는 2단(minmax(0,1fr))이고 이 카드는 줄바꿈 없는 flex 한 줄이었다.
+   우측 컨트롤은 flex-shrink:0 인데 .settings-tile-body 는 min-width:0 이라, 컨트롤이 넓으면
+   (RAG 카드의 'AOSS · Titan' + '로컬 OpenSearch · Harrier' 약 280px) 본문이 1글자 폭까지
+   짜부라져 라벨이 한 글자씩 세로로 쌓였다.
+   → 카드에 flex-wrap 을 주어 넘칠 때 컨트롤이 아랫줄로 내려가게 하고, 본문에 기준 폭
+     200px 을 주어 먼저 줄어드는 쪽이 되지 않게 한다.
+   → word-break:keep-all 은 한글 라벨이 어절 중간에서 끊기지 않게 한다.
+   이 카드 종류 전체에 적용되므로 컨트롤이 넓은 카드를 새로 추가해도 재발하지 않는다. */
+.tg-eval .settings-toggle-card .settings-tile-body { flex: 1 1 200px; }
+.tg-eval .settings-toggle-card .settings-tile-label { word-break: keep-all; }
 .tg-eval .ks-switch { flex-shrink: 0; width: 46px; height: 26px; border-radius: 9999px; border: 0; padding: 0; background: var(--ink-300); cursor: pointer; position: relative; transition: background var(--t-base); }
 .tg-eval .ks-switch.on { background: var(--primary); }
 .tg-eval .ks-knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform var(--t-base); }

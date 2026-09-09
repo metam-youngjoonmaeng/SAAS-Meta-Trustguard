@@ -10,6 +10,8 @@
  * 단, 해당 순번의 항목명이 코오롱 표준과 일치할 때만(타 테넌트 자체 항목은 보존).
  */
 
+import { safeStr, asNumber } from './util/common.mjs';
+
 const SYNC_DEPARTMENT = '기본';
 
 // 루브릭 귀속 메타(tenant_id / name)는 상수가 아니라 **호출 대상별로 산출**한다.
@@ -165,14 +167,65 @@ function parseStepsFromPromptLoose(promptTemplate) {
     return steps.length >= 2 ? steps : null;
 }
 
-function safeStr(value) {
-    return value === null || value === undefined ? '' : String(value);
+/**
+ * 프롬프트 본문의 배점 불릿을 `{점수: 기준문구}` 로 뽑는다 (5단계 — 허용단계 집행).
+ *
+ * 왜 필요한가: 백엔드 pure 트랙은 `allowed_steps` 로 스냅하지 않는다. 이산 스냅은
+ * `item.output_format.scale` 또는 `item.step_criteria` 를 볼 때만 걸리고, 그 두 키를 MTG 가
+ * 보내지 않아 백엔드가 런타임에 `prompt_template` 자유 텍스트를 **다시 파싱**해 만들어 붙였다.
+ * 그래서 채점 척도의 실질 권위가 "운영자가 프롬프트 상자에 불릿을 썼는지" 였고, 안 쓴 항목은
+ * `ALLOWED_STEPS=[5,0]` 이라 적어 놓고도 LLM 이 3 을 반환하면 3 이 그대로 저장됐다.
+ * 여기서 미리 뽑아 동봉하면 백엔드의 재파싱이 no-op 이 되고 집행 지점이 한 곳으로 모인다.
+ *
+ * `parseStepsFromPromptLoose` 와 같은 규약을 쓴다 — '만점' 표기 줄은 총점 안내이므로 제외.
+ */
+function parseStepCriteriaFromPrompt(promptTemplate) {
+    const text = safeStr(promptTemplate);
+    if (!text) return null;
+    const out = {};
+    for (const ln of text.split('\n')) {
+        if (ln.includes('만점')) continue;
+        const m = ln.match(/(-?\d+)\s*점\s*\*{0,2}\s*[:：]\s*(.+)$/);
+        if (!m) continue;
+        const score = parseInt(m[1], 10);
+        const body = m[2].replace(/\*+/g, '').trim();
+        if (!Number.isFinite(score) || !body) continue;
+        // 같은 점수가 두 줄이면 첫 줄을 남긴다(위쪽이 대표 기준).
+        if (out[String(score)] === undefined) out[String(score)] = body;
+    }
+    return Object.keys(out).length >= 2 ? out : null;
 }
 
-function asNumber(value) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
+/**
+ * 허용단계 집행 근거(`step_criteria` · `output_format`)를 만든다 — 없으면 `{}`.
+ *
+ * 백엔드 `evaluator._discrete_scale` 은 `output_format.scale` 또는 `step_criteria` 를 볼 때만
+ * 이산 스냅을 건다. 이 둘이 없으면 연속 분기로 떨어져 `max(0, min(max, raw))` clamp 만 적용되고
+ * 허용단계 밖 점수가 그대로 저장된다(루브릭 스토어 225항목 중 15항목이 이 상태였다).
+ *
+ * 개입하지 않는 두 경우 —
+ *  · `yes_no` : Y/N 의미 블록이 별 경로다. 이산 스냅을 얹으면 그 경로와 충돌한다.
+ *  · 음수 단계 포함(감점 전용 항목) : 백엔드에 전용 분기(`_has_neg_step`)가 있고 그쪽이
+ *    '이하 방향' 스냅을 직접 구현한다. 여기서 scale 을 주면 그 분기를 우회해 버린다.
+ */
+function buildStepEnforcement(scoringType, allowedSteps, maxScore, promptTemplate) {
+    if (scoringType === 'yes_no') return {};
+    const steps = Array.isArray(allowedSteps) ? allowedSteps.filter((n) => Number.isFinite(n)) : [];
+    if (steps.length < 2) return {};
+    if (steps.some((n) => n < 0)) return {};
+
+    const out = {
+        output_format: {
+            scale: [...steps].sort((a, b) => b - a),
+            max_score: Number.isFinite(maxScore) ? maxScore : steps[0],
+        },
+    };
+    const criteria = parseStepCriteriaFromPrompt(promptTemplate);
+    if (criteria) out.step_criteria = criteria;
+    return out;
 }
+
+
 
 
 // 프론트 미리보기 기본 placeholder 프롬프트 가드 — "편집하기 → 그대로 저장" 시 placeholder
@@ -210,9 +263,108 @@ function sanitizePromptTemplate(value) {
 }
 
 /**
+ * 한 행(eval_item_defs | domain_default_eval_items) → 루브릭 item + rowMeta 1쌍.
+ *
+ * 2026-08-28 두 빌더(buildRubricFromDefs / buildRubricFromDomainDefaults)에 축자 복제돼 있던
+ * 채점 스케일 산출 + item/rowMeta 조립을 여기로 통합했다. 두 테이블이 같은 컬럼 집합
+ * (order_no·category·item·criterion·prompt_template·max_score·scoring_type·pentagon_axis)을
+ * 내주므로 행 단위 산출은 원래부터 같은 코드였다(복제 시점의 차이는 줄바꿈뿐).
+ *
+ * ★ 통합 시점에 실제로 갈려 있던 유일한 필드 = rowMeta.pentagon_axis — 도메인 기본 빌더만 동봉.
+ *   임의 통일 금지. withPentagonAxis 파라미터로 양쪽 현재 동작을 그대로 보존한다.
+ *   왜 갈려 있는 쪽이 맞는가: 테넌트 빌더는 pentagon_axes 테이블을 따로 읽어 rubric.pentagon
+ *   블록을 스스로 조립하므로 rowMeta 에 축 라벨을 실을 이유가 없다. 도메인 기본 빌더는 그 블록을
+ *   만들지 않고, 호출부(qaPipelineIngest.evaluateDomainCall 이 mapped.rowMeta 로 되돌려준다)가
+ *   rowMeta.pentagon_axis 로 축 귀속을 한다. 양쪽에 다 넣으면 테넌트 경로의 rowMeta 형상이 바뀐다.
+ *
+ * @param {object} row eval_item_defs / domain_default_eval_items 행
+ * @param {number} orderNo 정규화된 order_no (카탈로그 폴백 키 + 항목명 폴백)
+ * @param {{withPentagonAxis?: boolean}} [opts]
+ * @returns {{item: object, meta: object}}
+ */
+function buildRubricRow(row, orderNo, { withPentagonAxis = false } = {}) {
+    const scoringType = safeStr(row.scoring_type).trim().toLowerCase();
+    // ★ 채점 스케일(maxScore=파이프라인 max_score=allowed_steps[0]) 과 표시 분모(displayMax=만점 폼
+    //   필드) 를 분리 — 전 브랜드 통일(2026-06-24 사용자 결정: 레거시·신규 무관 완전 독립).
+    //   - 프롬프트 '점수 단계'가 파싱되면(점수제) 그게 곧 채점 척도(파이프라인 max_score/allowed_steps).
+    //     파이프라인 _normalize_allowed_steps 가 steps[0]==max_score 를 강제하므로 max_score 도 프롬프트
+    //     최상위 단계로 보낸다(채점이 그 단계들로 깨끗이 snap). 만점 폼 필드는 표시 분모(displayMax)로만
+    //     분리 → 만점만 바꿔도 채점 불변(완전 독립).
+    //   - displayMax 는 rowMeta 에 실려 결과 매퍼(신규=mapEvaluateResponseRubric / 코오롱 표준 트랙=
+    //     standardMaxByOrder)가 분모로 사용 → "LLM점수(채점) / 만점필드(표시)".
+    //   yes_no / 점수 단계 미파싱(default 코오롱 80점 등)은 채점==표시 결합 유지(byte-identical 무회귀).
+    const promptSteps = scoringType !== 'yes_no' ? parseStepsFromPromptLoose(row.prompt_template) : null;
+    let maxScore; // 파이프라인 채점 스케일 = allowed_steps[0]
+    let allowedSteps;
+    let displayMax; // 평가 결과 표시 분모
+    if (promptSteps) {
+        // 채점 = 프롬프트 단계(파이프라인 정규화가 steps[0]==max 를 강제하므로 max 도 최상위 단계로 일치).
+        allowedSteps = promptSteps;
+        maxScore = promptSteps[0];
+        // 표시 분모 = 폼 만점 필드. 미입력 시 채점 스케일로 폴백(결합).
+        const dbMax = asNumber(row.max_score);
+        displayMax = dbMax !== null && dbMax > 0 ? Math.round(dbMax) : maxScore;
+    } else {
+        // 점수 미명시(또는 레거시/yes_no) — 기존 동작: 폼 만점 + (점수단계 줄 || 카탈로그 스케일).
+        const dbMax = asNumber(row.max_score);
+        maxScore = dbMax !== null && dbMax > 0 ? Math.round(dbMax) : catalogMaxScore(orderNo);
+        allowedSteps =
+            scoringType === 'yes_no'
+                ? [Math.round(maxScore), 0]
+                : parseAllowedStepsFromPrompt(row.prompt_template, maxScore) ||
+                  catalogAllowedSteps(orderNo, maxScore);
+        displayMax = maxScore; // 결합 — 채점==표시
+    }
+    const itemName = safeStr(row.item).trim() || `항목 ${orderNo}`;
+    const categoryName = safeStr(row.category).trim();
+
+    const item = {
+        name: itemName,
+        category: categoryName,
+        max_score: maxScore,
+        // 표시 분모(만점 폼 필드) — 채점 척도(max_score)와 독립. 백엔드 normalize_rubric 가
+        // 패스스루 → ItemResult.display_max. rowMeta(매퍼 분모)와 동일 값(SSOT).
+        display_max: displayMax,
+        allowed_steps: allowedSteps,
+        // 채점 방식 동봉 (SSOT: db_source.py item dict 와 정합). 백엔드
+        // custom_rubric/prompt.py 의 build_rubric_item_block 이 이 값으로 Y/N
+        // 채점 의미 블록 주입 여부를 판단 — 누락 시 allowed_steps 가 [max,0] 여도
+        // numeric 으로 귀결되어 인라인 경로에서 Y/N 의미가 소실되는 회귀 방지.
+        scoring_type: scoringType === 'yes_no' ? 'yes_no' : 'numeric',
+        criteria_full: safeStr(row.criterion),
+        // 항목 전용 평가 프롬프트 — 인라인 루브릭에 동봉해야 백엔드(custom_rubric/prompt.py)가
+        // LLM 프롬프트에 원문 주입. 누락 시 만점 기준(criteria_full)만 전달되는 회귀.
+        // placeholder 미수정 원문은 빈 값으로 정화(sanitizePromptTemplate).
+        prompt_template: sanitizePromptTemplate(row.prompt_template),
+        notes: null,
+        few_shot: false,
+        debate: false,
+        is_bonus: false,
+        // ★ 2026-08-28 (5단계) — 허용단계 집행 근거 동봉. 상세는 buildStepEnforcement 참조.
+        ...buildStepEnforcement(scoringType, allowedSteps, maxScore, row.prompt_template),
+    };
+    // rowMeta.max_score = 표시 분모(displayMax = 만점 폼 필드) — 채점 스케일(item.max_score=maxScore)과 분리.
+    // scoring_type='yes_no' = 컴플라이언스 체크 항목 → 매퍼가 점수 합산(ai_score)에서 제외(순수 모니터링,
+    // 기획 docs/YN_EVAL_ITEM_PLAN §4.2). 결과 행 자체는 기록(qa_call_item_score) → 위반율 집계에 사용.
+    const meta = {
+        order_no: orderNo,
+        category: categoryName,
+        item: itemName,
+        max_score: displayMax,
+        scoring_type: scoringType === 'yes_no' ? 'yes_no' : 'numeric',
+    };
+    // 키 순서 유지를 위해 마지막에 추가 — 도메인 기본 경로 전용(위 ★ 참조).
+    if (withPentagonAxis) meta.pentagon_axis = safeStr(row.pentagon_axis).trim() || null;
+
+    return { item, meta };
+}
+
+/**
  * eval_item_defs(org, department='기본', is_active) 를 order_no 오름차순으로 읽어 루브릭 items[] 조립.
  * @returns {Promise<{rubric:{tenant_id,name,items:Array}, orderMap:number[], rowMeta:Array}>}
- *   orderMap[index] = 루브릭 항목의 order_no, rowMeta[index] = {order_no,category,item,max_score}.
+ *   orderMap[index] = 루브릭 항목의 order_no,
+ *   rowMeta[index] = {order_no,category,item,max_score,scoring_type} — pentagon_axis 없음
+ *   (도메인 기본 빌더만 동봉. 근거는 buildRubricRow docstring ★).
  */
 export async function buildRubricFromDefs(pool, orgId) {
     const { rows } = await pool.query(
@@ -243,78 +395,13 @@ export async function buildRubricFromDefs(pool, orgId) {
             continue;
         }
 
-        const scoringType = safeStr(row.scoring_type).trim().toLowerCase();
-        // ★ 채점 스케일(maxScore=파이프라인 max_score=allowed_steps[0]) 과 표시 분모(displayMax=만점 폼
-        //   필드) 를 분리 — 전 브랜드 통일(2026-06-24 사용자 결정: 레거시·신규 무관 완전 독립).
-        //   - 프롬프트 '점수 단계'가 파싱되면(점수제) 그게 곧 채점 척도(파이프라인 max_score/allowed_steps).
-        //     파이프라인 _normalize_allowed_steps 가 steps[0]==max_score 를 강제하므로 max_score 도 프롬프트
-        //     최상위 단계로 보낸다(채점이 그 단계들로 깨끗이 snap). 만점 폼 필드는 표시 분모(displayMax)로만
-        //     분리 → 만점만 바꿔도 채점 불변(완전 독립).
-        //   - displayMax 는 rowMeta 에 실려 결과 매퍼(신규=mapEvaluateResponseRubric / 코오롱 표준 트랙=
-        //     standardMaxByOrder)가 분모로 사용 → "LLM점수(채점) / 만점필드(표시)".
-        //   yes_no / 점수 단계 미파싱(default 코오롱 80점 등)은 채점==표시 결합 유지(byte-identical 무회귀).
-        const promptSteps =
-            scoringType !== 'yes_no'
-                ? parseStepsFromPromptLoose(row.prompt_template)
-                : null;
-        let maxScore; // 파이프라인 채점 스케일 = allowed_steps[0]
-        let allowedSteps;
-        let displayMax; // 평가 결과 표시 분모
-        if (promptSteps) {
-            // 채점 = 프롬프트 단계(파이프라인 정규화가 steps[0]==max 를 강제하므로 max 도 최상위 단계로 일치).
-            allowedSteps = promptSteps;
-            maxScore = promptSteps[0];
-            // 표시 분모 = 폼 만점 필드. 미입력 시 채점 스케일로 폴백(결합).
-            const dbMax = asNumber(row.max_score);
-            displayMax = dbMax !== null && dbMax > 0 ? Math.round(dbMax) : maxScore;
-        } else {
-            // 점수 미명시(또는 레거시/yes_no) — 기존 동작: 폼 만점 + (점수단계 줄 || 카탈로그 스케일).
-            const dbMax = asNumber(row.max_score);
-            maxScore = dbMax !== null && dbMax > 0 ? Math.round(dbMax) : catalogMaxScore(orderNo);
-            allowedSteps =
-                scoringType === 'yes_no'
-                    ? [Math.round(maxScore), 0]
-                    : parseAllowedStepsFromPrompt(row.prompt_template, maxScore) ||
-                      catalogAllowedSteps(orderNo, maxScore);
-            displayMax = maxScore; // 결합 — 채점==표시
-        }
-        const itemName = safeStr(row.item).trim() || `항목 ${orderNo}`;
-        const categoryName = safeStr(row.category).trim();
-
-        items.push({
-            name: itemName,
-            category: categoryName,
-            max_score: maxScore,
-            // 표시 분모(만점 폼 필드) — 채점 척도(max_score)와 독립. 백엔드 normalize_rubric 가
-            // 패스스루 → ItemResult.display_max. rowMeta(매퍼 분모)와 동일 값(SSOT).
-            display_max: displayMax,
-            allowed_steps: allowedSteps,
-            // 채점 방식 동봉 (SSOT: db_source.py item dict 와 정합). 백엔드
-            // custom_rubric/prompt.py 의 build_rubric_item_block 이 이 값으로 Y/N
-            // 채점 의미 블록 주입 여부를 판단 — 누락 시 allowed_steps 가 [max,0] 여도
-            // numeric 으로 귀결되어 인라인 경로에서 Y/N 의미가 소실되는 회귀 방지.
-            scoring_type: scoringType === 'yes_no' ? 'yes_no' : 'numeric',
-            criteria_full: safeStr(row.criterion),
-            // 항목 전용 평가 프롬프트 — 인라인 루브릭에 동봉해야 백엔드(custom_rubric/prompt.py)가
-            // LLM 프롬프트에 원문 주입. 누락 시 만점 기준(criteria_full)만 전달되는 회귀.
-            // placeholder 미수정 원문은 빈 값으로 정화(sanitizePromptTemplate).
-            prompt_template: sanitizePromptTemplate(row.prompt_template),
-            notes: null,
-            few_shot: false,
-            debate: false,
-            is_bonus: false,
-        });
+        // 채점 스케일·item·rowMeta 산출은 buildRubricRow 공통 헬퍼(도메인 기본 빌더와 공유).
+        // 테넌트 경로는 rowMeta 에 pentagon_axis 를 싣지 않는다 — 축은 아래 pentagon_axes 조회로
+        // rubric.pentagon 블록을 직접 조립하므로. 상세는 buildRubricRow docstring ★ 참조.
+        const { item, meta } = buildRubricRow(row, orderNo);
+        items.push(item);
         orderMap.push(orderNo);
-        // rowMeta.max_score = 표시 분모(displayMax = 만점 폼 필드) — 채점 스케일(item.max_score=maxScore)과 분리.
-        // scoring_type='yes_no' = 컴플라이언스 체크 항목 → 매퍼가 점수 합산(ai_score)에서 제외(순수 모니터링,
-        // 기획 docs/YN_EVAL_ITEM_PLAN §4.2). 결과 행 자체는 기록(qa_call_item_score) → 위반율 집계에 사용.
-        rowMeta.push({
-            order_no: orderNo,
-            category: categoryName,
-            item: itemName,
-            max_score: displayMax,
-            scoring_type: scoringType === 'yes_no' ? 'yes_no' : 'numeric',
-        });
+        rowMeta.push(meta);
         // 펜타곤 축 매핑 — 항목의 pentagon_axis(축 라벨)에 이 항목의 eval_item_number(5000+index) 누적.
         // index = items 배열 내 위치(직전 push 로 items.length-1) — 백엔드 normalize_rubric 번호부여와 정합.
         const axisLabel = safeStr(row.pentagon_axis).trim();
@@ -406,54 +493,13 @@ export async function buildRubricFromDomainDefaults(pool, domainId) {
         const orderNo = asNumber(row.order_no);
         if (orderNo === null) continue;
 
-        const scoringType = safeStr(row.scoring_type).trim().toLowerCase();
-        // 채점 스케일(maxScore=allowed_steps[0]) ↔ 표시 분모(displayMax) 분리 — buildRubricFromDefs 와 동일 규칙.
-        const promptSteps =
-            scoringType !== 'yes_no' ? parseStepsFromPromptLoose(row.prompt_template) : null;
-        let maxScore;
-        let allowedSteps;
-        let displayMax;
-        if (promptSteps) {
-            allowedSteps = promptSteps;
-            maxScore = promptSteps[0];
-            const dbMax = asNumber(row.max_score);
-            displayMax = dbMax !== null && dbMax > 0 ? Math.round(dbMax) : maxScore;
-        } else {
-            const dbMax = asNumber(row.max_score);
-            maxScore = dbMax !== null && dbMax > 0 ? Math.round(dbMax) : catalogMaxScore(orderNo);
-            allowedSteps =
-                scoringType === 'yes_no'
-                    ? [Math.round(maxScore), 0]
-                    : parseAllowedStepsFromPrompt(row.prompt_template, maxScore) ||
-                      catalogAllowedSteps(orderNo, maxScore);
-            displayMax = maxScore;
-        }
-        const itemName = safeStr(row.item).trim() || `항목 ${orderNo}`;
-        const categoryName = safeStr(row.category).trim();
-
-        items.push({
-            name: itemName,
-            category: categoryName,
-            max_score: maxScore,
-            display_max: displayMax,
-            allowed_steps: allowedSteps,
-            scoring_type: scoringType === 'yes_no' ? 'yes_no' : 'numeric',
-            criteria_full: safeStr(row.criterion),
-            prompt_template: sanitizePromptTemplate(row.prompt_template),
-            notes: null,
-            few_shot: false,
-            debate: false,
-            is_bonus: false,
-        });
+        // 채점 스케일·item·rowMeta 산출은 buildRubricRow 공통 헬퍼(테넌트 빌더와 공유).
+        // withPentagonAxis=true — 이 빌더는 rubric.pentagon 블록을 만들지 않고 호출부가
+        // rowMeta.pentagon_axis 로 축 귀속을 한다. 상세는 buildRubricRow docstring ★ 참조.
+        const { item, meta } = buildRubricRow(row, orderNo, { withPentagonAxis: true });
+        items.push(item);
         orderMap.push(orderNo);
-        rowMeta.push({
-            order_no: orderNo,
-            category: categoryName,
-            item: itemName,
-            max_score: displayMax,
-            scoring_type: scoringType === 'yes_no' ? 'yes_no' : 'numeric',
-            pentagon_axis: safeStr(row.pentagon_axis).trim() || null,
-        });
+        rowMeta.push(meta);
     }
 
     // 귀속 메타 — 도메인별(격리 키 + LLM 프롬프트 노출 이름). 조회 실패는 번호 폴백(평가 계속).

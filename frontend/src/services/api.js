@@ -117,14 +117,6 @@ export async function fetchCalls() {
     return request('/api/calls');
 }
 
-// 관리자 — 평가 콜 삭제(벌크). qa_calls 행 삭제 시 자식 테이블(평가/분석/대화/검수 등)이 CASCADE 로 함께 제거.
-// body { ids:[...] } 단일 요청으로 처리(서버 트랜잭션). 응답 { ok, deleted }.
-export async function deleteCalls(ids) {
-    const list = [...new Set((Array.isArray(ids) ? ids : [ids]).map((v) => String(v ?? '').trim()).filter(Boolean))];
-    if (!list.length) throw new Error('ids is required');
-    return request('/api/calls', { method: 'DELETE', body: JSON.stringify({ ids: list }) });
-}
-
 // 코칭 배정용 실제 상담사 목록(평균점수·부서·콜수). admin_users + qa_calls 조인.
 export async function fetchAgents() {
     return request('/api/agents');
@@ -270,33 +262,6 @@ export async function fetchGoldenLearnCoverage() {
 // ② '적용 평가 항목' 칩 — 실제 평가된 항목(order_no+item). 제외 order_no 로 ② 검사 스코프.
 export async function fetchBatchEvalItems() {
     return request('/api/batch/eval-items');
-}
-
-// ② AI 신뢰도 검증 판정 프롬프트(불확실 표현·근거-점수 모순 두 정의문) 조회/저장/재판정.
-// 응답: { uncertain_def, contradiction_def, default_*, version, is_default, judge_enabled, model }.
-export async function fetchBatchPrompt() {
-    return request('/api/batch/prompt');
-}
-// 저장 시 변경되면 version 증가 → 기존 판정 stale. 응답: { version, unchanged, stale_count }.
-export async function saveBatchPrompt({ uncertain_def, contradiction_def } = {}) {
-    return request('/api/batch/prompt', {
-        method: 'PUT',
-        body: JSON.stringify({
-            uncertain_def: String(uncertain_def ?? ''),
-            contradiction_def: String(contradiction_def ?? ''),
-        }),
-    });
-}
-// 현재 프롬프트 버전으로 미판정 콜 재판정(백그라운드 시작). 진행상황은 fetchRejudgeStatus 로 폴링.
-export async function rejudgeConfidence() {
-    return request('/api/batch/rejudge', { method: 'POST' });
-}
-export async function fetchRejudgeStatus() {
-    return request('/api/batch/rejudge/status');
-}
-// 판정 프롬프트 변경 이력(버전별 스냅샷, 최신순). 응답: { items: [{ version, uncertain_def, contradiction_def, updated_at, updated_by_name }] }.
-export async function fetchBatchPromptHistory() {
-    return request('/api/batch/prompt/history');
 }
 
 export async function saveAdminComments(qaId, adminComments) {
@@ -793,11 +758,6 @@ export async function fetchRagLogRecent({ limit = 100, qa_id, within_minutes } =
 }
 
 // 루브릭 few-shot 항목 토글 설정 — { "<org_id>": { rubric_id, item_names:[...] } }
-export async function fetchRagFewshotConfig() {
-    const data = await request('/api/rag-fewshot-config');
-    return data?.config && typeof data.config === 'object' ? data.config : {};
-}
-
 export async function saveRagFewshotConfig(config) {
     const data = await request('/api/rag-fewshot-config', {
         method: 'PUT',
@@ -912,19 +872,9 @@ export async function updateNotificationPrefs(prefs) {
     });
 }
 
-/* ── qa-pipeline 적재 어댑터 ─────────────────────────────────
- * 서버가 qa-pipeline POST /evaluate 를 직접 호출 → 평가 결과를 DB 에 적재.
- * track='standard'(기본): 표준 18항목 1:1 적재 (코오롱 등 표준 8카테고리 브랜드).
- * call.transcript 는 STT 원문 문자열(파이프라인 전달용), call.conversation 은 대화 탭 적재용 턴 배열.
- * 평가가 콜당 수 분 걸릴 수 있어 호출 측에서 장시간 busy 처리 필요.
- * 응답: { ok, ingested, failed: [{qa_id, reason}], details: [{qa_id, ai_score, total_score, elapsed_sec, warnings,
- *         raw_total, max_total, kms_present}] }. raw_total/max_total/kms_present 는 standard 트랙 부가 필드(collection 트랙 부재). */
-export async function ingestFromQaPipeline(calls, { track = 'standard' } = {}) {
-    return request('/api/ingest/from-qa-pipeline', {
-        method: 'POST',
-        body: JSON.stringify({ track, calls: Array.isArray(calls) ? calls : [calls] }),
-    });
-}
+// ingestFromQaPipeline() 제거 — 호출부 0곳(죽은 코드). `/api/ingest/from-qa-pipeline`
+// 어댑터를 부르던 클라이언트였는데, 현재 적재는 서버가 MQTT(/asr-result finish)와
+// ICS 폴러에서 직접 수행하고 수동 통로는 `/api/ingest/qa-pipeline-jobs`(잡+폴링)이다.
 
 // currentOrgId() 제거 — 호출부 0곳(죽은 코드)인데 Number(org_id) 로 짜여 있어,
 // 통합DB 의 tenant_id 문자열('metam')에는 항상 NaN→null 을 돌려주는 함정이었다.
@@ -951,12 +901,49 @@ export async function fetchQaPipelineJob(jobId) {
 /**
  * LLM 백엔드 가용성 조회 (2026-08-27) — 서버가 파이프라인 /v2/llm/backends 를 중계.
  *
- * 반환: { ok, default, lock:{locked,backend,model,exempt_backends}, backends:{openai|azure|vllm|bedrock:{available,...}} }
+ * 반환: { ok, default, lock:{locked,backend,model,exempt_backends}, backends:{openai|azure|vllm:{available,...}} }
  * 파이프라인 불통이면 { ok:false, message, backends:{} } — 호출부는 '알 수 없음' 으로 degrade 하고
  * 선택을 막지 않는다. 크리덴셜은 응답에 포함되지 않는다(존재 여부 bool 만).
  */
 export async function fetchLlmBackends() {
     return request('/api/llm/backends');
+}
+
+/**
+ * RAG 벡터 백엔드(AOSS ↔ 로컬 OpenSearch) 조회·전환 (2026-09-03, 실험용).
+ *
+ * fetchRagBackend → { ok, mode:'aoss'|'local', endpoint, reachable, golden_docs, cluster, error, message,
+ *                     embedding:{ backend:'titan'|'harrier', model, endpoint, reachable, probe_ms }, index_embedding_backend }
+ *   파이프라인 불통이면 { ok:false, message, mode:null } — 카드는 '알 수 없음' 으로 표시하고 버튼은 남긴다.
+ *   2026-09-04 — 임베딩 모델은 스토어 모드에 묶인다(aoss→Titan V2 · local→Harrier 0.6b, H200). 별도 선택 없음.
+ * saveRagBackend(mode) → 성공 { ok:true, mode, previous, ... } / 실패는 throw(서버 사유 message 포함).
+ *   파이프라인이 새 백엔드에 못 붙으면 이전 모드로 되돌리고 502 를 주므로 화면은 그 사유를 그대로 보인다.
+ * 파이프라인 프로세스 런타임 상태 — 파이프라인 재기동 시 env 기본값으로 복원(운영 기본 aoss).
+ */
+export async function fetchRagBackend() {
+    return request('/api/rag/backend');
+}
+
+export async function saveRagBackend(mode) {
+    return request('/api/rag/backend', { method: 'PUT', body: JSON.stringify({ mode }) });
+}
+
+/** 평가 모델(OpenAI) 조회·전환 — 시스템 설정 > 운영 > '평가 모델' 카드 (2026-09-07).
+ *
+ * fetchLlmModel() → { ok, model, selectable[], source:'env'|'runtime', backend }
+ *   selectable 은 파이프라인 정본 목록(nodes/openai_llm.py::SELECTABLE_MODELS)이다 —
+ *   화면에 목록을 박아두지 않고 이 값을 그린다. 그래야 파이프라인만 고쳐도 반영된다.
+ * saveLlmModel(model) → 성공 { ok:true, model, previous, latency_ms } / 실패는 throw.
+ *   파이프라인이 실제로 그 모델을 1회 호출해 확인하고, 실패하면 이전 모델로 되돌리고 502.
+ * RAG 백엔드와 같은 성격 — 파이프라인 프로세스 런타임 상태이고 재기동 시 env 기본값
+ * (OPENAI_MODEL=gpt-5.6-luna)으로 복원된다. DB 에 저장하지 않는다.
+ */
+export async function fetchLlmModel() {
+    return request('/api/llm/model');
+}
+
+export async function saveLlmModel(model) {
+    return request('/api/llm/model', { method: 'PUT', body: JSON.stringify({ model }) });
 }
 
 /** 현재 활성 브랜드(tenant) id — super_admin 은 활성 브랜드 선택값(QA_ACTIVE_BRAND_KEY),

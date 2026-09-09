@@ -8,7 +8,6 @@
 //   - GET  /api/admin/audit-logs     : super_admin 전용 (실시간 로그)
 //   - GET  /api/admin/notifications  : admin / super_admin (본인이 수행한 평가·적재 이벤트만)
 
-import crypto from 'crypto';
 import fs from 'fs';
 import express from 'express';
 import { AUDIT_ACTION, AUDIT_VIEW_WINDOW_DAYS, insertQaAuditLog } from './auditLog.mjs';
@@ -19,10 +18,8 @@ import {
     seedKsqiItemDefs,
     seedPentagonAxesFromDomain,
 } from './defaultEvalItems.mjs';
+import { sha256Hex } from './util/common.mjs';
 
-function sha256Hex(s) {
-    return crypto.createHash('sha256').update(String(s)).digest('hex');
-}
 
 // 브랜드별 KSQI 토글의 집 = trustguard.tenant_settings.ksqi_stt_enabled.
 // 통합DB에서 이 값은 공유 common.tenants 가 아니라 QA 전용표에 격리한다(tenant_rag_config 와 같은 원칙 —
@@ -45,13 +42,59 @@ async function hasQaSettingsTable(pool) {
     return _qaSettingsTableCache;
 }
 
-// 브랜드 목록 쿼리에 끼울 KSQI 조각(SELECT + JOIN). 표 부재 시 상수 false 로 축약해 JOIN 을 붙이지 않는다.
+// ★ 2026-09-02 — tenant_settings 표가 없는 DB(로컬·54.235 통합스키마)의 저장 자리 = trustguard.qa_batch_configs.config.ksqi_stt_enabled.
+//   증상: 시스템 설정 KSQI 토글 → PATCH 가 400 "수정 항목이 없습니다"(토글 패치가 표 부재로 통째 무시됨) → 프론트
+//   "KSQI 토글 저장에 실패했습니다" alert. ECS Aurora 에는 표가 있어 그쪽만 동작했다.
+//   전용 표를 만들지 않는다(DDL 금지 원칙 — KMS 지정(config.kms)과 같은 판단, index.js `/api/admin/kms-items` 참조).
+//   표가 있으면 종전대로 tenant_settings 를 쓴다(ECS 무회귀) — 읽기/쓰기 모두 같은 분기.
+const KSQI_FALLBACK_KEY = 'ksqi_stt_enabled';
+
+// 브랜드 목록 쿼리에 끼울 KSQI 조각(SELECT + JOIN). 표 부재 시 qa_batch_configs.config 폴백을 JOIN 한다.
 async function ksqiSqlParts(pool) {
-    if (!(await hasQaSettingsTable(pool))) return { sel: 'false AS ksqi_stt_enabled', join: '' };
+    if (!(await hasQaSettingsTable(pool))) {
+        return {
+            sel: `COALESCE((bc.config ->> '${KSQI_FALLBACK_KEY}')::boolean, false) AS ksqi_stt_enabled`,
+            join: 'LEFT JOIN trustguard.qa_batch_configs bc ON bc.tenant_id = o.tenant_id',
+        };
+    }
     return {
         sel: 'COALESCE(qs.ksqi_stt_enabled, false) AS ksqi_stt_enabled',
         join: 'LEFT JOIN trustguard.tenant_settings qs ON qs.tenant_id = o.tenant_id',
     };
+}
+
+/** 토글 저장 — 표가 있으면 tenant_settings UPSERT, 없으면 qa_batch_configs.config 병합 UPSERT(다른 키 보존). */
+async function writeKsqiToggle(client, hasQaSet, tenantId, enabled, updatedBy) {
+    if (hasQaSet) {
+        await client.query(
+            `INSERT INTO trustguard.tenant_settings (tenant_id, ksqi_stt_enabled, updated_at)
+             VALUES ($1, $2, now())
+             ON CONFLICT (tenant_id) DO UPDATE
+                SET ksqi_stt_enabled = EXCLUDED.ksqi_stt_enabled, updated_at = now()`,
+            [tenantId, enabled]
+        );
+        return;
+    }
+    await client.query(
+        `INSERT INTO trustguard.qa_batch_configs (tenant_id, config, updated_at, updated_by)
+         VALUES ($1, jsonb_build_object('${KSQI_FALLBACK_KEY}', $2::boolean), now(), $3)
+         ON CONFLICT (tenant_id) DO UPDATE
+            SET config = COALESCE(trustguard.qa_batch_configs.config, '{}'::jsonb)
+                         || jsonb_build_object('${KSQI_FALLBACK_KEY}', $2::boolean),
+                updated_at = now(), updated_by = $3`,
+        [tenantId, enabled, updatedBy ?? null]
+    );
+}
+
+/** 토글 읽기 — writeKsqiToggle 과 같은 분기. 행 없으면 false. */
+async function readKsqiToggle(client, hasQaSet, tenantId) {
+    const { rows } = hasQaSet
+        ? await client.query('SELECT ksqi_stt_enabled AS v FROM trustguard.tenant_settings WHERE tenant_id = $1', [tenantId])
+        : await client.query(
+              `SELECT (config ->> '${KSQI_FALLBACK_KEY}')::boolean AS v FROM trustguard.qa_batch_configs WHERE tenant_id = $1`,
+              [tenantId]
+          );
+    return rows[0]?.v === true;
 }
 
 // 신규 사용자에게 자동 부여되는 초기 비밀번호. 반드시 INITIAL_USER_PASSWORD env 로 설정한다.
@@ -764,11 +807,10 @@ export function createBrandRouter(pool) {
             fields.push(`active = $${idx++}`);
             values.push(Boolean(req.body.active));
         }
-        // KSQI 토글은 common.tenants 가 아니라 trustguard.tenant_settings 에 있다 → 별도 UPSERT 로 처리.
+        // KSQI 토글은 common.tenants 가 아니라 QA 전용 저장소(tenant_settings, 부재 시 qa_batch_configs.config)에
+        // 있다 → 별도 UPSERT 로 처리. 표 유무로 요청을 버리지 않는다(종전 400 "수정 항목이 없습니다" 의 원인).
         const hasQaSet = await hasQaSettingsTable(pool);
-        const ksqiPatch = hasQaSet && typeof req.body?.ksqi_stt_enabled === 'boolean'
-            ? Boolean(req.body.ksqi_stt_enabled)
-            : null;
+        const ksqiPatch = typeof req.body?.ksqi_stt_enabled === 'boolean' ? Boolean(req.body.ksqi_stt_enabled) : null;
         const hasDomainInBody = 'domain_id' in (req.body || {});
         let newDomainId = null;
         if (hasDomainInBody) {
@@ -813,22 +855,10 @@ export function createBrandRouter(pool) {
                 out = rows[0];
             }
             if (ksqiPatch !== null) {
-                await client.query(
-                    `INSERT INTO trustguard.tenant_settings (tenant_id, ksqi_stt_enabled, updated_at)
-                     VALUES ($1, $2, now())
-                     ON CONFLICT (tenant_id) DO UPDATE
-                        SET ksqi_stt_enabled = EXCLUDED.ksqi_stt_enabled, updated_at = now()`,
-                    [id, ksqiPatch]
-                );
+                await writeKsqiToggle(client, hasQaSet, id, ksqiPatch, req.session?.user_id ?? null);
             }
             // 응답의 토글 값 — 이번에 바꿨으면 그 값, 아니면 저장된 값(행 없으면 false).
-            if (hasQaSet) {
-                const { rows: kr } = await client.query(
-                    'SELECT ksqi_stt_enabled FROM trustguard.tenant_settings WHERE tenant_id = $1',
-                    [id]
-                );
-                out.ksqi_stt_enabled = kr[0]?.ksqi_stt_enabled === true;
-            }
+            out.ksqi_stt_enabled = await readKsqiToggle(client, hasQaSet, id);
             // 브랜드 수정 시에는 도메인이 바뀌어도 기존 평가항목/펜타곤 축을 보존한다(교체하지 않음).
             // 도메인 기본 평가항목/펜타곤 축 적용은 신규 브랜드 생성(POST /admin/organizations) 시에만 수행.
             await client.query('COMMIT');

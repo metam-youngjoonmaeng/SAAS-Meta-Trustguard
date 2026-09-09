@@ -43,7 +43,7 @@ AI가 상담 콜의 각 평가항목에 매긴 '점수'와 그 '근거 문장'�
 
 // 관리자가 프롬프트를 저장하지 않았을 때 쓰는 기본 판정 지시문(두 기본 정의문으로 조립).
 // (qa_confidence_prompt 에 행이 있으면 최신 version 을 우선 사용 — resolvePrompt 참고.)
-export const DEFAULT_PROMPT = buildSystemPrompt();
+const DEFAULT_PROMPT = buildSystemPrompt();
 
 export function judgeEnabled() {
     return Boolean(String(process.env.GEMINI_API_KEY || '').trim());

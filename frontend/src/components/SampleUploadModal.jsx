@@ -165,6 +165,11 @@ export default function SampleUploadModal({ onUploaded }) {
     const [vllmBaseUrl, setVllmBaseUrl] = useState('');
     const [vllmModel, setVllmModel] = useState('');
     const [azureDeployment, setAzureDeployment] = useState('');
+    // ★ 2026-09-07 평가 모델(OpenAI) 선택칸은 여기 두지 않는다 — **시스템 설정 > 운영 >
+    //   '평가 모델'** 카드가 유일한 컨트롤이다(사용자 지시). 두 곳에 두면 건별 값이 시스템
+    //   설정을 조용히 덮어써(요청 스코프가 env 보다 우선) "바꿨는데 왜 그대로냐" 가 된다.
+    //   API 경로는 남아 있다 — 이 서버가 `call.openai.model` 을 받으면 그대로 전달하고,
+    //   파이프라인 ingress 가 허용목록으로 검증한다(외부 투입·배치용).
     // 백엔드 가용성 — 서버가 파이프라인 /v2/llm/backends 를 중계. 조회 실패는 'unknown' 으로
     // 두고 선택을 막지 않는다(가용성 조회가 평가 실행의 전제조건이 되면 안 된다).
     const [backendInfo, setBackendInfo] = useState({ state: 'loading', backends: {}, lock: null });
@@ -516,8 +521,7 @@ export default function SampleUploadModal({ onUploaded }) {
                                         <option value="vllm">vLLM (로컬)</option>
                                         {/* ★ 2026-08-27 Azure — 서버 env(AZURE_OPENAI_*) 미설정이면
                                             고를 수 없게 막는다. 그 상태로 실행하면 파이프라인이
-                                            bedrock 으로 폴백하고 Bedrock 은 IAM 거부라 평가가
-                                            통째로 실패한다(사유도 AccessDenied 로만 보인다). */}
+                                            기본 백엔드로 폴백해 의도와 다른 모델로 평가된다. */}
                                         <option value="azure" disabled={azureAvail === 'no'}>
                                             Azure OpenAI
                                             {azureAvail === 'no' ? ' — 서버 미설정' : ''}

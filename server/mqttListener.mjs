@@ -23,10 +23,8 @@ import mqtt from 'mqtt';
 import { logger } from './logger.mjs';
 import { icsEnabled } from './icsSource.mjs';
 import { ingestCallByUid, buildIcsQaCfg } from './icsQaPoller.mjs';
+import { env } from './util/common.mjs';
 
-function env(key, def = '') {
-    return String(process.env[key] ?? def).trim();
-}
 function envInt(key, def) {
     const n = Number(env(key));
     return Number.isFinite(n) && n > 0 ? n : def;

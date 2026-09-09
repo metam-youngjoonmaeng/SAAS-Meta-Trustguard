@@ -637,8 +637,13 @@ function ItemPreview({
                         </div>
 
                         {/* ── KMS — 이 항목의 판정 근거 문서 ──────────────────────────
-                            지정·문서·색인 모두 여기서 처리한다(별 화면 없음).
-                            KMS 조작은 즉시 저장된다 — 항목 [편집하기] 저장과 별개 경로. */}
+                            ★ KMS 항목에만 노출한다. 종전엔 무조건 렌더해 일반 항목 전부에
+                            'KMS 아님 · 문서 0건 · 색인 이력 없음 · [문서 추가] [RAG 색인]' 이
+                            붙어 화면 대부분이 무관한 KMS UI 로 덮였다(0831 수정).
+                            지정/해제는 [편집하기] 모달의 'KMS 항목' 토글이 단일 창구 —
+                            여기서는 이미 KMS 인 항목의 근거 문서만 다룬다.
+                            문서·색인 조작은 즉시 저장된다(항목 저장과 별개 경로). */}
+                        {(kmsMarked || kmsDocs.length > 0) && (
                         <div className="flex flex-col shrink-0 border-t border-[var(--muted)] pt-4">
                             <div className="flex items-center gap-2 flex-wrap mb-2">
                                 <div className="text-[10.5px] font-bold text-[var(--ink-500)] tracking-[0.06em] uppercase">
@@ -648,7 +653,7 @@ function ItemPreview({
                                     type="button"
                                     onClick={() => onKmsToggle?.(!kmsMarked)}
                                     disabled={kmsBusy}
-                                    title="KMS 항목으로 지정하면 목록에 배지가 표시되고 근거 문서를 붙일 수 있습니다"
+                                    title={kmsMarked ? 'KMS 지정을 해제합니다 (등록된 근거 문서는 남습니다)' : 'KMS 항목으로 지정합니다'}
                                     className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
                                         kmsMarked
                                             ? 'bg-[var(--primary)] border-[var(--primary)] text-white'
@@ -698,14 +703,7 @@ function ItemPreview({
                                 </div>
                             )}
 
-                            {!kmsMarked && kmsDocs.length === 0 && (
-                                <p className="text-[12.5px] text-[var(--ink-500)] leading-relaxed">
-                                    이 항목은 KMS 항목이 아닙니다. 업무 절차·매뉴얼처럼 <strong>외부 문서를 근거로 판정해야 하는 항목</strong>이면
-                                    KMS 로 지정하고 문서를 등록하세요.
-                                </p>
-                            )}
-
-                            {(kmsMarked || kmsDocs.length > 0) && kmsDocs.length === 0 && (
+                            {kmsDocs.length === 0 && (
                                 <p className="text-[12.5px] text-[var(--ink-500)] leading-relaxed">
                                     등록된 근거 문서가 없습니다. [문서 추가] 로 업무 절차·안내 문구 원문을 넣으면 이 항목에 연결됩니다.
                                 </p>
@@ -745,6 +743,7 @@ function ItemPreview({
                                 </div>
                             )}
                         </div>
+                        )}
                 </div>
             </div>
         </div>
@@ -1523,7 +1522,8 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], kmsMarked 
                     </FormGroup>
                 )}
 
-                {/* KMS 여부 — 지정하면 목록에 KMS 배지가 뜨고 [KMS] 탭에서 근거 문서를 붙일 수 있다.
+                {/* KMS 여부 — 지정/해제의 단일 창구. 지정하면 목록에 KMS 배지가 뜨고, 우측 미리보기에
+                    'KMS 근거 문서' 섹션이 열려 문서 등록·RAG 색인이 가능해진다(일반 항목엔 안 뜬다).
                     평가항목 테이블 컬럼이 아니라 브랜드 KMS 설정에 저장된다(스키마 불변). */}
                 <FormGroup label="KMS 항목">
                     <div className="flex gap-2">
@@ -1535,8 +1535,9 @@ function ItemModal({ mode, item, existingDef, axes, departments = [], kmsMarked 
                         </button>
                     </div>
                     <p className="mt-1.5 text-[11.5px] text-[var(--ink-500)] leading-relaxed">
-                        KMS 항목으로 지정하면 목록에 배지가 표시되고, <strong>[KMS] 탭</strong>에서 이 항목의 판정 근거
-                        문서를 등록·색인할 수 있습니다.
+                        업무 절차·매뉴얼처럼 <strong>외부 문서를 근거로 판정해야 하는 항목</strong>만 지정하세요.
+                        지정하면 목록에 <strong>KMS 배지</strong>가 표시되고, 우측 미리보기에 <strong>KMS 근거 문서</strong> 섹션이
+                        열려 문서 등록·RAG 색인을 할 수 있습니다. 일반 항목에는 표시되지 않습니다.
                     </p>
                 </FormGroup>
 

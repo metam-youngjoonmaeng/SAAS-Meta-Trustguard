@@ -3,7 +3,6 @@
  * DDL은 docker/init/postgres/01_init.sql 의 dump 안에 포함
  */
 
-import pg from 'pg';
 
 export const AUDIT_ACTION = {
     AUTH_LOGIN_SUCCESS: 'AUTH_LOGIN_SUCCESS',
@@ -38,7 +37,7 @@ export const AUDIT_ACTION = {
 };
 
 // 보관 기간: AI-Tutor backend/main.py 의 loguru retention="3 days" 와 동일
-export const AUDIT_RETENTION_DAYS = 3;
+const AUDIT_RETENTION_DAYS = 3;
 // 실시간 로그 화면 표시 기간(서버 측 강제 윈도우)
 export const AUDIT_VIEW_WINDOW_DAYS = 1;
 
@@ -60,7 +59,7 @@ export async function pruneOldAuditLogs(pool) {
     }
 }
 
-export function readActorFromReq(req) {
+function readActorFromReq(req) {
     const rawUid = String(req.headers['x-actor-user-id'] || '').trim();
     const uid = rawUid ? parseInt(rawUid, 10) : NaN;
     let loginId = String(req.headers['x-actor-login-id'] || '').trim();
@@ -84,7 +83,7 @@ export function readActorFromReq(req) {
     };
 }
 
-export function clientMetaFromReq(req) {
+function clientMetaFromReq(req) {
     const xff = req.headers['x-forwarded-for'];
     const ip =
         typeof xff === 'string' && xff.length > 0

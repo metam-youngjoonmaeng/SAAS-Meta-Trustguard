@@ -67,6 +67,8 @@ function categoryCell(raw, categoryKey, categoryMaxPoints) {
         if (Number.isFinite(a) && Number.isFinite(b) && b > 0) {
             return { text: String(a), ratio: Math.min(1, a / b) };
         }
+        // 감점 전용 카테고리(만점 0, 획득점 음수) — 서버가 "-5/0" 으로 내려준다. 감점을 그대로 보인다.
+        if (Number.isFinite(a) && a < 0) return { text: String(a), ratio: 0 };
         return { text: '-', ratio: NaN };
     }
     const pct = Number(s);
